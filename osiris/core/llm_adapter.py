@@ -179,7 +179,9 @@ class LLMAdapter:
                         raise fallback_e
                 return response.choices[0].message.content
             except Exception as fallback_error:
-                raise Exception(f"Both models failed. Primary: {e}, Fallback: {fallback_error}") from fallback_error
+                raise Exception(
+                    f"Both models failed. Primary: {e}, Fallback: {fallback_error}"
+                ) from fallback_error
 
     async def _call_claude(self, messages: List[Dict], **_kwargs) -> str:
         """Call Claude API."""
