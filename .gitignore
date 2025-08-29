@@ -15,6 +15,7 @@ output/
 
 # Internal tools
 .claude/
+.audit/
 
 # Python artifacts
 __pycache__/
@@ -30,6 +31,7 @@ build/
 dist/
 *.egg-info/
 *.egg
+uv.lock
 
 # Code quality tool caches
 .mypy_cache/
