@@ -1,0 +1,52 @@
+# osiris-pipeline-v2
+# Generated in 1.2 seconds from: "Show me top 10 customers by revenue"
+version: "1.0"
+pipeline: top_customers_revenue
+
+extract:
+  - id: get_customers
+    source: supabase
+    table: customers
+    connection: main_db
+
+  - id: get_orders
+    source: supabase
+    table: orders
+    connection: main_db
+
+transform:
+  - id: calculate_revenue
+    engine: duckdb
+    inputs: [get_customers, get_orders]
+    sql: |
+      SELECT
+        c.name as customer_name,
+        c.country,
+        COUNT(o.id) as total_orders,
+        SUM(o.amount) as total_revenue
+      FROM get_customers c
+      JOIN get_orders o ON c.id = o.customer_id
+      WHERE o.order_date >= '2024-01-01'
+      GROUP BY c.name, c.country
+      ORDER BY total_revenue DESC
+      LIMIT 10
+
+load:
+  - id: save_results
+    from: calculate_revenue
+    to: parquet
+    path: output/top_customers_revenue.parquet
+    mode: overwrite
+
+  - id: save_csv_copy
+    from: calculate_revenue
+    to: csv
+    path: output/top_customers_revenue.csv
+    mode: overwrite
+
+  - id: save_to_db
+    from: calculate_revenue
+    to: supabase
+    table: top_customers_analysis
+    connection: main_db
+    mode: overwrite

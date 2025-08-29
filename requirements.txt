@@ -1,0 +1,22 @@
+# Core dependencies
+duckdb>=0.9.0           # Local SQL engine for transformations
+click>=8.0.0            # CLI framework
+pyyaml>=6.0.2           # YAML parsing (security fix for CVE-2020-14343)
+aiofiles>=23.0          # Async file operations
+rich>=13.0.0            # Rich terminal formatting for CLI
+
+# Database connectors
+pymysql>=1.1.0          # MySQL connector
+psycopg2-binary>=2.9    # PostgreSQL connector (legacy)
+sqlalchemy>=2.0         # Database abstraction
+supabase>=2.7.0         # Supabase Python client (security fix for CVE-2024-24213)
+pandas>=1.3.0           # Data manipulation for connectors
+
+# LLM providers (Day 5 - Required for conversational agent)
+openai>=1.3.0           # OpenAI API (GPT-4o, GPT-4o-mini) - security fix for CVE-2024-27564
+anthropic>=0.25.0       # Claude API (Claude-3 Sonnet) - security fix for CVE-2025-49596
+google-generativeai>=0.3.0  # Gemini API
+python-dotenv>=1.0      # Environment variable loading from .env files
+
+# Note: For development dependencies, use: pip install -e ".[dev]"
+# This installs the package with all development tools defined in pyproject.toml
