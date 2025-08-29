@@ -46,4 +46,4 @@ This is the first MVP release of Osiris Pipeline - an experimental proof-of-conc
 **Status**: Early prototype suitable for demonstration and initial testing
 **Confidence**: Core functionality working with movies database testing completed
 
-[0.1.0]: https://github.com/your-username/osiris_pipeline/releases/tag/v0.1.0
+[0.1.0]: https://github.com/keboola/osiris_pipeline/releases/tag/v0.1.0
