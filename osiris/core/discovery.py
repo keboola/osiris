@@ -38,7 +38,7 @@ class DateTimeEncoder(json.JSONEncoder):
     """Custom JSON encoder that handles datetime objects and pandas Timestamps."""
 
     def default(self, obj):
-        if isinstance(obj, pd.Timestamp) or isinstance(obj, datetime) or isinstance(obj, date):
+        if isinstance(obj, (pd.Timestamp, datetime, date)):
             return obj.isoformat()
         elif pd.isna(obj):  # Handle pandas NaN/NaT values
             return None

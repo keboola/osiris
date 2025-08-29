@@ -31,7 +31,7 @@ class TestMySQLExtractor:
             "port": 3306,
             "database": "test_db",
             "user": "test_user",
-            "password": "test_pass",
+            "password": "test_pass",  # pragma: allowlist secret
         }
 
     @patch("osiris.connectors.mysql.extractor.inspect")
@@ -106,7 +106,7 @@ class TestMySQLWriter:
             "port": 3306,
             "database": "test_db",
             "user": "test_user",
-            "password": "test_pass",
+            "password": "test_pass",  # pragma: allowlist secret
         }
 
         self.sample_df = pd.DataFrame(

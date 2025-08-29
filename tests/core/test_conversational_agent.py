@@ -31,7 +31,7 @@ class TestConversationalPipelineAgent:
                     "port": 3306,
                     "database": "test_db",
                     "user": "test_user",
-                    "password": "test_pass",
+                    "password": "test_pass",  # pragma: allowlist secret
                 }
             ]
         }
@@ -53,7 +53,7 @@ class TestConversationalPipelineAgent:
             }
         }
 
-    @patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"})
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"})  # pragma: allowlist secret
     @patch("pathlib.Path.mkdir")
     def test_init_creates_directories(self, mock_mkdir):
         """Test that initialization creates required directories."""
@@ -62,7 +62,7 @@ class TestConversationalPipelineAgent:
         assert agent.config == self.test_config
         mock_mkdir.assert_called()
 
-    @patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"})
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"})  # pragma: allowlist secret
     @pytest.mark.asyncio
     async def test_chat_creates_new_session(self):
         """Test that chat creates new session when none provided."""

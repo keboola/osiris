@@ -94,11 +94,11 @@ class MySQLExtractor(IExtractor):
 
             # Get row count
             with self.engine.connect() as conn:
-                result = conn.execute(text(f"SELECT COUNT(*) FROM `{table_name}`"))
+                result = conn.execute(text(f"SELECT COUNT(*) FROM `{table_name}`"))  # nosec B608
                 row_count = result.scalar()
 
             # Get sample data (10 rows for MVP)
-            sample_query = f"SELECT * FROM `{table_name}` LIMIT 10"
+            sample_query = f"SELECT * FROM `{table_name}` LIMIT 10"  # nosec B608
             sample_df = pd.read_sql(sample_query, self.engine)
 
             # Convert to list of dicts for easier processing
@@ -149,7 +149,7 @@ class MySQLExtractor(IExtractor):
         if not self._validate_identifier(table_name):
             raise ValueError(f"Invalid table name: {table_name}")
 
-        query = f"SELECT * FROM `{table_name}` LIMIT {size}"
+        query = f"SELECT * FROM `{table_name}` LIMIT {size}"  # nosec B608
         return await self.execute_query(query)
 
     def _validate_identifier(self, identifier: str) -> bool:

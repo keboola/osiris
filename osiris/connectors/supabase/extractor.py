@@ -72,8 +72,8 @@ class SupabaseExtractor(IExtractor):
             response = self.client.rpc("list_tables", {}).execute()
             if response.data:
                 return [t["table_name"] for t in response.data]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"RPC list_tables not available: {e}")  # nosec B110
 
         # Option 2: Use configured tables
         configured_tables = self.config.get("tables", [])

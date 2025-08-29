@@ -160,7 +160,7 @@ class PromptManager:
             return self._default_prompts
 
         # Load each prompt file
-        for prompt_name in self._default_prompts.keys():
+        for prompt_name in self._default_prompts:
             prompt_file = self.prompts_dir / f"{prompt_name}.txt"
 
             if prompt_file.exists():

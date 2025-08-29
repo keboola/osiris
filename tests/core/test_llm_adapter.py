@@ -48,7 +48,7 @@ class TestLLMAdapter:
             },
         )
 
-    @patch.dict(os.environ, {"OPENAI_API_KEY": "test_key"})
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test_key"})  # pragma: allowlist secret
     def test_init_openai_provider(self):
         """Test initialization with OpenAI provider."""
         adapter = LLMAdapter("openai")
@@ -84,7 +84,7 @@ class TestLLMAdapter:
         with pytest.raises(ValueError, match="API key not found"):
             LLMAdapter("openai")
 
-    @patch.dict(os.environ, {"OPENAI_API_KEY": "test_key"})
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test_key"})  # pragma: allowlist secret
     @patch("openai.AsyncOpenAI")
     @pytest.mark.asyncio
     async def test_call_openai_success(self, mock_openai):

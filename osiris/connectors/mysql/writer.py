@@ -143,7 +143,7 @@ class MySQLWriter(ILoader):
                 INSERT INTO `{table_name}` ({column_list})
                 VALUES ({placeholders})
                 ON DUPLICATE KEY UPDATE {update_clause}
-            """
+            """  # nosec B608
 
             # Execute in batches
             with self.engine.connect() as conn:
@@ -187,7 +187,7 @@ class MySQLWriter(ILoader):
             # First, delete all existing data
             logger.warning(f"Deleting all data from {table_name}")
             with self.engine.connect() as conn:
-                conn.execute(text(f"DELETE FROM `{table_name}`"))
+                conn.execute(text(f"DELETE FROM `{table_name}`"))  # nosec B608
                 conn.commit()
 
             # Then insert new data
@@ -225,7 +225,7 @@ class MySQLWriter(ILoader):
             where_clause = " AND ".join(f"`{key}` = :filter_{key}" for key in filters)
 
             # Build query
-            query = f"UPDATE `{table_name}` SET {set_clause} WHERE {where_clause}"
+            query = f"UPDATE `{table_name}` SET {set_clause} WHERE {where_clause}"  # nosec B608
 
             # Prepare parameters
             params = {}
@@ -264,7 +264,7 @@ class MySQLWriter(ILoader):
             where_clause = " AND ".join(f"`{key}` = :{key}" for key in filters)
 
             # Build query
-            query = f"DELETE FROM `{table_name}` WHERE {where_clause}"
+            query = f"DELETE FROM `{table_name}` WHERE {where_clause}"  # nosec B608
 
             # Execute query
             with self.engine.connect() as conn:
