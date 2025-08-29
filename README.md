@@ -97,4 +97,4 @@ python osiris.py chat --pro-mode
 
 ## License
 
-MIT
+Apache-2.0
