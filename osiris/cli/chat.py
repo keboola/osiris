@@ -107,8 +107,39 @@ def clear_session_context():
         del _session_context.session_id
 
 
-def show_epic_help():
-    """Display clean help using simple Rich formatting."""
+def show_epic_help(json_output=False):
+    """Display clean help using simple Rich formatting or JSON."""
+
+    if json_output:
+        import json
+
+        help_data = {
+            "command": "chat",
+            "description": "Conversational pipeline generation with LLM",
+            "usage": "osiris chat [OPTIONS] [MESSAGE]",
+            "options": {
+                "--session-id, -s": "Session ID for conversation continuity",
+                "--fast": "Fast mode: skip questions, make assumptions",
+                "--provider, -p": "LLM provider (openai, claude, gemini)",
+                "--interactive, -i": "Start interactive conversation session",
+                "--sql": "Direct SQL mode: provide SQL query directly",
+                "--config-file, -c": "Configuration file path",
+                "--pro-mode": "Use custom prompts from .osiris_prompts/ directory",
+                "--json": "Output in JSON format for programmatic use",
+                "--help, -h": "Show this help message",
+            },
+            "discovery_examples": [
+                'osiris chat "Show me my database schema"',
+                'osiris chat "What data do I have about customers?"',
+                'osiris chat "Find all tables related to orders and payments"',
+            ],
+            "pipeline_examples": [
+                'osiris chat "Create a pipeline for top 10 customers by revenue"',
+                'osiris chat "Generate monthly sales report from orders table"',
+            ],
+        }
+        print(json.dumps(help_data, indent=2))
+        return
 
     # Main description
     console.print()
@@ -139,6 +170,7 @@ def show_epic_help():
     console.print(
         "  [cyan]--pro-mode[/cyan]          Use custom prompts from .osiris_prompts/ directory"
     )
+    console.print("  [cyan]--json[/cyan]             Output in JSON format for programmatic use")
     console.print("  [cyan]--help[/cyan], [cyan]-h[/cyan]         Show this help message")
     console.print()
 
@@ -219,6 +251,7 @@ def parse_args(args=None) -> argparse.Namespace:
     parser.add_argument(
         "--pro-mode", action="store_true", help="Enable pro mode with custom prompts"
     )
+    parser.add_argument("--json", action="store_true", help="Output in JSON format")
     parser.add_argument("--help", "-h", action="store_true", help="Show this help message")
     parser.add_argument("message", nargs="?", help="Chat message")
 
@@ -231,7 +264,7 @@ def chat(argv=None):
 
     # Show help if requested or no arguments provided
     if args.help or (not args.message and not args.interactive and not args.sql):
-        show_epic_help()
+        show_epic_help(json_output=args.json if hasattr(args, "json") else False)
         return
 
     # Set default session context early (before any modules log)
