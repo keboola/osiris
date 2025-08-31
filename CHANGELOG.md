@@ -5,6 +5,24 @@ All notable changes to the Osiris Pipeline project will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2025-08-30
+
+### Added
+- **Global JSON Output Support**: All CLI commands now support `--json` flag for programmatic access
+- **Comprehensive Help System**: All commands support `--help` with JSON output option
+- **Environment Variable Loading**: Fixed validate command to properly load `.env` files
+- **Test Coverage**: Added comprehensive test suite for CLI command functionality
+
+### Fixed
+- **Environment Loading Bug**: Validate command now correctly loads environment variables from `.env` files
+- **Help System**: Fixed argument passing to allow `--help` to reach all subcommands
+- **JSON Consistency**: Ensured consistent JSON structure across all command outputs
+
+### Changed
+- **CLI Interface**: Added global `--json` flag that works with all commands
+- **Error Handling**: Improved SystemExit handling in tests using contextlib.suppress
+- **Code Quality**: Fixed linting issues for boolean comparisons and exception handling
+
 ## [0.1.0] - 2025-08-29
 
 ### Added

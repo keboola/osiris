@@ -15,6 +15,7 @@
 """Main CLI entry point for Osiris v2."""
 
 import argparse
+import json
 import logging
 import sys
 
@@ -24,6 +25,9 @@ from rich.console import Console
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 console = Console()
+
+# Global flag for JSON output mode
+json_output = False
 
 
 def show_main_help():
@@ -67,6 +71,7 @@ def show_main_help():
 
     # Options
     console.print("[bold blue]Global Options[/bold blue]")
+    console.print("  [cyan]--json[/cyan]           Output in JSON format (for programmatic use)")
     console.print("  [cyan]--verbose[/cyan], [cyan]-v[/cyan]  Enable verbose logging")
     console.print("  [cyan]--version[/cyan]        Show version and exit")
     console.print("  [cyan]--help[/cyan], [cyan]-h[/cyan]     Show this help message")
@@ -82,6 +87,9 @@ def parse_main_args():
     )
 
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
+    parser.add_argument(
+        "--json", action="store_true", help="Output in JSON format for programmatic use"
+    )
     parser.add_argument("--version", action="store_true", help="Show version and exit")
     parser.add_argument("--help", "-h", action="store_true", help="Show this help message")
     parser.add_argument("command", nargs="?", help="Command to run (init, validate, chat, run)")
@@ -92,6 +100,8 @@ def parse_main_args():
 
 def main():
     """Main CLI entry point with Rich formatting."""
+    global json_output
+
     # Special handling for chat command to preserve argument order
     if len(sys.argv) > 1 and sys.argv[1] == "chat":
         from .chat import chat
@@ -103,35 +113,129 @@ def main():
 
     args, unknown = parse_main_args()
 
+    # Set JSON output mode
+    json_output = args.json
+
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
     if args.version:
-        console.print("Osiris v2.0.0-mvp")
+        if json_output:
+            print(json.dumps({"version": "v2.0.0-mvp"}))
+        else:
+            console.print("Osiris v2.0.0-mvp")
         return
 
     # Handle commands first, then help
+    # If help is requested with a command, pass it to the command
+    if args.help and args.command:
+        command_args = ["--help"] + args.args + unknown
+    else:
+        command_args = args.args + unknown
+
     if args.command == "init":
-        init_command()
+        init_command(command_args)
     elif args.command == "validate":
-        validate_command(args.args + unknown)
+        validate_command(command_args)
     elif args.command == "run":
-        run_command(args.args + unknown)
+        run_command(command_args)
     elif args.command == "dump-prompts":
-        dump_prompts_command(args.args + unknown)
+        dump_prompts_command(command_args)
     elif args.command == "chat":
         # This case is now handled early in main() to preserve argument order
         pass
     elif args.help or not args.command:
-        show_main_help()
+        if json_output:
+            print(
+                json.dumps(
+                    {
+                        "error": "No command specified",
+                        "available_commands": ["init", "validate", "chat", "run", "dump-prompts"],
+                    }
+                )
+            )
+        else:
+            show_main_help()
     else:
-        console.print(f"❌ Unknown command: {args.command}")
-        console.print("💡 Run 'osiris.py --help' to see available commands")
+        if json_output:
+            print(
+                json.dumps(
+                    {
+                        "error": f"Unknown command: {args.command}",
+                        "available_commands": ["init", "validate", "chat", "run", "dump-prompts"],
+                    }
+                )
+            )
+        else:
+            console.print(f"❌ Unknown command: {args.command}")
+            console.print("💡 Run 'osiris.py --help' to see available commands")
         sys.exit(1)
 
 
-def init_command():
+def init_command(args: list):
     """Initialize a new Osiris project with sample configuration."""
+    # Check for help flag first
+    if "--help" in args or "-h" in args:
+        # Check if JSON output is requested
+        if "--json" in args or json_output:
+            help_data = {
+                "command": "init",
+                "description": "Initialize a new Osiris project with sample configuration",
+                "usage": "osiris init [OPTIONS]",
+                "options": {
+                    "--json": "Output in JSON format for programmatic use",
+                    "--help": "Show this help message",
+                },
+                "creates": [
+                    "osiris.yaml - Main configuration file",
+                    "Sample settings for logging, output, sessions",
+                    "LLM and pipeline configuration templates",
+                ],
+                "next_steps": [
+                    "Create .env file with your credentials",
+                    "Run 'osiris validate' to check setup",
+                    "Run 'osiris chat' to start pipeline generation",
+                ],
+                "examples": ["osiris init", "osiris init --json"],
+            }
+            print(json.dumps(help_data, indent=2))
+        else:
+            console.print()
+            console.print("[bold green]osiris init - Initialize Project[/bold green]")
+            console.print("🚀 Create a new Osiris project with sample configuration")
+            console.print()
+            console.print("[bold]Usage:[/bold] osiris init [OPTIONS]")
+            console.print()
+            console.print("[bold blue]Options[/bold blue]")
+            console.print("  [cyan]--json[/cyan]  Output in JSON format for programmatic use")
+            console.print("  [cyan]--help[/cyan]  Show this help message")
+            console.print()
+            console.print("[bold blue]What this creates[/bold blue]")
+            console.print("  • osiris.yaml - Main configuration file")
+            console.print("  • Sample settings for logging, output, sessions")
+            console.print("  • LLM and pipeline configuration templates")
+            console.print()
+            console.print("[bold blue]Next steps after init[/bold blue]")
+            console.print("  1. Create .env file with your credentials")
+            console.print("  2. Run 'osiris validate' to check setup")
+            console.print("  3. Run 'osiris chat' to start pipeline generation")
+            console.print()
+        return
+
+    # Parse init-specific arguments
+    parser = argparse.ArgumentParser(description="Initialize Osiris project", add_help=False)
+    parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    try:
+        parsed_args = parser.parse_args(args)
+    except SystemExit:
+        if json_output:
+            print(json.dumps({"error": "Invalid arguments"}))
+        else:
+            console.print("❌ Invalid arguments. Use --help for usage information.")
+        return
+
+    use_json = json_output or parsed_args.json
     try:
         from pathlib import Path
 
@@ -142,180 +246,366 @@ def init_command():
 
         create_sample_config()
 
-        console.print("🚀 Osiris project initialization complete!")
-        console.print("")
-
-        if config_exists:
-            console.print("⚠️  Existing config backed up to osiris.yaml.backup")
-
-        console.print("✅ Created sample osiris.yaml configuration")
-        console.print(
-            "📋 Configuration includes: logging, output, sessions, discovery, LLM, pipeline settings"
-        )
-        console.print("")
-
-        # Check if .env.dist exists
-        env_dist_exists = Path("../.env.dist").exists()
-        if env_dist_exists:
-            console.print("🔐 Next steps for database and LLM setup:")
-            console.print("   1. Copy environment template:")
-            console.print("      cp ../.env.dist .env")
-            console.print("   2. Edit .env with your credentials:")
-            console.print(
-                "      • Database: MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE"
-            )
-            console.print("      • Database: SUPABASE_PROJECT_ID, SUPABASE_ANON_PUBLIC_KEY")
-            console.print("      • LLM APIs: OPENAI_API_KEY, CLAUDE_API_KEY, GEMINI_API_KEY")
+        if use_json:
+            result = {
+                "status": "success",
+                "message": "Osiris project initialization complete",
+                "config_file": "osiris.yaml",
+                "config_existed": config_exists,
+                "config_sections": [
+                    "logging",
+                    "output",
+                    "sessions",
+                    "discovery",
+                    "llm",
+                    "pipeline",
+                ],
+                "next_steps": [
+                    "Create .env file with database and LLM credentials",
+                    "Run 'osiris validate' to check your setup",
+                    "Run 'osiris chat' to start pipeline generation",
+                ],
+            }
+            print(json.dumps(result, indent=2))
         else:
-            console.print("🔐 Environment setup:")
-            console.print("   Create .env file with your credentials:")
-            console.print("   • Database: MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE")
-            console.print("   • Database: SUPABASE_PROJECT_ID, SUPABASE_ANON_PUBLIC_KEY")
-            console.print("   • LLM APIs: OPENAI_API_KEY, CLAUDE_API_KEY, GEMINI_API_KEY")
+            console.print("🚀 Osiris project initialization complete!")
+            console.print("")
 
-        console.print("")
-        console.print("💡 Ready to continue:")
-        console.print("   osiris validate      # Check your setup")
-        console.print("   osiris chat          # Start pipeline generation")
+            if config_exists:
+                console.print("⚠️  Existing config backed up to osiris.yaml.backup")
+
+            console.print("✅ Created sample osiris.yaml configuration")
+            console.print(
+                "📋 Configuration includes: logging, output, sessions, discovery, LLM, pipeline settings"
+            )
+            console.print("")
+
+            # Check if .env.dist exists
+            env_dist_exists = Path("../.env.dist").exists()
+            if env_dist_exists:
+                console.print("🔐 Next steps for database and LLM setup:")
+                console.print("   1. Copy environment template:")
+                console.print("      cp ../.env.dist .env")
+                console.print("   2. Edit .env with your credentials:")
+                console.print(
+                    "      • Database: MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE"
+                )
+                console.print("      • Database: SUPABASE_PROJECT_ID, SUPABASE_ANON_PUBLIC_KEY")
+                console.print("      • LLM APIs: OPENAI_API_KEY, CLAUDE_API_KEY, GEMINI_API_KEY")
+            else:
+                console.print("🔐 Environment setup:")
+                console.print("   Create .env file with your credentials:")
+                console.print(
+                    "   • Database: MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE"
+                )
+                console.print("   • Database: SUPABASE_PROJECT_ID, SUPABASE_ANON_PUBLIC_KEY")
+                console.print("   • LLM APIs: OPENAI_API_KEY, CLAUDE_API_KEY, GEMINI_API_KEY")
+
+            console.print("")
+            console.print("💡 Ready to continue:")
+            console.print("   osiris validate      # Check your setup")
+            console.print("   osiris chat          # Start pipeline generation")
 
     except Exception as e:
-        console.print(f"❌ Initialization failed: {e}")
+        if use_json:
+            print(json.dumps({"status": "error", "message": str(e)}))
+        else:
+            console.print(f"❌ Initialization failed: {e}")
         sys.exit(1)
 
 
 def validate_command(args: list):
     """Validate Osiris configuration file and environment setup."""
+    # Check for help flag first
+    if "--help" in args or "-h" in args:
+        # Check if JSON output is requested
+        if "--json" in args or json_output:
+            help_data = {
+                "command": "validate",
+                "description": "Validate Osiris configuration file and environment setup",
+                "usage": "osiris validate [OPTIONS]",
+                "options": {
+                    "--config FILE": "Configuration file to validate (default: osiris.yaml)",
+                    "--json": "Output in JSON format for programmatic use",
+                    "--help": "Show this help message",
+                },
+                "checks": [
+                    "Configuration file syntax and structure",
+                    "All required sections (logging, output, sessions, etc.)",
+                    "Database connection environment variables",
+                    "LLM API keys availability",
+                ],
+                "examples": [
+                    "osiris validate",
+                    "osiris validate --config custom.yaml",
+                    "osiris validate --json",
+                ],
+            }
+            print(json.dumps(help_data, indent=2))
+        else:
+            console.print()
+            console.print("[bold green]osiris validate - Validate Configuration[/bold green]")
+            console.print("🔍 Check Osiris configuration file and environment setup")
+            console.print()
+            console.print("[bold]Usage:[/bold] osiris validate [OPTIONS]")
+            console.print()
+            console.print("[bold blue]Options[/bold blue]")
+            console.print(
+                "  [cyan]--config FILE[/cyan]  Configuration file to validate (default: osiris.yaml)"
+            )
+            console.print(
+                "  [cyan]--json[/cyan]         Output in JSON format for programmatic use"
+            )
+            console.print("  [cyan]--help[/cyan]         Show this help message")
+            console.print()
+            console.print("[bold blue]What this checks[/bold blue]")
+            console.print("  • Configuration file syntax and structure")
+            console.print("  • All required sections (logging, output, sessions, etc.)")
+            console.print("  • Database connection environment variables")
+            console.print("  • LLM API keys availability")
+            console.print()
+            console.print("[bold blue]Examples[/bold blue]")
+            console.print("  [green]# Validate default configuration[/green]")
+            console.print("  osiris validate")
+            console.print()
+            console.print("  [green]# Check specific config file[/green]")
+            console.print("  osiris validate --config custom.yaml")
+            console.print()
+            console.print("  [green]# Get JSON output for scripts[/green]")
+            console.print("  osiris validate --json")
+            console.print()
+        return
+
     # Parse validate-specific arguments
-    parser = argparse.ArgumentParser(description="Validate configuration")
+    parser = argparse.ArgumentParser(description="Validate configuration", add_help=False)
     parser.add_argument("--config", default="osiris.yaml", help="Configuration file to validate")
+    parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # Only parse the args we received
-    parsed_args = parser.parse_args(args)
+    try:
+        parsed_args = parser.parse_args(args)
+    except SystemExit:
+        if json_output:
+            print(json.dumps({"error": "Invalid arguments"}))
+        else:
+            console.print("❌ Invalid arguments. Use --help for usage information.")
+        return
+
+    use_json = json_output or parsed_args.json
 
     try:
         import os
+        from pathlib import Path
 
         from ..core.config import load_config
 
+        # Load .env file if it exists
+        env_file = Path(".env")
+        if env_file.exists():
+            # Load environment variables from .env file
+            from dotenv import load_dotenv
+
+            load_dotenv(env_file)
+
         config_data = load_config(parsed_args.config)
-        console.print(f"✅ Configuration file '{parsed_args.config}' is valid")
+
+        # Build validation results
+        validation_results = {
+            "config_file": parsed_args.config,
+            "config_valid": True,
+            "sections": {},
+            "database_connections": {},
+            "llm_providers": {},
+        }
 
         # Validate configuration sections
-        console.print("\n📝 Configuration validation:")
-
         # Logging section
         if "logging" in config_data:
             logging_cfg = config_data["logging"]
-            level = logging_cfg.get("level", "INFO")
-            log_file = logging_cfg.get("file")
-            console.print(
-                f"   Logging: ✅ Level={level}, File={'enabled' if log_file else 'console only'}"
-            )
+            validation_results["sections"]["logging"] = {
+                "status": "configured",
+                "level": logging_cfg.get("level", "INFO"),
+                "file": logging_cfg.get("file") if logging_cfg.get("file") else None,
+            }
         else:
-            console.print("   Logging: ❌ Missing section")
+            validation_results["sections"]["logging"] = {"status": "missing"}
 
         # Output section
         if "output" in config_data:
             output_cfg = config_data["output"]
-            format_type = output_cfg.get("format", "csv")
-            directory = output_cfg.get("directory", "output/")
-            console.print(f"   Output: ✅ Format={format_type}, Directory={directory}")
+            validation_results["sections"]["output"] = {
+                "status": "configured",
+                "format": output_cfg.get("format", "csv"),
+                "directory": output_cfg.get("directory", "output/"),
+            }
         else:
-            console.print("   Output: ❌ Missing section")
+            validation_results["sections"]["output"] = {"status": "missing"}
 
         # Sessions section
         if "sessions" in config_data:
             sessions_cfg = config_data["sessions"]
-            cleanup_days = sessions_cfg.get("cleanup_days", 30)
-            cache_ttl = sessions_cfg.get("cache_ttl", 3600)
-            console.print(f"   Sessions: ✅ Cleanup={cleanup_days}d, Cache={cache_ttl}s")
+            validation_results["sections"]["sessions"] = {
+                "status": "configured",
+                "cleanup_days": sessions_cfg.get("cleanup_days", 30),
+                "cache_ttl": sessions_cfg.get("cache_ttl", 3600),
+            }
         else:
-            console.print("   Sessions: ❌ Missing section")
+            validation_results["sections"]["sessions"] = {"status": "missing"}
 
         # Discovery section
         if "discovery" in config_data:
             discovery_cfg = config_data["discovery"]
-            sample_size = discovery_cfg.get("sample_size", 10)
-            timeout = discovery_cfg.get("timeout_seconds", 30)
-            console.print(f"   Discovery: ✅ Sample={sample_size} rows, Timeout={timeout}s")
+            validation_results["sections"]["discovery"] = {
+                "status": "configured",
+                "sample_size": discovery_cfg.get("sample_size", 10),
+                "timeout_seconds": discovery_cfg.get("timeout_seconds", 30),
+            }
         else:
-            console.print("   Discovery: ❌ Missing section")
+            validation_results["sections"]["discovery"] = {"status": "missing"}
 
         # LLM section
         if "llm" in config_data:
             llm_cfg = config_data["llm"]
-            provider = llm_cfg.get("provider", "openai")
-            temperature = llm_cfg.get("temperature", 0.1)
-            max_tokens = llm_cfg.get("max_tokens", 2000)
-            console.print(
-                f"   LLM: ✅ Provider={provider}, Temp={temperature}, Tokens={max_tokens}"
-            )
+            validation_results["sections"]["llm"] = {
+                "status": "configured",
+                "provider": llm_cfg.get("provider", "openai"),
+                "temperature": llm_cfg.get("temperature", 0.1),
+                "max_tokens": llm_cfg.get("max_tokens", 2000),
+            }
         else:
-            console.print("   LLM: ❌ Missing section")
+            validation_results["sections"]["llm"] = {"status": "missing"}
 
         # Pipeline section
         if "pipeline" in config_data:
             pipeline_cfg = config_data["pipeline"]
-            validation_required = pipeline_cfg.get("validation_required", True)
-            auto_execute = pipeline_cfg.get("auto_execute", False)
-            console.print(
-                f"   Pipeline: ✅ Validation={'required' if validation_required else 'optional'}, Auto-execute={'enabled' if auto_execute else 'disabled'}"
-            )
+            validation_results["sections"]["pipeline"] = {
+                "status": "configured",
+                "validation_required": pipeline_cfg.get("validation_required", True),
+                "auto_execute": pipeline_cfg.get("auto_execute", False),
+            }
         else:
-            console.print("   Pipeline: ❌ Missing section")
+            validation_results["sections"]["pipeline"] = {"status": "missing"}
 
         # Check environment variables for database connections
-        console.print("\n🔌 Database connection status:")
-
         # MySQL
         mysql_vars = ["MYSQL_HOST", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE"]
         mysql_configured = all(os.environ.get(var) for var in mysql_vars)
-        status = "✅ Configured" if mysql_configured else "❌ Missing variables"
-        console.print(f"   MySQL: {status}")
-        if not mysql_configured:
-            missing = [var for var in mysql_vars if not os.environ.get(var)]
-            console.print(f"      Missing: {', '.join(missing)}")
+        missing_mysql = [var for var in mysql_vars if not os.environ.get(var)]
+        validation_results["database_connections"]["mysql"] = {
+            "configured": mysql_configured,
+            "missing_vars": missing_mysql if not mysql_configured else [],
+        }
 
         # Supabase
         supabase_vars = ["SUPABASE_PROJECT_ID", "SUPABASE_ANON_PUBLIC_KEY"]
         supabase_configured = all(os.environ.get(var) for var in supabase_vars)
-        status = "✅ Configured" if supabase_configured else "❌ Missing variables"
-        console.print(f"   Supabase: {status}")
-        if not supabase_configured:
-            missing = [var for var in supabase_vars if not os.environ.get(var)]
-            console.print(f"      Missing: {', '.join(missing)}")
+        missing_supabase = [var for var in supabase_vars if not os.environ.get(var)]
+        validation_results["database_connections"]["supabase"] = {
+            "configured": supabase_configured,
+            "missing_vars": missing_supabase if not supabase_configured else [],
+        }
 
         # LLM API Keys
-        console.print("\n🤖 LLM API key status:")
         llm_keys = {
-            "OpenAI": "OPENAI_API_KEY",
-            "Claude": "CLAUDE_API_KEY",
-            "Gemini": "GEMINI_API_KEY",
+            "openai": "OPENAI_API_KEY",
+            "claude": "CLAUDE_API_KEY",
+            "gemini": "GEMINI_API_KEY",
         }
-        configured_llms = []
         for name, var in llm_keys.items():
-            if os.environ.get(var):
-                configured_llms.append(name)
-                console.print(f"   {name}: ✅ Configured")
-            else:
-                console.print(f"   {name}: ❌ Missing {var}")
+            validation_results["llm_providers"][name] = {
+                "configured": bool(os.environ.get(var)),
+                "env_var": var,
+            }
 
-        if not configured_llms:
-            console.print("   ⚠️  No LLM providers configured - chat functionality will not work")
+        # Output results
+        if use_json:
+            print(json.dumps(validation_results, indent=2))
         else:
-            console.print(f"\n💡 Ready to use: {', '.join(configured_llms)}")
+            # Rich console output (existing code)
+            console.print(f"✅ Configuration file '{parsed_args.config}' is valid")
+            console.print("\n📝 Configuration validation:")
+
+            for section, data in validation_results["sections"].items():
+                if data["status"] == "configured":
+                    details = ", ".join([f"{k}={v}" for k, v in data.items() if k != "status"][:2])
+                    console.print(f"   {section.capitalize()}: ✅ {details}")
+                else:
+                    console.print(f"   {section.capitalize()}: ❌ Missing section")
+
+            console.print("\n🔌 Database connection status:")
+            for db, data in validation_results["database_connections"].items():
+                if data["configured"]:
+                    console.print(f"   {db.upper()}: ✅ Configured")
+                else:
+                    console.print(f"   {db.upper()}: ❌ Missing variables")
+                    if data["missing_vars"]:
+                        console.print(f"      Missing: {', '.join(data['missing_vars'])}")
+
+            console.print("\n🤖 LLM API key status:")
+            configured_llms = []
+            for name, data in validation_results["llm_providers"].items():
+                if data["configured"]:
+                    configured_llms.append(name.capitalize())
+                    console.print(f"   {name.capitalize()}: ✅ Configured")
+                else:
+                    console.print(f"   {name.capitalize()}: ❌ Missing {data['env_var']}")
+
+            if not configured_llms:
+                console.print(
+                    "   ⚠️  No LLM providers configured - chat functionality will not work"
+                )
+            else:
+                console.print(f"\n💡 Ready to use: {', '.join(configured_llms)}")
 
     except FileNotFoundError:
-        console.print(f"❌ Configuration file '{parsed_args.config}' not found")
-        console.print("💡 Run 'osiris init' to create a sample configuration")
+        if use_json:
+            print(
+                json.dumps(
+                    {
+                        "error": f"Configuration file '{parsed_args.config}' not found",
+                        "suggestion": "Run 'osiris init' to create a sample configuration",
+                    }
+                )
+            )
+        else:
+            console.print(f"❌ Configuration file '{parsed_args.config}' not found")
+            console.print("💡 Run 'osiris init' to create a sample configuration")
         sys.exit(1)
     except Exception as e:
-        console.print(f"❌ Configuration validation failed: {e}")
+        if use_json:
+            print(json.dumps({"error": f"Configuration validation failed: {str(e)}"}))
+        else:
+            console.print(f"❌ Configuration validation failed: {e}")
         sys.exit(1)
 
 
-def show_run_help():
-    """Display clean run command help using Rich formatting."""
+def show_run_help(json_output=False):
+    """Display clean run command help using Rich formatting or JSON."""
+    if json_output:
+        help_data = {
+            "command": "run",
+            "description": "Execute or validate data pipeline configurations",
+            "usage": "osiris run [OPTIONS] PIPELINE_FILE",
+            "arguments": {"PIPELINE_FILE": "Path to the pipeline YAML file to execute"},
+            "options": {
+                "--dry-run": "Validate pipeline structure without executing",
+                "--verbose": "Show detailed execution logs and debug info",
+                "--json": "Output in JSON format for programmatic use",
+                "--help": "Show this help message",
+            },
+            "pipeline_format": [
+                "extract: Data source configuration (MySQL, CSV, etc.)",
+                "transform: DuckDB SQL transformations and analysis",
+                "load: Output format and destination (CSV, Parquet, etc.)",
+            ],
+            "examples": [
+                "osiris run sample_pipeline.yaml --dry-run",
+                "osiris run sample_pipeline.yaml",
+                "osiris run sample_pipeline.yaml --verbose",
+            ],
+        }
+        print(json.dumps(help_data, indent=2))
+        return
     console.print()
     console.print("[bold green]osiris run - Execute Pipeline YAML Files[/bold green]")
     console.print("🚀 Execute or validate data pipeline configurations generated by Osiris chat")
@@ -344,6 +634,7 @@ def show_run_help():
     console.print("  [cyan]--dry-run[/cyan]         Validate pipeline structure without executing")
     console.print("                      Perfect for testing YAML generated by chat")
     console.print("  [cyan]--verbose[/cyan]         Show detailed execution logs and debug info")
+    console.print("  [cyan]--json[/cyan]            Output in JSON format for programmatic use")
     console.print("  [cyan]--help[/cyan]            Show this help message")
     console.print()
 
@@ -385,12 +676,14 @@ def run_command(args):
     """Execute a pipeline YAML file."""
     # Check for help flag or no arguments
     if not args or "--help" in args or "-h" in args:
-        show_run_help()
+        json_mode = "--json" in args if args else False
+        show_run_help(json_output=json_mode or json_output)
         return
 
     # Parse run-specific arguments manually to avoid argparse help interference
     pipeline_file = None
     dry_run = False
+    use_json = json_output or "--json" in args
 
     # Simple argument parsing
     for _i, arg in enumerate(args):
@@ -399,9 +692,14 @@ def run_command(args):
                 dry_run = True
             elif arg == "--verbose":
                 pass  # Verbose flag recognized but not used in this implementation
+            elif arg == "--json":
+                use_json = True
             else:
-                console.print(f"❌ Unknown option: {arg}")
-                console.print("💡 Run 'osiris run --help' to see available options")
+                if use_json:
+                    print(json.dumps({"error": f"Unknown option: {arg}"}))
+                else:
+                    console.print(f"❌ Unknown option: {arg}")
+                    console.print("💡 Run 'osiris run --help' to see available options")
                 sys.exit(1)
         else:
             if pipeline_file is None:
@@ -466,6 +764,42 @@ def dump_prompts_command(args):
 
     # Check for help first before parsing
     if "--help" in args or "-h" in args:
+        # Check if JSON output is requested
+        json_mode = "--json" in args if args else False
+        use_json = json_mode or json_output
+
+        if use_json:
+            help_data = {
+                "command": "dump-prompts",
+                "description": "Export LLM system prompts for customization (pro mode)",
+                "usage": "osiris dump-prompts [OPTIONS]",
+                "options": {
+                    "--export": "Actually perform the export (required)",
+                    "--dir DIR": "Export to specific directory (default: .osiris_prompts)",
+                    "--force": "Overwrite existing prompts directory",
+                    "--json": "Output in JSON format for programmatic use",
+                    "--help": "Show this help message",
+                },
+                "exports": [
+                    "conversation_system.txt - Main LLM personality & behavior",
+                    "sql_generation_system.txt - SQL generation instructions",
+                    "user_prompt_template.txt - User context building template",
+                    "config.yaml - Prompt metadata",
+                    "README.md - Customization guide",
+                ],
+                "workflow": [
+                    "osiris dump-prompts --export",
+                    "edit .osiris_prompts/*.txt",
+                    "osiris chat --pro-mode",
+                ],
+                "examples": [
+                    "osiris dump-prompts --export",
+                    "osiris dump-prompts --export --dir custom_prompts/",
+                    "osiris dump-prompts --export --force",
+                ],
+            }
+            print(json.dumps(help_data, indent=2))
+            return
         console.print()
         console.print("[bold green]osiris dump-prompts - Export LLM System Prompts[/bold green]")
         console.print("🤖 Export current system prompts to files for pro mode customization")
@@ -488,6 +822,7 @@ def dump_prompts_command(args):
             "  [cyan]--dir DIR[/cyan]       Export to specific directory (default: .osiris_prompts)"
         )
         console.print("  [cyan]--force[/cyan]         Overwrite existing prompts directory")
+        console.print("  [cyan]--json[/cyan]          Output in JSON format for programmatic use")
         console.print("  [cyan]--help[/cyan]          Show this help message")
         console.print()
 
@@ -519,20 +854,38 @@ def dump_prompts_command(args):
     parser.add_argument("--dir", default=".osiris_prompts", help="Directory to export prompts to")
     parser.add_argument("--force", action="store_true", help="Overwrite existing prompts directory")
     parser.add_argument("--export", action="store_true", help="Actually perform the export")
+    parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # Parse arguments
     parsed_args = parser.parse_args(args)
 
+    # Check if JSON output requested
+    use_json = json_output or parsed_args.json
+
     # Require explicit --export flag to avoid accidental exports
     if not parsed_args.export:
-        console.print()
-        console.print("📋 [bold yellow]Ready to export prompts[/bold yellow]")
-        console.print(f"📁 Target directory: [cyan]{parsed_args.dir}[/cyan]")
-        console.print()
-        console.print("💡 To actually export the prompts, add the [cyan]--export[/cyan] flag:")
-        console.print("   [green]osiris dump-prompts --export[/green]")
-        console.print()
-        console.print("🔍 Use [cyan]--help[/cyan] to see all options")
+        if use_json:
+            print(
+                json.dumps(
+                    {
+                        "status": "ready",
+                        "message": "Ready to export prompts",
+                        "target_directory": parsed_args.dir,
+                        "action_required": "Add --export flag to actually export",
+                        "command": "osiris dump-prompts --export",
+                    },
+                    indent=2,
+                )
+            )
+        else:
+            console.print()
+            console.print("📋 [bold yellow]Ready to export prompts[/bold yellow]")
+            console.print(f"📁 Target directory: [cyan]{parsed_args.dir}[/cyan]")
+            console.print()
+            console.print("💡 To actually export the prompts, add the [cyan]--export[/cyan] flag:")
+            console.print("   [green]osiris dump-prompts --export[/green]")
+            console.print()
+            console.print("🔍 Use [cyan]--help[/cyan] to see all options")
         return
 
     try:
