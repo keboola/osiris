@@ -63,11 +63,76 @@ def create_sample_config(config_path: str = "osiris.yaml") -> None:
 
 # ============================================================================
 # LOGGING CONFIGURATION
+# Enhanced session logging with structured events and metrics (M0-Validation-4)
 # ============================================================================
 logging:
-  level: INFO           # DEBUG, INFO, WARNING, ERROR, CRITICAL
-  file: osiris.log      # Log file path (null for console-only)
-  format: '%(asctime)s - %(name)s - [%(session_id)s] - %(levelname)s - %(message)s'
+  logs_dir: ./logs      # Session logs directory (per-session directories created here)
+  level: INFO           # Log verbosity for .log files: DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+  # IMPORTANT: Events and log levels are INDEPENDENT systems:
+  # - 'level' controls what goes into osiris.log (Python logging messages)
+  # - 'events' controls what goes into events.jsonl (structured events)
+  # Events are ALWAYS logged regardless of level setting - they use separate filtering below.
+
+  events:               # Event types to log (structured JSONL format)
+    # Use "*" to log ALL events (recommended), or specify individual events below:
+    #
+    # Session Lifecycle:
+    #   run_start         - Session begins (command starts)
+    #   run_end           - Session completes successfully
+    #   run_error         - Session fails with error
+    #
+    # Chat & Conversation:
+    #   chat_start        - Chat session begins
+    #   chat_end          - Chat session ends
+    #   user_message      - User sends a message
+    #   assistant_response - AI responds to user
+    #   chat_interrupted  - Chat stopped by Ctrl+C
+    #
+    # Chat Modes:
+    #   sql_mode_start           - Direct SQL mode begins
+    #   single_message_start     - One-shot message mode
+    #   interactive_mode_start   - Interactive conversation mode
+    #
+    # Database Discovery:
+    #   discovery_start   - Schema discovery begins
+    #   discovery_end     - Schema discovery completes
+    #   cache_hit         - Found cached discovery data
+    #   cache_miss        - No cached data, discovering fresh
+    #   cache_lookup      - Checking cache for discovery data
+    #   cache_error       - Cache access failed
+    #
+    # Validation & Config:
+    #   validate_start    - Configuration validation begins
+    #   validate_complete - Configuration validation done
+    #   validate_error    - Configuration validation failed
+    #
+    # Response Quality:
+    #   sql_response             - SQL mode generated response
+    #   single_message_response  - Single message got response
+    #   single_message_empty_response - Single message got no response
+    #   sql_error               - SQL mode encountered error
+    #   single_message_error    - Single message mode failed
+    #   chat_error              - General chat error occurred
+    #
+    # Examples:
+    #   - "*"                          # Log ALL events (recommended)
+    #   - ["run_start", "run_end"]     # Only session lifecycle
+    #   - ["user_message", "assistant_response"]  # Only conversation
+    #
+    # NOTE: Events are filtered HERE, not by 'level' above. Even with level: ERROR,
+    # validate_start events will still be logged if included in this list.
+    - "*"
+  metrics:
+    enabled: true       # Enable performance metrics collection
+    retention_hours: 168   # Keep metrics for 7 days (168 hours)
+  retention: 7d         # Session retention policy (7d = 7 days, supports: 1d, 30d, 6m, 1y)
+  env_overrides:        # Environment variables that can override these settings
+    OSIRIS_LOG_LEVEL: level
+    OSIRIS_LOGS_DIR: logs_dir
+  cli_flags:            # CLI flags that can override these settings (highest precedence)
+    --log-level: level
+    --logs-dir: logs_dir
 
 # ============================================================================
 # OUTPUT CONFIGURATION
@@ -120,6 +185,15 @@ pipeline:
   - DELETE
   - TRUNCATE
   - ALTER
+
+# ============================================================================
+# VALIDATION CONFIGURATION
+# Configuration validation modes and output formats (M0-Validation-4)
+# ============================================================================
+validate:
+  mode: warn            # Validation mode: strict, warn, off
+  json: false           # Output validation results in JSON format
+  show_effective: true  # Show effective configuration values and their sources
 """
         )
 
