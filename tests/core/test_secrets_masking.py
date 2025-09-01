@@ -82,10 +82,13 @@ class TestSecretsMasking:
             "host": "localhost",
             "port": 3306,
             "username": "user",
-            "password": "secret123",
+            "password": "secret123",  # pragma: allowlist secret
             "database": {
                 "name": "test_db",
-                "auth": {"api_key": "abc123xyz", "secret": "super_secret"},
+                "auth": {
+                    "api_key": "abc123xyz",
+                    "secret": "super_secret",
+                },  # pragma: allowlist secret
             },
             "options": ["ssl", "timeout=30"],
         }
@@ -115,8 +118,8 @@ class TestSecretsMasking:
         """Test that lists containing dictionaries are processed correctly."""
         data = {
             "connections": [
-                {"host": "db1", "password": "pass1"},
-                {"host": "db2", "token": "token123"},
+                {"host": "db1", "password": "pass1"},  # pragma: allowlist secret
+                {"host": "db2", "token": "token123"},  # pragma: allowlist secret
             ]
         }
 
@@ -131,10 +134,10 @@ class TestSecretsMasking:
         """Test that key=value patterns in strings are masked."""
         # Test that secrets are masked - focus on the key requirement
         test_cases = [
-            ("password=secret123", "secret123"),
-            ('api_key="abc123"', "abc123"),
-            ('"secret": "hidden"', "hidden"),
-            ("mysql://user:password123@host", "password123"),
+            ("password=secret123", "secret123"),  # pragma: allowlist secret
+            ('api_key="abc123"', "abc123"),  # pragma: allowlist secret
+            ('"secret": "hidden"', "hidden"),  # pragma: allowlist secret
+            ("mysql://user:password123@host", "password123"),  # pragma: allowlist secret
             ("?api_key=abc123&other=value", "abc123"),
         ]
 
@@ -155,7 +158,11 @@ class TestSecretsMasking:
 
     def test_safe_repr_masks_dict_representation(self):
         """Test that safe_repr masks dictionary representations."""
-        config = {"host": "localhost", "password": "secret123", "nested": {"api_key": "xyz789"}}
+        config = {
+            "host": "localhost",
+            "password": "secret123",
+            "nested": {"api_key": "xyz789"},
+        }  # pragma: allowlist secret
 
         result = safe_repr(config)
 
@@ -169,7 +176,9 @@ class TestSecretsMasking:
 
     def test_safe_repr_masks_string_representation(self):
         """Test that safe_repr masks string patterns."""
-        conn_str = "mysql://user:password123@localhost/db?api_key=secret_value"
+        conn_str = (
+            "mysql://user:password123@localhost/db?api_key=secret_value"  # pragma: allowlist secret
+        )
         result = safe_repr(conn_str)
 
         # Should mask sensitive patterns
@@ -181,12 +190,14 @@ class TestSecretsMasking:
         """Critical test: ensure no actual secrets appear in any output."""
         # This is the key security test mentioned in the requirements
         sensitive_data = {
-            "mysql_password": "super_secret_password_123",
-            "api_key": "sk-1234567890abcdef",
-            "authorization": "Bearer token_xyz_sensitive",
-            "private_key": "-----BEGIN PRIVATE KEY-----\nMII...",
-            "client_secret": "oauth_secret_abc123",
-            "database": {"auth": {"password": "nested_secret", "token": "nested_token_456"}},
+            "mysql_password": "super_secret_password_123",  # pragma: allowlist secret
+            "api_key": "sk-1234567890abcdef",  # pragma: allowlist secret
+            "authorization": "Bearer token_xyz_sensitive",  # pragma: allowlist secret
+            "private_key": "-----BEGIN PRIVATE KEY-----\nMII...",  # pragma: allowlist secret
+            "client_secret": "oauth_secret_abc123",  # pragma: allowlist secret
+            "database": {
+                "auth": {"password": "nested_secret", "token": "nested_token_456"}
+            },  # pragma: allowlist secret
         }
 
         # Test all masking functions
@@ -200,7 +211,7 @@ class TestSecretsMasking:
             "super_secret_password_123",
             "sk-1234567890abcdef",
             "Bearer token_xyz_sensitive",
-            "-----BEGIN PRIVATE KEY-----\nMII...",
+            "-----BEGIN PRIVATE KEY-----\nMII...",  # pragma: allowlist secret
             "oauth_secret_abc123",
             "nested_secret",
             "nested_token_456",
@@ -226,7 +237,7 @@ class TestSecretsMasking:
         assert mask_sensitive_value("username", None) is None
 
         # Non-string keys (should not cause errors)
-        weird_dict = {123: "numeric_key", "password": "secret"}
+        weird_dict = {123: "numeric_key", "password": "secret"}  # pragma: allowlist secret
         result = mask_sensitive_dict(weird_dict)
         assert result[123] == "numeric_key"
         assert result["password"] == MASK_VALUE

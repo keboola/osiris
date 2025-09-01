@@ -101,7 +101,7 @@ class TestConnectionValidator:
             "port": 3306,
             "database": "testdb",
             "user": "testuser",
-            "password": "testpass",
+            "password": "testpass",  # pragma: allowlist secret
         }
 
         result = validator.validate_connection(mysql_config)
@@ -240,7 +240,7 @@ class TestConnectionValidator:
             "host": "localhost",
             "database": "testdb",
             "user": "testuser",
-            "password": "testpass",
+            "password": "testpass",  # pragma: allowlist secret
         }
 
         result = validator.validate_connection(config)
@@ -350,7 +350,7 @@ class TestIntegrationScenarios:
             "host": "localhost",
             "database": "source_db",
             "user": "readonly",
-            "password": "password123",
+            "password": "password123",  # pragma: allowlist secret
         }
         mysql_result = validator.validate_connection(mysql_config)
 

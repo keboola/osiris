@@ -175,8 +175,12 @@ class TestSessionContext:
             session = SessionContext(base_logs_dir=Path(temp_dir))
 
             config = {
-                "database": {"host": "localhost", "password": "secret123", "user": "admin"},
-                "api_key": "super_secret_key",
+                "database": {
+                    "host": "localhost",
+                    "password": "secret123",
+                    "user": "admin",
+                },  # pragma: allowlist secret
+                "api_key": "super_secret_key",  # pragma: allowlist secret
             }
 
             session.save_config(config)
@@ -204,7 +208,7 @@ class TestSessionContext:
                     "type": "mysql",
                     "connection": {
                         "host": "db.example.com",
-                        "password": "db_secret",
+                        "password": "db_secret",  # pragma: allowlist secret
                         "user": "app_user",
                     },
                 },
@@ -237,7 +241,11 @@ class TestSessionContext:
             assert text_path.read_text() == "Hello World"
 
             # Test JSON artifact with secrets masking
-            json_data = {"name": "test", "password": "secret", "value": 42}
+            json_data = {
+                "name": "test",
+                "password": "secret",
+                "value": 42,
+            }  # pragma: allowlist secret
             json_path = session.save_artifact("test.json", json_data, "json")
             assert json_path is not None
             assert json_path.exists()
@@ -367,8 +375,8 @@ class TestSecretsMaskingInSession:
             session.log_event(
                 "database_connection",
                 host="db.example.com",
-                password="secret123",
-                api_key="key_abc",
+                password="secret123",  # pragma: allowlist secret
+                api_key="key_abc",  # pragma: allowlist secret
                 user="admin",
             )
 
@@ -398,8 +406,8 @@ class TestSecretsMaskingInSession:
                 "connection_time",
                 150,
                 host="db.example.com",
-                password="secret123",
-                token="bearer_token",
+                password="secret123",  # pragma: allowlist secret
+                token="bearer_token",  # pragma: allowlist secret
             )
 
             metrics_file = session.session_dir / "metrics.jsonl"
@@ -419,9 +427,9 @@ class TestSecretsMaskingInSession:
             session.setup_logging()
 
             # Use known secret values
-            secret_password = "super_secret_password_123"
-            secret_token = "secret_api_token_xyz"
-            secret_key = "secret_encryption_key_456"
+            secret_password = "super_secret_password_123"  # pragma: allowlist secret
+            secret_token = "secret_api_token_xyz"  # pragma: allowlist secret
+            secret_key = "secret_encryption_key_456"  # pragma: allowlist secret
 
             # Log events and metrics with secrets
             session.log_event(

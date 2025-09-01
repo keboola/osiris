@@ -54,24 +54,24 @@ class TestLLMAdapter:
         adapter = LLMAdapter("openai")
 
         assert adapter.provider == LLMProvider.OPENAI
-        assert adapter.api_key == "test_key"
+        assert adapter.api_key == "test_key"  # pragma: allowlist secret
         assert adapter.model == "gpt-4o-mini"  # Default model
 
-    @patch.dict(os.environ, {"CLAUDE_API_KEY": "test_key"})
+    @patch.dict(os.environ, {"CLAUDE_API_KEY": "test_key"})  # pragma: allowlist secret
     def test_init_claude_provider(self):
         """Test initialization with Claude provider."""
         adapter = LLMAdapter("claude")
 
         assert adapter.provider == LLMProvider.CLAUDE
-        assert adapter.api_key == "test_key"
+        assert adapter.api_key == "test_key"  # pragma: allowlist secret
 
-    @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"})
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"})  # pragma: allowlist secret
     def test_init_gemini_provider(self):
         """Test initialization with Gemini provider."""
         adapter = LLMAdapter("gemini")
 
         assert adapter.provider == LLMProvider.GEMINI
-        assert adapter.api_key == "test_key"
+        assert adapter.api_key == "test_key"  # pragma: allowlist secret
 
     def test_init_invalid_provider(self):
         """Test initialization with invalid provider raises error."""
