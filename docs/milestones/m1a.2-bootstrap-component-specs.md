@@ -204,6 +204,28 @@ $ pytest tests/components/test_bootstrap_specs.py -v
 5. **Mode naming**: Using `write` instead of `load` provides clearer semantics
 6. **Discovery mode**: Writers benefit from discovery mode to inspect target schemas
 
+## Migration Notes
+
+### Mode Terminology Update
+During implementation, we standardized on `write` mode for all data writing operations:
+
+**Before**: Writers could use either `load` or `write` mode  
+**After**: Writers must use `write` mode (with `discover` for schema inspection)
+
+**Migration Path**:
+1. All new components use `write` mode exclusively
+2. Existing pipelines using `load` mode continue to work (deprecated)
+3. Schema maintains `load` in enum for backward compatibility
+4. Documentation updated to guide users to `write` mode
+5. Future version 2.0 will remove `load` mode entirely
+
+**Impact**:
+- Better alignment with modern ETL terminology
+- Clearer distinction between reading (`extract`) and writing (`write`)
+- Improved LLM context generation with consistent vocabulary
+
+For detailed rationale, see [ADR-0012: Separate Extractors and Writers](../adr/0012-separate-extractors-and-writers.md)
+
 ## Links and References
 
 ### Milestone Documents
