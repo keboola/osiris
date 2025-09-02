@@ -176,10 +176,7 @@ def main():
 
     # Handle commands first, then help
     # If help is requested with a command, pass it to the command
-    if args.help and args.command:
-        command_args = ["--help"] + args.args
-    else:
-        command_args = args.args
+    command_args = ["--help"] + args.args if args.help and args.command else args.args
 
     if args.command == "init":
         init_command(command_args)
@@ -500,6 +497,7 @@ def validate_command(args: list):
             allowed_events = config_data["logging"]["events"]
 
         # Create ephemeral session with correct logs directory and event filter
+        import logging
         import time
 
         from ..core.session_logging import SessionContext, set_current_session
@@ -509,7 +507,43 @@ def validate_command(args: list):
             session_id=session_id, base_logs_dir=Path(logs_dir), allowed_events=allowed_events
         )
         set_current_session(session)
-        session.log_event("validate_start", config_file=parsed_args.config, mode=parsed_args.mode)
+
+        # Setup logging with the configured level (respecting precedence: CLI > ENV > YAML > default)
+        log_level_str = "INFO"  # Default
+
+        # 1. Check YAML config
+        if "logging" in config_data and "level" in config_data["logging"]:
+            log_level_str = config_data["logging"]["level"]
+
+        # 2. Check ENV override
+        if "OSIRIS_LOG_LEVEL" in os.environ:
+            log_level_str = os.environ["OSIRIS_LOG_LEVEL"]
+
+        # 3. Check CLI override (would need to add --log-level flag)
+        # For now, we'll use ENV and YAML only
+
+        # Convert string to logging level
+        log_level = getattr(logging, log_level_str.upper(), logging.INFO)
+
+        # Setup session logging with the appropriate level
+        enable_debug = log_level <= logging.DEBUG
+        session.setup_logging(level=log_level, enable_debug=enable_debug)
+
+        # Get a logger for validation
+        logger = logging.getLogger("osiris.validate")
+
+        # Log the start event
+        session.log_event(
+            "validate_start",
+            config_file=parsed_args.config,
+            mode=parsed_args.mode,
+            log_level=log_level_str,
+        )
+
+        # Log validation start at various levels
+        logger.debug(f"Starting validation with config file: {parsed_args.config}")
+        logger.info(f"Validation mode: {parsed_args.mode or 'default'}")
+        logger.info(f"Log level: {log_level_str}")
 
         # Build validation results
         validation_results = {
@@ -522,6 +556,8 @@ def validate_command(args: list):
         }
 
         # Validate configuration sections
+        logger.debug("Validating configuration sections...")
+
         # Logging section
         if "logging" in config_data:
             logging_cfg = config_data["logging"]
@@ -530,8 +566,10 @@ def validate_command(args: list):
                 "level": logging_cfg.get("level", "INFO"),
                 "file": logging_cfg.get("file") if logging_cfg.get("file") else None,
             }
+            logger.debug(f"Logging section configured: level={logging_cfg.get('level', 'INFO')}")
         else:
             validation_results["sections"]["logging"] = {"status": "missing"}
+            logger.warning("Logging section missing from configuration")
 
         # Output section
         if "output" in config_data:
@@ -590,6 +628,8 @@ def validate_command(args: list):
             validation_results["sections"]["pipeline"] = {"status": "missing"}
 
         # Check environment variables for database connections
+        logger.info("Checking database connection configurations...")
+
         # MySQL
         mysql_vars = ["MYSQL_HOST", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE"]
         mysql_configured = all(os.environ.get(var) for var in mysql_vars)
@@ -598,6 +638,10 @@ def validate_command(args: list):
             "configured": mysql_configured,
             "missing_vars": missing_mysql if not mysql_configured else [],
         }
+        if mysql_configured:
+            logger.debug("MySQL configuration found")
+        else:
+            logger.warning(f"MySQL missing vars: {missing_mysql}")
 
         # Supabase
         supabase_vars = ["SUPABASE_PROJECT_ID", "SUPABASE_ANON_PUBLIC_KEY"]

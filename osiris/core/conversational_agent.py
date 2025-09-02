@@ -445,8 +445,20 @@ I can see you have {len(tables)} tables total. Would you like me to:
 
 What would you like to analyze or extract from this data?"""
 
-            # Otherwise return the LLM's intelligent response using discovered data
-            return response.message
+            # Process the LLM's response action (could be generate_pipeline, etc.)
+            # This is important - after discovery, the LLM might want to generate a pipeline
+            logger.info(f"After discovery, LLM returned action: {response.action}")
+
+            if response.action == "generate_pipeline":
+                logger.info("Processing generate_pipeline action after discovery")
+                return await self._generate_pipeline(response.params or {}, context)
+            elif response.action == "ask_clarification":
+                logger.info("LLM is asking for clarification after discovery")
+                return response.message
+            else:
+                # Default: return the message
+                logger.info(f"Returning message for action: {response.action}")
+                return response.message
 
         except Exception as e:
             logger.error(f"Discovery failed: {e}")
@@ -454,12 +466,13 @@ What would you like to analyze or extract from this data?"""
 
     async def _generate_pipeline(self, params: Dict, context: ConversationContext) -> str:
         """Generate pipeline YAML configuration."""
+        logger.info(f"_generate_pipeline called with params keys: {params.keys()}")
         try:
-            if not context.discovery_data:
-                return "I need to discover your database structure first. Let me do that now..."
-
             # Check if LLM already provided a complete pipeline YAML
+            # This should be checked BEFORE checking discovery_data since the LLM
+            # may have already done the discovery and generated the YAML
             if "pipeline_yaml" in params:
+                logger.info("LLM provided complete pipeline YAML, saving it now")
                 pipeline_yaml = params["pipeline_yaml"]
                 pipeline_name = params.get("pipeline_name", "generated_pipeline")
                 description = params.get("description", "Generated pipeline")
@@ -473,15 +486,22 @@ What would you like to analyze or extract from this data?"""
                 self.output_dir.mkdir(parents=True, exist_ok=True)
 
                 # Write pipeline file
+                logger.info(f"Writing pipeline to output directory: {output_path}")
                 with open(output_path, "w") as f:
                     f.write(pipeline_yaml)
+                logger.info(f"Successfully wrote pipeline to: {output_path}")
 
                 # Also save as session artifact
                 from .session_logging import get_current_session
 
                 session = get_current_session()
                 if session:
-                    session.save_artifact(f"{pipeline_name}.yaml", pipeline_yaml, "text")
+                    artifact_path = session.save_artifact(
+                        f"{pipeline_name}.yaml", pipeline_yaml, "text"
+                    )
+                    logger.info(f"Saved pipeline as session artifact: {artifact_path}")
+                else:
+                    logger.warning("No current session found, cannot save artifact")
 
                 # Store for context
                 context.pipeline_config = {"yaml": pipeline_yaml, "name": pipeline_name}
@@ -508,6 +528,10 @@ Would you like me to:
 4. Generate a **different pipeline** for another use case"""
 
             # Fallback to legacy pipeline generation if no YAML provided
+            # Check if we have discovery data first
+            if not context.discovery_data:
+                return "I need to discover your database structure first. Let me do that now..."
+
             # Generate SQL using LLM
             intent = context.user_input
             sql_query = await self.llm.generate_sql(
