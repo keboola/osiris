@@ -35,12 +35,14 @@ import os
 import re
 import sys
 import threading
+import time
 from pathlib import Path
-from typing import Optional
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+
+from ..core.session_logging import SessionContext, set_current_session
 
 # Load environment variables from .env file
 try:
@@ -267,87 +269,69 @@ def chat(argv=None):
         show_epic_help(json_output=args.json if hasattr(args, "json") else False)
         return
 
-    # Set default session context early (before any modules log)
-    set_session_context("init")
-
-    # Load configuration
+    # Load configuration first to get logs_dir setting
     config_manager = ConfigManager(args.config_file)
     config = config_manager.load_config()
 
-    # Setup logging from config and environment variables
-    # Environment variables override config file settings
+    # Get logs directory from config, fallback to "logs"
+    logs_dir = "logs"  # default
+    if "logging" in config and "logs_dir" in config["logging"]:
+        logs_dir = config["logging"]["logs_dir"]
 
-    # Get logging config from .osiris.yaml
-    log_config = config.get("logging", {})
-    log_level = os.environ.get("OSIRIS_LOG_LEVEL") or log_config.get("level", "INFO")
-    log_file = os.environ.get("OSIRIS_LOG_FILE") or log_config.get("file")
-    # Enhanced format to include session_id when available
-    log_format = log_config.get(
-        "format", "%(asctime)s - %(name)s - [%(session_id)s] - %(levelname)s - %(message)s"
+    # Get events filter from config, fallback to wildcard (all events)
+    allowed_events = ["*"]  # default
+    if "logging" in config and "events" in config["logging"]:
+        allowed_events = config["logging"]["events"]
+
+    # Create session context for chat with correct logs directory and event filter
+    from pathlib import Path
+
+    session_id = getattr(args, "session_id", None) or f"chat_{int(time.time())}"
+    session = SessionContext(
+        session_id=session_id, base_logs_dir=Path(logs_dir), allowed_events=allowed_events
+    )
+    set_current_session(session)
+
+    # Log chat session start
+    session.log_event(
+        "chat_start",
+        mode="interactive" if args.interactive else "message",
+        provider=getattr(args, "provider", None),
+        pro_mode=getattr(args, "pro_mode", False),
     )
 
-    # Clear any existing handlers to avoid conflicts
+    # Set old session context for compatibility
+    set_session_context(session_id)
+
+    # Setup session-specific logging using SessionContext
+    log_config = config.get("logging", {})
+    log_level_str = os.environ.get("OSIRIS_LOG_LEVEL") or log_config.get("level", "INFO")
+    log_level = getattr(logging, log_level_str.upper())
+
+    # Check if user wants detailed logging (file-based)
+    enable_debug = log_level <= logging.DEBUG
+    session.setup_logging(level=log_level, enable_debug=enable_debug)
+
+    # Configure console logging to be quiet for chat mode
+    # Remove any console handlers that might be showing INFO messages
     root_logger = logging.getLogger()
-    for handler in root_logger.handlers[:]:
+    console_handlers = [
+        h
+        for h in root_logger.handlers
+        if isinstance(h, logging.StreamHandler) and h.stream in (sys.stdout, sys.stderr)
+    ]
+    for handler in console_handlers:
         root_logger.removeHandler(handler)
 
-    # Apply session filter to all osiris loggers globally
-    SessionLogFilter()  # Initialize session log filter
+    # Add a minimal console handler for CRITICAL errors only
+    console_handler = logging.StreamHandler(sys.stderr)
+    console_handler.setLevel(logging.CRITICAL)
+    console_handler.setFormatter(logging.Formatter("❌ CRITICAL: %(message)s"))
+    root_logger.addHandler(console_handler)
 
-    # Configure logging based on whether file logging is enabled
-    if log_file and log_file.lower() not in ["null", "none", ""]:
-        # File logging: detailed logs to file, minimal to console
-        file_handler = logging.FileHandler(log_file, mode="a")
-        file_handler.setLevel(getattr(logging, log_level.upper()))
-        file_handler.setFormatter(SessionAwareFormatter(log_format))
-        root_logger.addHandler(file_handler)
-
-        # Add console handler for ERROR and CRITICAL only
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.ERROR)
-        console_handler.setFormatter(
-            SessionAwareFormatter("❌ [%(session_id)s] %(levelname)s: %(message)s")
-        )
-        root_logger.addHandler(console_handler)
-
-        # Set root logger level to capture everything for file
-        root_logger.setLevel(getattr(logging, log_level.upper()))
-
-        # Configure the osiris parent logger to use our formatter
-        osiris_logger = logging.getLogger("osiris")
-        osiris_logger.handlers.clear()  # Remove any existing handlers
-
-        # Add our file handler to osiris logger
-        osiris_file_handler = logging.FileHandler(log_file, mode="a")
-        osiris_file_handler.setLevel(getattr(logging, log_level.upper()))
-        osiris_file_handler.setFormatter(SessionAwareFormatter(log_format))
-        osiris_logger.addHandler(osiris_file_handler)
-        osiris_logger.setLevel(getattr(logging, log_level.upper()))
-        osiris_logger.propagate = False  # Don't propagate to root logger to avoid duplication
-
-        console.print(f"📝 Detailed logging enabled: {log_file}")
-        console.print(f"💡 Monitor with: tail -f {log_file}")
-
-    else:
-        # Console logging only - show only CRITICAL to avoid noise
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.CRITICAL)
-        console_handler.setFormatter(
-            SessionAwareFormatter("❌ [%(session_id)s] %(levelname)s: %(message)s")
-        )
-        root_logger.addHandler(console_handler)
-        root_logger.setLevel(logging.CRITICAL)
-
-        # Configure the osiris parent logger for console-only mode
-        osiris_logger = logging.getLogger("osiris")
-        osiris_logger.handlers.clear()  # Remove any existing handlers
-        osiris_logger.setLevel(logging.CRITICAL)  # Only show critical messages
-        osiris_logger.propagate = False  # Don't propagate to root logger
-
-        console.print("💬 Chat mode: showing minimal logs (CRITICAL only)")
-        console.print(
-            "💡 For detailed logs, set logging.file in .osiris.yaml or OSIRIS_LOG_FILE env var"
-        )
+    console.print(f"📝 Session logging enabled: {session.osiris_log}")
+    console.print(f"💡 Monitor with: tail -f {session.osiris_log}")
+    console.print(f"📂 Session directory: {session.session_dir}")
 
     # Initialize conversational agent
     try:
@@ -378,13 +362,13 @@ def chat(argv=None):
     try:
         if args.sql:
             # Direct SQL mode
-            asyncio.run(_handle_sql_mode(agent, args.sql, args.session_id))
+            asyncio.run(_handle_sql_mode(agent, args.sql, session))
         elif args.interactive:
             # Interactive conversation mode
-            asyncio.run(_handle_interactive_mode(agent, args.session_id, args.fast))
+            asyncio.run(_handle_interactive_mode(agent, session, args.fast))
         elif args.message:
             # Single message mode
-            asyncio.run(_handle_single_message(agent, args.message, args.session_id, args.fast))
+            asyncio.run(_handle_single_message(agent, args.message, session, args.fast))
         else:
             # This shouldn't happen as we handle help above, but just in case
             show_epic_help()
@@ -394,84 +378,93 @@ def chat(argv=None):
 
 
 async def _handle_sql_mode(
-    agent: ConversationalPipelineAgent, sql: str, session_id: Optional[str]
+    agent: ConversationalPipelineAgent, sql: str, session: SessionContext
 ) -> None:
     """Handle direct SQL mode."""
 
-    # Generate session ID if not provided and set logging context
-    if not session_id:
-        import uuid
+    # Log SQL mode start
+    session.log_event("sql_mode_start", sql_length=len(sql))
 
-        session_id = f"sql_{str(uuid.uuid4())[:8]}"
-
-    set_session_context(session_id)
-    logger.info(f"Starting SQL mode with session: {session_id}")
+    set_session_context(session.session_id)
+    logger.info(f"Starting SQL mode with session: {session.session_id}")
 
     console.print("🔧 Direct SQL Mode")
     console.print(f"SQL: {sql}")
+    console.print(f"🆔 Session: {session.session_id}")
     console.print("─" * 50)
 
     try:
-        response = await agent.handle_direct_sql(sql, session_id)
+        response = await agent.handle_direct_sql(sql, session.session_id)
+
+        # Log SQL response
+        session.log_event("sql_response", response_length=len(response))
 
         # Try to format as table, if not successful, print normally
         if not _format_data_response(response):
             console.print(response)
     except Exception as e:
         logger.error(f"Error in SQL mode: {e}")
+        session.log_event("sql_error", error_type=type(e).__name__, error_message=str(e))
         console.print(f"❌ Error: {e}")
     finally:
+        # Close the session to log end event and duration
+        session.close()
         clear_session_context()
 
 
 async def _handle_single_message(
-    agent: ConversationalPipelineAgent, message: str, session_id: Optional[str], fast_mode: bool
+    agent: ConversationalPipelineAgent, message: str, session: SessionContext, fast_mode: bool
 ) -> None:
     """Handle single message mode."""
 
-    # Generate session ID if not provided and set logging context
-    if not session_id:
-        import uuid
+    # Log single message mode start
+    session.log_event("single_message_start", message_length=len(message), fast_mode=fast_mode)
 
-        session_id = f"single_{str(uuid.uuid4())[:8]}"
-
-    set_session_context(session_id)
-    logger.info(f"Starting single message mode with session: {session_id}")
+    set_session_context(session.session_id)
+    logger.info(f"Starting single message mode with session: {session.session_id}")
 
     mode_indicator = "⚡ Fast Mode" if fast_mode else "💬 Conversational Mode"
     console.print(f"{mode_indicator}")
     console.print(f"User: {message}")
-    console.print(f"🆔 Session: {session_id}")
+    console.print(f"🆔 Session: {session.session_id}")
     console.print("─" * 50)
 
     try:
-        response = await agent.chat(message, session_id, fast_mode=fast_mode)
+        response = await agent.chat(message, session.session_id, fast_mode=fast_mode)
 
         # Handle empty responses
         if not response or not response.strip():
+            session.log_event("single_message_empty_response")
             console.print("⚠️  No response generated. The system may be experiencing issues.")
             console.print(
                 "💡 Try running the command again or use --interactive mode for more control."
             )
             return
 
+        # Log single message response
+        session.log_event("single_message_response", response_length=len(response))
+
         # Try to format as table, if not successful, print normally
         if not _format_data_response(response):
             console.print(f"🤖 {response}")
 
-        # Session ID will be shown in interactive mode if needed
-
     except Exception as e:
         logger.error(f"Error in single message mode: {e}")
+        session.log_event("single_message_error", error_type=type(e).__name__, error_message=str(e))
         console.print(f"❌ Error: {e}")
     finally:
+        # Close the session to log end event and duration
+        session.close()
         clear_session_context()
 
 
 async def _handle_interactive_mode(
-    agent: ConversationalPipelineAgent, session_id: Optional[str], fast_mode: bool
+    agent: ConversationalPipelineAgent, session: SessionContext, fast_mode: bool
 ) -> None:
     """Handle interactive conversation mode."""
+
+    # Log interactive mode start
+    session.log_event("interactive_mode_start", fast_mode=fast_mode)
 
     console.print("🤖 Osiris Conversational Pipeline Generator")
     console.print("=" * 50)
@@ -487,15 +480,8 @@ async def _handle_interactive_mode(
     console.print('  - Type "help" for more commands')
     console.print('  - Type "exit" or Ctrl+C to quit')
 
-    # Generate session ID for interactive mode if not provided
-    if not session_id:
-        import uuid
-
-        current_session = f"interactive_{str(uuid.uuid4())[:8]}"
-        console.print(f"\n🆕 Session started: {current_session}")
-    else:
-        current_session = session_id
-        console.print(f"\n📂 Continuing session: {session_id}")
+    current_session = session.session_id
+    console.print(f"\n🆔 Session: {current_session}")
 
     # Set logging context for the entire interactive session
     set_session_context(current_session)
@@ -529,11 +515,23 @@ async def _handle_interactive_mode(
                 console.print(f"📂 Current session: {current_session}")
                 continue
 
+            # Log user message
+            session.log_event(
+                "user_message", message_length=len(user_input), session_name=current_session
+            )
+
             # Process message with agent using consistent session
             try:
                 console.print("🤔 Thinking...")
 
                 response = await agent.chat(user_input, current_session, fast_mode=fast_mode)
+
+                # Log assistant response
+                session.log_event(
+                    "assistant_response",
+                    response_length=len(response),
+                    session_name=current_session,
+                )
 
                 # Try to format as table, if not successful, print normally
                 if not _format_data_response(response):
@@ -541,12 +539,22 @@ async def _handle_interactive_mode(
 
             except Exception as e:
                 logger.error(f"Chat error: {e}")
+                session.log_event(
+                    "chat_error",
+                    error_type=type(e).__name__,
+                    error_message=str(e),
+                    session_name=current_session,
+                )
                 console.print(f"❌ Error: {e}")
                 console.print("💡 Try rephrasing your request or check your configuration.")
 
     except KeyboardInterrupt:
         console.print("\n\n👋 Goodbye!")
+        session.log_event("chat_interrupted", reason="keyboard_interrupt")
     finally:
+        # Close the session to log end event and duration
+        session.log_event("chat_end")
+        session.close()
         clear_session_context()
 
 

@@ -64,6 +64,7 @@ def show_main_help():
     )
     console.print("  [cyan]chat[/cyan]         Conversational pipeline generation with LLM")
     console.print("  [cyan]run[/cyan]          Execute a pipeline YAML file")
+    console.print("  [cyan]logs[/cyan]         Manage session logs (list, show, bundle, gc)")
     console.print(
         "  [cyan]dump-prompts[/cyan] Export LLM system prompts for customization (pro mode)"
     )
@@ -79,7 +80,38 @@ def show_main_help():
 
 
 def parse_main_args():
-    """Parse main command line arguments."""
+    """Parse main command line arguments preserving order for subcommands."""
+    import sys
+
+    # Find the command position
+    command = None
+    command_index = None
+
+    # Skip script name and look for first non-flag argument that's a valid command
+    for i, arg in enumerate(sys.argv[1:], 1):
+        if not arg.startswith("-") and arg in [
+            "init",
+            "validate",
+            "chat",
+            "run",
+            "logs",
+            "dump-prompts",
+        ]:
+            command = arg
+            command_index = i
+            break
+
+    # Parse global flags before the command
+    global_args = []
+    command_args = []
+
+    if command_index:
+        global_args = sys.argv[1:command_index]  # Everything before command
+        command_args = sys.argv[command_index + 1 :]  # Everything after command (preserve order!)
+    else:
+        global_args = sys.argv[1:]  # No command found, everything is global
+
+    # Parse global arguments
     parser = argparse.ArgumentParser(
         description="Osiris v2 - Autonomous AI Agent for Reliable Data Pipelines",
         add_help=False,
@@ -92,10 +124,26 @@ def parse_main_args():
     )
     parser.add_argument("--version", action="store_true", help="Show version and exit")
     parser.add_argument("--help", "-h", action="store_true", help="Show this help message")
-    parser.add_argument("command", nargs="?", help="Command to run (init, validate, chat, run)")
-    parser.add_argument("args", nargs="*", help="Command arguments")
 
-    return parser.parse_known_args()
+    try:
+        global_parsed = parser.parse_args(global_args)
+    except SystemExit:
+        # If global args parsing fails, fallback to original behavior
+        parser.add_argument("command", nargs="?", help="Command to run (init, validate, chat, run)")
+        parser.add_argument("args", nargs="*", help="Command arguments")
+        return parser.parse_known_args()
+
+    # Create a simple object to match the old interface
+    class ParsedArgs:
+        def __init__(self):
+            self.verbose = global_parsed.verbose
+            self.json = global_parsed.json
+            self.version = global_parsed.version
+            self.help = global_parsed.help
+            self.command = command
+            self.args = command_args  # Preserve original order!
+
+    return ParsedArgs(), []  # Return empty unknown list for compatibility
 
 
 def main():
@@ -128,10 +176,7 @@ def main():
 
     # Handle commands first, then help
     # If help is requested with a command, pass it to the command
-    if args.help and args.command:
-        command_args = ["--help"] + args.args + unknown
-    else:
-        command_args = args.args + unknown
+    command_args = ["--help"] + args.args if args.help and args.command else args.args
 
     if args.command == "init":
         init_command(command_args)
@@ -139,6 +184,8 @@ def main():
         validate_command(command_args)
     elif args.command == "run":
         run_command(command_args)
+    elif args.command == "logs":
+        logs_command(command_args)
     elif args.command == "dump-prompts":
         dump_prompts_command(command_args)
     elif args.command == "chat":
@@ -150,7 +197,14 @@ def main():
                 json.dumps(
                     {
                         "error": "No command specified",
-                        "available_commands": ["init", "validate", "chat", "run", "dump-prompts"],
+                        "available_commands": [
+                            "init",
+                            "validate",
+                            "chat",
+                            "run",
+                            "logs",
+                            "dump-prompts",
+                        ],
                     }
                 )
             )
@@ -162,7 +216,14 @@ def main():
                 json.dumps(
                     {
                         "error": f"Unknown command: {args.command}",
-                        "available_commands": ["init", "validate", "chat", "run", "dump-prompts"],
+                        "available_commands": [
+                            "init",
+                            "validate",
+                            "chat",
+                            "run",
+                            "logs",
+                            "dump-prompts",
+                        ],
                     }
                 )
             )
@@ -326,6 +387,7 @@ def validate_command(args: list):
                 "usage": "osiris validate [OPTIONS]",
                 "options": {
                     "--config FILE": "Configuration file to validate (default: osiris.yaml)",
+                    "--mode MODE": "Validation mode: warn (show warnings), strict (block on errors), off (disable)",
                     "--json": "Output in JSON format for programmatic use",
                     "--help": "Show this help message",
                 },
@@ -354,6 +416,9 @@ def validate_command(args: list):
                 "  [cyan]--config FILE[/cyan]  Configuration file to validate (default: osiris.yaml)"
             )
             console.print(
+                "  [cyan]--mode MODE[/cyan]    Validation mode: warn (show warnings), strict (block on errors), off (disable)"
+            )
+            console.print(
                 "  [cyan]--json[/cyan]         Output in JSON format for programmatic use"
             )
             console.print("  [cyan]--help[/cyan]         Show this help message")
@@ -380,6 +445,11 @@ def validate_command(args: list):
     parser = argparse.ArgumentParser(description="Validate configuration", add_help=False)
     parser.add_argument("--config", default="osiris.yaml", help="Configuration file to validate")
     parser.add_argument("--json", action="store_true", help="Output in JSON format")
+    parser.add_argument(
+        "--mode",
+        choices=["warn", "strict", "off"],
+        help="Validation mode (default: from OSIRIS_VALIDATION env var or 'warn')",
+    )
 
     # Only parse the args we received
     try:
@@ -398,16 +468,82 @@ def validate_command(args: list):
         from pathlib import Path
 
         from ..core.config import load_config
+        from ..core.validation import ConnectionValidator, ValidationMode, get_validation_mode
 
         # Load .env file if it exists
-        env_file = Path(".env")
-        if env_file.exists():
-            # Load environment variables from .env file
+        try:
             from dotenv import load_dotenv
 
-            load_dotenv(env_file)
+            env_file = Path(".env")
+            if env_file.exists():
+                load_dotenv(env_file)
+            else:
+                load_dotenv()  # Load from .env in current directory if it exists
+        except ImportError:
+            # python-dotenv not installed, skip loading .env file
+            pass
 
+        # Load config first to get logs_dir setting
         config_data = load_config(parsed_args.config)
+
+        # Get logs directory from config, fallback to "logs"
+        logs_dir = "logs"  # default
+        if "logging" in config_data and "logs_dir" in config_data["logging"]:
+            logs_dir = config_data["logging"]["logs_dir"]
+
+        # Get events filter from config, fallback to wildcard (all events)
+        allowed_events = ["*"]  # default
+        if "logging" in config_data and "events" in config_data["logging"]:
+            allowed_events = config_data["logging"]["events"]
+
+        # Create ephemeral session with correct logs directory and event filter
+        import logging
+        import time
+
+        from ..core.session_logging import SessionContext, set_current_session
+
+        session_id = f"ephemeral_validate_{int(time.time())}"
+        session = SessionContext(
+            session_id=session_id, base_logs_dir=Path(logs_dir), allowed_events=allowed_events
+        )
+        set_current_session(session)
+
+        # Setup logging with the configured level (respecting precedence: CLI > ENV > YAML > default)
+        log_level_str = "INFO"  # Default
+
+        # 1. Check YAML config
+        if "logging" in config_data and "level" in config_data["logging"]:
+            log_level_str = config_data["logging"]["level"]
+
+        # 2. Check ENV override
+        if "OSIRIS_LOG_LEVEL" in os.environ:
+            log_level_str = os.environ["OSIRIS_LOG_LEVEL"]
+
+        # 3. Check CLI override (would need to add --log-level flag)
+        # For now, we'll use ENV and YAML only
+
+        # Convert string to logging level
+        log_level = getattr(logging, log_level_str.upper(), logging.INFO)
+
+        # Setup session logging with the appropriate level
+        enable_debug = log_level <= logging.DEBUG
+        session.setup_logging(level=log_level, enable_debug=enable_debug)
+
+        # Get a logger for validation
+        logger = logging.getLogger("osiris.validate")
+
+        # Log the start event
+        session.log_event(
+            "validate_start",
+            config_file=parsed_args.config,
+            mode=parsed_args.mode,
+            log_level=log_level_str,
+        )
+
+        # Log validation start at various levels
+        logger.debug(f"Starting validation with config file: {parsed_args.config}")
+        logger.info(f"Validation mode: {parsed_args.mode or 'default'}")
+        logger.info(f"Log level: {log_level_str}")
 
         # Build validation results
         validation_results = {
@@ -416,9 +552,12 @@ def validate_command(args: list):
             "sections": {},
             "database_connections": {},
             "llm_providers": {},
+            "connection_validation": {},
         }
 
         # Validate configuration sections
+        logger.debug("Validating configuration sections...")
+
         # Logging section
         if "logging" in config_data:
             logging_cfg = config_data["logging"]
@@ -427,8 +566,10 @@ def validate_command(args: list):
                 "level": logging_cfg.get("level", "INFO"),
                 "file": logging_cfg.get("file") if logging_cfg.get("file") else None,
             }
+            logger.debug(f"Logging section configured: level={logging_cfg.get('level', 'INFO')}")
         else:
             validation_results["sections"]["logging"] = {"status": "missing"}
+            logger.warning("Logging section missing from configuration")
 
         # Output section
         if "output" in config_data:
@@ -487,6 +628,8 @@ def validate_command(args: list):
             validation_results["sections"]["pipeline"] = {"status": "missing"}
 
         # Check environment variables for database connections
+        logger.info("Checking database connection configurations...")
+
         # MySQL
         mysql_vars = ["MYSQL_HOST", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE"]
         mysql_configured = all(os.environ.get(var) for var in mysql_vars)
@@ -495,6 +638,10 @@ def validate_command(args: list):
             "configured": mysql_configured,
             "missing_vars": missing_mysql if not mysql_configured else [],
         }
+        if mysql_configured:
+            logger.debug("MySQL configuration found")
+        else:
+            logger.warning(f"MySQL missing vars: {missing_mysql}")
 
         # Supabase
         supabase_vars = ["SUPABASE_PROJECT_ID", "SUPABASE_ANON_PUBLIC_KEY"]
@@ -516,6 +663,79 @@ def validate_command(args: list):
                 "configured": bool(os.environ.get(var)),
                 "env_var": var,
             }
+
+        # Validate connection configurations using new validation system
+        # Determine validation mode: CLI flag > env var > default
+        if parsed_args.mode:
+            validation_mode = ValidationMode(parsed_args.mode)
+            validator = ConnectionValidator(validation_mode)
+        else:
+            validator = ConnectionValidator.from_env()
+            validation_mode = get_validation_mode()
+
+        # Test connection configurations if they exist in environment
+        connection_configs = []
+
+        # MySQL configuration from environment
+        if mysql_configured:
+            mysql_config = {
+                "type": "mysql",
+                "host": os.environ.get("MYSQL_HOST"),
+                "port": int(os.environ.get("MYSQL_PORT", "3306")),
+                "database": os.environ.get("MYSQL_DATABASE"),
+                "user": os.environ.get("MYSQL_USER"),
+                "password": os.environ.get("MYSQL_PASSWORD"),
+            }
+            result = validator.validate_connection(mysql_config)
+            validation_results["connection_validation"]["mysql"] = {
+                "is_valid": result.is_valid,
+                "errors": [
+                    {"path": e.path, "message": e.message, "fix": e.fix} for e in result.errors
+                ],
+                "warnings": [
+                    {"path": w.path, "message": w.message, "fix": w.fix} for w in result.warnings
+                ],
+            }
+
+        # Supabase configuration from environment
+        if supabase_configured:
+            # Build URL from project ID
+            project_id = os.environ.get("SUPABASE_PROJECT_ID")
+            supabase_config = {
+                "type": "supabase",
+                "url": f"https://{project_id}.supabase.co",
+                "key": os.environ.get("SUPABASE_ANON_PUBLIC_KEY"),
+            }
+            result = validator.validate_connection(supabase_config)
+            validation_results["connection_validation"]["supabase"] = {
+                "is_valid": result.is_valid,
+                "errors": [
+                    {"path": e.path, "message": e.message, "fix": e.fix} for e in result.errors
+                ],
+                "warnings": [
+                    {"path": w.path, "message": w.message, "fix": w.fix} for w in result.warnings
+                ],
+            }
+
+        # Set validation mode in results for reference
+        validation_results["validation_mode"] = validation_mode.value
+
+        # Log validation completion
+        session.log_event(
+            "validate_complete",
+            validation_mode=validation_mode.value,
+            config_valid=True,
+            databases_configured=sum(
+                1
+                for db_info in validation_results["database_connections"].values()
+                if db_info["configured"]
+            ),
+            llm_providers=sum(
+                1
+                for llm_info in validation_results["llm_providers"].values()
+                if llm_info["configured"]
+            ),
+        )
 
         # Output results
         if use_json:
@@ -557,7 +777,36 @@ def validate_command(args: list):
             else:
                 console.print(f"\n💡 Ready to use: {', '.join(configured_llms)}")
 
+            # Display connection validation results
+            if validation_results["connection_validation"]:
+                console.print(
+                    f"\n🔍 Connection validation (mode: {validation_results['validation_mode']}):"
+                )
+
+                for db, result in validation_results["connection_validation"].items():
+                    if result["is_valid"] and not result["warnings"]:
+                        console.print(f"   {db.upper()}: ✅ Configuration valid")
+                    elif result["is_valid"] and result["warnings"]:
+                        console.print(f"   {db.upper()}: ⚠️  Configuration valid with warnings")
+                        for warning in result["warnings"]:
+                            console.print(f"      WARN {warning['path']}: {warning['fix']}")
+                    else:
+                        console.print(f"   {db.upper()}: ❌ Configuration invalid")
+                        for error in result["errors"]:
+                            console.print(f"      ERROR {error['path']}: {error['fix']}")
+
+                # Show validation mode help
+                if validation_results["validation_mode"] == "warn":
+                    console.print("   💡 Validation warnings won't block execution")
+                elif validation_results["validation_mode"] == "off":
+                    console.print("   💡 Validation is disabled (OSIRIS_VALIDATION=off)")
+                elif validation_results["validation_mode"] == "strict":
+                    console.print("   💡 Strict mode: validation errors will block execution")
+
     except FileNotFoundError:
+        session.log_event(
+            "validate_error", error_type="file_not_found", config_file=parsed_args.config
+        )
         if use_json:
             print(
                 json.dumps(
@@ -572,11 +821,16 @@ def validate_command(args: list):
             console.print("💡 Run 'osiris init' to create a sample configuration")
         sys.exit(1)
     except Exception as e:
+        session.log_event("validate_error", error_type="validation_failed", error_message=str(e))
         if use_json:
             print(json.dumps({"error": f"Configuration validation failed: {str(e)}"}))
         else:
             console.print(f"❌ Configuration validation failed: {e}")
         sys.exit(1)
+    finally:
+        # Always close the session
+        if "session" in locals():
+            session.close()
 
 
 def show_run_help(json_output=False):
@@ -929,6 +1183,63 @@ def dump_prompts_command(args):
         console.print(f"❌ [bold red]Failed to dump prompts:[/bold red] {e}")
         console.print()
         sys.exit(1)
+
+
+def logs_command(args: list) -> None:
+    """Manage session logs (list, show, bundle, gc)."""
+    from .logs import bundle_session, gc_sessions, list_sessions, show_session
+
+    def show_logs_help():
+        """Show logs command help."""
+        console.print()
+        console.print("[bold green]osiris logs - Session Log Management[/bold green]")
+        console.print("🗂️  Manage session logs and artifacts for debugging and audit")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris logs SUBCOMMAND [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Subcommands[/bold blue]")
+        console.print("  [cyan]list[/cyan]                   List recent session directories")
+        console.print("  [cyan]show --session <id>[/cyan]   Show session details and summary")
+        console.print("  [cyan]bundle --session <id>[/cyan] Bundle session into zip file")
+        console.print("  [cyan]gc[/cyan]                     Garbage collect old sessions")
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print(
+            "  [green]osiris logs list[/green]                         # List recent sessions"
+        )
+        console.print(
+            "  [green]osiris logs show --session 20250901_123456_abc[/green]  # Show session details"
+        )
+        console.print(
+            "  [green]osiris logs show --session 20250901_123456_abc --tail[/green]  # Follow log file"
+        )
+        console.print(
+            "  [green]osiris logs bundle --session 20250901_123456_abc[/green]  # Create bundle.zip"
+        )
+        console.print(
+            "  [green]osiris logs gc --days 7 --max-gb 0.5[/green]    # Clean up old sessions"
+        )
+        console.print()
+
+    if not args or args[0] in ["--help", "-h"]:
+        show_logs_help()
+        return
+
+    subcommand = args[0]
+    subcommand_args = args[1:]
+
+    if subcommand == "list":
+        list_sessions(subcommand_args)
+    elif subcommand == "show":
+        show_session(subcommand_args)
+    elif subcommand == "bundle":
+        bundle_session(subcommand_args)
+    elif subcommand == "gc":
+        gc_sessions(subcommand_args)
+    else:
+        console.print(f"❌ Unknown subcommand: {subcommand}")
+        console.print("Available subcommands: list, show, bundle, gc")
+        console.print("Use 'osiris logs --help' for detailed help.")
 
 
 if __name__ == "__main__":

@@ -219,6 +219,9 @@ class ConversationalPipelineAgent:
             # In fast mode, make reasonable assumptions instead of asking
             return await self._make_assumptions_and_continue(response, context)
 
+        elif response.action == "generate_pipeline":
+            return await self._generate_pipeline(response.params or {}, context)
+
         elif response.action == "validate":
             return await self._validate_configuration(response.params or {}, context)
 
@@ -299,14 +302,18 @@ class ConversationalPipelineAgent:
             # Get database configuration
             db_config = params.get("database_config") or self.database_config
 
-            logger.info(f"Discovery using config: {db_config}")
+            # Log config with secrets masked
+            from .secrets_masking import mask_sensitive_dict
+
+            masked_config = mask_sensitive_dict(db_config)
+            logger.info(f"Discovery using config: {masked_config}")
 
             if not db_config:
                 return "I need database connection information to discover your data. Please set up your database configuration with environment variables or .osiris.yaml file."
 
             # Create extractor for discovery
             db_type = db_config.get("type", "mysql")
-            logger.info(f"Creating {db_type} extractor with config: {db_config}")
+            logger.info(f"Creating {db_type} extractor with config: {masked_config}")
             extractor = ExtractorFactory.create_extractor(db_type, db_config)
 
             # Run progressive discovery
@@ -438,8 +445,20 @@ I can see you have {len(tables)} tables total. Would you like me to:
 
 What would you like to analyze or extract from this data?"""
 
-            # Otherwise return the LLM's intelligent response using discovered data
-            return response.message
+            # Process the LLM's response action (could be generate_pipeline, etc.)
+            # This is important - after discovery, the LLM might want to generate a pipeline
+            logger.info(f"After discovery, LLM returned action: {response.action}")
+
+            if response.action == "generate_pipeline":
+                logger.info("Processing generate_pipeline action after discovery")
+                return await self._generate_pipeline(response.params or {}, context)
+            elif response.action == "ask_clarification":
+                logger.info("LLM is asking for clarification after discovery")
+                return response.message
+            else:
+                # Default: return the message
+                logger.info(f"Returning message for action: {response.action}")
+                return response.message
 
         except Exception as e:
             logger.error(f"Discovery failed: {e}")
@@ -447,7 +466,69 @@ What would you like to analyze or extract from this data?"""
 
     async def _generate_pipeline(self, params: Dict, context: ConversationContext) -> str:
         """Generate pipeline YAML configuration."""
+        logger.info(f"_generate_pipeline called with params keys: {params.keys()}")
         try:
+            # Check if LLM already provided a complete pipeline YAML
+            # This should be checked BEFORE checking discovery_data since the LLM
+            # may have already done the discovery and generated the YAML
+            if "pipeline_yaml" in params:
+                logger.info("LLM provided complete pipeline YAML, saving it now")
+                pipeline_yaml = params["pipeline_yaml"]
+                pipeline_name = params.get("pipeline_name", "generated_pipeline")
+                description = params.get("description", "Generated pipeline")
+
+                # Save pipeline to output directory
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"{pipeline_name}_{timestamp}.yaml"
+                output_path = self.output_dir / filename
+
+                # Ensure output directory exists
+                self.output_dir.mkdir(parents=True, exist_ok=True)
+
+                # Write pipeline file
+                logger.info(f"Writing pipeline to output directory: {output_path}")
+                with open(output_path, "w") as f:
+                    f.write(pipeline_yaml)
+                logger.info(f"Successfully wrote pipeline to: {output_path}")
+
+                # Also save as session artifact
+                from .session_logging import get_current_session
+
+                session = get_current_session()
+                if session:
+                    artifact_path = session.save_artifact(
+                        f"{pipeline_name}.yaml", pipeline_yaml, "text"
+                    )
+                    logger.info(f"Saved pipeline as session artifact: {artifact_path}")
+                else:
+                    logger.warning("No current session found, cannot save artifact")
+
+                # Store for context
+                context.pipeline_config = {"yaml": pipeline_yaml, "name": pipeline_name}
+                context.validation_status = "pending"
+
+                return f"""I've generated a pipeline for your request: "{context.user_input}"
+
+```yaml
+{pipeline_yaml}
+```
+
+**Pipeline Details:**
+- **Name**: {pipeline_name}
+- **Description**: {description}
+- **File**: `{filename}` (saved to output directory)
+- **Artifact**: Also saved to session artifacts
+
+{params.get('notes', 'The pipeline is ready to review and execute.')}
+
+Would you like me to:
+1. **Execute** this pipeline now
+2. **Modify** any part of it (schedule, destination, etc.)
+3. **Explain** how any specific part works
+4. Generate a **different pipeline** for another use case"""
+
+            # Fallback to legacy pipeline generation if no YAML provided
+            # Check if we have discovery data first
             if not context.discovery_data:
                 return "I need to discover your database structure first. Let me do that now..."
 
@@ -466,7 +547,7 @@ What would you like to analyze or extract from this data?"""
             context.pipeline_config = pipeline_config
             context.validation_status = "pending"
 
-            # Generate YAML
+            # Generate YAML (secrets should already be masked in pipeline_config)
             pipeline_yaml = yaml.dump(pipeline_config, default_flow_style=False, indent=2)
 
             # Save to file for review
@@ -510,12 +591,15 @@ The pipeline will:
     ) -> Dict:
         """Create pipeline configuration dictionary."""
 
-        # Determine source configuration with database credentials
+        # Determine source configuration with database credentials (secrets masked)
+        from .secrets_masking import mask_sensitive_dict
+
+        masked_db_config = mask_sensitive_dict(self.database_config)
         source_config = {
             "id": "extract_data",
             "source": self.database_config.get("type", "mysql"),
             "tables": list(context.discovery_data.get("tables", {}).keys())[:3],  # Limit tables
-            "connection": self.database_config,
+            "connection": masked_db_config,
         }
 
         # Create transform configuration
