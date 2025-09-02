@@ -32,6 +32,23 @@ Currently, components are integrated ad-hoc with implicit expectations. This mak
 - Implicit integration (status quo): rejected due to fragility and lack of determinism.
 - Hardcoded capability mapping: rejected due to poor scalability.
 
+## Amendment 1: Mode Standardization (2025-01-02)
+
+### Context
+During implementation of M1a.2, we discovered inconsistencies in mode naming conventions, particularly the use of 'load' vs 'write' for data writing operations.
+
+### Decision
+- Standardize on 'write' mode for all data writing operations
+- Deprecate 'load' mode but maintain in schema for backward compatibility
+- All writer components support both 'write' and 'discover' modes
+- Component modes are strictly defined: extract, write, transform, discover, analyze, stream
+
+### Impact
+- Component specs must use consistent mode terminology
+- LLM context generation improved with standardized vocabulary
+- Migration path provided for existing 'load' mode usage
+
 ## References
 - ADR-0004 Configuration Precedence Engine
 - ADR-0006 Session-Scoped Logging and Artifacts
+- ADR-0012 Separate Extractors and Writers
