@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 from typing import Optional
 
-import click
 import yaml
 from rich import print as rprint
 from rich.console import Console
@@ -13,24 +12,39 @@ from rich.table import Table
 console = Console()
 
 
-@click.group(name="components")
-def components_group():
-    """Manage and inspect Osiris components."""
-    pass
-
-
-@components_group.command(name="list")
-@click.option(
-    "--mode",
-    type=click.Choice(["extract", "write", "discover", "all"]),
-    default="all",
-    help="Filter components by mode",
-)
-def list_components(mode: str):
-    """List available components and their capabilities."""
+def _find_components_dir() -> Optional[Path]:
+    """Find the components directory, checking current and parent directories."""
+    # Try current directory first
     components_dir = Path("components")
-    if not components_dir.exists():
+    if components_dir.exists():
+        return components_dir
+
+    # Try parent directory (common when running from testing_env)
+    components_dir = Path("../components")
+    if components_dir.exists():
+        return components_dir
+
+    return None
+
+
+def _get_component_spec_path(component_name: str) -> Optional[Path]:
+    """Get the path to a component spec file."""
+    components_dir = _find_components_dir()
+    if not components_dir:
+        return None
+
+    spec_file = components_dir / component_name / "spec.yaml"
+    if spec_file.exists():
+        return spec_file
+    return None
+
+
+def list_components(mode: str = "all"):
+    """List available components and their capabilities."""
+    components_dir = _find_components_dir()
+    if not components_dir:
         rprint("[red]No components directory found[/red]")
+        rprint("[dim]Searched in: ./components and ../components[/dim]")
         return
 
     table = Table(title="Available Components")
@@ -67,13 +81,10 @@ def list_components(mode: str):
     console.print(table)
 
 
-@components_group.command(name="show")
-@click.argument("component_name")
-@click.option("--json", "as_json", is_flag=True, help="Output as JSON")
-def show_component(component_name: str, as_json: bool):
+def show_component(component_name: str, as_json: bool = False):
     """Show detailed information about a specific component."""
-    spec_file = Path(f"components/{component_name}/spec.yaml")
-    if not spec_file.exists():
+    spec_file = _get_component_spec_path(component_name)
+    if not spec_file:
         rprint(f"[red]Component '{component_name}' not found[/red]")
         return
 
@@ -118,14 +129,16 @@ def show_component(component_name: str, as_json: bool):
         console.print(f"[red]Error reading component spec: {e}[/red]")
 
 
-@components_group.command(name="validate")
-@click.argument("component_name")
 def validate_component(component_name: str):
     """Validate a component specification against the schema."""
-    spec_file = Path(f"components/{component_name}/spec.yaml")
-    schema_file = Path("components/spec.schema.json")
+    spec_file = _get_component_spec_path(component_name)
+    components_dir = _find_components_dir()
+    if not components_dir:
+        rprint("[red]Components directory not found[/red]")
+        return
+    schema_file = components_dir / "spec.schema.json"
 
-    if not spec_file.exists():
+    if not spec_file:
         rprint(f"[red]Component '{component_name}' not found[/red]")
         return
 
@@ -161,18 +174,10 @@ def validate_component(component_name: str):
         rprint(f"[red]Error: {e}[/red]")
 
 
-@components_group.command(name="config-example")
-@click.argument("component_name")
-@click.option(
-    "--example-index",
-    type=int,
-    default=0,
-    help="Index of example to show (0-based)",
-)
-def show_config_example(component_name: str, example_index: int):
+def show_config_example(component_name: str, example_index: int = 0):
     """Show example configuration for a component."""
-    spec_file = Path(f"components/{component_name}/spec.yaml")
-    if not spec_file.exists():
+    spec_file = _get_component_spec_path(component_name)
+    if not spec_file:
         rprint(f"[red]Component '{component_name}' not found[/red]")
         return
 
@@ -202,13 +207,10 @@ def show_config_example(component_name: str, example_index: int):
         console.print(f"[red]Error: {e}[/red]")
 
 
-@components_group.command(name="discover")
-@click.argument("component_name")
-@click.option("--config", type=click.Path(exists=True), help="Config file for component")
-def discover_with_component(component_name: str, config: Optional[str]):
+def discover_with_component(component_name: str, config: Optional[str] = None):
     """Run discovery mode for a component (if supported)."""
-    spec_file = Path(f"components/{component_name}/spec.yaml")
-    if not spec_file.exists():
+    spec_file = _get_component_spec_path(component_name)
+    if not spec_file:
         rprint(f"[red]Component '{component_name}' not found[/red]")
         return
 

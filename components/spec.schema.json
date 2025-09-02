@@ -150,8 +150,7 @@
       "type": "string",
       "enum": ["extract", "write", "load", "transform", "discover", "analyze", "stream"],
       "description": "Component operational mode. Note: 'load' is deprecated - use 'write' for data writing operations. Writers should support both 'write' and 'discover' modes.",
-      "deprecated": ["load"],
-      "$comment": "load mode retained for backward compatibility but should not be used in new specs or examples"
+      "$comment": "load mode retained for backward compatibility but should not be used in new specs or examples. The 'load' mode is deprecated."
     },
     "capabilities": {
       "type": "object",
