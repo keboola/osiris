@@ -59,11 +59,15 @@ This milestone implements the architectural decisions documented in ADRs 0005-00
 - [x] Validate schema structure with jsonschema library
 
 ##### M1a.2: Bootstrap Component Specs
-- [ ] Analyze existing `osiris/connectors/mysql` implementation
-- [ ] Create `components/mysql.table/spec.yaml` with minimal fields
-- [ ] Analyze existing `osiris/connectors/supabase` implementation  
-- [ ] Create `components/supabase.table/spec.yaml` with minimal fields
+- [ ] Analyze existing `osiris/connectors/mysql` extractor and writer implementations
+- [ ] Create `components/mysql.extractor/spec.yaml` with configuration schema
+- [ ] Create `components/mysql.writer/spec.yaml` with configuration schema
+- [ ] Analyze existing `osiris/connectors/supabase` extractor and writer implementations
+- [ ] Create `components/supabase.extractor/spec.yaml` with configuration schema
+- [ ] Create `components/supabase.writer/spec.yaml` with configuration schema
 - [ ] Include ≤2 examples per component for LLM context efficiency
+- [ ] Validate all specs against `components/spec.schema.json`
+- [ ] Test that examples validate against their configSchema
 
 ##### M1a.3: Component Registry Implementation
 - [ ] Create `osiris/components/registry.py` with spec loading logic
@@ -87,8 +91,8 @@ This milestone implements the architectural decisions documented in ADRs 0005-00
 
 #### Acceptance Criteria
 - [ ] Component specs validate against spec.schema.json
-- [ ] `osiris components list` displays mysql.table and supabase.table with capabilities
-- [ ] `osiris components spec mysql.table --format=json` outputs valid schema
+- [ ] `osiris components list` displays all four components (mysql.extractor, mysql.writer, supabase.extractor, supabase.writer) with capabilities
+- [ ] `osiris components spec mysql.extractor --format=json` outputs valid schema
 - [ ] Invalid configurations show friendly errors with fix suggestions
 - [ ] Registry loads specs from filesystem with proper caching
 - [ ] Unit tests achieve >80% coverage for registry code
