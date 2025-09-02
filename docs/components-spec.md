@@ -43,7 +43,8 @@ The Component Specification Schema enables Osiris components to be self-describi
 
 Available operational modes:
 - `extract` - Read data from source
-- `load` - Write data to destination
+- `write` - Write data to destination
+- `load` - Write data to destination (deprecated, use `write`)
 - `transform` - Transform data in-place
 - `discover` - Discover schema/metadata
 - `analyze` - Perform analytical queries
@@ -439,6 +440,44 @@ All component specifications must:
 4. **Constraints**: Document cross-field dependencies clearly
 5. **Versioning**: Follow semantic versioning strictly
 6. **Documentation**: Use `title` and `description` for clarity
+
+## Bootstrap Components (M1a.2)
+
+The following component specifications have been implemented as part of M1a.2:
+
+### MySQL Components
+
+- **mysql.extractor** (`components/mysql.extractor/spec.yaml`)
+  - Extracts data from MySQL databases
+  - Supports discovery, custom SQL queries, and bulk extraction
+  - Configurable connection pooling and batch sizes
+  
+- **mysql.writer** (`components/mysql.writer/spec.yaml`)
+  - Writes data to MySQL databases
+  - Supports append, replace, and upsert modes in write mode
+  - Supports discovery of target schemas
+  - Transaction support with configurable batch sizes
+
+### Supabase Components
+
+- **supabase.extractor** (`components/supabase.extractor/spec.yaml`)
+  - Extracts data from Supabase via REST API
+  - Supports PostgREST filters and joins
+  - Rate-limited API calls with retry logic
+  
+- **supabase.writer** (`components/supabase.writer/spec.yaml`)
+  - Writes data to Supabase via REST API
+  - Supports insert, upsert, and update modes in write mode
+  - Supports discovery of target schemas
+  - Conflict resolution via on_conflict specification
+
+### Key Design Decisions
+
+1. **Separation of Concerns**: Extractors and writers are separate components
+2. **Mode-Specific**: Extractors support `extract` and `discover`, writers support `write` and `discover`
+3. **Secrets Management**: All components declare password/key fields as secrets
+4. **LLM Optimization**: Each component includes promptGuidance and yamlSnippets
+5. **Validation**: All examples are validated against their configSchema
 
 ## Migration Notes
 

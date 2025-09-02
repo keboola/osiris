@@ -1,0 +1,219 @@
+# MySQL Writer Component Specification
+name: mysql.writer
+version: 1.0.0
+title: MySQL Data Writer
+description: Write data to MySQL databases with support for append, replace, and upsert operations, and discover target schemas
+
+modes:
+  - write
+  - discover
+
+capabilities:
+  discover: true
+  adHocAnalytics: false
+  inMemoryMove: false
+  streaming: false
+  bulkOperations: true
+  transactions: true
+  partitioning: false
+  customTransforms: false
+
+configSchema:
+  type: object
+  properties:
+    host:
+      type: string
+      description: MySQL server hostname or IP address
+      default: localhost
+    port:
+      type: integer
+      description: MySQL server port
+      default: 3306
+      minimum: 1
+      maximum: 65535
+    database:
+      type: string
+      description: Database name to connect to
+      minLength: 1
+    user:
+      type: string
+      description: MySQL username for authentication
+      minLength: 1
+    password:
+      type: string
+      description: MySQL password for authentication
+    table:
+      type: string
+      description: Target table name for data writing
+      minLength: 1
+    schema:
+      type: string
+      description: Database schema (if different from database)
+      default: null
+    mode:
+      type: string
+      description: Write mode for data writing
+      enum:
+        - append
+        - replace
+        - upsert
+      default: append
+    upsert_keys:
+      type: array
+      description: Column names to use as keys for upsert operations
+      items:
+        type: string
+    batch_size:
+      type: integer
+      description: Number of rows per batch for insertion
+      default: 1000
+      minimum: 1
+      maximum: 100000
+    create_table:
+      type: boolean
+      description: Auto-create table if it doesn't exist
+      default: false
+    truncate_before:
+      type: boolean
+      description: Truncate table before writing (replace mode)
+      default: false
+    pool_size:
+      type: integer
+      description: Connection pool size
+      default: 5
+      minimum: 1
+      maximum: 20
+    pool_recycle:
+      type: integer
+      description: Pool recycle time in seconds
+      default: 3600
+      minimum: 60
+    echo:
+      type: boolean
+      description: Enable SQL query logging
+      default: false
+  required:
+    - host
+    - database
+    - user
+    - password
+    - table
+  additionalProperties: false
+
+secrets:
+  - /password
+
+redaction:
+  strategy: mask
+  mask: "****"
+  extras:
+    - /host
+    - /user
+
+constraints:
+  required:
+    - when:
+        mode: upsert
+      must:
+        upsert_keys:
+          minItems: 1
+      error: upsert_keys must be specified when mode is 'upsert'
+
+examples:
+  - title: Basic append to MySQL
+    config:
+      host: localhost
+      port: 3306
+      database: mydb
+      user: writer
+      password: secret456  # pragma: allowlist secret
+      table: customers
+      mode: append
+      batch_size: 5000
+    notes: Append data to existing table
+
+  - title: Upsert with conflict resolution
+    config:
+      host: db.prod.example.com
+      port: 3306
+      database: analytics
+      user: etl_user
+      password: secure_pass  # pragma: allowlist secret
+      table: daily_metrics
+      mode: upsert
+      upsert_keys:
+        - date
+        - customer_id
+      batch_size: 10000
+      pool_size: 10
+    notes: Upsert data with composite key for conflict resolution
+
+compatibility:
+  requires:
+    - python>=3.10
+    - sqlalchemy>=2.0
+    - pymysql>=1.0
+  platforms:
+    - linux
+    - darwin
+    - windows
+    - docker
+
+llmHints:
+  inputAliases:
+    host:
+      - hostname
+      - server
+      - mysql_host
+    database:
+      - db
+      - db_name
+      - mysql_database
+    user:
+      - username
+      - mysql_user
+      - login
+    table:
+      - table_name
+      - target_table
+      - to_table
+      - destination_table
+  promptGuidance: |
+    Use mysql.writer to write data to MySQL databases and discover target schemas.
+    Supports append, replace, and upsert modes in write mode.
+    For upsert, specify upsert_keys for conflict resolution. Use discover mode to inspect available tables.
+  yamlSnippets:
+    - "type: mysql.writer"
+    - "host: localhost"
+    - "database: {{ database_name }}"
+    - "table: {{ table_name }}"
+    - "mode: append"
+  commonPatterns:
+    - pattern: bulk_append
+      description: Append large datasets with optimized batch_size
+    - pattern: daily_update
+      description: Use upsert mode with date-based keys
+    - pattern: full_refresh
+      description: Use replace mode to completely refresh table
+
+loggingPolicy:
+  sensitivePaths:
+    - /password
+    - /host
+    - /user
+  eventDefaults:
+    - write.start
+    - write.progress
+    - write.complete
+    - transaction.commit
+  metricsToCapture:
+    - rows_written
+    - bytes_processed
+    - duration_ms
+    - errors
+
+limits:
+  maxRows: 10000000
+  maxSizeMB: 10240
+  maxDurationSeconds: 3600
+  maxConcurrency: 5
