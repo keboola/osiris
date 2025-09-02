@@ -20,12 +20,13 @@ This development plan addresses the critical architecture issue identified in v0
 
 ---
 
-## Milestone M0: Discovery Cache Fingerprinting (Hot-fix)
+## Milestone M0: Discovery Cache Fingerprinting (Hot-fix) ✅ COMPLETE
 
 **Goal**: Eliminate stale discovery reuse when input options or component specs change.
 
+**Status**: ✅ **COMPLETE** (Released in v0.1.2)
 **Owner**: Backend Developer
-**Duration**: 1-2 weeks
+**Duration**: 1-2 weeks (Actual: 1.5 weeks)
 **Priority**: Critical (blocks other milestones)
 
 ### Tasks
@@ -57,19 +58,19 @@ This development plan addresses the critical architecture issue identified in v0
   - Integration with `osiris run` command
   - `--mode warn|strict|off` validation flags
 
-### Acceptance Criteria
-- [ ] Cache invalidates when component options change (schema, table, columns)
-- [ ] Cache invalidates when component spec schema changes
-- [ ] Basic validation catches missing required fields (connection, table, mode)
-- [ ] `OSIRIS_VALIDATION=off` bypass works for rollback
-- [ ] Unit tests cover positive/negative fingerprinting scenarios
-- [ ] Integration test shows cache miss after options change
+### Acceptance Criteria ✅
+- [x] Cache invalidates when component options change (schema, table, columns)
+- [x] Cache invalidates when component spec schema changes
+- [x] Basic validation catches missing required fields (connection, table, mode)
+- [x] `OSIRIS_VALIDATION=off` bypass works for rollback
+- [x] Unit tests cover positive/negative fingerprinting scenarios
+- [x] Integration test shows cache miss after options change
 
-### Definition of Done
-- All tests pass
-- Cache fingerprinting eliminates stale discovery reuse
-- Basic validation provides clear error messages
-- Rollback mechanism tested and documented
+### Definition of Done ✅
+- ✅ All tests pass
+- ✅ Cache fingerprinting eliminates stale discovery reuse
+- ✅ Basic validation provides clear error messages
+- ✅ Rollback mechanism tested and documented
 
 ---
 
@@ -331,14 +332,15 @@ This development plan addresses the critical architecture issue identified in v0
 
 ## Implementation Schedule
 
-| Milestone | Duration | Dependencies | Risk Level |
-|-----------|----------|--------------|------------|
-| M0        | 1-2 weeks| None         | Low        |
-| M1a       | 2-3 weeks| M0 complete  | Medium     |
-| M2        | 2-3 weeks| M1a complete | Medium     |
-| M3        | 3-4 weeks| M1a+M2 complete | High    |
+| Milestone | Duration | Dependencies | Risk Level | Status |
+|-----------|----------|--------------|------------|--------|
+| M0        | 1-2 weeks| None         | Low        | ✅ COMPLETE (v0.1.2) |
+| M1a       | 2-3 weeks| M0 complete  | Medium     | 🔄 Next Priority |
+| M2        | 2-3 weeks| M1a complete | Medium     | ⏳ Pending |
+| M3        | 3-4 weeks| M1a+M2 complete | High    | ⏳ Pending |
 
 **Total Timeline**: 8-12 weeks for complete implementation
+**Progress**: Week 2 of 12 complete (M0 delivered)
 
 ## Resource Allocation
 
@@ -359,9 +361,12 @@ Each milestone must pass:
 
 ## Next Steps
 
-1. **Week 1**: Begin M0 implementation with cache fingerprinting
-2. **Week 2**: Complete M0 and begin component spec analysis for M1a
-3. **Week 3-4**: M1a implementation with bootstrap component specs
+1. ~~**Week 1**: Begin M0 implementation with cache fingerprinting~~ ✅ COMPLETE
+2. ~~**Week 2**: Complete M0 and begin component spec analysis for M1a~~ ✅ M0 COMPLETE
+3. **Week 3-4**: M1a implementation with bootstrap component specs 🔄 **CURRENT FOCUS**
+   - Begin with component spec schema design (M1a.1)
+   - Manual bootstrap of mysql.table and supabase.table specs (M1a.2)
+   - Component registry implementation (M1a.3)
 4. **Week 5-6**: M2 context builder and LLM integration
 5. **Week 7-10**: M3 compiler and runner implementation
 6. **Week 11-12**: Final integration testing and documentation
