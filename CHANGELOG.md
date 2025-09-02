@@ -5,6 +5,33 @@ All notable changes to the Osiris Pipeline project will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2025-09-02
+
+### Added
+- Session-scoped logging with per-session directories, structured JSONL events, metrics, and dual artifact storage (`output/` + `logs/<session>/artifacts/`).
+- Session management CLI commands: `osiris logs list`, `show`, `bundle`, `gc`.
+- Discovery cache fingerprinting with SHA-256 invalidation, component/version awareness, and TTL support.
+- Connection validation with JSON Schema for MySQL and Supabase, supporting modes `off`, `warn`, `strict`.
+- Configuration precedence system (CLI → ENV → YAML → defaults) with wildcard `*` event logging and effective config reporting.
+- Test infrastructure for M0-Validation-4 (pytest suite + manual runner).
+
+### Changed
+- Session artifacts now stored under session directories.
+- Cache storage enhanced with fingerprint metadata.
+- Logging architecture moved from global to session-scoped.
+- Error handling improved with fallback to temp directories.
+
+### Fixed
+- Pipeline YAML artifacts saved correctly to both `output/` and session directories.
+- Validate command now respects configured log levels.
+- Cache context mismatch resolved by fingerprinting.
+- CLI parsing fixed to support both `--mode strict` and `--mode=strict`.
+
+### Security
+- Secrets masking: passwords, tokens, API keys redacted as `***` in logs, YAML, and artifacts.
+- Explicit allowlist for test-only credentials.
+- Pre-commit secret scanning enabled for all commits.
+
 ## [0.1.1] - 2025-08-30
 
 ### Added
@@ -64,4 +91,6 @@ This is the first MVP release of Osiris Pipeline - an experimental proof-of-conc
 **Status**: Early prototype suitable for demonstration and initial testing
 **Confidence**: Core functionality working with movies database testing completed
 
+[0.1.2]: https://github.com/keboola/osiris_pipeline/releases/tag/v0.1.2
+[0.1.1]: https://github.com/keboola/osiris_pipeline/releases/tag/v0.1.1
 [0.1.0]: https://github.com/keboola/osiris_pipeline/releases/tag/v0.1.0
