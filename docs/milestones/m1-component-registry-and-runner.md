@@ -52,11 +52,11 @@ This milestone implements the architectural decisions documented in ADRs 0005-00
 
 #### Deliverables
 
-##### M1a.1: Component Spec Schema
-- [ ] Create `components/spec.schema.json` with JSON Schema Draft 2020-12
-- [ ] Define required fields: name, version, modes, capabilities, configSchema
-- [ ] Add optional fields: title, description, constraints, examples, secrets, redaction
-- [ ] Validate schema structure with jsonschema library
+##### M1a.1: Component Spec Schema ✅
+- [x] Create `components/spec.schema.json` with JSON Schema Draft 2020-12
+- [x] Define required fields: name, version, modes, capabilities, configSchema
+- [x] Add optional fields: title, description, constraints, examples, secrets, redaction
+- [x] Validate schema structure with jsonschema library
 
 ##### M1a.2: Bootstrap Component Specs
 - [ ] Analyze existing `osiris/connectors/mysql` implementation
