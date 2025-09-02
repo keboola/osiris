@@ -65,6 +65,7 @@ def show_main_help():
     console.print("  [cyan]chat[/cyan]         Conversational pipeline generation with LLM")
     console.print("  [cyan]run[/cyan]          Execute a pipeline YAML file")
     console.print("  [cyan]logs[/cyan]         Manage session logs (list, show, bundle, gc)")
+    console.print("  [cyan]components[/cyan]   Manage and inspect Osiris components")
     console.print(
         "  [cyan]dump-prompts[/cyan] Export LLM system prompts for customization (pro mode)"
     )
@@ -95,6 +96,7 @@ def parse_main_args():
             "chat",
             "run",
             "logs",
+            "components",
             "dump-prompts",
         ]:
             command = arg
@@ -186,6 +188,8 @@ def main():
         run_command(command_args)
     elif args.command == "logs":
         logs_command(command_args)
+    elif args.command == "components":
+        components_command(command_args)
     elif args.command == "dump-prompts":
         dump_prompts_command(command_args)
     elif args.command == "chat":
@@ -203,6 +207,7 @@ def main():
                             "chat",
                             "run",
                             "logs",
+                            "components",
                             "dump-prompts",
                         ],
                     }
@@ -222,6 +227,7 @@ def main():
                             "chat",
                             "run",
                             "logs",
+                            "components",
                             "dump-prompts",
                         ],
                     }
@@ -1183,6 +1189,106 @@ def dump_prompts_command(args):
         console.print(f"❌ [bold red]Failed to dump prompts:[/bold red] {e}")
         console.print()
         sys.exit(1)
+
+
+def components_command(args: list) -> None:
+    """Manage and inspect Osiris components."""
+
+    def show_components_help():
+        """Show components command help."""
+        console.print()
+        console.print("[bold green]osiris components - Component Management[/bold green]")
+        console.print("🧩 Manage and inspect Osiris component specifications")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris components SUBCOMMAND [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Subcommands[/bold blue]")
+        console.print("  [cyan]list[/cyan]              List available components")
+        console.print("  [cyan]show <name>[/cyan]       Show component details")
+        console.print("  [cyan]validate <name>[/cyan]   Validate component spec")
+        console.print("  [cyan]config-example[/cyan]    Show example configuration")
+        console.print("  [cyan]discover <name>[/cyan]   Run discovery mode (if supported)")
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print("  [green]osiris components list[/green]")
+        console.print("  [green]osiris components list --mode write[/green]")
+        console.print("  [green]osiris components show mysql.extractor[/green]")
+        console.print("  [green]osiris components validate mysql.writer[/green]")
+        console.print("  [green]osiris components config-example supabase.extractor[/green]")
+        console.print()
+
+    if not args or args[0] in ["--help", "-h"]:
+        show_components_help()
+        return
+
+    # Import the components module
+    try:
+        from .components_cmd import (
+            discover_with_component,
+            list_components,
+            show_component,
+            show_config_example,
+            validate_component,
+        )
+    except ImportError as e:
+        console.print(f"❌ Failed to import components module: {e}")
+        sys.exit(1)
+
+    subcommand = args[0]
+    subcommand_args = args[1:]
+
+    if subcommand == "list":
+        # Parse list options
+        mode = "all"
+        for i, arg in enumerate(subcommand_args):
+            if arg == "--mode" and i + 1 < len(subcommand_args):
+                mode = subcommand_args[i + 1]
+                break
+        list_components(mode)
+    elif subcommand == "show":
+        if not subcommand_args:
+            console.print("❌ Component name required")
+            console.print("Usage: osiris components show <component_name>")
+            sys.exit(1)
+        as_json = "--json" in subcommand_args
+        component_name = subcommand_args[0]
+        show_component(component_name, as_json)
+    elif subcommand == "validate":
+        if not subcommand_args:
+            console.print("❌ Component name required")
+            console.print("Usage: osiris components validate <component_name>")
+            sys.exit(1)
+        validate_component(subcommand_args[0])
+    elif subcommand == "config-example":
+        if not subcommand_args:
+            console.print("❌ Component name required")
+            console.print("Usage: osiris components config-example <component_name>")
+            sys.exit(1)
+        example_index = 0
+        component_name = subcommand_args[0]
+        for i, arg in enumerate(subcommand_args):
+            if arg == "--example-index" and i + 1 < len(subcommand_args):
+                try:
+                    example_index = int(subcommand_args[i + 1])
+                except ValueError:
+                    console.print("❌ Invalid example index")
+                    sys.exit(1)
+        show_config_example(component_name, example_index)
+    elif subcommand == "discover":
+        if not subcommand_args:
+            console.print("❌ Component name required")
+            console.print("Usage: osiris components discover <component_name> [--config FILE]")
+            sys.exit(1)
+        config_file = None
+        component_name = subcommand_args[0]
+        for i, arg in enumerate(subcommand_args):
+            if arg == "--config" and i + 1 < len(subcommand_args):
+                config_file = subcommand_args[i + 1]
+        discover_with_component(component_name, config_file)
+    else:
+        console.print(f"❌ Unknown subcommand: {subcommand}")
+        console.print("Available subcommands: list, show, validate, config-example, discover")
+        console.print("Use 'osiris components --help' for detailed help.")
 
 
 def logs_command(args: list) -> None:
