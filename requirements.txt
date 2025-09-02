@@ -4,6 +4,7 @@ click>=8.0.0            # CLI framework
 pyyaml>=6.0.2           # YAML parsing (security fix for CVE-2020-14343)
 aiofiles>=23.0          # Async file operations
 rich>=13.0.0            # Rich terminal formatting for CLI
+jsonschema>=4.20.0      # JSON Schema validation for component specs
 
 # Database connectors
 pymysql>=1.1.0          # MySQL connector
