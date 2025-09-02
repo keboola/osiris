@@ -222,3 +222,120 @@ class TestBootstrapSpecs:
             assert "examples" in spec
             assert len(spec["examples"]) >= 1
             assert len(spec["examples"]) <= 2  # ≤2 examples for token efficiency
+
+    def test_supabase_specs_require_key(self, supabase_extractor_spec, supabase_writer_spec):
+        """Test that Supabase specs require 'key' field."""
+        specs = [supabase_extractor_spec, supabase_writer_spec]
+
+        for spec in specs:
+            schema = spec["configSchema"]
+            required = schema.get("required", [])
+            assert "key" in required, f"{spec['name']} must require 'key'"
+            assert "table" in required, f"{spec['name']} must require 'table'"
+
+    def test_supabase_url_or_project_id_constraint(
+        self, supabase_extractor_spec, supabase_writer_spec
+    ):
+        """Test Supabase specs have url XOR project_id constraint."""
+        specs = [supabase_extractor_spec, supabase_writer_spec]
+
+        for spec in specs:
+            constraints = spec.get("constraints", {}).get("required", [])
+            # Should have at least one constraint for url/project_id
+            url_constraint_found = False
+            for constraint in constraints:
+                when = constraint.get("when", {})
+                if "url" in when and when["url"] is None:
+                    assert "project_id" in constraint.get("must", {})
+                    assert "Either 'url' or 'project_id'" in constraint.get("error", "")
+                    url_constraint_found = True
+            assert url_constraint_found, f"{spec['name']} must have url/project_id constraint"
+
+    def test_capabilities_snapshot(
+        self,
+        mysql_extractor_spec,
+        mysql_writer_spec,
+        supabase_extractor_spec,
+        supabase_writer_spec,
+    ):
+        """Test capabilities match expected values (snapshot test)."""
+        # MySQL Extractor capabilities
+        assert mysql_extractor_spec["capabilities"] == {
+            "discover": True,
+            "adHocAnalytics": True,  # execute_query implemented
+            "inMemoryMove": False,
+            "streaming": False,
+            "bulkOperations": True,
+            "transactions": False,
+            "partitioning": False,
+            "customTransforms": False,
+        }
+
+        # MySQL Writer capabilities
+        assert mysql_writer_spec["capabilities"] == {
+            "discover": True,
+            "adHocAnalytics": False,
+            "inMemoryMove": False,
+            "streaming": False,
+            "bulkOperations": True,
+            "transactions": True,  # uses conn.commit()
+            "partitioning": False,
+            "customTransforms": False,
+        }
+
+        # Supabase Extractor capabilities
+        assert supabase_extractor_spec["capabilities"] == {
+            "discover": True,
+            "adHocAnalytics": False,  # execute_query raises NotImplementedError
+            "inMemoryMove": False,
+            "streaming": False,
+            "bulkOperations": True,
+            "transactions": False,
+            "partitioning": False,
+            "customTransforms": False,
+        }
+
+        # Supabase Writer capabilities
+        assert supabase_writer_spec["capabilities"] == {
+            "discover": True,
+            "adHocAnalytics": False,
+            "inMemoryMove": False,
+            "streaming": False,
+            "bulkOperations": True,
+            "transactions": False,  # REST API doesn't support transactions
+            "partitioning": False,
+            "customTransforms": False,
+        }
+
+    def test_cli_required_config_rendering(self):
+        """Test CLI shows correct required configuration."""
+        import io
+        from contextlib import redirect_stdout
+
+        from osiris.cli.components_cmd import show_component
+
+        # Capture stdout
+        captured = io.StringIO()
+
+        # Test MySQL writer
+        with redirect_stdout(captured):
+            show_component("mysql.writer", as_json=False)
+
+        output = captured.getvalue()
+        assert "Required Configuration:" in output
+        assert "• host" in output
+        assert "• database" in output
+        assert "• user" in output
+        assert "• password" in output
+        assert "• table" in output
+
+        # Test Supabase writer
+        captured = io.StringIO()
+        with redirect_stdout(captured):
+            show_component("supabase.writer", as_json=False)
+
+        output = captured.getvalue()
+        assert "Required Configuration:" in output
+        assert "• key" in output
+        assert "• table" in output
+        assert "Secrets (masked in logs):" in output

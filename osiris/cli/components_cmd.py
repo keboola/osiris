@@ -112,12 +112,30 @@ def show_component(component_name: str, as_json: bool = False):
                 color = "green" if enabled else "red"
                 console.print(f"  [{color}]{status}[/{color}] {cap}")
 
-            # Required config
+            # Required config - show in order from properties
             console.print("\n[bold]Required Configuration:[/bold]")
             schema = spec.get("configSchema", {})
             required = schema.get("required", [])
-            for field in required:
-                console.print(f"  • {field}")
+            properties = schema.get("properties", {})
+
+            # Show required fields in property order
+            for field in properties:
+                if field in required:
+                    desc = properties[field].get("description", "")
+                    if desc:
+                        console.print(f"  • {field} - {desc[:50]}")
+                    else:
+                        console.print(f"  • {field}")
+
+            # Secrets
+            secrets = spec.get("secrets", [])
+            redaction_extras = spec.get("redaction", {}).get("extras", [])
+            all_secrets = set(secrets + redaction_extras)
+
+            if all_secrets:
+                console.print("\n[bold]Secrets (masked in logs):[/bold]")
+                for secret in sorted(all_secrets):
+                    console.print(f"  • {secret}")
 
             # Examples
             if "examples" in spec:

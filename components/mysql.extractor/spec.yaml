@@ -10,13 +10,13 @@ modes:
 
 capabilities:
   discover: true
-  adHocAnalytics: true
-  inMemoryMove: false
-  streaming: false
-  bulkOperations: true
-  transactions: false
-  partitioning: false
-  customTransforms: false
+  adHocAnalytics: true  # execute_query method implemented
+  inMemoryMove: false   # returns DataFrame but no direct move API
+  streaming: false      # no streaming support found
+  bulkOperations: true  # batch_size supported
+  transactions: false   # extractor doesn't use transactions
+  partitioning: false   # no partitioning support
+  customTransforms: false  # no custom transforms
 
 configSchema:
   type: object

@@ -479,6 +479,37 @@ The following component specifications have been implemented as part of M1a.2:
 4. **LLM Optimization**: Each component includes promptGuidance and yamlSnippets
 5. **Validation**: All examples are validated against their configSchema
 
+## Required Configuration by Component
+
+| Component | Required Fields | Notes |
+|-----------|----------------|-------|
+| mysql.extractor | host, database, user, password, table | Standard MySQL connection parameters |
+| mysql.writer | host, database, user, password, table | Same as extractor |
+| supabase.extractor | key, table | Also needs url OR project_id (constraint) |
+| supabase.writer | key, table | Also needs url OR project_id (constraint) |
+
+## Capability Flags Explained
+
+| Capability | Meaning | Impact on Agent |
+|------------|---------|-----------------|
+| **discover** | Can list tables/schemas | Agent can explore database structure |
+| **adHocAnalytics** | Can execute arbitrary queries | Agent can run custom SQL for analysis |
+| **inMemoryMove** | Supports DataFrame transfers | Can pass data directly between components |
+| **streaming** | Supports stream processing | Can handle real-time data flows |
+| **bulkOperations** | Supports batch operations | Efficient for large datasets |
+| **transactions** | Supports ACID transactions | Ensures data consistency |
+| **partitioning** | Supports partitioned processing | Can parallelize operations |
+| **customTransforms** | Supports custom transformations | Agent can apply user-defined logic |
+
+### Current Implementation Status
+
+- **MySQL Extractor**: discover ✓, adHocAnalytics ✓ (execute_query), bulkOperations ✓
+- **MySQL Writer**: discover ✓, bulkOperations ✓, transactions ✓ (conn.commit)
+- **Supabase Extractor**: discover ✓, bulkOperations ✓ (REST API limits apply)
+- **Supabase Writer**: discover ✓, bulkOperations ✓ (batch_size supported)
+
+**Note**: REST-based components (Supabase) don't support transactions due to stateless HTTP nature.
+
 ## Migration Notes
 
 When updating component specifications:

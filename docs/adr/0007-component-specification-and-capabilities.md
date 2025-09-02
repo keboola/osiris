@@ -48,6 +48,21 @@ During implementation of M1a.2, we discovered inconsistencies in mode naming con
 - LLM context generation improved with standardized vocabulary
 - Migration path provided for existing 'load' mode usage
 
+## Amendment 2: Required Fields and Capabilities Audit (2025-01-02)
+
+### Context
+Audit of component specs against actual connector implementations revealed discrepancies in required fields and capability declarations.
+
+### Decision
+- Supabase components now require `key` field (was optional)
+- Capabilities must reflect actual implementation, not theoretical support
+- CLI enhanced to show both required config and secrets
+
+### Impact
+- Breaking change: Supabase configs without `key` will fail validation
+- More accurate capability reporting prevents runtime surprises
+- CLI provides complete visibility into component requirements
+
 ## References
 - ADR-0004 Configuration Precedence Engine
 - ADR-0006 Session-Scoped Logging and Artifacts

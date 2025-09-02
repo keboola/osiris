@@ -203,6 +203,8 @@ $ pytest tests/components/test_bootstrap_specs.py -v
 4. **Token optimization**: Every field counts for LLM context efficiency
 5. **Mode naming**: Using `write` instead of `load` provides clearer semantics
 6. **Discovery mode**: Writers benefit from discovery mode to inspect target schemas
+7. **Required fields audit**: Supabase components require `key` for API authentication
+8. **Capabilities reality check**: Not all theoretical capabilities are implemented
 
 ## Migration Notes
 

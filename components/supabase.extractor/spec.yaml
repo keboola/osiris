@@ -9,14 +9,14 @@ modes:
   - discover
 
 capabilities:
-  discover: true
-  adHocAnalytics: true
-  inMemoryMove: false
-  streaming: false
-  bulkOperations: true
-  transactions: false
-  partitioning: false
-  customTransforms: false
+  discover: true        # list_tables implemented (with limitations)
+  adHocAnalytics: false # execute_query raises NotImplementedError
+  inMemoryMove: false   # returns DataFrame but no direct move API
+  streaming: false      # no streaming support
+  bulkOperations: true  # limit/offset supported
+  transactions: false   # REST API doesn't support transactions
+  partitioning: false   # no partitioning support
+  customTransforms: false  # no custom transforms
 
 configSchema:
   type: object
@@ -81,6 +81,7 @@ configSchema:
       items:
         type: string
   required:
+    - key
     - table
   additionalProperties: false
 

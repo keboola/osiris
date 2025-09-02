@@ -9,14 +9,14 @@ modes:
   - discover
 
 capabilities:
-  discover: true
-  adHocAnalytics: false
-  inMemoryMove: false
-  streaming: false
-  bulkOperations: true
-  transactions: false
-  partitioning: false
-  customTransforms: false
+  discover: true        # can discover target schema
+  adHocAnalytics: false # writer doesn't execute queries
+  inMemoryMove: false   # accepts List[Dict] not DataFrame
+  streaming: false      # no streaming support
+  bulkOperations: true  # batch_size supported
+  transactions: false   # REST API doesn't support transactions
+  partitioning: false   # no partitioning support
+  customTransforms: false  # no custom transforms
 
 configSchema:
   type: object
@@ -84,6 +84,7 @@ configSchema:
         - resolution=ignore-duplicates
       default: return=minimal
   required:
+    - key
     - table
   additionalProperties: false
 
