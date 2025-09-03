@@ -17,17 +17,17 @@ M1b focuses on bridging the Component Registry (M1a) with the LLM-powered conver
 
 ### Deliverables
 
-#### M1b.1: Minimal Component Context Export
-- [ ] Design minimal context schema optimized for token efficiency
-- [ ] Extract essential fields: names, required configs, enums, defaults, ≤2 examples
-- [ ] Implement context builder in `osiris/prompts/build_context.py`
-- [ ] Add disk caching with spec-based invalidation
-- [ ] CLI command: `osiris prompts build-context --out .osiris_prompts/context.json`
+#### M1b.1: Minimal Component Context Export ✅
+- [x] Design minimal context schema optimized for token efficiency
+- [x] Extract essential fields: names, required configs, enums, defaults, ≤2 examples
+- [x] Implement context builder in `osiris/prompts/build_context.py`
+- [x] Add disk caching with spec-based invalidation
+- [x] CLI command: `osiris prompts build-context --out .osiris_prompts/context.json`
 
 **Acceptance Criteria**:
-- Context size ≤ 2000 tokens for all 4 components combined
-- Context rebuilds automatically when component specs change
-- Generated context is valid JSON and follows defined schema
+- ✅ Context size ≤ 2000 tokens for all 4 components combined (achieved: ~330 tokens)
+- ✅ Context rebuilds automatically when component specs change
+- ✅ Generated context is valid JSON and follows defined schema
 
 #### M1b.2: LLM Integration Hooks
 - [ ] Update `osiris/core/prompt_manager.py` to load context

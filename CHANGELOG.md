@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Path-to-label mapping for common configuration fields (e.g., "/configSchema/properties/host" → "Database Host")
 - Error categorization system (config_error, type_error, constraint_error, etc.) with contextual examples
 - Verbose mode (`--verbose`) for components validate to show technical error details
+- **Context Builder for LLM** (M1b.1): Minimal component context export for token-efficient LLM consumption
+  - JSON schema for context format (`osiris/prompts/context.schema.json`)
+  - Context builder implementation with SHA-256 fingerprinting and disk caching (`osiris/prompts/build_context.py`)
+  - CLI command: `osiris prompts build-context [--out FILE] [--force]`
+  - Automatic cache invalidation on component spec changes (mtime + fingerprint)
+  - Session event logging: `context_build_start`, `context_build_complete`
+  - Compact JSON serialization optimized for tokens (~330 tokens for 4 components)
 
 ### Changed
 - **BREAKING**: Supabase components now require `key` field (was optional)
