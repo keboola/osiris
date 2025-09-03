@@ -26,7 +26,7 @@ This milestone implements the architectural decisions documented in ADRs 0005-00
 - **Component Registry & Specifications**:
   - [ADR-0005: Component Specification and Registry](../adr/0005-component-specification-and-registry.md) - Core decision on registry-driven approach
   - [ADR-0007: Component Specification and Capabilities](../adr/0007-component-specification-and-capabilities.md) - Detailed spec requirements
-  - [ADR-0008: Component Registry](../adr/0008-component-registry.md) - Registry implementation details
+  - [ADR-0008: Component Registry](../adr/0008-component-registry.md) - Registry implementation details (see Amendment re: discover CLI)
 - **Pipeline Execution**:
   - [ADR-0006: Pipeline Runner and Execution](../adr/0006-pipeline-runner-and-execution.md) - Runner architecture and design
 - **Overall Strategy**:
@@ -85,7 +85,7 @@ This milestone implements the architectural decisions documented in ADRs 0005-00
 - [x] Secret field values never exposed in error messages
 - [x] Consistent snake_case error categories
 
-##### M1a.5: CLI Integration (Partially Complete)
+##### M1a.5: CLI Integration ✅
 - [x] Create `osiris/cli/components_cmd.py` with CLI commands
 - [x] Implement `osiris components list` to show all components
 - [x] Implement `osiris components list --json` for machine-readable output
@@ -93,7 +93,7 @@ This milestone implements the architectural decisions documented in ADRs 0005-00
 - [x] Implement `osiris components show <type>` with spec output
 - [x] Implement `osiris components config-example <type>` for example configs
 - [x] Integrate with existing Rich terminal formatting
-- [ ] Implement `osiris components discover <type>` (placeholder only)
+- [⏸️] **DEFERRED**: `osiris components discover <type>` - Requires Runner implementation (M1d)
 
 #### Acceptance Criteria
 - [x] Component specs validate against spec.schema.json
