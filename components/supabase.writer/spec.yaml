@@ -1,0 +1,206 @@
+# Supabase Writer Component Specification
+name: supabase.writer
+version: 1.0.0
+title: Supabase Data Writer
+description: Write data to Supabase PostgreSQL databases via REST API with support for insert, upsert, and update operations, and discover target schemas
+
+modes:
+  - write
+  - discover
+
+capabilities:
+  discover: true        # can discover target schema
+  adHocAnalytics: false # writer doesn't execute queries
+  inMemoryMove: false   # accepts List[Dict] not DataFrame
+  streaming: false      # no streaming support
+  bulkOperations: true  # batch_size supported
+  transactions: false   # REST API doesn't support transactions
+  partitioning: false   # no partitioning support
+  customTransforms: false  # no custom transforms
+
+configSchema:
+  type: object
+  properties:
+    url:
+      type: string
+      description: Supabase project URL (https://project.supabase.co)
+      pattern: "^https://[a-zA-Z0-9-]+\\.supabase\\.co$"
+    key:
+      type: string
+      description: Supabase anon/public API key
+      minLength: 20
+    project_id:
+      type: string
+      description: Supabase project ID (alternative to url)
+      pattern: "^[a-zA-Z0-9-]+$"
+    table:
+      type: string
+      description: Target table name for data loading
+      minLength: 1
+    schema:
+      type: string
+      description: Database schema
+      default: public
+    mode:
+      type: string
+      description: Write mode for data writing
+      enum:
+        - insert
+        - upsert
+        - update
+      default: insert
+    on_conflict:
+      type: string
+      description: Column(s) for conflict resolution in upsert mode
+    returning:
+      type: string
+      description: Columns to return after insert/upsert
+      default: minimal
+    batch_size:
+      type: integer
+      description: Number of rows per API request
+      default: 100
+      minimum: 1
+      maximum: 1000
+    timeout:
+      type: integer
+      description: Request timeout in seconds
+      default: 30
+      minimum: 5
+      maximum: 300
+    retries:
+      type: integer
+      description: Number of retry attempts
+      default: 3
+      minimum: 0
+      maximum: 10
+    prefer:
+      type: string
+      description: PostgREST Prefer header value
+      enum:
+        - return=minimal
+        - return=representation
+        - resolution=merge-duplicates
+        - resolution=ignore-duplicates
+      default: return=minimal
+  required:
+    - key
+    - table
+  additionalProperties: false
+
+secrets:
+  - /key
+
+redaction:
+  strategy: mask
+  mask: "****"
+  extras:
+    - /url
+    - /project_id
+
+constraints:
+  required:
+    - when:
+        url: null
+      must:
+        project_id:
+          minLength: 1
+      error: Either 'url' or 'project_id' must be specified
+    - when:
+        mode: upsert
+      must:
+        on_conflict:
+          minLength: 1
+      error: on_conflict must be specified when mode is 'upsert'
+
+examples:
+  - title: Basic insert to Supabase
+    config:
+      url: https://myproject.supabase.co
+      key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      table: users
+      mode: insert
+      batch_size: 100
+    notes: Insert new records to users table
+
+  - title: Upsert with conflict resolution
+    config:
+      project_id: myproject
+      key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      table: daily_stats
+      schema: public
+      mode: upsert
+      on_conflict: date,user_id
+      returning: "*"
+      batch_size: 500
+      prefer: resolution=merge-duplicates
+    notes: Upsert with composite key and return all columns
+
+compatibility:
+  requires:
+    - python>=3.10
+    - supabase>=2.0
+  platforms:
+    - linux
+    - darwin
+    - windows
+    - docker
+
+llmHints:
+  inputAliases:
+    url:
+      - supabase_url
+      - project_url
+      - endpoint
+    key:
+      - api_key
+      - anon_key
+      - supabase_key
+    table:
+      - table_name
+      - target_table
+      - to_table
+      - destination_table
+  promptGuidance: |
+    Use supabase.writer to write data to Supabase tables and discover target schemas.
+    Supports insert, upsert, and update modes via REST API in write mode.
+    For upsert, specify on_conflict columns. Use discover mode to inspect available tables.
+  yamlSnippets:
+    - "type: supabase.writer"
+    - "url: https://{{ project }}.supabase.co"
+    - "key: {{ api_key }}"
+    - "table: {{ table_name }}"
+    - "mode: insert"
+  commonPatterns:
+    - pattern: bulk_insert
+      description: Insert new records in batches
+    - pattern: daily_upsert
+      description: Upsert with date-based conflict resolution
+    - pattern: update_existing
+      description: Update mode for modifying existing records
+
+loggingPolicy:
+  sensitivePaths:
+    - /key
+    - /url
+    - /project_id
+  eventDefaults:
+    - write.start
+    - write.progress
+    - write.complete
+    - api.request
+    - api.response
+  metricsToCapture:
+    - rows_written
+    - bytes_processed
+    - duration_ms
+    - errors
+
+limits:
+  maxRows: 1000000
+  maxSizeMB: 1024
+  maxDurationSeconds: 600
+  maxConcurrency: 3
+  rateLimit:
+    requests: 100
+    period: second

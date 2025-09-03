@@ -1,0 +1,407 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://osiris.ai/schemas/component-spec/v1.0.0",
+  "title": "Osiris Component Specification",
+  "description": "Schema for self-describing Osiris components with configuration, capabilities, and security metadata",
+  "type": "object",
+  "required": ["name", "version", "modes", "capabilities", "configSchema"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9_.-]+$",
+      "description": "Component identifier (e.g., mysql.table, supabase.table)",
+      "examples": ["mysql.table", "supabase.table", "postgres.view"]
+    },
+    "version": {
+      "$ref": "#/$defs/semver"
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable component title",
+      "examples": ["MySQL Table Connector", "Supabase Table Adapter"]
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed component description for documentation"
+    },
+    "modes": {
+      "type": "array",
+      "description": "Supported operational modes",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/modeEnum"
+      }
+    },
+    "capabilities": {
+      "$ref": "#/$defs/capabilities"
+    },
+    "configSchema": {
+      "type": "object",
+      "description": "JSON Schema defining the component's configuration structure",
+      "properties": {
+        "$schema": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "const": "object"
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "properties": {
+          "type": "object"
+        },
+        "additionalProperties": {
+          "type": "boolean"
+        }
+      },
+      "required": ["type", "properties"]
+    },
+    "secrets": {
+      "type": "array",
+      "description": "JSON Pointer paths to secret fields in configuration",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/secretPointer"
+      },
+      "examples": [["/connection/password"], ["/auth/apiKey", "/auth/apiSecret"]]
+    },
+    "redaction": {
+      "$ref": "#/$defs/redactionPolicy"
+    },
+    "constraints": {
+      "type": "object",
+      "description": "Cross-field validation rules and environment requirements",
+      "properties": {
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "when": {
+                "type": "object",
+                "description": "Condition object (field: value pairs)"
+              },
+              "must": {
+                "type": "object",
+                "description": "Required fields/values when condition met"
+              },
+              "error": {
+                "type": "string",
+                "description": "Error message when constraint violated"
+              }
+            },
+            "required": ["when", "must", "error"]
+          }
+        },
+        "environment": {
+          "type": "object",
+          "properties": {
+            "python": {
+              "type": "string",
+              "pattern": "^[><=]+[0-9.]+$"
+            },
+            "memory": {
+              "type": "string",
+              "pattern": "^[0-9]+[KMGT]B$"
+            },
+            "disk": {
+              "type": "string",
+              "pattern": "^[0-9]+[KMGT]B$"
+            }
+          }
+        }
+      }
+    },
+    "examples": {
+      "type": "array",
+      "description": "Usage examples with configuration and OML snippets",
+      "items": {
+        "$ref": "#/$defs/example"
+      }
+    },
+    "compatibility": {
+      "$ref": "#/$defs/compatibility"
+    },
+    "llmHints": {
+      "$ref": "#/$defs/llmHints"
+    },
+    "loggingPolicy": {
+      "$ref": "#/$defs/loggingPolicy"
+    },
+    "limits": {
+      "$ref": "#/$defs/limits"
+    }
+  },
+  "$defs": {
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+      "description": "Semantic version string",
+      "examples": ["1.0.0", "2.1.3-beta", "0.1.0-alpha.1"]
+    },
+    "modeEnum": {
+      "type": "string",
+      "enum": ["extract", "write", "load", "transform", "discover", "analyze", "stream"],
+      "description": "Component operational mode. Note: 'load' is deprecated - use 'write' for data writing operations. Writers should support both 'write' and 'discover' modes.",
+      "$comment": "load mode retained for backward compatibility but should not be used in new specs or examples. The 'load' mode is deprecated."
+    },
+    "capabilities": {
+      "type": "object",
+      "description": "Component capability flags and details",
+      "properties": {
+        "discover": {
+          "type": "boolean",
+          "description": "Supports schema/metadata discovery"
+        },
+        "adHocAnalytics": {
+          "type": "boolean",
+          "description": "Supports ad-hoc analytical queries"
+        },
+        "inMemoryMove": {
+          "type": "boolean",
+          "description": "Supports in-memory data movement"
+        },
+        "streaming": {
+          "type": "boolean",
+          "description": "Supports streaming/incremental processing"
+        },
+        "bulkOperations": {
+          "type": "boolean",
+          "description": "Supports bulk insert/update operations"
+        },
+        "transactions": {
+          "type": "boolean",
+          "description": "Supports transactional operations"
+        },
+        "partitioning": {
+          "type": "boolean",
+          "description": "Supports partitioned processing"
+        },
+        "customTransforms": {
+          "type": "boolean",
+          "description": "Supports custom transformation logic"
+        }
+      },
+      "additionalProperties": false
+    },
+    "secretPointer": {
+      "type": "string",
+      "pattern": "^/[^/]+(/.+)*$",
+      "description": "JSON Pointer to a secret field",
+      "examples": ["/connection/password", "/auth/apiKey", "/credentials/privateKey"]
+    },
+    "redactionPolicy": {
+      "type": "object",
+      "description": "Policy for redacting sensitive data in logs and artifacts",
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": ["mask", "drop", "hash"],
+          "default": "mask",
+          "description": "Redaction strategy"
+        },
+        "mask": {
+          "type": "string",
+          "default": "***",
+          "description": "Mask string when strategy is 'mask'"
+        },
+        "extras": {
+          "type": "array",
+          "description": "Additional JSON Pointers to redact beyond secrets",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/secretPointer"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "example": {
+      "type": "object",
+      "required": ["title", "config"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Example title/description"
+        },
+        "config": {
+          "type": "object",
+          "description": "Configuration matching configSchema"
+        },
+        "omlSnippet": {
+          "type": "string",
+          "description": "OML/YAML representation of this example"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional notes or warnings"
+        }
+      },
+      "additionalProperties": false
+    },
+    "compatibility": {
+      "type": "object",
+      "description": "Compatibility requirements and conflicts",
+      "properties": {
+        "requires": {
+          "type": "array",
+          "description": "Required dependencies",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9-_]+([><=]+[0-9.]+)?$"
+          },
+          "examples": [["python>=3.10", "mysql>=8.0"]]
+        },
+        "conflicts": {
+          "type": "array",
+          "description": "Conflicting dependencies",
+          "items": {
+            "type": "string"
+          }
+        },
+        "platforms": {
+          "type": "array",
+          "description": "Supported platforms",
+          "items": {
+            "type": "string",
+            "enum": ["linux", "darwin", "windows", "docker"]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "llmHints": {
+      "type": "object",
+      "description": "Hints to improve LLM-driven pipeline generation",
+      "properties": {
+        "inputAliases": {
+          "type": "object",
+          "description": "Field name synonyms (field -> [aliases])",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "examples": [{"table": ["table_name", "source_table"], "schema": ["database", "namespace"]}]
+        },
+        "promptGuidance": {
+          "type": "string",
+          "description": "2-4 line guidance for LLM on component usage",
+          "maxLength": 500
+        },
+        "yamlSnippets": {
+          "type": "array",
+          "description": "Small YAML fragments for generation assistance",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 5
+        },
+        "commonPatterns": {
+          "type": "array",
+          "description": "Common usage patterns",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pattern": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": ["pattern", "description"]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "loggingPolicy": {
+      "type": "object",
+      "description": "Logging configuration and sensitive data handling",
+      "properties": {
+        "sensitivePaths": {
+          "type": "array",
+          "description": "JSON Pointers to sensitive fields for extra redaction",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/secretPointer"
+          }
+        },
+        "eventDefaults": {
+          "type": "array",
+          "description": "Default events to log for this component",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9_.-]+$"
+          },
+          "examples": [["discovery.start", "discovery.complete", "transfer.progress"]]
+        },
+        "metricsToCapture": {
+          "type": "array",
+          "description": "Metrics this component should capture",
+          "items": {
+            "type": "string",
+            "enum": ["rows_read", "rows_written", "bytes_processed", "duration_ms", "memory_mb", "errors"]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "limits": {
+      "type": "object",
+      "description": "Resource and operational limits",
+      "properties": {
+        "maxRows": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum rows per operation"
+        },
+        "maxSizeMB": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum data size in MB"
+        },
+        "maxDurationSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum operation duration in seconds"
+        },
+        "maxConcurrency": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum concurrent operations"
+        },
+        "rateLimit": {
+          "type": "object",
+          "properties": {
+            "requests": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "period": {
+              "type": "string",
+              "enum": ["second", "minute", "hour"]
+            }
+          },
+          "required": ["requests", "period"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "connectionRef": {
+      "type": "string",
+      "pattern": "^@[a-z0-9_-]+$",
+      "description": "Reference to a connection configuration",
+      "examples": ["@mysql", "@supabase", "@postgres_prod"]
+    }
+  }
+}

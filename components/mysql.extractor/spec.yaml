@@ -1,0 +1,207 @@
+# MySQL Extractor Component Specification
+name: mysql.extractor
+version: 1.0.0
+title: MySQL Data Extractor
+description: Extract data from MySQL databases with support for discovery, sampling, and bulk extraction
+
+modes:
+  - extract
+  - discover
+
+capabilities:
+  discover: true
+  adHocAnalytics: true  # execute_query method implemented
+  inMemoryMove: false   # returns DataFrame but no direct move API
+  streaming: false      # no streaming support found
+  bulkOperations: true  # batch_size supported
+  transactions: false   # extractor doesn't use transactions
+  partitioning: false   # no partitioning support
+  customTransforms: false  # no custom transforms
+
+configSchema:
+  type: object
+  properties:
+    host:
+      type: string
+      description: MySQL server hostname or IP address
+      default: localhost
+    port:
+      type: integer
+      description: MySQL server port
+      default: 3306
+      minimum: 1
+      maximum: 65535
+    database:
+      type: string
+      description: Database name to connect to
+      minLength: 1
+    user:
+      type: string
+      description: MySQL username for authentication
+      minLength: 1
+    password:
+      type: string
+      description: MySQL password for authentication
+    table:
+      type: string
+      description: Table name to extract data from
+      minLength: 1
+    schema:
+      type: string
+      description: Database schema (if different from database)
+      default: null
+    query:
+      type: string
+      description: Custom SQL query for extraction (overrides table)
+    columns:
+      type: array
+      description: Specific columns to extract (default all)
+      items:
+        type: string
+    limit:
+      type: integer
+      description: Maximum number of rows to extract
+      minimum: 1
+    offset:
+      type: integer
+      description: Number of rows to skip
+      minimum: 0
+      default: 0
+    batch_size:
+      type: integer
+      description: Number of rows per batch for extraction
+      default: 10000
+      minimum: 100
+      maximum: 100000
+    pool_size:
+      type: integer
+      description: Connection pool size
+      default: 5
+      minimum: 1
+      maximum: 20
+    pool_recycle:
+      type: integer
+      description: Pool recycle time in seconds
+      default: 3600
+      minimum: 60
+    echo:
+      type: boolean
+      description: Enable SQL query logging
+      default: false
+  required:
+    - host
+    - database
+    - user
+    - password
+  additionalProperties: false
+
+secrets:
+  - /password
+
+redaction:
+  strategy: mask
+  mask: "****"
+  extras:
+    - /host
+    - /user
+
+constraints:
+  required:
+    - when:
+        query: null
+      must:
+        table:
+          minLength: 1
+      error: Either 'table' or 'query' must be specified for extraction
+
+examples:
+  - title: Basic MySQL extraction
+    config:
+      host: localhost
+      port: 3306
+      database: mydb
+      user: reader
+      password: secret123  # pragma: allowlist secret
+      table: customers
+    notes: Extract all data from customers table
+
+  - title: Advanced extraction with custom query
+    config:
+      host: db.prod.example.com
+      port: 3306
+      database: analytics
+      user: analyst
+      password: secure_pass  # pragma: allowlist secret
+      query: |
+        SELECT id, name, revenue
+        FROM customers
+        WHERE created_at >= '2024-01-01'
+        ORDER BY revenue DESC
+      batch_size: 50000
+      pool_size: 10
+    notes: Extract filtered data using custom SQL with optimized settings
+
+compatibility:
+  requires:
+    - python>=3.10
+    - sqlalchemy>=2.0
+    - pymysql>=1.0
+  platforms:
+    - linux
+    - darwin
+    - windows
+    - docker
+
+llmHints:
+  inputAliases:
+    host:
+      - hostname
+      - server
+      - mysql_host
+    database:
+      - db
+      - db_name
+      - mysql_database
+    user:
+      - username
+      - mysql_user
+      - login
+    table:
+      - table_name
+      - source_table
+      - from_table
+  promptGuidance: |
+    Use mysql.extractor to read data from MySQL databases.
+    Requires host, database, user, and password.
+    Use 'table' for simple extraction or 'query' for complex SQL.
+  yamlSnippets:
+    - "type: mysql.extractor"
+    - "host: localhost"
+    - "database: {{ database_name }}"
+    - "table: {{ table_name }}"
+  commonPatterns:
+    - pattern: full_table_extract
+      description: Extract entire table without filters
+    - pattern: custom_sql_extract
+      description: Use query field for complex SQL with joins and filters
+
+loggingPolicy:
+  sensitivePaths:
+    - /password
+    - /host
+    - /user
+  eventDefaults:
+    - extraction.start
+    - extraction.progress
+    - extraction.complete
+    - discovery.tables
+  metricsToCapture:
+    - rows_read
+    - bytes_processed
+    - duration_ms
+
+limits:
+  maxRows: 10000000
+  maxSizeMB: 10240
+  maxDurationSeconds: 3600
+  maxConcurrency: 5
