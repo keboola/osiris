@@ -26,15 +26,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Context Builder for LLM** (M1b.1): Minimal component context export for token-efficient LLM consumption
   - JSON schema for context format (`osiris/prompts/context.schema.json`)
   - Context builder implementation with SHA-256 fingerprinting and disk caching (`osiris/prompts/build_context.py`)
-  - CLI command: `osiris prompts build-context [--out FILE] [--force]`
-  - Automatic cache invalidation on component spec changes (mtime + fingerprint)
-  - Session event logging: `context_build_start`, `context_build_complete`
+  - CLI command: `osiris prompts build-context [--out FILE] [--force] [--session-id ID] [--logs-dir DIR] [--json]`
+  - Session-aware logging with structured events (`context_build_start`, `context_build_complete`)
+  - Session management CLI flags match other commands (precedence: CLI > ENV > YAML > defaults)
+  - Automatic cache invalidation on component spec changes (mtime + fingerprint + filter version)
+  - **NO-SECRETS guarantee**: Secret fields excluded, suspicious values redacted (passwords, tokens, keys, etc.)
   - Compact JSON serialization optimized for tokens (~330 tokens for 4 components)
+  - Comprehensive test coverage including secret filtering tests
 
 ### Changed
 - **BREAKING**: Supabase components now require `key` field (was optional)
 - Standardized on 'write' mode for data writing operations ('load' deprecated)
 - Component capabilities updated to reflect actual implementation
+
+### Fixed
+- Context builder now guarantees no secrets in exported JSON (M1b.1)
+- Session-aware logging properly tracks ephemeral sessions for prompts commands
 - Writers now support 'discover' mode for target schema inspection
 - CLI enhanced to show secrets and required config in property order
 - Component validation now creates session logs with proper status tracking (completed/failed)

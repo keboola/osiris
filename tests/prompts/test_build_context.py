@@ -394,3 +394,62 @@ class TestCLICommand:
             captured = capsys.readouterr()
             assert "✓ Context built successfully" in captured.out
             assert "Components: 1" in captured.out
+
+    @patch("osiris.prompts.build_context.get_registry")
+    def test_session_events(self, mock_get_registry, temp_cache_dir, temp_components_dir):
+        """Test that session events are properly emitted."""
+        from osiris.core.session_logging import SessionContext, set_current_session
+        from osiris.prompts.build_context import ContextBuilder
+
+        # Setup mock registry
+        mock_registry = MagicMock()
+        mock_registry.root = temp_components_dir
+        mock_registry.load_specs.return_value = {
+            "test.component": {
+                "name": "test.component",
+                "version": "1.0.0",
+                "modes": ["extract"],
+                "configSchema": {
+                    "required": ["host"],
+                    "properties": {"host": {"type": "string"}},
+                },
+            }
+        }
+        mock_get_registry.return_value = mock_registry
+
+        # Create a session
+        session = SessionContext(
+            session_id="test_session", base_logs_dir=temp_cache_dir / "logs", allowed_events=["*"]
+        )
+        set_current_session(session)
+
+        # Build context
+        builder = ContextBuilder(cache_dir=temp_cache_dir)
+        builder.build_context(force_rebuild=True)
+
+        # Check events were logged
+        events_file = temp_cache_dir / "logs" / "test_session" / "events.jsonl"
+        assert events_file.exists()
+
+        events = []
+        with open(events_file) as f:
+            for line in f:
+                events.append(json.loads(line))
+
+        # Find context events
+        context_events = [e for e in events if "context_build" in e.get("event", "")]
+        assert len(context_events) == 2  # start and complete
+
+        # Check start event
+        start_event = [e for e in context_events if e["event"] == "context_build_start"][0]
+        assert start_event["command"] == "prompts.build-context"
+        assert "cache_hit" in start_event
+        assert start_event["schema_version"] == "1.0.0"
+
+        # Check complete event
+        complete_event = [e for e in context_events if e["event"] == "context_build_complete"][0]
+        assert complete_event["status"] == "ok"
+        assert "size_bytes" in complete_event
+        assert "token_estimate" in complete_event
+        assert "components_count" in complete_event
+        assert complete_event["components_count"] == 1

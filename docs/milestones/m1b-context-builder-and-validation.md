@@ -23,11 +23,15 @@ M1b focuses on bridging the Component Registry (M1a) with the LLM-powered conver
 - [x] Implement context builder in `osiris/prompts/build_context.py`
 - [x] Add disk caching with spec-based invalidation
 - [x] CLI command: `osiris prompts build-context --out .osiris_prompts/context.json`
+- [x] Session-aware logging with structured events
+- [x] Strict NO-SECRETS guarantee with comprehensive filtering
 
 **Acceptance Criteria**:
 - ✅ Context size ≤ 2000 tokens for all 4 components combined (achieved: ~330 tokens)
 - ✅ Context rebuilds automatically when component specs change
 - ✅ Generated context is valid JSON and follows defined schema
+- ✅ Session events emitted: `context_build_start`, `context_build_complete`
+- ✅ NO SECRETS in exported context (secret fields excluded, suspicious values redacted)
 
 #### M1b.2: LLM Integration Hooks
 - [ ] Update `osiris/core/prompt_manager.py` to load context

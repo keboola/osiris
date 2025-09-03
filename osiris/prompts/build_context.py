@@ -7,6 +7,7 @@ and creates a compact JSON context optimized for token efficiency.
 import hashlib
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -14,12 +15,15 @@ from typing import Any, Dict, List, Optional
 from jsonschema import Draft202012Validator, ValidationError
 
 from ..components.registry import get_registry
-from ..core.session_logging import get_current_session
+from ..core.session_logging import SessionContext, get_current_session
 
 logger = logging.getLogger(__name__)
 
 # Context schema version - increment when schema changes
 CONTEXT_SCHEMA_VERSION = "1.0.0"
+
+# Secret filtering version - increment when filtering logic changes
+SECRET_FILTER_VERSION = "1.0.0"
 
 
 class ContextBuilder:
@@ -54,6 +58,7 @@ class ContextBuilder:
         # Create deterministic string representation
         fingerprint_data = {
             "schema_version": CONTEXT_SCHEMA_VERSION,
+            "secret_filter_version": SECRET_FILTER_VERSION,  # Include filter version
             "components": {
                 name: {
                     "version": spec.get("version"),
@@ -69,6 +74,80 @@ class ContextBuilder:
         json_str = json.dumps(fingerprint_data, sort_keys=True)
         return hashlib.sha256(json_str.encode()).hexdigest()
 
+    def _is_secret_field(self, field_path: str, spec: Dict[str, Any]) -> bool:
+        """Check if a field path is a secret field.
+
+        Args:
+            field_path: Field name or path (e.g., 'password', '/password')
+            spec: Component specification
+
+        Returns:
+            True if field is a secret
+        """
+        secrets = spec.get("secrets", [])
+        # Normalize field path
+        if not field_path.startswith("/"):
+            field_path = f"/{field_path}"
+        return field_path in secrets
+
+    def _redact_suspicious_value(self, value: Any) -> Any:
+        """Redact values that look like credentials.
+
+        Args:
+            value: Value to check and potentially redact
+
+        Returns:
+            Redacted value if suspicious, original otherwise
+        """
+        if not isinstance(value, str):
+            return value
+
+        value_lower = value.lower()
+
+        # Check for suspicious substrings first (case-insensitive)
+        suspicious_keywords = [
+            "password",
+            "passwd",
+            "secret",
+            "token",
+            "api_key",
+            "apikey",
+            "api-key",
+            "access_key",
+            "access-key",
+            "private_key",
+            "private-key",
+        ]
+
+        for keyword in suspicious_keywords:
+            if keyword in value_lower:
+                return "***redacted***"
+
+        # Check for auth patterns
+        if value_lower.startswith("bearer "):
+            return "***redacted***"
+        if value_lower.startswith("basic ") and len(value) > 10:
+            return "***redacted***"
+
+        # Check for JWT-like tokens (three base64 parts separated by dots)
+        if re.match(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$", value):
+            return "***redacted***"
+
+        # Check for hex strings that could be keys (but not SHA hashes in fingerprints)
+        # Only redact hex strings that are exactly 32 or 64 chars (common key lengths)
+        # but not those that are clearly SHA-256 (64 chars) in a fingerprint context
+        if re.match(r"^[A-Fa-f0-9]+$", value) and (
+            len(value) in [32, 40, 48] or len(value) >= 80
+        ):  # Not 64 (SHA-256)
+            return "***redacted***"
+
+        # Check for base64-encoded strings (but be conservative)
+        if re.match(r"^[A-Za-z0-9+/]{20,}={0,2}$", value) and len(value) >= 40:
+            # Long base64 strings that could be keys/tokens
+            return "***redacted***"
+
+        return value
+
     def _extract_minimal_config(self, spec: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extract minimal required configuration from component spec.
 
@@ -76,7 +155,7 @@ class ContextBuilder:
             spec: Component specification
 
         Returns:
-            List of required config fields with types and constraints
+            List of required config fields with types and constraints (excluding secrets)
         """
         config_schema = spec.get("configSchema", {})
         properties = config_schema.get("properties", {})
@@ -84,17 +163,23 @@ class ContextBuilder:
 
         minimal_config = []
         for field_name in required:
+            # Skip secret fields entirely
+            if self._is_secret_field(field_name, spec):
+                continue
+
             if field_name in properties:
                 field_spec = properties[field_name]
                 field_info = {"field": field_name, "type": field_spec.get("type", "string")}
 
-                # Include enum if present (important for LLM)
+                # Include enum if present (important for LLM) but redact suspicious values
                 if "enum" in field_spec:
-                    field_info["enum"] = field_spec["enum"]
+                    field_info["enum"] = [
+                        self._redact_suspicious_value(v) for v in field_spec["enum"]
+                    ]
 
-                # Include default if present
+                # Include default if present but redact if suspicious
                 if "default" in field_spec:
-                    field_info["default"] = field_spec["default"]
+                    field_info["default"] = self._redact_suspicious_value(field_spec["default"])
 
                 minimal_config.append(field_info)
 
@@ -107,7 +192,7 @@ class ContextBuilder:
             spec: Component specification
 
         Returns:
-            Minimal example configuration or None
+            Minimal example configuration or None (excluding secrets)
         """
         examples = spec.get("examples", [])
         if not examples:
@@ -117,9 +202,19 @@ class ContextBuilder:
         example = examples[0]
         config = example.get("config", {})
 
-        # Filter to only required fields
+        # Filter to only required fields, exclude secrets, and redact suspicious values
         required = set(spec.get("configSchema", {}).get("required", []))
-        minimal_config = {k: v for k, v in config.items() if k in required}
+        minimal_config = {}
+
+        for k, v in config.items():
+            # Skip if not required
+            if k not in required:
+                continue
+            # Skip if it's a secret field
+            if self._is_secret_field(k, spec):
+                continue
+            # Add with redacted value if suspicious
+            minimal_config[k] = self._redact_suspicious_value(v)
 
         return minimal_config if minimal_config else None
 
@@ -176,8 +271,22 @@ class ContextBuilder:
             Component context dictionary
         """
         session = get_current_session()
+        cache_hit = False
+
         if session:
-            session.log_event("context_build_start", schema_version=CONTEXT_SCHEMA_VERSION)
+            # Check if cache would be hit before building
+            components = self.registry.load_specs()
+            fingerprint = self._compute_fingerprint(components)
+            cache_hit = not force_rebuild and self._is_cache_valid(fingerprint)
+
+            session.log_event(
+                "context_build_start",
+                command="prompts.build-context",
+                out=str(self.cache_file),
+                force=force_rebuild,
+                cache_hit=cache_hit,
+                schema_version=CONTEXT_SCHEMA_VERSION,
+            )
 
         # Load all component specs
         components = self.registry.load_specs()
@@ -198,10 +307,12 @@ class ContextBuilder:
 
                 session.log_event(
                     "context_build_complete",
-                    cached=True,
                     size_bytes=len(json_str),
-                    token_count=token_count,
-                    component_count=len(context["components"]),
+                    token_estimate=token_count,
+                    components_count=len(context["components"]),
+                    cache_written=False,  # Read from cache, not written
+                    duration_ms=0,  # Immediate cache hit
+                    status="ok",
                 )
             return context
 
@@ -250,12 +361,17 @@ class ContextBuilder:
             json_str = json.dumps(context, separators=(",", ":"))
             token_count = len(json_str) // 4  # Rough approximation
 
+            import time
+
+            duration_ms = int((time.time() - session.start_time.timestamp()) * 1000)
             session.log_event(
                 "context_build_complete",
-                cached=False,
                 size_bytes=len(json_str),
-                token_count=token_count,
-                component_count=len(context_components),
+                token_estimate=token_count,
+                components_count=len(context_components),
+                cache_written=True,
+                duration_ms=duration_ms,
+                status="ok",
             )
 
         return context
@@ -286,35 +402,84 @@ class ContextBuilder:
         logger.info(f"Context cached to {self.cache_file}")
 
 
-def main(output_path: Optional[str] = None, force: bool = False):
+def main(
+    output_path: Optional[str] = None,
+    force: bool = False,
+    json_output: bool = False,
+    session: Optional[SessionContext] = None,
+) -> Optional[Dict[str, Any]]:
     """Build component context from CLI.
 
     Args:
         output_path: Output file path. Defaults to .osiris_prompts/context.json
         force: Force rebuild even if cache is valid
+        json_output: Return JSON data instead of printing
+        session: Optional session context for logging
+
+    Returns:
+        JSON data if json_output is True, None otherwise
     """
-    # Setup basic logging
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    # Setup basic logging only if no session
+    if not session:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    builder = ContextBuilder()
-    context = builder.build_context(force_rebuild=force)
+    import time
 
-    # Write to output file
-    output = Path(output_path) if output_path else builder.cache_file
-    output.parent.mkdir(parents=True, exist_ok=True)
+    start_time = time.time()
 
-    with open(output, "w") as f:
-        json.dump(context, f, separators=(",", ":"))
+    try:
+        builder = ContextBuilder()
+        context = builder.build_context(force_rebuild=force)
 
-    # Display summary
-    json_str = json.dumps(context, separators=(",", ":"))
-    token_count = len(json_str) // 4
+        # Write to output file
+        output = Path(output_path) if output_path else builder.cache_file
+        output.parent.mkdir(parents=True, exist_ok=True)
 
-    print("✓ Context built successfully")
-    print(f"  Components: {len(context['components'])}")
-    print(f"  Size: {len(json_str)} bytes")
-    print(f"  Estimated tokens: ~{token_count}")
-    print(f"  Output: {output}")
+        with open(output, "w") as f:
+            json.dump(context, f, separators=(",", ":"))
+            pass  # Cache written successfully
+
+        # Calculate metrics
+        json_str = json.dumps(context, separators=(",", ":"))
+        token_count = len(json_str) // 4
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        # Note: context_build_complete event is already logged by build_context()
+
+        if json_output:
+            # Return JSON data
+            return {
+                "success": True,
+                "components": len(context["components"]),
+                "size_bytes": len(json_str),
+                "token_estimate": token_count,
+                "output": str(output),
+            }
+        else:
+            # Display summary
+            print("✓ Context built successfully")
+            print(f"  Components: {len(context['components'])}")
+            print(f"  Size: {len(json_str)} bytes")
+            print(f"  Estimated tokens: ~{token_count}")
+            print(f"  Output: {output}")
+            return None
+
+    except Exception as e:
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        # Log failure event if session exists
+        if session:
+            session.log_event(
+                "context_build_complete",
+                size_bytes=0,
+                token_estimate=0,
+                components_count=0,
+                cache_written=False,
+                duration_ms=duration_ms,
+                status="failed",
+                error=str(e),
+            )
+        raise
 
 
 if __name__ == "__main__":

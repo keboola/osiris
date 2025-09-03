@@ -1469,6 +1469,11 @@ def prompts_command(args: list):
                         "options": {
                             "--out PATH": "Output file path (default: .osiris_prompts/context.json)",
                             "--force": "Force rebuild even if cache is valid",
+                            "--session-id ID": "Use specific session ID (default: auto-generated)",
+                            "--logs-dir DIR": "Directory for session logs (default: logs)",
+                            "--log-level LEVEL": "Log level: DEBUG, INFO, WARNING, ERROR (default: INFO)",
+                            "--events PATTERN": "Event patterns to log, comma-separated (default: *)",
+                            "--json": "Output in JSON format",
                             "--help": "Show this help message",
                         },
                         "outputs": "Compact JSON with component names, required configs, enums, examples",
@@ -1479,6 +1484,7 @@ def prompts_command(args: list):
                     "osiris prompts build-context",
                     "osiris prompts build-context --out context.json",
                     "osiris prompts build-context --force",
+                    "osiris prompts build-context --json",
                 ],
             }
             print(json.dumps(help_data, indent=2))
@@ -1498,11 +1504,18 @@ def prompts_command(args: list):
             "  [cyan]--out PATH[/cyan]       Output file path (default: .osiris_prompts/context.json)"
         )
         console.print("  [cyan]--force[/cyan]          Force rebuild even if cache is valid")
+        console.print(
+            "  [cyan]--session-id ID[/cyan]  Use specific session ID (default: auto-generated)"
+        )
+        console.print("  [cyan]--logs-dir DIR[/cyan]   Directory for session logs (default: logs)")
+        console.print("  [cyan]--log-level LEVEL[/cyan] Log level (default: INFO)")
+        console.print("  [cyan]--events PATTERN[/cyan] Event patterns to log (default: *)")
+        console.print("  [cyan]--json[/cyan]           Output in JSON format")
         console.print()
         console.print("[bold blue]Examples[/bold blue]")
         console.print("  [green]osiris prompts build-context[/green]")
         console.print("  [green]osiris prompts build-context --out context.json[/green]")
-        console.print("  [green]osiris prompts build-context --force[/green]")
+        console.print("  [green]osiris prompts build-context --force --json[/green]")
         console.print()
 
     if not args or args[0] in ["--help", "-h"]:
@@ -1514,9 +1527,20 @@ def prompts_command(args: list):
 
     if subcommand == "build-context":
         # Parse arguments for build-context
+        import os
+        import time
+        from pathlib import Path
+
+        from ..core.session_logging import SessionContext, set_current_session
+
         parser = argparse.ArgumentParser(description="Build component context", add_help=False)
         parser.add_argument("--out", help="Output file path")
         parser.add_argument("--force", action="store_true", help="Force rebuild")
+        parser.add_argument("--session-id", default=None, help="Session ID")
+        parser.add_argument("--logs-dir", default=None, help="Logs directory")
+        parser.add_argument("--log-level", default=None, help="Log level")
+        parser.add_argument("--events", default=None, help="Event patterns")
+        parser.add_argument("--json", action="store_true", help="JSON output")
         parser.add_argument("--help", "-h", action="store_true", help="Show help")
 
         # Parse known args only
@@ -1526,14 +1550,90 @@ def prompts_command(args: list):
             show_prompts_help()
             return
 
+        # Load config to get defaults (with precedence: CLI > ENV > YAML > defaults)
+        from ..core.config import load_config
+
+        # Try to load config file
+        config_data = {}
+        with contextlib.suppress(Exception):
+            config_data = load_config("osiris.yaml")
+
+        # Determine logs_dir with precedence
+        logs_dir = "logs"  # default
+        if "logging" in config_data and "logs_dir" in config_data["logging"]:
+            logs_dir = config_data["logging"]["logs_dir"]  # YAML
+        if "OSIRIS_LOGS_DIR" in os.environ:
+            logs_dir = os.environ["OSIRIS_LOGS_DIR"]  # ENV
+        if parsed_args.logs_dir:
+            logs_dir = parsed_args.logs_dir  # CLI
+
+        # Determine log_level with precedence
+        log_level = "INFO"  # default
+        if "logging" in config_data and "level" in config_data["logging"]:
+            log_level = config_data["logging"]["level"]  # YAML
+        if "OSIRIS_LOG_LEVEL" in os.environ:
+            log_level = os.environ["OSIRIS_LOG_LEVEL"]  # ENV
+        if parsed_args.log_level:
+            log_level = parsed_args.log_level  # CLI
+
+        # Determine events with precedence
+        events = ["*"]  # default
+        if "logging" in config_data and "events" in config_data["logging"]:
+            events = config_data["logging"]["events"]  # YAML
+        if "OSIRIS_LOG_EVENTS" in os.environ:
+            events = [e.strip() for e in os.environ["OSIRIS_LOG_EVENTS"].split(",")]  # ENV
+        if parsed_args.events:
+            events = [e.strip() for e in parsed_args.events.split(",")]  # CLI
+
+        # Create session context
+        if parsed_args.session_id is None:
+            session_id = f"prompts_build_context_{int(time.time() * 1000)}"
+        else:
+            session_id = parsed_args.session_id
+
+        # Create session with logging configuration
+        session = SessionContext(
+            session_id=session_id, base_logs_dir=Path(logs_dir), allowed_events=events
+        )
+        set_current_session(session)
+
+        # Setup logging
+        import logging
+
+        log_level_int = getattr(logging, log_level.upper(), logging.INFO)
+        enable_debug = log_level_int <= logging.DEBUG
+        session.setup_logging(level=log_level_int, enable_debug=enable_debug)
+
+        # Print session ID unless JSON output
+        if not parsed_args.json:
+            console.print(f"[dim]Session: {session_id}[/dim]")
+
         # Import and run the context builder
         try:
             from ..prompts.build_context import main as build_context_main
 
-            build_context_main(output_path=parsed_args.out, force=parsed_args.force)
+            result = build_context_main(
+                output_path=parsed_args.out,
+                force=parsed_args.force,
+                json_output=parsed_args.json,
+                session=session,
+            )
+
+            # If JSON output requested, include session_id
+            if parsed_args.json and result:
+                result["session_id"] = session_id
+                print(json.dumps(result, separators=(",", ":")))
+
+            # Close session properly
+            session.close()
+
         except Exception as e:
-            if json_output:
-                print(json.dumps({"error": str(e)}))
+            # Log error and close session
+            session.log_event("run_error", error=str(e))
+            session.close()
+
+            if parsed_args.json:
+                print(json.dumps({"error": str(e), "session_id": session_id}))
             else:
                 console.print(f"[red]Error building context: {e}[/red]")
             sys.exit(1)
