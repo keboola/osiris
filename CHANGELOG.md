@@ -33,8 +33,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **NO-SECRETS guarantee**: Secret fields excluded, suspicious values redacted (passwords, tokens, keys, etc.)
   - Compact JSON serialization optimized for tokens (~330 tokens for 4 components)
   - Comprehensive test coverage including secret filtering tests
+- **LLM Context Integration** (M1b.2): Automatic component context injection into all LLM requests
+  - Extended PromptManager with context loading, caching, and injection
+  - Context injection into chat CLI with flags: `--context-file`, `--no-context`, `--context-strategy`, `--context-components`
+  - Token usage tracking and reporting in chat responses
+  - Component-scoped context filtering for targeted prompts
+  - Session event logging for context operations
+- **Relaxed Log Redaction Policy**: Operational metrics visible while secrets remain masked
+  - Privacy levels: `--privacy standard|strict` flag in chat CLI
+  - Numeric metrics preserved as integers (prompt_tokens, response_tokens, duration_ms, etc.)
+  - Fingerprints shortened to 8-char prefix with `...`
+  - Paths converted to repo-relative format
+  - Cache keys no longer treated as secrets
 
 ### Changed
+- Log redaction system completely rewritten with configurable privacy levels
+- SessionContext now uses advanced redaction with better granularity
+- Event payloads now show concrete numbers for token counts and durations
+- Fingerprints and hashes are partially revealed instead of fully masked
 - **BREAKING**: Supabase components now require `key` field (was optional)
 - Standardized on 'write' mode for data writing operations ('load' deprecated)
 - Component capabilities updated to reflect actual implementation

@@ -186,6 +186,7 @@ def show_epic_help(json_output=False):
     )
     console.print("  [cyan]--context-components[/cyan] Specific components to include")
     console.print("  [cyan]--strict-context[/cyan]   Fail if context loading fails")
+    console.print("  [cyan]--privacy[/cyan]          Privacy level for logs (standard/strict)")
     console.print("  [cyan]--json[/cyan]             Output in JSON format for programmatic use")
     console.print("  [cyan]--help[/cyan], [cyan]-h[/cyan]         Show this help message")
     console.print()
@@ -290,6 +291,12 @@ def parse_args(args=None) -> argparse.Namespace:
         action="store_true",
         help="Fail if context loading fails (default: warn and continue)",
     )
+    parser.add_argument(
+        "--privacy",
+        choices=["standard", "strict"],
+        default="standard",
+        help="Privacy level for logs (standard: show metrics, strict: mask prompts)",
+    )
     parser.add_argument("--json", action="store_true", help="Output in JSON format")
     parser.add_argument("--help", "-h", action="store_true", help="Show this help message")
     parser.add_argument("message", nargs="?", help="Chat message")
@@ -325,7 +332,10 @@ def chat(argv=None):
 
     session_id = getattr(args, "session_id", None) or f"chat_{int(time.time())}"
     session = SessionContext(
-        session_id=session_id, base_logs_dir=Path(logs_dir), allowed_events=allowed_events
+        session_id=session_id,
+        base_logs_dir=Path(logs_dir),
+        allowed_events=allowed_events,
+        privacy_level=getattr(args, "privacy", "standard"),
     )
     set_current_session(session)
 
