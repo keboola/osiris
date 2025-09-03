@@ -108,8 +108,9 @@ This milestone implements the architectural decisions documented in ADRs 0005-00
 ### Phase M1b: Context Builder and Validation
 **Duration**: 2 weeks  
 **Priority**: High (critical for LLM improvement)  
-**Status**: ⏳ Pending  
-**Related ADRs**: [ADR-0007](../adr/0007-component-specification-and-capabilities.md)
+**Status**: 🚧 In Progress (started after M1a completion)  
+**Related ADRs**: [ADR-0007](../adr/0007-component-specification-and-capabilities.md), [ADR-0008](../adr/0008-component-registry.md)
+**Dependencies**: M1a outputs (Component Registry, FriendlyErrorMapper)
 
 #### Objectives
 - Export minimal component context for LLM consumption (per ADR-0007)
@@ -194,13 +195,14 @@ This milestone implements the architectural decisions documented in ADRs 0005-00
 **Duration**: 2 weeks  
 **Priority**: Medium  
 **Status**: ⏳ Pending  
-**Related ADRs**: [ADR-0006](../adr/0006-pipeline-runner-and-execution.md), [ADR-0005](../adr/0005-component-specification-and-registry.md)
+**Related ADRs**: [ADR-0006](../adr/0006-pipeline-runner-and-execution.md), [ADR-0005](../adr/0005-component-specification-and-registry.md), [ADR-0008 Amendment](../adr/0008-component-registry.md#amendment-2025-01-03)
 
 #### Objectives
 - Execute compiled manifests locally (per ADR-0006)
 - Integrate with existing connectors
 - Generate structured logs and metrics with proper secrets masking (per ADR-0005)
 - Prepare for e2b remote execution
+- **Implement deferred `osiris components discover` CLI** from M1a.5
 
 #### Deliverables
 
@@ -229,6 +231,7 @@ This milestone implements the architectural decisions documented in ADRs 0005-00
 - [ ] Add `osiris run <pipeline.yaml>` with engine selection
 - [ ] Support `--engine=local|e2b` flag
 - [ ] Accept `--secrets-file` and `--param k=v` options
+- [ ] **Implement `osiris components discover <type>`** (deferred from M1a.5)
 - [ ] Create integration tests with docker-compose
 - [ ] Mock e2b for E2E testing
 

@@ -89,7 +89,9 @@ M1b focuses on bridging the Component Registry (M1a) with the LLM-powered conver
 - **Existing systems**: Conversational agent, prompt manager, chat CLI
 - **ADRs**: 
   - [ADR-0007: Component Specification and Capabilities](../adr/0007-component-specification-and-capabilities.md)
-  - [ADR-0008: Component Registry](../adr/0008-component-registry.md)
+  - [ADR-0008: Component Registry](../adr/0008-component-registry.md) (see Amendment re: discover CLI deferral to M1d)
+- **Future dependency**: M1d (Pipeline Runner) is required for `osiris components discover` CLI implementation
+- **IMPORTANT**: M1b contains NO RUNNER LOGIC - all execution capabilities are deferred to M1d
 
 ### Implementation Notes
 
@@ -142,3 +144,7 @@ M1b focuses on bridging the Component Registry (M1a) with the LLM-powered conver
 After M1b completion, proceed to:
 - **M1c**: Compiler and Manifest Generation - Transform validated OML to deterministic execution manifests
 - **M1d**: Pipeline Runner MVP - Execute compiled manifests locally
+  - Will implement the deferred `osiris components discover` CLI from M1a.5
+  - Will provide actual component execution capabilities (NO RUNNER LOGIC in M1b)
+
+**Note**: The `osiris components discover <type>` command deferred from M1a.5 will be implemented in M1d alongside the runner infrastructure, as documented in [ADR-0008 Amendment](../adr/0008-component-registry.md#amendment-2025-01-03).
