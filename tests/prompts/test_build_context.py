@@ -169,10 +169,13 @@ class TestContextBuilder:
 
         config = builder._extract_minimal_config(spec)
         assert len(config) == 2  # Only required fields
-        assert config[0]["field"] == "host"
-        assert config[0]["type"] == "string"
-        assert config[1]["field"] == "database"
-        assert config[1]["type"] == "string"
+
+        # Check fields are present (order not guaranteed)
+        fields = {c["field"]: c for c in config}
+        assert "host" in fields
+        assert "database" in fields
+        assert fields["host"]["type"] == "string"
+        assert fields["database"]["type"] == "string"
 
         # Check default value is included
         spec_with_enum = {
