@@ -1241,11 +1241,19 @@ def components_command(args: list) -> None:
     if subcommand == "list":
         # Parse list options
         mode = "all"
-        for i, arg in enumerate(subcommand_args):
+        as_json = False
+        i = 0
+        while i < len(subcommand_args):
+            arg = subcommand_args[i]
             if arg == "--mode" and i + 1 < len(subcommand_args):
                 mode = subcommand_args[i + 1]
-                break
-        list_components(mode)
+                i += 2
+            elif arg == "--json":
+                as_json = True
+                i += 1
+            else:
+                i += 1
+        list_components(mode, as_json)
     elif subcommand == "show":
         if not subcommand_args:
             console.print("❌ Component name required")
@@ -1273,6 +1281,7 @@ def components_command(args: list) -> None:
                 "  --events PATTERN     Event patterns to log, comma-separated (default: *)"
             )
             console.print("  --json               Output in JSON format")
+            console.print("  --verbose            Include technical error details")
             sys.exit(1)
 
         # Parse arguments for components validate
@@ -1287,6 +1296,7 @@ def components_command(args: list) -> None:
         parser.add_argument("--log-level", default=None, help="Log level")
         parser.add_argument("--events", default=None, help="Event patterns")
         parser.add_argument("--json", action="store_true", help="JSON output")
+        parser.add_argument("--verbose", action="store_true", help="Include technical details")
 
         try:
             parsed = parser.parse_args(subcommand_args)
@@ -1334,6 +1344,7 @@ def components_command(args: list) -> None:
                 log_level=log_level,
                 events=events,
                 json_output=parsed.json,
+                verbose=parsed.verbose,
             )
         except SystemExit:
             # argparse will print its own error message

@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migration guide for 'load' to 'write' mode transition
 - Comprehensive test suites for component specifications and registry (`tests/components/test_registry.py`, `test_registry_cli_logging.py`)
 - CLI displays both required configuration and secrets for components
+- **Friendly Error Mapper**: Transforms technical validation errors into human-readable messages with fix suggestions
+- **JSON output for components list**: `osiris components list --json` outputs machine-readable JSON array
+- Path-to-label mapping for common configuration fields (e.g., "/configSchema/properties/host" → "Database Host")
+- Error categorization system (config_error, type_error, constraint_error, etc.) with contextual examples
+- Verbose mode (`--verbose`) for components validate to show technical error details
 
 ### Changed
 - **BREAKING**: Supabase components now require `key` field (was optional)
@@ -26,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Writers now support 'discover' mode for target schema inspection
 - CLI enhanced to show secrets and required config in property order
 - Component validation now creates session logs with proper status tracking (completed/failed)
+- **Components validate default output**: Now shows friendly, actionable error messages instead of technical JSON Schema errors
+- Registry validation returns structured errors with both friendly and technical information
+- Session events now include `friendly_errors` field for improved debugging
 
 ### Fixed
 - Duplicate validation events eliminated - Registry and CLI no longer emit redundant events

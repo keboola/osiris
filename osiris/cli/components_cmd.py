@@ -18,7 +18,9 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 
-def list_components(mode: str = "all", session_context: Optional[SessionContext] = None):
+def list_components(
+    mode: str = "all", as_json: bool = False, session_context: Optional[SessionContext] = None
+):
     """List available components and their capabilities."""
     registry = get_registry(session_context=session_context)
 
@@ -27,28 +29,49 @@ def list_components(mode: str = "all", session_context: Optional[SessionContext]
     components = registry.list_components(mode=filter_mode)
 
     if not components:
-        if filter_mode:
-            rprint(f"[yellow]No components found with mode '{filter_mode}'[/yellow]")
+        if as_json:
+            # Return empty JSON array
+            print(json.dumps([]))
         else:
-            rprint("[red]No components found[/red]")
-            rprint("[dim]Check that components directory exists with valid specs[/dim]")
+            if filter_mode:
+                rprint(f"[yellow]No components found with mode '{filter_mode}'[/yellow]")
+            else:
+                rprint("[red]No components found[/red]")
+                rprint("[dim]Check that components directory exists with valid specs[/dim]")
         return
 
-    table = Table(title="Available Components")
-    table.add_column("Component", style="cyan")
-    table.add_column("Version", style="green")
-    table.add_column("Modes", style="yellow")
-    table.add_column("Description", style="white")
+    if as_json:
+        # Output as clean JSON array
+        json_output = []
+        for component in components:
+            json_output.append(
+                {
+                    "name": component["name"],
+                    "version": component["version"],
+                    "modes": component["modes"],
+                    "description": component["description"]
+                    .rstrip(".")
+                    .rstrip("."),  # Remove the ellipsis we add
+                }
+            )
+        print(json.dumps(json_output, indent=2))
+    else:
+        # Display as Rich table
+        table = Table(title="Available Components")
+        table.add_column("Component", style="cyan")
+        table.add_column("Version", style="green")
+        table.add_column("Modes", style="yellow")
+        table.add_column("Description", style="white")
 
-    for component in components:
-        table.add_row(
-            component["name"],
-            component["version"],
-            ", ".join(component["modes"]),
-            component["description"],
-        )
+        for component in components:
+            table.add_row(
+                component["name"],
+                component["version"],
+                ", ".join(component["modes"]),
+                component["description"],
+            )
 
-    console.print(table)
+        console.print(table)
 
 
 def show_component(
@@ -127,6 +150,7 @@ def validate_component(
     log_level: str = "INFO",
     events: Optional[list] = None,
     json_output: bool = False,
+    verbose: bool = False,
 ):
     """Validate a component specification against the schema with session logging.
 
@@ -138,6 +162,7 @@ def validate_component(
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR).
         events: List of event patterns to log. Default ["*"] for all.
         json_output: Whether to output JSON instead of rich formatting.
+        verbose: Include technical error details in output.
     """
     # Create session context
     if session_id is None:
@@ -188,24 +213,63 @@ def validate_component(
     # Calculate duration
     duration_ms = int((time.time() - start_time) * 1000)
 
-    # Log validation complete event
-    session.log_event(
-        "component_validation_complete",
-        component=component_name,
-        level=level,
-        status="ok" if is_valid else "failed",
-        errors=len(errors),
-        duration_ms=duration_ms,
-        command="components.validate",
-    )
+    # Extract friendly errors for logging
+    friendly_errors = []
+    if errors and isinstance(errors[0], dict) and "friendly" in errors[0]:
+        # New format with friendly errors
+        for err in errors:
+            if isinstance(err, dict) and "friendly" in err:
+                friendly = err["friendly"]
+                friendly_errors.append(
+                    {
+                        "category": friendly.category,
+                        "field": friendly.field_label,
+                        "problem": friendly.problem,
+                        "fix": friendly.fix_hint,
+                        "example": friendly.example,
+                    }
+                )
+
+    # Log validation complete event with friendly errors
+    event_data = {
+        "component": component_name,
+        "level": level,
+        "status": "ok" if is_valid else "failed",
+        "errors": len(errors),
+        "duration_ms": duration_ms,
+        "command": "components.validate",
+    }
+    if friendly_errors:
+        event_data["friendly_errors"] = friendly_errors
+
+    session.log_event("component_validation_complete", **event_data)
 
     # Output results
     if json_output:
+        # Prepare errors for JSON output
+        json_errors = []
+        for err in errors:
+            if isinstance(err, dict) and "friendly" in err:
+                json_errors.append(
+                    {
+                        "friendly": {
+                            "category": err["friendly"].category,
+                            "field": err["friendly"].field_label,
+                            "problem": err["friendly"].problem,
+                            "fix": err["friendly"].fix_hint,
+                            "example": err["friendly"].example,
+                        },
+                        "technical": err.get("technical", str(err)),
+                    }
+                )
+            else:
+                json_errors.append(str(err))
+
         result = {
             "component": component_name,
             "level": level,
             "is_valid": is_valid,
-            "errors": errors,
+            "errors": json_errors,
             "session_id": session_id,
             "duration_ms": duration_ms,
         }
@@ -222,9 +286,42 @@ def validate_component(
                 rprint(f"[dim]  Session: {session_id}[/dim]")
         else:
             rprint(f"[red]✗ Component '{component_name}' validation failed (level: {level})[/red]")
-            for error in errors:
-                rprint(f"[yellow]  • {error}[/yellow]")
-            rprint(f"[dim]  Session: {session_id}[/dim]")
+            rprint()
+
+            # Display friendly errors
+            from ..components.error_mapper import FriendlyErrorMapper
+
+            mapper = FriendlyErrorMapper()
+
+            for err in errors:
+                if isinstance(err, dict) and "friendly" in err:
+                    friendly = err["friendly"]
+
+                    # Display friendly error
+                    icon = mapper._get_category_icon(friendly.category)
+                    title = mapper._get_category_title(friendly.category)
+
+                    rprint(f"{icon} [bold]{title}[/bold]")
+                    rprint(f"   Field: [cyan]{friendly.field_label}[/cyan]")
+                    rprint(f"   Problem: {friendly.problem}")
+                    rprint(f"   Fix: [green]{friendly.fix_hint}[/green]")
+                    if friendly.example:
+                        rprint(f"   Example: [dim]{friendly.example}[/dim]")
+
+                    # Show technical details if verbose
+                    if verbose and friendly.technical_details:
+                        rprint("\n   [dim]Technical Details:[/dim]")
+                        if "technical" in err:
+                            rprint(f"   [dim]- {err['technical']}[/dim]")
+                        for key, value in friendly.technical_details.items():
+                            rprint(f"   [dim]- {key}: {value}[/dim]")
+
+                    rprint()  # Empty line between errors
+                else:
+                    # Fallback for simple string errors
+                    rprint(f"[yellow]  • {err}[/yellow]")
+
+            rprint(f"[dim]Session: {session_id}[/dim]")
 
     # Close the session properly
     session.log_event(

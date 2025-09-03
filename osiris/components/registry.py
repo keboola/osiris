@@ -8,12 +8,13 @@ of truth for component capabilities and configuration schemas.
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Set
+from typing import Any, Dict, List, Literal, Optional, Set, Union
 
 import yaml
 from jsonschema import Draft202012Validator, ValidationError
 
 from ..core.session_logging import SessionContext
+from .error_mapper import FriendlyError, FriendlyErrorMapper
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +214,7 @@ class ComponentRegistry:
 
     def validate_spec(
         self, name_or_path: str, level: Literal["basic", "enhanced", "strict"] = "basic"
-    ) -> tuple[bool, List[str]]:
+    ) -> tuple[bool, List[Union[str, Dict[str, Any]]]]:
         """Validate a component specification at various levels.
 
         Args:
@@ -224,9 +225,10 @@ class ComponentRegistry:
                    - strict: Also perform semantic validation (aliases, pointers, etc.)
 
         Returns:
-            Tuple of (is_valid, list_of_errors)
+            Tuple of (is_valid, list_of_errors) where errors can be strings or dicts with friendly info
         """
         errors = []
+        mapper = FriendlyErrorMapper()
 
         # Get the spec
         spec = None
@@ -254,8 +256,26 @@ class ComponentRegistry:
         if self._schema:
             validator = Draft202012Validator(self._schema)
             for error in validator.iter_errors(spec):
-                error_path = " -> ".join(str(x) for x in error.absolute_path)
-                errors.append(f"Schema validation: {error.message} at {error_path}")
+                # Create structured error with both technical and friendly info
+                error_dict = {
+                    "message": error.message,
+                    "path": "/" + "/".join(str(x) for x in error.absolute_path),
+                    "validator": error.validator,
+                    "schema_path": list(error.absolute_schema_path),
+                    "instance": error.instance,
+                    "schema": error.schema,
+                }
+
+                # Map to friendly error
+                friendly = mapper.map_error(error_dict)
+
+                # Store as dict with both friendly and technical details
+                errors.append(
+                    {
+                        "friendly": friendly,
+                        "technical": f"Schema validation: {error.message} at {' -> '.join(str(x) for x in error.absolute_path)}",
+                    }
+                )
 
         if errors:
             return False, errors
@@ -266,7 +286,10 @@ class ComponentRegistry:
             try:
                 Draft202012Validator.check_schema(config_schema)
             except Exception as e:
-                errors.append(f"Invalid configSchema: {str(e)}")
+                friendly = mapper.map_error(e)
+                errors.append(
+                    {"friendly": friendly, "technical": f"Invalid configSchema: {str(e)}"}
+                )
 
             # Validate examples against configSchema
             if "examples" in spec and "configSchema" in spec:
@@ -276,7 +299,21 @@ class ComponentRegistry:
                         try:
                             config_validator.validate(example["config"])
                         except ValidationError as e:
-                            errors.append(f"Example {i+1} invalid: {e.message}")
+                            error_dict = {
+                                "message": e.message,
+                                "path": "/" + "/".join(str(x) for x in e.absolute_path),
+                                "validator": e.validator,
+                                "schema_path": list(e.absolute_schema_path),
+                                "instance": e.instance,
+                                "schema": e.schema,
+                            }
+                            friendly = mapper.map_error(error_dict)
+                            errors.append(
+                                {
+                                    "friendly": friendly,
+                                    "technical": f"Example {i+1} invalid: {e.message}",
+                                }
+                            )
 
         # Strict validation - semantic checks
         if level == "strict":
@@ -294,14 +331,14 @@ class ComponentRegistry:
 
         return len(errors) == 0, errors
 
-    def _validate_semantic(self, spec: Dict[str, Any]) -> List[str]:
+    def _validate_semantic(self, spec: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Perform semantic validation on a spec.
 
         Args:
             spec: Component specification to validate.
 
         Returns:
-            List of semantic validation errors.
+            List of semantic validation errors with friendly info.
         """
         errors = []
 
@@ -311,15 +348,31 @@ class ComponentRegistry:
         # Validate JSON Pointer references in secrets
         for pointer in spec.get("secrets", []):
             if not self._validate_json_pointer(pointer, config_fields):
-                errors.append(f"Secret pointer '{pointer}' doesn't reference a valid config field")
+                technical = f"Secret pointer '{pointer}' doesn't reference a valid config field"
+                friendly = FriendlyError(
+                    category="constraint_error",
+                    field_label="Secret Field Reference",
+                    problem=f"The secret pointer '{pointer}' doesn't match any configuration field",
+                    fix_hint=f"Check that '{pointer}' points to an actual field in configSchema",
+                    example="secrets:\n  - /password  # Must match a field in configSchema",
+                )
+                errors.append({"friendly": friendly, "technical": technical})
 
         # Validate redaction extras
         if "redaction" in spec and "extras" in spec["redaction"]:
             for pointer in spec["redaction"]["extras"]:
                 if not self._validate_json_pointer(pointer, config_fields):
-                    errors.append(
+                    technical = (
                         f"Redaction pointer '{pointer}' doesn't reference a valid config field"
                     )
+                    friendly = FriendlyError(
+                        category="constraint_error",
+                        field_label="Redaction Field Reference",
+                        problem=f"The redaction pointer '{pointer}' doesn't match any configuration field",
+                        fix_hint=f"Ensure '{pointer}' points to an existing field in configSchema",
+                        example="redaction:\n  extras:\n    - /host  # Must match a field in configSchema",
+                    )
+                    errors.append({"friendly": friendly, "technical": technical})
 
         # Validate input aliases
         if "llmHints" in spec and "inputAliases" in spec["llmHints"]:
@@ -328,10 +381,18 @@ class ComponentRegistry:
                 valid_fields = set(config_schema["properties"].keys())
                 for alias_key in spec["llmHints"]["inputAliases"]:
                     if alias_key not in valid_fields:
-                        errors.append(
+                        technical = (
                             f"Input alias '{alias_key}' doesn't match any config field. "
                             f"Valid fields: {', '.join(sorted(valid_fields))}"
                         )
+                        friendly = FriendlyError(
+                            category="constraint_error",
+                            field_label="LLM Input Alias",
+                            problem=f"The alias '{alias_key}' doesn't match any configuration field",
+                            fix_hint=f"Use one of these fields: {', '.join(sorted(valid_fields))}",
+                            example="llmHints:\n  inputAliases:\n    host:  # Must be an actual field name\n      - hostname\n      - server",
+                        )
+                        errors.append({"friendly": friendly, "technical": technical})
 
         return errors
 
