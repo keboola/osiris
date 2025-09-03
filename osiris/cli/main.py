@@ -15,6 +15,7 @@
 """Main CLI entry point for Osiris v2."""
 
 import argparse
+import contextlib
 import json
 import logging
 import sys
@@ -1256,9 +1257,90 @@ def components_command(args: list) -> None:
     elif subcommand == "validate":
         if not subcommand_args:
             console.print("❌ Component name required")
-            console.print("Usage: osiris components validate <component_name>")
+            console.print("Usage: osiris components validate <component_name> [OPTIONS]")
+            console.print("Options:")
+            console.print(
+                "  --level LEVEL        Validation level: basic, enhanced, strict (default: enhanced)"
+            )
+            console.print(
+                "  --session-id ID      Use specific session ID (default: auto-generated)"
+            )
+            console.print("  --logs-dir DIR       Directory for session logs (default: logs)")
+            console.print(
+                "  --log-level LEVEL    Log level: DEBUG, INFO, WARNING, ERROR (default: INFO)"
+            )
+            console.print(
+                "  --events PATTERN     Event patterns to log, comma-separated (default: *)"
+            )
+            console.print("  --json               Output in JSON format")
             sys.exit(1)
-        validate_component(subcommand_args[0])
+
+        # Parse arguments for components validate
+        import argparse
+        import os
+
+        parser = argparse.ArgumentParser(add_help=False)
+        parser.add_argument("component_name", help="Component to validate")
+        parser.add_argument("--level", default="enhanced", choices=["basic", "enhanced", "strict"])
+        parser.add_argument("--session-id", default=None, help="Session ID")
+        parser.add_argument("--logs-dir", default=None, help="Logs directory")
+        parser.add_argument("--log-level", default=None, help="Log level")
+        parser.add_argument("--events", default=None, help="Event patterns")
+        parser.add_argument("--json", action="store_true", help="JSON output")
+
+        try:
+            parsed = parser.parse_args(subcommand_args)
+
+            # Load config to get defaults (with precedence: CLI > ENV > YAML > defaults)
+            from ..core.config import load_config
+
+            # Try to load config file
+            config_data = {}
+            with contextlib.suppress(Exception):
+                config_data = load_config("osiris.yaml")
+
+            # Determine logs_dir with precedence
+            logs_dir = "logs"  # default
+            if "logging" in config_data and "logs_dir" in config_data["logging"]:
+                logs_dir = config_data["logging"]["logs_dir"]  # YAML
+            if "OSIRIS_LOGS_DIR" in os.environ:
+                logs_dir = os.environ["OSIRIS_LOGS_DIR"]  # ENV
+            if parsed.logs_dir:
+                logs_dir = parsed.logs_dir  # CLI
+
+            # Determine log_level with precedence
+            log_level = "INFO"  # default
+            if "logging" in config_data and "level" in config_data["logging"]:
+                log_level = config_data["logging"]["level"]  # YAML
+            if "OSIRIS_LOG_LEVEL" in os.environ:
+                log_level = os.environ["OSIRIS_LOG_LEVEL"]  # ENV
+            if parsed.log_level:
+                log_level = parsed.log_level  # CLI
+
+            # Determine events with precedence
+            events = ["*"]  # default
+            if "logging" in config_data and "events" in config_data["logging"]:
+                events = config_data["logging"]["events"]  # YAML
+            if "OSIRIS_LOG_EVENTS" in os.environ:
+                events = [e.strip() for e in os.environ["OSIRIS_LOG_EVENTS"].split(",")]  # ENV
+            if parsed.events:
+                events = [e.strip() for e in parsed.events.split(",")]  # CLI
+
+            validate_component(
+                parsed.component_name,
+                level=parsed.level,
+                session_id=parsed.session_id,
+                logs_dir=logs_dir,
+                log_level=log_level,
+                events=events,
+                json_output=parsed.json,
+            )
+        except SystemExit:
+            # argparse will print its own error message
+            pass
+        except Exception as e:
+            console.print(f"❌ Error: {e}")
+            sys.exit(1)
     elif subcommand == "config-example":
         if not subcommand_args:
             console.print("❌ Component name required")

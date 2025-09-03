@@ -1,6 +1,9 @@
 """CLI commands for component management."""
 
 import json
+import logging
+import time
+from pathlib import Path
 from typing import Optional
 
 import yaml
@@ -9,9 +12,10 @@ from rich.console import Console
 from rich.table import Table
 
 from ..components.registry import get_registry
-from ..core.session_logging import SessionContext
+from ..core.session_logging import SessionContext, set_current_session
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 def list_components(mode: str = "all", session_context: Optional[SessionContext] = None):
@@ -116,32 +120,110 @@ def show_component(
 
 
 def validate_component(
-    component_name: str, level: str = "enhanced", session_context: Optional[SessionContext] = None
+    component_name: str,
+    level: str = "enhanced",
+    session_id: Optional[str] = None,
+    logs_dir: str = "logs",
+    log_level: str = "INFO",
+    events: Optional[list] = None,
+    json_output: bool = False,
 ):
-    """Validate a component specification against the schema.
+    """Validate a component specification against the schema with session logging.
 
     Args:
         component_name: Name of the component to validate.
         level: Validation level - 'basic', 'enhanced', or 'strict'.
-        session_context: Optional session context for logging.
+        session_id: Optional session ID. Auto-generated if not provided.
+        logs_dir: Directory for session logs.
+        log_level: Logging level (DEBUG, INFO, WARNING, ERROR).
+        events: List of event patterns to log. Default ["*"] for all.
+        json_output: Whether to output JSON instead of rich formatting.
     """
-    registry = get_registry(session_context=session_context)
+    # Create session context
+    if session_id is None:
+        session_id = f"components_validate_{int(time.time() * 1000)}"
 
-    # Validate the component
+    # Default to all events if not specified
+    if events is None:
+        events = ["*"]
+
+    # Create session with logging configuration
+    session = SessionContext(
+        session_id=session_id, base_logs_dir=Path(logs_dir), allowed_events=events
+    )
+    set_current_session(session)
+
+    # Setup logging
+    log_level_int = getattr(logging, log_level.upper(), logging.INFO)
+    enable_debug = log_level_int <= logging.DEBUG
+    session.setup_logging(level=log_level_int, enable_debug=enable_debug)
+
+    # Start validation timing
+    start_time = time.time()
+
+    # Get registry with session context
+    registry = get_registry(session_context=session)
+
+    # Try to get the component spec first to extract schema version
+    spec = registry.get_component(component_name)
+    schema_version = "unknown"
+    if spec and "$schema" in spec:
+        schema_version = spec["$schema"]
+    elif spec and "configSchema" in spec and "$schema" in spec["configSchema"]:
+        schema_version = spec["configSchema"]["$schema"]
+
+    # Log validation start event
+    session.log_event(
+        "component_validation_start",
+        component=component_name,
+        level=level,
+        schema_version=schema_version,
+        command="components.validate",
+    )
+
+    # Perform validation
     is_valid, errors = registry.validate_spec(component_name, level=level)
 
-    if is_valid:
-        rprint(f"[green]✓ Component '{component_name}' is valid (level: {level})[/green]")
+    # Calculate duration
+    duration_ms = int((time.time() - start_time) * 1000)
 
-        # Show component info
-        spec = registry.get_component(component_name)
+    # Log validation complete event
+    session.log_event(
+        "component_validation_complete",
+        component=component_name,
+        level=level,
+        status="ok" if is_valid else "failed",
+        errors=len(errors),
+        duration_ms=duration_ms,
+        command="components.validate",
+    )
+
+    # Output results
+    if json_output:
+        result = {
+            "component": component_name,
+            "level": level,
+            "is_valid": is_valid,
+            "errors": errors,
+            "session_id": session_id,
+            "duration_ms": duration_ms,
+        }
         if spec:
-            rprint(f"[dim]  Version: {spec.get('version', 'unknown')}[/dim]")
-            rprint(f"[dim]  Modes: {', '.join(spec.get('modes', []))}[/dim]")
+            result["version"] = spec.get("version", "unknown")
+            result["modes"] = spec.get("modes", [])
+        print(json.dumps(result, indent=2))
     else:
-        rprint(f"[red]✗ Component '{component_name}' validation failed (level: {level})[/red]")
-        for error in errors:
-            rprint(f"[yellow]  • {error}[/yellow]")
+        if is_valid:
+            rprint(f"[green]✓ Component '{component_name}' is valid (level: {level})[/green]")
+            if spec:
+                rprint(f"[dim]  Version: {spec.get('version', 'unknown')}[/dim]")
+                rprint(f"[dim]  Modes: {', '.join(spec.get('modes', []))}[/dim]")
+                rprint(f"[dim]  Session: {session_id}[/dim]")
+        else:
+            rprint(f"[red]✗ Component '{component_name}' validation failed (level: {level})[/red]")
+            for error in errors:
+                rprint(f"[yellow]  • {error}[/yellow]")
+            rprint(f"[dim]  Session: {session_id}[/dim]")
 
 
 def show_config_example(

@@ -102,6 +102,8 @@ self.session_context.log_event(
 ```
 
 #### Validation Events
+
+**Registry-level events** (emitted by `registry.validate_spec()`):
 ```python
 # Emitted at start of validate_spec()
 self.session_context.log_event(
@@ -117,6 +119,29 @@ self.session_context.log_event(
     level=level,
     is_valid=len(errors) == 0,  # Boolean validation result
     error_count=len(errors)      # Number of validation errors
+)
+```
+
+**CLI-level events** (emitted by `osiris components validate`):
+```python
+# Emitted when CLI validation starts
+session.log_event(
+    "component_validation_start",
+    component=component_name,
+    level=level,                    # "basic", "enhanced", or "strict"
+    schema_version=schema_version,  # From spec.$schema or "unknown"
+    command="components.validate"
+)
+
+# Emitted when CLI validation completes
+session.log_event(
+    "component_validation_complete",
+    component=component_name,
+    level=level,
+    status="ok" if is_valid else "failed",  # Human-readable status
+    errors=len(errors),                      # Error count
+    duration_ms=duration_ms,                 # Total validation time
+    command="components.validate"
 )
 ```
 
@@ -146,16 +171,42 @@ python osiris.py components show mysql.extractor
 python osiris.py components show supabase.writer --json
 ```
 
-### Validate Component
+### Validate Component (Session-Aware)
+
+**New in M1a.3**: The validate command now creates session-scoped logs with structured events.
+
 ```bash
-# Enhanced validation (default when level not specified)
+# Basic usage (creates auto-generated session)
 python osiris.py components validate mysql.writer
 
-# Explicit validation levels (actual parameter: level="enhanced")
+# Validation levels
 python osiris.py components validate mysql.writer --level basic
-python osiris.py components validate mysql.writer --level enhanced
+python osiris.py components validate mysql.writer --level enhanced  # default
 python osiris.py components validate supabase.extractor --level strict
+
+# Session management flags
+python osiris.py components validate mysql.writer \
+    --session-id my_validation_001 \
+    --logs-dir custom_logs \
+    --log-level DEBUG \
+    --events "component_validation_*" \
+    --json
+
+# Configuration precedence (CLI > ENV > YAML > defaults)
+export OSIRIS_LOG_LEVEL=WARNING
+python osiris.py components validate test.component --log-level DEBUG  # DEBUG wins
 ```
+
+#### CLI Flags for Session Management
+
+| Flag | Description | Default | Precedence |
+|------|-------------|---------|------------|
+| `--level` | Validation level: basic, enhanced, strict | enhanced | CLI only |
+| `--session-id` | Custom session ID | auto-generated | CLI only |
+| `--logs-dir` | Directory for session logs | logs | CLI > ENV > YAML |
+| `--log-level` | Log level: DEBUG, INFO, WARNING, ERROR | INFO | CLI > ENV > YAML |
+| `--events` | Event patterns to log (comma-separated) | * | CLI > ENV > YAML |
+| `--json` | Output results in JSON format | false | CLI only |
 
 ### Show Configuration Example
 ```bash
@@ -313,6 +364,44 @@ The three-tier validation system proved valuable:
 
 ### 4. Session Context Integration
 Integrating with M0's session logging from the start ensures consistent observability across the entire Osiris pipeline lifecycle.
+
+## Session-Aware Validation
+
+### Event Structure
+
+Each validation session emits structured events to `logs/<session_id>/events.jsonl`:
+
+```json
+{
+  "timestamp": "2025-01-03T12:34:56.789Z",
+  "event": "component_validation_start",
+  "level": "INFO",
+  "data": {
+    "component": "mysql.writer",
+    "level": "enhanced",
+    "schema_version": "https://json-schema.org/draft/2020-12/schema",
+    "command": "components.validate"
+  }
+}
+```
+
+### Example: Viewing Validation Events
+
+```bash
+# Run validation with custom session
+$ python osiris.py components validate mysql.writer --session-id test_001
+
+# List sessions
+$ python osiris.py logs list
+Session ID                      Created              Duration    Events
+test_001                       2025-01-03 12:34:56  0.5s        4
+
+# Show validation events
+$ python osiris.py logs show --session test_001 --events "component_validation_*"
+Filtered to: component_validation_*
+12:34:56.123 component_validation_start      {component: mysql.writer, level: enhanced}
+12:34:56.623 component_validation_complete   {status: ok, errors: 0, duration_ms: 500}
+```
 
 ## Risks & Mitigations
 
