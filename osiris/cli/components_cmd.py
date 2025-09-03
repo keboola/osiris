@@ -225,6 +225,13 @@ def validate_component(
                 rprint(f"[yellow]  • {error}[/yellow]")
             rprint(f"[dim]  Session: {session_id}[/dim]")
 
+    # Close the session properly
+    session.log_event(
+        "run_end",
+        status="completed" if is_valid else "failed",
+        duration_ms=duration_ms,
+    )
+
 
 def show_config_example(
     component_name: str, example_index: int = 0, session_context: Optional[SessionContext] = None

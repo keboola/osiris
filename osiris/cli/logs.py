@@ -554,7 +554,9 @@ def _get_session_info(session_dir: Path) -> Optional[Dict[str, Any]]:
         # Determine status based on last event
         status = "unknown"
         if last_event.get("event") == "run_end":
-            status = "completed"
+            # Check if there's a status field in the run_end event
+            event_status = last_event.get("status", "completed")
+            status = "failed" if event_status == "failed" else "completed"
         elif last_event.get("event") == "run_error":
             status = "error"
         elif last_event.get("event") == "run_start":

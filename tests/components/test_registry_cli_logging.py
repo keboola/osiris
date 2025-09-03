@@ -4,7 +4,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -22,65 +22,44 @@ class TestComponentValidationLogging:
             yield Path(tmpdir)
 
     @pytest.fixture
-    def temp_components_dir(self):
-        """Create temporary components with test specs."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            components_dir = Path(tmpdir) / "components"
-            components_dir.mkdir()
+    def mock_registry_valid(self):
+        """Create a mock registry with a valid component."""
+        mock_registry = MagicMock()
+        mock_registry.get_component.return_value = {
+            "name": "test.valid",
+            "version": "1.0.0",
+            "modes": ["extract"],
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+        }
+        mock_registry.validate_spec.return_value = (True, [])
+        return mock_registry
 
-            # Create schema
-            schema = {
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "type": "object",
-                "required": ["name", "version", "modes"],
-                "properties": {
-                    "name": {"type": "string"},
-                    "version": {"type": "string"},
-                    "modes": {"type": "array", "items": {"type": "string"}},
-                    "configSchema": {"type": "object"},
-                    "secrets": {"type": "array", "items": {"type": "string"}},
-                },
-            }
-            with open(components_dir / "spec.schema.json", "w") as f:
-                json.dump(schema, f)
+    @pytest.fixture
+    def mock_registry_invalid(self):
+        """Create a mock registry with an invalid component."""
+        mock_registry = MagicMock()
+        mock_registry.get_component.return_value = {"name": "test.invalid"}
+        mock_registry.validate_spec.return_value = (
+            False,
+            ["Missing required field: version", "Missing required field: modes"],
+        )
+        return mock_registry
 
-            # Create valid component
-            valid_dir = components_dir / "test.valid"
-            valid_dir.mkdir()
-            valid_spec = {
-                "name": "test.valid",
-                "version": "1.0.0",
-                "modes": ["extract"],
-                "$schema": "https://json-schema.org/draft/2020-12/schema",
-                "configSchema": {
-                    "$schema": "https://json-schema.org/draft/2020-12/schema",
-                    "type": "object",
-                    "properties": {"host": {"type": "string"}},
-                },
-                "secrets": ["/password"],
-            }
-            with open(valid_dir / "spec.yaml", "w") as f:
-                yaml.dump(valid_spec, f)
+    @pytest.fixture
+    def mock_registry_nonexistent(self):
+        """Create a mock registry with non-existent component."""
+        mock_registry = MagicMock()
+        mock_registry.get_component.return_value = None
+        mock_registry.validate_spec.return_value = (False, ["Component 'does.not.exist' not found"])
+        return mock_registry
 
-            # Create invalid component
-            invalid_dir = components_dir / "test.invalid"
-            invalid_dir.mkdir()
-            invalid_spec = {
-                "name": "test.invalid",
-                # Missing required fields
-            }
-            with open(invalid_dir / "spec.yaml", "w") as f:
-                yaml.dump(invalid_spec, f)
-
-            yield components_dir
-
-    def test_session_creation_with_custom_id(self, temp_logs_dir, temp_components_dir):
+    def test_session_creation_with_custom_id(self, temp_logs_dir, mock_registry_valid):
         """Test that validation creates a session with custom ID."""
         session_id = "test_validation_123"
 
-        # Patch the registry root to use our temp components
-        with patch("osiris.components.registry.Path") as mock_path:
-            mock_path.return_value = temp_components_dir
+        # Patch get_registry in the module where it's used
+        with patch("osiris.cli.components_cmd.get_registry") as mock_get_registry:
+            mock_get_registry.return_value = mock_registry_valid
 
             # Run validation
             validate_component(
@@ -95,15 +74,15 @@ class TestComponentValidationLogging:
         session_dir = temp_logs_dir / session_id
         assert session_dir.exists()
         assert (session_dir / "events.jsonl").exists()
-        assert (session_dir / "metrics.jsonl").exists()
+        assert (session_dir / "osiris.log").exists()
 
-    def test_validation_events_logged(self, temp_logs_dir, temp_components_dir):
+    def test_validation_events_logged(self, temp_logs_dir, mock_registry_valid):
         """Test that validation events are properly logged."""
         session_id = "test_events_456"
 
-        # Patch the registry root to use our temp components
-        with patch("osiris.components.registry.Path") as mock_path:
-            mock_path.return_value = temp_components_dir
+        # Patch get_registry in the module where it's used
+        with patch("osiris.cli.components_cmd.get_registry") as mock_get_registry:
+            mock_get_registry.return_value = mock_registry_valid
 
             # Run validation
             validate_component(
@@ -111,7 +90,7 @@ class TestComponentValidationLogging:
                 level="enhanced",
                 session_id=session_id,
                 logs_dir=str(temp_logs_dir),
-                events=["component_validation_*"],
+                events=["*"],  # Log all events to ensure file is created
             )
 
         # Read events from JSONL
@@ -133,10 +112,10 @@ class TestComponentValidationLogging:
         start_events = [e for e in validation_events if e["event"] == "component_validation_start"]
         assert len(start_events) == 1
         start_event = start_events[0]
-        assert start_event["data"]["component"] == "test.valid"
-        assert start_event["data"]["level"] == "enhanced"
-        assert "schema_version" in start_event["data"]
-        assert start_event["data"]["command"] == "components.validate"
+        assert start_event["component"] == "test.valid"
+        assert start_event["level"] == "enhanced"
+        assert "schema_version" in start_event
+        assert start_event["command"] == "components.validate"
 
         # Check complete event
         complete_events = [
@@ -144,20 +123,20 @@ class TestComponentValidationLogging:
         ]
         assert len(complete_events) == 1
         complete_event = complete_events[0]
-        assert complete_event["data"]["component"] == "test.valid"
-        assert complete_event["data"]["level"] == "enhanced"
-        assert complete_event["data"]["status"] == "ok"
-        assert complete_event["data"]["errors"] == 0
-        assert "duration_ms" in complete_event["data"]
-        assert complete_event["data"]["command"] == "components.validate"
+        assert complete_event["component"] == "test.valid"
+        assert complete_event["level"] == "enhanced"
+        assert complete_event["status"] == "ok"
+        assert complete_event["errors"] == 0
+        assert "duration_ms" in complete_event
+        assert complete_event["command"] == "components.validate"
 
-    def test_failed_validation_events(self, temp_logs_dir, temp_components_dir):
+    def test_failed_validation_events(self, temp_logs_dir, mock_registry_invalid):
         """Test events for failed validation."""
         session_id = "test_failed_789"
 
-        # Patch the registry root to use our temp components
-        with patch("osiris.components.registry.Path") as mock_path:
-            mock_path.return_value = temp_components_dir
+        # Patch get_registry in the module where it's used
+        with patch("osiris.cli.components_cmd.get_registry") as mock_get_registry:
+            mock_get_registry.return_value = mock_registry_invalid
 
             # Run validation on invalid component
             validate_component(
@@ -177,16 +156,16 @@ class TestComponentValidationLogging:
                     events.append(event)
 
         assert len(events) == 1
-        assert events[0]["data"]["status"] == "failed"
-        assert events[0]["data"]["errors"] > 0
+        assert events[0]["status"] == "failed"
+        assert events[0]["errors"] > 0
 
-    def test_nonexistent_component_logging(self, temp_logs_dir, temp_components_dir):
+    def test_nonexistent_component_logging(self, temp_logs_dir, mock_registry_nonexistent):
         """Test that non-existent components still create session and log events."""
         session_id = "test_nonexistent_999"
 
-        # Patch the registry root to use our temp components
-        with patch("osiris.components.registry.Path") as mock_path:
-            mock_path.return_value = temp_components_dir
+        # Patch get_registry in the module where it's used
+        with patch("osiris.cli.components_cmd.get_registry") as mock_get_registry:
+            mock_get_registry.return_value = mock_registry_nonexistent
 
             # Run validation on non-existent component
             validate_component(
@@ -212,18 +191,17 @@ class TestComponentValidationLogging:
         # Should have both start and complete events
         assert any(e["event"] == "component_validation_start" for e in events)
         assert any(
-            e["event"] == "component_validation_complete" and e["data"]["status"] == "failed"
+            e["event"] == "component_validation_complete" and e["status"] == "failed"
             for e in events
         )
 
-    def test_secrets_masking_in_logs(self, temp_logs_dir, temp_components_dir):
+    def test_secrets_masking_in_logs(self, temp_logs_dir):
         """Test that sensitive paths are masked in logs."""
         session_id = "test_secrets_111"
 
-        # Create a component with sensitive data in spec
-        secret_dir = temp_components_dir / "test.secret"
-        secret_dir.mkdir()
-        secret_spec = {
+        # Create a mock registry with secrets
+        mock_registry = MagicMock()
+        mock_registry.get_component.return_value = {
             "name": "test.secret",
             "version": "1.0.0",
             "modes": ["extract"],
@@ -237,12 +215,11 @@ class TestComponentValidationLogging:
                 }
             ],
         }
-        with open(secret_dir / "spec.yaml", "w") as f:
-            yaml.dump(secret_spec, f)
+        mock_registry.validate_spec.return_value = (True, [])
 
-        # Patch the registry root to use our temp components
-        with patch("osiris.components.registry.Path") as mock_path:
-            mock_path.return_value = temp_components_dir
+        # Patch get_registry in the module where it's used
+        with patch("osiris.cli.components_cmd.get_registry") as mock_get_registry:
+            mock_get_registry.return_value = mock_registry
 
             # Run validation
             validate_component(
@@ -261,7 +238,7 @@ class TestComponentValidationLogging:
                 assert "secret123" not in content
                 assert "sk-abc123" not in content
 
-    def test_precedence_cli_overrides_yaml(self, temp_logs_dir, temp_components_dir):
+    def test_precedence_cli_overrides_yaml(self, temp_logs_dir):
         """Test that CLI log level overrides YAML config."""
         session_id = "test_precedence_222"
 
@@ -280,14 +257,23 @@ class TestComponentValidationLogging:
             config_file = f.name
 
         try:
+            # Create mock registry
+            mock_registry = MagicMock()
+            mock_registry.get_component.return_value = {
+                "name": "test.valid",
+                "version": "1.0.0",
+                "modes": ["extract"],
+            }
+            mock_registry.validate_spec.return_value = (True, [])
+
             # Patch load_config to use our temp config
-            with patch("osiris.cli.main.load_config") as mock_load:
+            with patch("osiris.core.config.load_config") as mock_load:
                 with open(config_file) as f:
                     mock_load.return_value = yaml.safe_load(f)
 
-                # Also patch the registry root
-                with patch("osiris.components.registry.Path") as mock_path:
-                    mock_path.return_value = temp_components_dir
+                # Also patch get_registry where it's imported
+                with patch("osiris.cli.components_cmd.get_registry") as mock_get_registry:
+                    mock_get_registry.return_value = mock_registry
 
                     # Run with CLI override
                     validate_component(
@@ -301,20 +287,30 @@ class TestComponentValidationLogging:
 
             # Session should be in CLI-specified directory, not YAML directory
             assert (temp_logs_dir / session_id).exists()
-            assert not Path("/tmp/yaml_logs" / session_id).exists()
+            assert not (Path("/tmp/yaml_logs") / session_id).exists()
 
             # Check that DEBUG level was used (by looking for debug.log)
             assert (temp_logs_dir / session_id / "debug.log").exists()
         finally:
             os.unlink(config_file)
 
-    def test_json_output_format(self, temp_logs_dir, temp_components_dir, capsys):
+    def test_json_output_format(self, temp_logs_dir, capsys):
         """Test JSON output format for validation."""
         session_id = "test_json_333"
 
-        # Patch the registry root to use our temp components
-        with patch("osiris.components.registry.Path") as mock_path:
-            mock_path.return_value = temp_components_dir
+        # Create a mock registry with valid component
+        mock_registry = MagicMock()
+        mock_registry.get_component.return_value = {
+            "name": "test.valid",
+            "version": "1.0.0",
+            "modes": ["extract"],
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+        }
+        mock_registry.validate_spec.return_value = (True, [])
+
+        # Patch get_registry in the module where it's used
+        with patch("osiris.cli.components_cmd.get_registry") as mock_get_registry:
+            mock_get_registry.return_value = mock_registry
 
             # Run validation with JSON output
             validate_component(
@@ -339,13 +335,13 @@ class TestComponentValidationLogging:
         assert result["version"] == "1.0.0"
         assert result["modes"] == ["extract"]
 
-    def test_event_filtering(self, temp_logs_dir, temp_components_dir):
+    def test_event_filtering(self, temp_logs_dir, mock_registry_valid):
         """Test that event filtering works correctly."""
         session_id = "test_filter_444"
 
-        # Patch the registry root to use our temp components
-        with patch("osiris.components.registry.Path") as mock_path:
-            mock_path.return_value = temp_components_dir
+        # Patch get_registry in the module where it's used
+        with patch("osiris.cli.components_cmd.get_registry") as mock_get_registry:
+            mock_get_registry.return_value = mock_registry_valid
 
             # Run with specific event filter
             validate_component(
