@@ -161,8 +161,9 @@ def validate_component(
     # Start validation timing
     start_time = time.time()
 
-    # Get registry with session context
-    registry = get_registry(session_context=session)
+    # Get registry WITHOUT session context since CLI handles events
+    # Passing session_context here would cause duplicate event emission
+    registry = get_registry()
 
     # Try to get the component spec first to extract schema version
     spec = registry.get_component(component_name)

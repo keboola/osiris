@@ -80,70 +80,77 @@ Comprehensive test suite with 13 test cases:
 - Returns detailed errors with available field lists for invalid aliases
 - Provides highest confidence for production use
 
-### Logging & Events Integration
+### Session Lifecycle & Events
 
-The registry emits four distinct events to the SessionContext:
+The `components validate` command uses SessionContext and emits exactly 4 events per validation:
 
-#### Registry Loading Events
-```python
-# Emitted at start of load_specs()
-self.session_context.log_event(
-    "registry_load_start", 
-    root=str(search_root)  # Path being searched
-)
+#### Event Sequence (No Duplication)
 
-# Emitted after all specs processed
-self.session_context.log_event(
-    "registry_load_complete",
-    root=str(search_root),          # Path that was searched
-    components_loaded=len(specs),    # Number of valid specs loaded
-    errors=errors                    # List of error messages for invalid specs
-)
+Each validation session emits these events in order:
+
+1. **run_start** - Session initialization
+```json
+{
+  "event": "run_start",
+  "session_id": "test_fixed",
+  "session_dir": "logs/test_fixed",
+  "fallback_used": false
+}
 ```
 
-#### Validation Events
-
-**Registry-level events** (emitted by `registry.validate_spec()`):
-```python
-# Emitted at start of validate_spec()
-self.session_context.log_event(
-    "component_validation_start", 
-    component=name_or_path,  # Component name or file path
-    level=level              # "basic", "enhanced", or "strict"
-)
-
-# Emitted after validation completes
-self.session_context.log_event(
-    "component_validation_complete",
-    component=name_or_path,
-    level=level,
-    is_valid=len(errors) == 0,  # Boolean validation result
-    error_count=len(errors)      # Number of validation errors
-)
+2. **component_validation_start** - Validation begins
+```json
+{
+  "event": "component_validation_start",
+  "component": "mysql.extractor",
+  "level": "enhanced",
+  "schema_version": "unknown",
+  "command": "components.validate"
+}
 ```
 
-**CLI-level events** (emitted by `osiris components validate`):
-```python
-# Emitted when CLI validation starts
-session.log_event(
-    "component_validation_start",
-    component=component_name,
-    level=level,                    # "basic", "enhanced", or "strict"
-    schema_version=schema_version,  # From spec.$schema or "unknown"
-    command="components.validate"
-)
-
-# Emitted when CLI validation completes
-session.log_event(
-    "component_validation_complete",
-    component=component_name,
-    level=level,
-    status="ok" if is_valid else "failed",  # Human-readable status
-    errors=len(errors),                      # Error count
-    duration_ms=duration_ms,                 # Total validation time
-    command="components.validate"
-)
+3. **component_validation_complete** - Validation ends
+   
+   **Success case**:
+```json
+{
+  "event": "component_validation_complete",
+  "component": "mysql.extractor",
+  "level": "enhanced",
+  "status": "ok",
+  "errors": 0,
+  "duration_ms": 8,
+  "command": "components.validate"
+}
 ```
+
+   **Failure case**:
+```json
+{
+  "event": "component_validation_complete",
+  "component": "nonexistent",
+  "level": "enhanced",
+  "status": "failed",
+  "errors": 1,
+  "duration_ms": 41,
+  "command": "components.validate"
+}
+```
+
+4. **run_end** - Session closure
+```json
+{
+  "event": "run_end",
+  "status": "completed",  // or "failed" for validation failures
+  "duration_ms": 8
+}
+```
+
+#### Important: No Registry Events in CLI Context
+
+The Registry class (`osiris/components/registry.py`) can emit its own `component_validation_start` and `component_validation_complete` events when used programmatically with a session_context. However, when called from the CLI validation command, the registry is intentionally NOT given a session_context to prevent duplicate event emission. The CLI handles all session events directly.
+
+**Note**: Pipeline execution events like `write.*` or `load.*` are NOT part of component validation. Those belong to actual pipeline runs, not registry validation.
 
 ## CLI Reference
 
@@ -197,16 +204,18 @@ export OSIRIS_LOG_LEVEL=WARNING
 python osiris.py components validate test.component --log-level DEBUG  # DEBUG wins
 ```
 
-#### CLI Flags for Session Management
+#### CLI Flags & Configuration Precedence
 
 | Flag | Description | Default | Precedence |
 |------|-------------|---------|------------|
-| `--level` | Validation level: basic, enhanced, strict | enhanced | CLI only |
-| `--session-id` | Custom session ID | auto-generated | CLI only |
-| `--logs-dir` | Directory for session logs | logs | CLI > ENV > YAML |
-| `--log-level` | Log level: DEBUG, INFO, WARNING, ERROR | INFO | CLI > ENV > YAML |
-| `--events` | Event patterns to log (comma-separated) | * | CLI > ENV > YAML |
-| `--json` | Output results in JSON format | false | CLI only |
+| `--level` | Validation level: `basic`, `enhanced`, `strict` | `enhanced` | CLI only |
+| `--session-id` | Custom session identifier | `components_validate_<timestamp>` | CLI only |
+| `--logs-dir` | Directory for session logs | `logs` | CLI > ENV > YAML > default |
+| `--log-level` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR` | `INFO` | CLI > ENV > YAML > default |
+| `--events` | Event patterns to log (comma-separated or `"*"` for all) | `["*"]` | CLI > ENV > YAML > default |
+| `--json` | Output results in JSON format | `false` | CLI only |
+
+**Note on event filtering**: Use `--events "*"` to capture all events (wildcard). Specific patterns like `"component_validation_*"` filter to matching events only.
 
 ### Show Configuration Example
 ```bash
@@ -224,29 +233,45 @@ python osiris.py components discover mysql.extractor --config config.yaml
 
 ## Testing & Evidence
 
-### Automated Test Suite
-All 13 tests passing with 100% success rate:
+### Automated Test Suites
+
+#### `tests/components/test_registry.py` (13 tests)
+Core registry functionality tests covering:
+- **Loading & filtering**: Invalid specs are filtered during `load_specs()`
+- **Component retrieval**: Individual component access via `get_component()`
+- **Mode filtering**: List components by operational mode
+- **Validation levels**: Basic (schema), enhanced (configSchema + examples), strict (semantic)
+- **Secret extraction**: Proper extraction from `secrets` and `redaction.extras`
+- **Cache behavior**: Mtime-based invalidation and manual clearing
+- **Session integration**: Event emission to SessionContext
+- **Singleton pattern**: Global registry instance management
+- **Parent directory fallback**: Automatic `../components/` detection
+
+#### `tests/components/test_registry_cli_logging.py` (8 tests)
+Session-aware CLI validation tests covering:
+- **Session creation**: Custom and auto-generated session IDs
+- **Event logging**: Structured events (start, complete, end) with proper fields
+- **Failed validation**: Correct status propagation for errors
+- **Non-existent components**: Graceful handling with session creation
+- **Secrets masking**: Sensitive data redacted in logs
+- **Configuration precedence**: CLI > ENV > YAML > defaults
+- **JSON output format**: Machine-readable validation results
+- **Event filtering**: Pattern-based event capture
 
 ```bash
-$ pytest tests/components/test_registry.py -v
+$ pytest tests/components/ -v
 ============================= test session starts ==============================
-collected 13 items
+collected 21 items
 
 tests/components/test_registry.py::TestComponentRegistry::test_load_specs PASSED
 tests/components/test_registry.py::TestComponentRegistry::test_get_component PASSED
-tests/components/test_registry.py::TestComponentRegistry::test_list_components PASSED
-tests/components/test_registry.py::TestComponentRegistry::test_validate_spec_basic PASSED
-tests/components/test_registry.py::TestComponentRegistry::test_validate_spec_enhanced PASSED
-tests/components/test_registry.py::TestComponentRegistry::test_validate_spec_strict PASSED
-tests/components/test_registry.py::TestComponentRegistry::test_validate_spec_path PASSED
-tests/components/test_registry.py::TestComponentRegistry::test_get_secret_map PASSED
-tests/components/test_registry.py::TestComponentRegistry::test_cache_invalidation PASSED
-tests/components/test_registry.py::TestComponentRegistry::test_clear_cache PASSED
-tests/components/test_registry.py::TestComponentRegistry::test_session_context_integration PASSED
-tests/components/test_registry.py::TestComponentRegistry::test_get_registry_singleton PASSED
-tests/components/test_registry.py::TestComponentRegistry::test_parent_directory_fallback PASSED
+# ... [13 tests total]
 
-============================== 13 passed in 0.64s ==============================
+tests/components/test_registry_cli_logging.py::TestComponentValidationLogging::test_session_creation_with_custom_id PASSED
+tests/components/test_registry_cli_logging.py::TestComponentValidationLogging::test_validation_events_logged PASSED
+# ... [8 tests total]
+
+============================== 21 passed in 1.03s ==============================
 ```
 
 ### Manual Verification Examples
@@ -365,42 +390,82 @@ The three-tier validation system proved valuable:
 ### 4. Session Context Integration
 Integrating with M0's session logging from the start ensures consistent observability across the entire Osiris pipeline lifecycle.
 
-## Session-Aware Validation
+### 5. Event Duplication Bug
+Initially, both the Registry and CLI emitted validation events when the Registry was given a session_context, causing duplicate events. The fix was to NOT pass session_context to the Registry when called from CLI commands, letting the CLI handle all session events. This teaches an important lesson about event ownership in layered architectures.
 
-### Event Structure
+## Artifacts & Logs Path
 
-Each validation session emits structured events to `logs/<session_id>/events.jsonl`:
+### Session Directory Structure
 
-```json
-{
-  "timestamp": "2025-01-03T12:34:56.789Z",
-  "event": "component_validation_start",
-  "level": "INFO",
-  "data": {
-    "component": "mysql.writer",
-    "level": "enhanced",
-    "schema_version": "https://json-schema.org/draft/2020-12/schema",
-    "command": "components.validate"
-  }
-}
-```
+By default, sessions are created in `./logs/<session_id>/` containing:
+- **events.jsonl**: Structured event stream (run_start, validation events, run_end)
+- **osiris.log**: Standard application logs
+- **debug.log**: Debug-level logs (if `--log-level DEBUG`)
+- **artifacts/**: Empty directory (reserved for future use)
 
-### Example: Viewing Validation Events
+**Note**: Component validation intentionally does NOT create:
+- YAML bundles or pipeline artifacts (those belong to pipeline generation)
+- metrics.jsonl (no metrics currently emitted during validation)
+- session.json (not implemented yet)
+
+### Example Session Contents
 
 ```bash
-# Run validation with custom session
-$ python osiris.py components validate mysql.writer --session-id test_001
+$ ls -la logs/components_validate_1756883996401/
+total 16
+drwxr-xr-x  5 user  staff   160 Jan  3 09:13 .
+drwxr-xr-x  42 user  staff  1344 Jan  3 09:13 ..
+drwxr-xr-x  2 user  staff    64 Jan  3 09:13 artifacts/
+-rw-r--r--  1 user  staff  1432 Jan  3 09:13 events.jsonl
+-rw-r--r--  1 user  staff   256 Jan  3 09:13 osiris.log
+```
 
-# List sessions
-$ python osiris.py logs list
-Session ID                      Created              Duration    Events
-test_001                       2025-01-03 12:34:56  0.5s        4
+## Session-Aware Validation Examples
 
-# Show validation events
-$ python osiris.py logs show --session test_001 --events "component_validation_*"
-Filtered to: component_validation_*
-12:34:56.123 component_validation_start      {component: mysql.writer, level: enhanced}
-12:34:56.623 component_validation_complete   {status: ok, errors: 0, duration_ms: 500}
+### Success Case - Complete JSONL Stream
+
+```bash
+$ python osiris.py components validate mysql.extractor --session-id test_fixed
+$ cat logs/test_fixed/events.jsonl
+```
+
+```json
+{"ts": "2025-09-03T07:48:26.050909+00:00", "session": "test_fixed", "event": "run_start", "session_id": "test_fixed", "session_dir": "logs/test_fixed", "fallback_used": false}
+{"ts": "2025-09-03T07:48:26.056870+00:00", "session": "test_fixed", "event": "component_validation_start", "component": "mysql.extractor", "level": "enhanced", "schema_version": "unknown", "command": "components.validate"}
+{"ts": "2025-09-03T07:48:26.059906+00:00", "session": "test_fixed", "event": "component_validation_complete", "component": "mysql.extractor", "level": "enhanced", "status": "ok", "errors": 0, "duration_ms": 8, "command": "components.validate"}
+{"ts": "2025-09-03T07:48:26.061327+00:00", "session": "test_fixed", "event": "run_end", "status": "completed", "duration_ms": 8}
+```
+
+### Failure Case - Complete JSONL Stream
+
+```bash
+$ python osiris.py components validate nonexistent --session-id test_fail_fixed
+$ cat logs/test_fail_fixed/events.jsonl
+```
+
+```json
+{"ts": "2025-09-03T07:49:17.378526+00:00", "session": "test_fail_fixed", "event": "run_start", "session_id": "test_fail_fixed", "session_dir": "logs/test_fail_fixed", "fallback_used": false}
+{"ts": "2025-09-03T07:49:17.400500+00:00", "session": "test_fail_fixed", "event": "component_validation_start", "component": "nonexistent", "level": "enhanced", "schema_version": "unknown", "command": "components.validate"}
+{"ts": "2025-09-03T07:49:17.420714+00:00", "session": "test_fail_fixed", "event": "component_validation_complete", "component": "nonexistent", "level": "enhanced", "status": "failed", "errors": 1, "duration_ms": 41, "command": "components.validate"}
+{"ts": "2025-09-03T07:49:17.422200+00:00", "session": "test_fail_fixed", "event": "run_end", "status": "failed", "duration_ms": 41}
+```
+
+**Note**: Each validation emits exactly 4 events. No duplicate events occur because the Registry is not given a session_context when called from the CLI.
+
+### Viewing Sessions with `logs` Commands
+
+```bash
+# List recent validation sessions
+$ python osiris.py logs list --limit 5
+┏━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━┓
+┃ Session ID           ┃ Start Time ┃ Status    ┃ Duration ┃ Events   ┃
+┡━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━┩
+│ failure_demo         │ 09:14:12   │ failed    │ 0.04s    │ 6        │
+│ success_demo         │ 09:13:34   │ completed │ 0.04s    │ 6        │
+└──────────────────────┴────────────┴───────────┴──────────┴──────────┘
+
+# Show specific session events
+$ python osiris.py logs show --session success_demo --events
 ```
 
 ## Risks & Mitigations
@@ -421,6 +486,20 @@ Filtered to: component_validation_*
 **Issue**: Invalid specs could be deployed if validation is skipped.  
 **Mitigation**: `load_specs()` automatically filters invalid specs. CI/CD should run `validate_component --level strict`.
 
+## Known Limitations
+
+### Current Implementation Gaps
+- **schema_version**: Currently returns "unknown" for all components (field exists in spec but not reliably extracted)
+- **discover_with_component**: Placeholder implementation showing "Component runner integration not yet implemented"
+- **metrics.jsonl**: No metrics are emitted during validation (file not created)
+- **session.json**: Summary file not yet implemented
+- **Bulk validation**: No support for validating multiple components in single command
+
+### Technical Debt
+- Registry loads all specs on every CLI invocation (no persistent cache between runs)
+- JSON Pointer validation only checks path syntax, not actual field existence in configs
+- No support for component versioning or multiple versions of same component
+
 ## Next Steps
 
 ### Immediate (M1a.4 - Friendly Error Mapper)
@@ -434,6 +513,7 @@ Filtered to: component_validation_*
   - Extract minimal context from registry for token efficiency
   - Integrate into conversational agent
   - Validate generated OML against specs
+  - Address schema_version extraction issue
   
 - **M1c**: Compiler and Manifest Generation
   - Compile OML to deterministic Run Manifests
@@ -444,6 +524,7 @@ Filtered to: component_validation_*
   - Execute compiled manifests locally
   - Integrate with existing connectors
   - Generate structured logs with secret masking
+  - Implement discover_with_component functionality
 
 ## Completion Checklist
 
