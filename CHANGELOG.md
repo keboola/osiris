@@ -8,11 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Component Registry backend (`osiris/components/registry.py`) with mtime-based caching and three validation levels (basic/enhanced/strict)
+- Session-aware `osiris components validate` command with structured event logging (run_start, component_validation_start/complete, run_end)
+- CLI flags for component validation: `--session-id`, `--logs-dir`, `--log-level`, `--events`, `--level`, `--json`
+- Session ID wrapping in `osiris logs list` for full copy/paste capability with `--no-wrap` flag for legacy behavior
 - Component management CLI commands: `osiris components list`, `show`, `validate`, `config-example`, `discover`
 - Component specification schema (JSON Schema Draft 2020-12) for self-describing components
 - Bootstrap component specs for MySQL and Supabase extractors/writers
 - Migration guide for 'load' to 'write' mode transition
-- Comprehensive test suite for component specifications
+- Comprehensive test suites for component specifications and registry (`tests/components/test_registry.py`, `test_registry_cli_logging.py`)
 - CLI displays both required configuration and secrets for components
 
 ### Changed
@@ -21,8 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Component capabilities updated to reflect actual implementation
 - Writers now support 'discover' mode for target schema inspection
 - CLI enhanced to show secrets and required config in property order
+- Component validation now creates session logs with proper status tracking (completed/failed)
 
 ### Fixed
+- Duplicate validation events eliminated - Registry and CLI no longer emit redundant events
+- Session status now correctly shows "completed" or "failed" instead of "unknown"
 - Component CLI path resolution works from any directory
 - JSON Schema validation for component specs
 - Capabilities now accurately reflect implementation (e.g., Supabase doesn't support adHocAnalytics)

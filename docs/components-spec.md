@@ -432,6 +432,48 @@ All component specifications must:
 5. Include at least one operational mode
 6. Define required capabilities
 
+### Develop & Validate
+
+The Component Registry provides session-aware validation with structured logging:
+
+```bash
+# Validate a component spec with session logging
+$ python osiris.py components validate mysql.writer --level enhanced
+✓ Component 'mysql.writer' is valid (level: enhanced)
+  Version: 1.0.0
+  Modes: write, discover
+  Session: components_validate_1735900000000
+
+# View validation session logs
+$ python osiris.py logs show --session components_validate_1735900000000
+Session: components_validate_1735900000000
+Created: 2025-01-03 12:00:00
+Events:
+  12:00:00.123 component_validation_start    {component: mysql.writer, level: enhanced}
+  12:00:00.456 component_validation_complete  {status: ok, errors: 0, duration_ms: 333}
+
+# Custom session with filtered events
+$ python osiris.py components validate supabase.extractor \
+    --session-id my_validation \
+    --level strict \
+    --events "component_validation_*" \
+    --json
+{
+  "component": "supabase.extractor",
+  "level": "strict",
+  "is_valid": true,
+  "errors": [],
+  "session_id": "my_validation",
+  "duration_ms": 250
+}
+```
+
+Validation creates structured logs in `logs/<session_id>/` including:
+- `events.jsonl`: Structured validation events
+- `metrics.jsonl`: Performance metrics
+- `osiris.log`: Standard application logs
+- `debug.log`: Debug-level logs (if enabled)
+
 ## Best Practices
 
 1. **Secrets**: Always use JSON Pointers for secret fields
