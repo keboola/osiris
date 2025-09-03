@@ -455,14 +455,23 @@ $ cat logs/test_fail_fixed/events.jsonl
 ### Viewing Sessions with `logs` Commands
 
 ```bash
-# List recent validation sessions
-$ python osiris.py logs list --limit 5
+# List recent validation sessions (IDs wrap by default for full copy/paste)
+$ python osiris.py logs list --limit 2
 ┏━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━┓
 ┃ Session ID           ┃ Start Time ┃ Status    ┃ Duration ┃ Events   ┃
 ┡━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━┩
-│ failure_demo         │ 09:14:12   │ failed    │ 0.04s    │ 6        │
-│ success_demo         │ 09:13:34   │ completed │ 0.04s    │ 6        │
+│ components_validate_ │ 09:14:12   │ failed    │ 0.04s    │ 6        │
+│ 1756883996401        │            │           │          │          │
+│ test_success_v2      │ 09:13:34   │ completed │ 0.04s    │ 6        │
 └──────────────────────┴────────────┴───────────┴──────────┴──────────┘
+
+# Use --no-wrap to force single-line display (may truncate in narrow terminals)
+$ python osiris.py logs list --limit 1 --no-wrap
+┏━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━┓
+┃ Session ID        ┃ Start Time ┃ Status    ┃ Duration ┃ Events   ┃
+┡━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━┩
+│ components_valid… │ 09:14:12   │ failed    │ 0.04s    │ 6        │
+└───────────────────┴────────────┴───────────┴──────────┴──────────┘
 
 # Show specific session events
 $ python osiris.py logs show --session success_demo --events
@@ -494,6 +503,9 @@ $ python osiris.py logs show --session success_demo --events
 - **metrics.jsonl**: No metrics are emitted during validation (file not created)
 - **session.json**: Summary file not yet implemented
 - **Bulk validation**: No support for validating multiple components in single command
+
+### UI/UX Improvements (v0.1.3+)
+- **Session ID wrapping**: Session IDs now wrap by default in `osiris logs list` to allow full copy/paste on narrow terminals. Use `--no-wrap` to force single-line display (may truncate)
 
 ### Technical Debt
 - Registry loads all specs on every CLI invocation (no persistent cache between runs)

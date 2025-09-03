@@ -1386,7 +1386,9 @@ def logs_command(args: list) -> None:
         console.print("[bold]Usage:[/bold] osiris logs SUBCOMMAND [OPTIONS]")
         console.print()
         console.print("[bold blue]Subcommands[/bold blue]")
-        console.print("  [cyan]list[/cyan]                   List recent session directories")
+        console.print(
+            "  [cyan]list[/cyan]                   List recent session directories (wraps IDs by default)"
+        )
         console.print("  [cyan]show --session <id>[/cyan]   Show session details and summary")
         console.print("  [cyan]bundle --session <id>[/cyan] Bundle session into zip file")
         console.print("  [cyan]gc[/cyan]                     Garbage collect old sessions")
@@ -1394,6 +1396,9 @@ def logs_command(args: list) -> None:
         console.print("[bold blue]Examples[/bold blue]")
         console.print(
             "  [green]osiris logs list[/green]                         # List recent sessions"
+        )
+        console.print(
+            "  [green]osiris logs list --no-wrap[/green]               # List with single-line IDs"
         )
         console.print(
             "  [green]osiris logs show --session 20250901_123456_abc[/green]  # Show session details"

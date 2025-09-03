@@ -60,6 +60,14 @@ def list_sessions(args: list) -> None:
         console.print("  [cyan]--json[/cyan]                Output in JSON format")
         console.print("  [cyan]--limit COUNT[/cyan]         Maximum sessions to show (default: 20)")
         console.print("  [cyan]--logs-dir DIR[/cyan]        Base logs directory (default: logs)")
+        console.print(
+            "  [cyan]--no-wrap[/cyan]             Print session IDs on one line (may truncate in narrow terminals)"
+        )
+        console.print()
+        console.print("[bold blue]Session ID Display[/bold blue]")
+        console.print("  By default, session IDs wrap to multiple lines to show the full value.")
+        console.print("  This allows copy/paste of complete IDs even in narrow terminals.")
+        console.print("  Use --no-wrap to force single-line display (legacy behavior).")
         console.print()
         console.print("[bold blue]Examples[/bold blue]")
         console.print(
@@ -90,6 +98,11 @@ def list_sessions(args: list) -> None:
         "--logs-dir",
         default=default_logs_dir,
         help=f"Base logs directory (default: {default_logs_dir})",
+    )
+    parser.add_argument(
+        "--no-wrap",
+        action="store_true",
+        help="Print session IDs on one line (may truncate in narrow terminals)",
     )
 
     try:
@@ -126,7 +139,7 @@ def list_sessions(args: list) -> None:
     if parsed_args.json:
         print(json.dumps({"sessions": sessions}, indent=2))
     else:
-        _display_sessions_table(sessions)
+        _display_sessions_table(sessions, no_wrap=parsed_args.no_wrap)
 
 
 def show_session(args: list) -> None:
@@ -626,14 +639,26 @@ def _format_duration(seconds: Optional[float]) -> str:
         return f"{hours:.1f}h"
 
 
-def _display_sessions_table(sessions: List[Dict[str, Any]]) -> None:
-    """Display sessions in a Rich table."""
+def _display_sessions_table(sessions: List[Dict[str, Any]], no_wrap: bool = False) -> None:
+    """Display sessions in a Rich table.
+
+    Args:
+        sessions: List of session information dictionaries.
+        no_wrap: If True, session IDs will be on one line (may truncate).
+                 If False (default), session IDs will wrap to show full value.
+    """
     if not sessions:
         console.print("No sessions found.")
         return
 
     table = Table(title="Session Directories")
-    table.add_column("Session ID", style="cyan")
+
+    # Configure Session ID column based on wrap preference
+    if no_wrap:
+        table.add_column("Session ID", style="cyan")
+    else:
+        table.add_column("Session ID", style="cyan", overflow="fold", no_wrap=False, min_width=20)
+
     table.add_column("Start Time", style="dim")
     table.add_column("Status", style="bold")
     table.add_column("Duration", style="green")
