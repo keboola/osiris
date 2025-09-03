@@ -178,7 +178,15 @@ class TestComponentRegistry:
         is_valid, errors = registry.validate_spec("invalid.component", level="basic")
         assert not is_valid
         assert len(errors) > 0
-        assert any("version" in error for error in errors)
+        # Check for "version" in either string errors or dict errors with technical field
+        assert any(
+            (
+                "version" in error
+                if isinstance(error, str)
+                else "version" in error.get("technical", "")
+            )
+            for error in errors
+        )
 
     def test_validate_spec_enhanced(self, temp_components_dir):
         """Test enhanced validation including configSchema and examples."""
@@ -203,8 +211,15 @@ class TestComponentRegistry:
 
         is_valid, errors = registry.validate_spec("bad.schema", level="enhanced")
         assert not is_valid
+        # Check for schema validation errors in either string or dict format
         assert any(
-            "invalid configschema" in error.lower() or "not a valid json schema" in error.lower()
+            (
+                "invalid configschema" in error.lower()
+                or "not a valid json schema" in error.lower()
+                if isinstance(error, str)
+                else "Invalid configSchema" in error.get("technical", "")
+                or "invalid-type" in error.get("technical", "")
+            )
             for error in errors
         )
 
@@ -240,7 +255,15 @@ class TestComponentRegistry:
 
         is_valid, errors = registry.validate_spec("bad.aliases", level="strict")
         assert not is_valid
-        assert any("nonexistent_field" in error for error in errors)
+        # Check for "nonexistent_field" in either string or dict errors
+        assert any(
+            (
+                "nonexistent_field" in error
+                if isinstance(error, str)
+                else "nonexistent_field" in error.get("technical", "")
+            )
+            for error in errors
+        )
 
     def test_validate_spec_path(self, temp_components_dir):
         """Test validation using file path instead of component name."""
