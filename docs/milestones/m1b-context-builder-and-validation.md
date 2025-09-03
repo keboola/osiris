@@ -97,16 +97,31 @@ M1b focuses on bridging the Component Registry (M1a) with the LLM-powered conver
    - Prioritize fields LLMs commonly mistake (e.g., `url` vs `uri`, `key` vs `api_key`)
    - Include enum values inline to prevent hallucination
    - Provide 1-2 minimal examples per component
+   - **NO SECRETS**: Context export forbids secrets (redaction handled at source by registry)
 
 2. **Token Optimization**:
    - Use abbreviated field descriptions
    - Compress JSON structure (no pretty printing in prompts)
    - Consider component-specific contexts for focused queries
+   - **Token limits**: Target <2000 tokens using GPT-4 tokenizer (tiktoken cl100k_base)
 
 3. **Validation Integration**:
    - Validation should be non-blocking (warn but allow override)
    - Cache validation results to avoid repeated checks
    - Provide "fix" suggestions based on validation errors
+   - **NO RUNNER LOGIC**: M1b contains no component execution or runner logic
+
+4. **Cache Invalidation**:
+   - Cache invalidation based on: mtime of spec files + context schema version
+   - Fingerprint context with SHA-256 for deterministic invalidation
+   - Store cache metadata with generation timestamp and spec versions
+
+5. **Logging Events**:
+   - `context_build_start`: When context generation begins
+   - `context_build_complete`: With size metrics and token count
+   - `validation_start`: When OML validation begins
+   - `validation_complete`: With pass/fail status and error count
+   - `validation_retry`: When regeneration is triggered
 
 ### Success Metrics
 
