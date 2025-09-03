@@ -30,6 +30,7 @@
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import re
@@ -550,6 +551,9 @@ async def _handle_single_message(
         if not _format_data_response(response):
             console.print(f"🤖 {response}")
 
+        # Display token usage if available
+        _display_token_usage(session)
+
     except Exception as e:
         logger.error(f"Error in single message mode: {e}")
         session.log_event("single_message_error", error_type=type(e).__name__, error_message=str(e))
@@ -639,6 +643,9 @@ async def _handle_interactive_mode(
                 if not _format_data_response(response):
                     console.print(f"🤖 Assistant: {response}")
 
+                # Display token usage if available
+                _display_token_usage(session)
+
             except Exception as e:
                 logger.error(f"Chat error: {e}")
                 session.log_event(
@@ -658,6 +665,47 @@ async def _handle_interactive_mode(
         session.log_event("chat_end")
         session.close()
         clear_session_context()
+
+
+def _display_token_usage(session: SessionContext) -> None:
+    """Display token usage from the last LLM interaction."""
+    # Read the last few events to find token usage
+    try:
+        events_file = session.session_dir / "events.jsonl"
+        if not events_file.exists():
+            return
+
+        # Read last 20 events (enough to find recent token usage)
+        events = []
+        with open(events_file) as f:
+            lines = f.readlines()
+            for line in lines[-20:] if len(lines) > 20 else lines:
+                try:
+                    event = json.loads(line)
+                    events.append(event)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+
+        # Find the most recent llm_response_complete event
+        token_event = None
+        for event in reversed(events):
+            if event.get("event") == "llm_response_complete":
+                token_event = event
+                break
+
+        if token_event:
+            prompt_tokens = token_event.get("prompt_tokens_est", 0)
+            response_tokens = token_event.get("response_tokens_est", 0)
+            total_tokens = token_event.get("total_tokens_est", 0)
+
+            # Create a simple token usage display
+            console.print(
+                f"[dim]📊 Tokens: {total_tokens:,} "
+                f"(prompt: {prompt_tokens:,}, response: {response_tokens:,})[/dim]"
+            )
+    except Exception as e:
+        # Silently fail - token display is not critical
+        logger.debug(f"Could not display token usage: {e}")
 
 
 def _format_data_response(response: str) -> bool:

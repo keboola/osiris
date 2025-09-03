@@ -589,6 +589,22 @@ Return only the SQL query, no additional text."""
 
         return True
 
+    def estimate_tokens(self, text: str) -> int:
+        """Estimate token count for a text string.
+
+        Uses a simple heuristic: ~4 characters per token for English text.
+        This is a rough approximation; actual token count varies by model.
+
+        Args:
+            text: Text to estimate tokens for
+
+        Returns:
+            Estimated token count
+        """
+        # Simple heuristic: ~4 characters per token
+        # This approximation works reasonably well for English text
+        return len(text) // 4
+
     def _generate_readme(self) -> str:
         """Generate README.md for custom prompts directory."""
         return """# Osiris Pro Mode - Custom LLM Prompts

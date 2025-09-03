@@ -57,6 +57,7 @@ class LLMResponse:
     action: Optional[str] = None
     params: Optional[Dict[str, Any]] = None
     confidence: float = 1.0
+    token_usage: Optional[Dict[str, int]] = None
 
 
 @dataclass
@@ -262,6 +263,7 @@ class LLMAdapter:
         capabilities: List[str],
     ) -> LLMResponse:
         """Process conversation message and return structured response."""
+        from ..core.session_logging import get_current_session
 
         system_prompt = self._build_system_prompt(available_connectors, capabilities)
         user_prompt = self._build_user_prompt(message, context)
@@ -271,10 +273,32 @@ class LLMAdapter:
             {"role": "user", "content": user_prompt},
         ]
 
+        # Calculate token estimates
+        total_prompt_tokens = 0
+        if self.prompt_manager:
+            total_prompt_tokens = self.prompt_manager.estimate_tokens(
+                system_prompt
+            ) + self.prompt_manager.estimate_tokens(user_prompt)
+        else:
+            # Fallback estimation
+            total_prompt_tokens = (len(system_prompt) + len(user_prompt)) // 4
+
+        # Log token usage before request
+        session = get_current_session()
+        if session:
+            session.log_event(
+                "llm_request_start",
+                provider=self.provider.value,
+                prompt_tokens_est=total_prompt_tokens,
+                has_context=self.context is not None,
+                context_components=len(self.context.get("components", [])) if self.context else 0,
+            )
+
         # Debug logging: show full conversation sent to LLM
         logger.info("=== LLM CONVERSATION DEBUG ===")
         logger.info(f"SYSTEM PROMPT:\n{system_prompt}")
         logger.info(f"USER PROMPT:\n{user_prompt}")
+        logger.info(f"TOKEN ESTIMATE: ~{total_prompt_tokens} tokens")
         logger.info("=== END DEBUG ===")
 
         try:
@@ -290,9 +314,33 @@ class LLMAdapter:
             # Debug logging: show LLM's raw response
             logger.info(f"LLM RAW RESPONSE:\n{response_text}")
 
+            # Estimate response tokens
+            response_tokens_est = 0
+            if self.prompt_manager:
+                response_tokens_est = self.prompt_manager.estimate_tokens(response_text)
+            else:
+                response_tokens_est = len(response_text) // 4
+
+            # Log token usage after response
+            if session:
+                session.log_event(
+                    "llm_response_complete",
+                    provider=self.provider.value,
+                    prompt_tokens_est=total_prompt_tokens,
+                    response_tokens_est=response_tokens_est,
+                    total_tokens_est=total_prompt_tokens + response_tokens_est,
+                )
+
             # Parse structured response
             parsed_response = self._parse_response(response_text)
             logger.info(f"PARSED RESPONSE: {parsed_response}")
+
+            # Store token usage in response
+            parsed_response.token_usage = {
+                "prompt_tokens": total_prompt_tokens,
+                "response_tokens": response_tokens_est,
+                "total_tokens": total_prompt_tokens + response_tokens_est,
+            }
 
             return parsed_response
 

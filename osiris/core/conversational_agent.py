@@ -178,15 +178,36 @@ class ConversationalPipelineAgent:
             # Save updated context
             self._save_context(context, state_store)
 
-            # Log assistant response
+            # Log assistant response with token usage
+            metadata = {
+                "action": response.action if "response" in locals() else "unknown",
+                "confidence": response.confidence if "response" in locals() else "unknown",
+            }
+
+            # Add token usage if available
+            if hasattr(response, "token_usage") and response.token_usage:
+                metadata["token_usage"] = response.token_usage
+
+                # Log token metrics to session
+                from ..core.session_logging import get_current_session
+
+                session = get_current_session()
+                if session:
+                    session.log_metric(
+                        "llm_tokens_used",
+                        response.token_usage.get("total_tokens", 0),
+                        unit="tokens",
+                        metadata={
+                            "prompt_tokens": response.token_usage.get("prompt_tokens", 0),
+                            "response_tokens": response.token_usage.get("response_tokens", 0),
+                        },
+                    )
+
             self._log_conversation(
                 session_id,
                 "assistant",
                 result_message,
-                {
-                    "action": response.action if "response" in locals() else "unknown",
-                    "confidence": response.confidence if "response" in locals() else "unknown",
-                },
+                metadata,
             )
 
             return result_message
