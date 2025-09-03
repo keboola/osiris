@@ -29,7 +29,8 @@ Central registry implementation providing:
 - Three-tier validation system (basic, enhanced, strict)
 - Secret and redaction field extraction for runtime masking
 - Session context integration for structured logging
-- Singleton pattern for global registry access
+- Singleton pattern via `get_registry()` function for global access
+- Automatic filtering of invalid specs during `load_specs()`
 
 #### `osiris/cli/components_cmd.py` (Updated)
 CLI commands refactored to use registry backend:
@@ -39,94 +40,135 @@ CLI commands refactored to use registry backend:
 - Maintained backward compatibility with existing CLI interface
 
 #### `tests/components/test_registry.py` (386 lines)
-Comprehensive test suite with 13 test cases covering:
-- Loading and caching behavior
-- All three validation levels
-- Secret map extraction
-- Cache invalidation on file changes
-- Session logging integration
-- Singleton pattern verification
-- Parent directory fallback logic
+Comprehensive test suite with 13 test cases:
+1. `test_load_specs` - Validates loading and filtering of invalid specs
+2. `test_get_component` - Tests individual component retrieval
+3. `test_list_components` - Tests listing with mode filtering
+4. `test_validate_spec_basic` - Tests JSON Schema validation
+5. `test_validate_spec_enhanced` - Tests configSchema and example validation
+6. `test_validate_spec_strict` - Tests semantic validation (aliases, pointers)
+7. `test_validate_spec_path` - Tests validation using file paths
+8. `test_get_secret_map` - Tests secret extraction from specs
+9. `test_cache_invalidation` - Tests mtime-based cache refresh
+10. `test_clear_cache` - Tests manual cache clearing
+11. `test_session_context_integration` - Tests logging event emission
+12. `test_get_registry_singleton` - Tests singleton pattern
+13. `test_parent_directory_fallback` - Tests ../components/ fallback
 
 ### Validation Levels Implemented
 
-#### Basic Validation
-- Validates component specs against `components/spec.schema.json`
-- Checks required fields: name, version, modes
-- Ensures structural correctness of the specification
-- Automatically applied during `load_specs()` to filter invalid components
+#### Basic Validation (`level="basic"`)
+- Validates component specs against `components/spec.schema.json` using Draft202012Validator
+- Checks all required fields as defined in schema
+- Returns errors with path information (e.g., "Schema validation: 'version' is a required property at root")
+- Automatically applied during `load_specs()` to filter out invalid components
+- Invalid specs are logged as warnings but not loaded into the registry
 
-#### Enhanced Validation  
-- All basic validation checks, plus:
-- Validates that `configSchema` is itself a valid JSON Schema Draft 2020-12
-- Verifies all examples validate against their `configSchema`
-- Catches schema design errors before runtime
+#### Enhanced Validation (`level="enhanced"`)  
+- Includes all basic validation checks, plus:
+- Validates that `configSchema` is itself a valid JSON Schema using `Draft202012Validator.check_schema()`
+- Iterates through all examples and validates each `example["config"]` against the component's `configSchema`
+- Returns specific error messages for invalid examples (e.g., "Example 1 invalid: 'host' is a required property")
+- Default level when not specified in CLI
 
-#### Strict Validation
-- All enhanced validation checks, plus:
-- Semantic validation of JSON Pointer references in `secrets` and `redaction.extras`
-- Verifies `llmHints.inputAliases` reference actual config fields
-- Ensures cross-references within the spec are internally consistent
-- Provides the highest confidence in spec correctness
+#### Strict Validation (`level="strict"`)
+- Includes all enhanced validation checks, plus:
+- Calls `_validate_semantic()` for deep cross-reference validation:
+  - Validates JSON Pointers in `secrets` array reference actual fields or common paths (auth, credentials, connection)
+  - Validates JSON Pointers in `redaction.extras` with same rules as secrets
+  - Validates each key in `llmHints.inputAliases` exists in `configSchema.properties`
+- Returns detailed errors with available field lists for invalid aliases
+- Provides highest confidence for production use
 
 ### Logging & Events Integration
 
-The registry integrates with session-scoped logging from M0:
+The registry emits four distinct events to the SessionContext:
 
+#### Registry Loading Events
 ```python
-# Registry load events
-"registry_load_start"      # When specs begin loading
-"registry_load_complete"    # After all specs loaded (includes error count)
+# Emitted at start of load_specs()
+self.session_context.log_event(
+    "registry_load_start", 
+    root=str(search_root)  # Path being searched
+)
 
-# Validation events  
-"component_validation_start"    # Before validation begins
-"component_validation_complete" # After validation (includes is_valid, error_count)
+# Emitted after all specs processed
+self.session_context.log_event(
+    "registry_load_complete",
+    root=str(search_root),          # Path that was searched
+    components_loaded=len(specs),    # Number of valid specs loaded
+    errors=errors                    # List of error messages for invalid specs
+)
 ```
 
-Note: Writers now emit `write.*` events, not `load.*` events, following the mode standardization.
+#### Validation Events
+```python
+# Emitted at start of validate_spec()
+self.session_context.log_event(
+    "component_validation_start", 
+    component=name_or_path,  # Component name or file path
+    level=level              # "basic", "enhanced", or "strict"
+)
+
+# Emitted after validation completes
+self.session_context.log_event(
+    "component_validation_complete",
+    component=name_or_path,
+    level=level,
+    is_valid=len(errors) == 0,  # Boolean validation result
+    error_count=len(errors)      # Number of validation errors
+)
+```
 
 ## CLI Reference
+
+**Available Functions** (in `osiris/cli/components_cmd.py`):
+- `list_components()` - List all or filtered components
+- `show_component()` - Display detailed component information
+- `validate_component()` - Validate spec at specified level
+- `show_config_example()` - Show example configurations
+- `discover_with_component()` - Run discovery mode (placeholder)
 
 ### List Components
 ```bash
 # List all components
-osiris components list
+python osiris.py components list
 
-# Filter by mode
-osiris components list --mode extract
-osiris components list --mode write
+# Filter by mode (actual parameter: mode="extract")
+python osiris.py components list --mode extract
+python osiris.py components list --mode write
 ```
 
 ### Show Component Details
 ```bash
-# Display component specification
-osiris components show mysql.extractor
-osiris components show supabase.writer --json
+# Display component specification (actual parameter: as_json=False)
+python osiris.py components show mysql.extractor
+python osiris.py components show supabase.writer --json
 ```
 
 ### Validate Component
 ```bash
-# Basic validation (default)
-osiris components validate mysql.writer
+# Enhanced validation (default when level not specified)
+python osiris.py components validate mysql.writer
 
-# Enhanced validation
-osiris components validate mysql.writer --level enhanced
-
-# Strict validation
-osiris components validate supabase.extractor --level strict
+# Explicit validation levels (actual parameter: level="enhanced")
+python osiris.py components validate mysql.writer --level basic
+python osiris.py components validate mysql.writer --level enhanced
+python osiris.py components validate supabase.extractor --level strict
 ```
 
 ### Show Configuration Example
 ```bash
-# Display example configuration
-osiris components config-example mysql.extractor
-osiris components config-example supabase.writer --index 1
+# Display example configuration (actual parameter: example_index=0)
+python osiris.py components config-example mysql.extractor
+python osiris.py components config-example supabase.writer --index 1
 ```
 
-### Discover Mode (if supported)
+### Discover Mode (placeholder implementation)
 ```bash
-# Run discovery for a component
-osiris components discover mysql.extractor --config config.yaml
+# Currently shows message: "Discovery mode would run here"
+# Note: "Component runner integration not yet implemented"
+python osiris.py components discover mysql.extractor --config config.yaml
 ```
 
 ## Testing & Evidence
@@ -205,15 +247,52 @@ $ python osiris.py components validate supabase.extractor --level strict
 - Logging events renamed from `load.*` to `write.*` for consistency
 
 ### Secret & Redaction Configuration
-Secrets and sensitive fields are extracted from multiple locations:
-- Primary secrets: `spec.secrets` array (JSON Pointer format)
-- Additional redaction: `spec.redaction.extras` array
-- Legacy support: `spec.loggingPolicy.sensitivePaths` (if present)
+
+#### Secret Extraction (`get_secret_map()` method)
+The registry extracts sensitive field identifiers from exactly two locations:
+
+1. **Primary secrets**: `spec.secrets` array (JSON Pointer format, e.g., "/password", "/api_key")
+2. **Redaction extras**: `spec.redaction.extras` array (additional sensitive paths)
+
+**Note**: No legacy support for `loggingPolicy.sensitivePaths` is implemented (this was incorrect in initial documentation).
+
+#### Return Format
+```python
+{
+    "secrets": [/* from spec.secrets */],
+    "redaction_extras": [/* from spec.redaction.extras */]
+}
+```
+
+#### Usage Example
+```python
+registry = get_registry()
+secret_map = registry.get_secret_map("mysql.writer")
+# Returns: {"secrets": ["/password"], "redaction_extras": ["/host", "/user"]}
 
 ### Cache Behavior
-- Cache invalidates automatically when spec files are modified (mtime-based)
-- Parent directory fallback: Registry checks `../components/` if `./components/` not found
-- Useful when running from `testing_env/` or other subdirectories
+
+#### Mtime-based Invalidation
+- The `_is_cache_valid()` method compares stored mtime with current file mtime
+- Cache automatically refreshes when spec files are modified
+- Both `_cache` (spec data) and `_mtime_cache` (modification times) are maintained
+
+#### Parent Directory Fallback
+Implemented in `__init__()` constructor:
+```python
+if not self.root.exists():
+    parent_root = Path("..") / "components"
+    if parent_root.exists():
+        self.root = parent_root
+```
+- Automatically checks `../components/` if `./components/` doesn't exist
+- Essential for running from `testing_env/` or other subdirectories
+- No recursive search - only immediate parent is checked
+
+#### Cache Management
+- `clear_cache()` method manually clears both caches
+- Cache is instance-level, not shared between registry instances
+- Singleton pattern ensures cache persistence within a process
 
 ## Lessons Learned
 
@@ -235,13 +314,57 @@ The three-tier validation system proved valuable:
 ### 4. Session Context Integration
 Integrating with M0's session logging from the start ensures consistent observability across the entire Osiris pipeline lifecycle.
 
+## Risks & Mitigations
+
+### Risk: Stale Spec Detection
+**Issue**: Mtime-based caching could miss changes if system time is incorrect.  
+**Mitigation**: `clear_cache()` method provides manual refresh option. Consider adding checksum validation in future.
+
+### Risk: Mis-declared Secrets
+**Issue**: Components might forget to declare sensitive fields in `secrets` array.  
+**Mitigation**: Strict validation checks JSON Pointers are valid. M1a.2 audit verified all bootstrap components have proper secret declarations.
+
+### Risk: JSON Schema Limitations
+**Issue**: Cannot enforce complex cross-field dependencies or business logic.  
+**Mitigation**: Strict validation layer adds semantic checks. Runtime validation in pipeline execution provides final safety net.
+
+### Risk: Invalid Specs in Production
+**Issue**: Invalid specs could be deployed if validation is skipped.  
+**Mitigation**: `load_specs()` automatically filters invalid specs. CI/CD should run `validate_component --level strict`.
+
+## Next Steps
+
+### Immediate (M1a.4 - Friendly Error Mapper)
+- Map JSON Schema validation errors to human-readable messages
+- Provide actionable fix suggestions
+- Generate links to component documentation
+- Estimated timeline: 1 week
+
+### Upcoming Milestones
+- **M1b**: Context Builder and LLM Integration
+  - Extract minimal context from registry for token efficiency
+  - Integrate into conversational agent
+  - Validate generated OML against specs
+  
+- **M1c**: Compiler and Manifest Generation
+  - Compile OML to deterministic Run Manifests
+  - Generate per-step configuration files
+  - Ensure reproducible pipeline execution
+
+- **M1d**: Pipeline Runner MVP
+  - Execute compiled manifests locally
+  - Integrate with existing connectors
+  - Generate structured logs with secret masking
+
 ## Completion Checklist
 
-- [x] **Code implemented**: Registry, validation, caching complete
+- [x] **Code implemented**: Registry with all required methods
+- [x] **Validation levels**: Basic, enhanced, and strict validation working
+- [x] **Caching system**: Mtime-based invalidation implemented
 - [x] **Tests passing**: 13/13 tests with 100% success rate
-- [x] **CLI wired**: All commands using registry backend
-- [x] **Session logging integrated**: Events logged with context
-- [x] **Document published**: This milestone documentation
+- [x] **CLI integration**: All 5 commands using registry backend
+- [x] **Session logging**: 4 distinct events integrated
+- [x] **Documentation**: Milestone document with accurate details
 
 ## Links and References
 
