@@ -68,7 +68,8 @@ def show_main_help():
     console.print("  [cyan]logs[/cyan]         Manage session logs (list, show, bundle, gc)")
     console.print("  [cyan]components[/cyan]   Manage and inspect Osiris components")
     console.print(
-        "  [cyan]dump-prompts[/cyan] Export LLM system prompts for customization (pro mode)"
+        "  [cyan]dump-prompts[/cyan] Export LLM system prompts for customization (pro mode)\n"
+        "  [cyan]prompts[/cyan]      Manage component context for LLM"
     )
     console.print()
 
@@ -99,6 +100,7 @@ def parse_main_args():
             "logs",
             "components",
             "dump-prompts",
+            "prompts",
         ]:
             command = arg
             command_index = i
@@ -193,6 +195,8 @@ def main():
         components_command(command_args)
     elif args.command == "dump-prompts":
         dump_prompts_command(command_args)
+    elif args.command == "prompts":
+        prompts_command(command_args)
     elif args.command == "chat":
         # This case is now handled early in main() to preserve argument order
         pass
@@ -210,6 +214,7 @@ def main():
                             "logs",
                             "components",
                             "dump-prompts",
+                            "prompts",
                         ],
                     }
                 )
@@ -230,6 +235,7 @@ def main():
                             "logs",
                             "components",
                             "dump-prompts",
+                            "prompts",
                         ],
                     }
                 )
@@ -1444,6 +1450,100 @@ def logs_command(args: list) -> None:
         console.print(f"❌ Unknown subcommand: {subcommand}")
         console.print("Available subcommands: list, show, bundle, gc")
         console.print("Use 'osiris logs --help' for detailed help.")
+
+
+def prompts_command(args: list):
+    """Manage component context for LLM."""
+    import argparse
+
+    def show_prompts_help():
+        """Show help for prompts command."""
+        if json_output:
+            help_data = {
+                "command": "prompts",
+                "description": "Manage component context for LLM",
+                "subcommands": {
+                    "build-context": {
+                        "description": "Build minimal component context for LLM",
+                        "usage": "osiris prompts build-context [OPTIONS]",
+                        "options": {
+                            "--out PATH": "Output file path (default: .osiris_prompts/context.json)",
+                            "--force": "Force rebuild even if cache is valid",
+                            "--help": "Show this help message",
+                        },
+                        "outputs": "Compact JSON with component names, required configs, enums, examples",
+                        "metrics": "Size in bytes, estimated token count",
+                    }
+                },
+                "examples": [
+                    "osiris prompts build-context",
+                    "osiris prompts build-context --out context.json",
+                    "osiris prompts build-context --force",
+                ],
+            }
+            print(json.dumps(help_data, indent=2))
+            return
+
+        console.print()
+        console.print("[bold green]osiris prompts - Component Context Management[/bold green]")
+        console.print("🧠 Build minimal component context for LLM consumption")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris prompts SUBCOMMAND [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Subcommands[/bold blue]")
+        console.print("  [cyan]build-context[/cyan]    Build minimal component context for LLM")
+        console.print()
+        console.print("[bold blue]Options for build-context[/bold blue]")
+        console.print(
+            "  [cyan]--out PATH[/cyan]       Output file path (default: .osiris_prompts/context.json)"
+        )
+        console.print("  [cyan]--force[/cyan]          Force rebuild even if cache is valid")
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print("  [green]osiris prompts build-context[/green]")
+        console.print("  [green]osiris prompts build-context --out context.json[/green]")
+        console.print("  [green]osiris prompts build-context --force[/green]")
+        console.print()
+
+    if not args or args[0] in ["--help", "-h"]:
+        show_prompts_help()
+        return
+
+    subcommand = args[0]
+    subcommand_args = args[1:]
+
+    if subcommand == "build-context":
+        # Parse arguments for build-context
+        parser = argparse.ArgumentParser(description="Build component context", add_help=False)
+        parser.add_argument("--out", help="Output file path")
+        parser.add_argument("--force", action="store_true", help="Force rebuild")
+        parser.add_argument("--help", "-h", action="store_true", help="Show help")
+
+        # Parse known args only
+        parsed_args, _ = parser.parse_known_args(subcommand_args)
+
+        if parsed_args.help:
+            show_prompts_help()
+            return
+
+        # Import and run the context builder
+        try:
+            from ..prompts.build_context import main as build_context_main
+
+            build_context_main(output_path=parsed_args.out, force=parsed_args.force)
+        except Exception as e:
+            if json_output:
+                print(json.dumps({"error": str(e)}))
+            else:
+                console.print(f"[red]Error building context: {e}[/red]")
+            sys.exit(1)
+    else:
+        if json_output:
+            print(json.dumps({"error": f"Unknown subcommand: {subcommand}"}))
+        else:
+            console.print(f"❌ Unknown subcommand: {subcommand}")
+            console.print("Available subcommands: build-context")
+            console.print("Use 'osiris prompts --help' for detailed help.")
 
 
 if __name__ == "__main__":
