@@ -49,7 +49,12 @@ class ConversationalPipelineAgent:
     """Single LLM agent handles entire pipeline generation conversation."""
 
     def __init__(
-        self, llm_provider: str = "openai", config: Optional[Dict] = None, pro_mode: bool = False
+        self,
+        llm_provider: str = "openai",
+        config: Optional[Dict] = None,
+        pro_mode: bool = False,
+        prompt_manager: Optional[Any] = None,
+        context: Optional[Dict[str, Any]] = None,
     ):
         """Initialize conversational pipeline agent.
 
@@ -57,10 +62,18 @@ class ConversationalPipelineAgent:
             llm_provider: LLM provider (openai, claude, gemini)
             config: Configuration dictionary
             pro_mode: Whether to enable pro mode with custom prompts
+            prompt_manager: Optional PromptManager instance with context loaded
+            context: Optional component context dictionary
         """
         self.config = config or {}
         self.pro_mode = pro_mode
-        self.llm = LLMAdapter(provider=llm_provider, config=self.config, pro_mode=pro_mode)
+        self.llm = LLMAdapter(
+            provider=llm_provider,
+            config=self.config,
+            pro_mode=pro_mode,
+            prompt_manager=prompt_manager,
+            context=context,
+        )
         self.state_stores = {}  # Session ID -> SQLiteStateStore
         self.connectors = ConnectorRegistry()
 

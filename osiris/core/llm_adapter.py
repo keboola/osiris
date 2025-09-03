@@ -33,7 +33,10 @@ import logging
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from .prompt_manager import PromptManager
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +79,12 @@ class LLMAdapter:
     """Multi-provider LLM adapter for conversational pipeline generation."""
 
     def __init__(
-        self, provider: str = "openai", config: Optional[Dict] = None, pro_mode: bool = False
+        self,
+        provider: str = "openai",
+        config: Optional[Dict] = None,
+        pro_mode: bool = False,
+        prompt_manager: Optional["PromptManager"] = None,
+        context: Optional[Dict[str, Any]] = None,
     ):
         """Initialize LLM adapter.
 
@@ -84,15 +92,18 @@ class LLMAdapter:
             provider: LLM provider (openai, claude, gemini)
             config: Provider-specific configuration
             pro_mode: Whether to load custom prompts from files
+            prompt_manager: Optional PromptManager instance with context loaded
+            context: Optional component context dictionary
         """
         self.provider = LLMProvider(provider.lower())
         self.config = config or {}
         self.client = None
         self.pro_mode = pro_mode
+        self.context = context
 
-        # Initialize prompt manager for pro mode
-        self.prompt_manager = None
-        if pro_mode:
+        # Initialize prompt manager for pro mode or use provided one
+        self.prompt_manager = prompt_manager
+        if pro_mode and not self.prompt_manager:
             from .prompt_manager import PromptManager
 
             self.prompt_manager = PromptManager()
@@ -295,16 +306,18 @@ class LLMAdapter:
 
     def _build_system_prompt(self, available_connectors: List[str], capabilities: List[str]) -> str:
         """Build system prompt for conversation."""
+        base_prompt = ""
+
         if self.pro_mode and self.prompt_manager:
             # Use custom prompt from files
-            return self.prompt_manager.get_conversation_prompt(
+            base_prompt = self.prompt_manager.get_conversation_prompt(
                 pro_mode=True,
                 available_connectors=", ".join(available_connectors),
                 capabilities=", ".join(capabilities),
             )
         else:
             # Use default hardcoded prompt
-            return f"""You are the conversational interface for Osiris, a production-grade data pipeline platform. You help users create data pipelines through natural conversation.
+            base_prompt = f"""You are the conversational interface for Osiris, a production-grade data pipeline platform. You help users create data pipelines through natural conversation.
 
 SYSTEM CONTEXT:
 - This is Osiris v2 with LLM-first pipeline generation
@@ -353,6 +366,12 @@ IMMEDIATE ACTIONS:
 
 IMPORTANT: Don't ask for database credentials - they're already configured. Jump straight to discovery when appropriate.
 """
+
+        # Inject component context if available
+        if self.context and self.prompt_manager:
+            base_prompt = self.prompt_manager.inject_context(base_prompt, self.context)
+
+        return base_prompt
 
     def _build_user_prompt(self, message: str, context: ConversationContext) -> str:
         """Build user prompt with context."""

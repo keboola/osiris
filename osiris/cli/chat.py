@@ -65,6 +65,7 @@ except ImportError:
 
 from ..core.config import ConfigManager
 from ..core.conversational_agent import ConversationalPipelineAgent
+from ..core.prompt_manager import PromptManager
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -127,6 +128,11 @@ def show_epic_help(json_output=False):
                 "--sql": "Direct SQL mode: provide SQL query directly",
                 "--config-file, -c": "Configuration file path",
                 "--pro-mode": "Use custom prompts from .osiris_prompts/ directory",
+                "--context-file": "Path to component context JSON file (default: .osiris_prompts/context.json)",
+                "--no-context": "Disable automatic component context injection",
+                "--context-strategy": "Context strategy: 'full' or 'component-scoped' (default: full)",
+                "--context-components": "Specific components to include (comma-separated)",
+                "--strict-context": "Fail if context loading fails (default: warn and continue)",
                 "--json": "Output in JSON format for programmatic use",
                 "--help, -h": "Show this help message",
             },
@@ -172,6 +178,13 @@ def show_epic_help(json_output=False):
     console.print(
         "  [cyan]--pro-mode[/cyan]          Use custom prompts from .osiris_prompts/ directory"
     )
+    console.print("  [cyan]--context-file[/cyan]     Path to component context JSON file")
+    console.print("  [cyan]--no-context[/cyan]       Disable automatic component context injection")
+    console.print(
+        "  [cyan]--context-strategy[/cyan] Context strategy: 'full' or 'component-scoped'"
+    )
+    console.print("  [cyan]--context-components[/cyan] Specific components to include")
+    console.print("  [cyan]--strict-context[/cyan]   Fail if context loading fails")
     console.print("  [cyan]--json[/cyan]             Output in JSON format for programmatic use")
     console.print("  [cyan]--help[/cyan], [cyan]-h[/cyan]         Show this help message")
     console.print()
@@ -253,6 +266,29 @@ def parse_args(args=None) -> argparse.Namespace:
     parser.add_argument(
         "--pro-mode", action="store_true", help="Enable pro mode with custom prompts"
     )
+    parser.add_argument(
+        "--context-file",
+        default=".osiris_prompts/context.json",
+        help="Path to component context JSON file",
+    )
+    parser.add_argument(
+        "--no-context", action="store_true", help="Disable automatic component context injection"
+    )
+    parser.add_argument(
+        "--context-strategy",
+        default="full",
+        choices=["full", "component-scoped"],
+        help="Context strategy: 'full' or 'component-scoped'",
+    )
+    parser.add_argument(
+        "--context-components",
+        help="Specific components to include (comma-separated)",
+    )
+    parser.add_argument(
+        "--strict-context",
+        action="store_true",
+        help="Fail if context loading fails (default: warn and continue)",
+    )
     parser.add_argument("--json", action="store_true", help="Output in JSON format")
     parser.add_argument("--help", "-h", action="store_true", help="Show this help message")
     parser.add_argument("message", nargs="?", help="Chat message")
@@ -333,10 +369,76 @@ def chat(argv=None):
     console.print(f"💡 Monitor with: tail -f {session.osiris_log}")
     console.print(f"📂 Session directory: {session.session_dir}")
 
+    # Load component context if not disabled
+    context = None
+    prompt_manager = None
+    if not args.no_context:
+        prompt_manager = PromptManager()
+        context_file = Path(args.context_file)
+
+        try:
+            # Load the context
+            context = prompt_manager.load_context(context_file)
+
+            # Get the context based on strategy
+            if args.context_strategy == "component-scoped" and args.context_components:
+                components = [c.strip() for c in args.context_components.split(",")]
+                context = prompt_manager.get_context(
+                    strategy="component-scoped", components=components
+                )
+            else:
+                context = prompt_manager.get_context(strategy=args.context_strategy)
+
+            # Log context loading success
+            session.log_event(
+                "context_loaded",
+                strategy=args.context_strategy,
+                components_count=len(context.get("components", [])),
+                context_file=str(context_file),
+            )
+
+            console.print(f"✅ Context loaded: {len(context.get('components', []))} components")
+
+        except FileNotFoundError:
+            error_msg = f"Context file not found: {context_file}"
+            session.log_event(
+                "context_load_failed", reason="file_not_found", file=str(context_file)
+            )
+
+            if args.strict_context:
+                console.print(f"❌ {error_msg}")
+                console.print("💡 Run 'osiris prompts build-context' to generate the context file")
+                sys.exit(1)
+            else:
+                console.print(f"⚠️  {error_msg}")
+                console.print("   Continuing without component context...")
+                context = None
+
+        except Exception as e:
+            error_msg = f"Failed to load context: {e}"
+            session.log_event(
+                "context_load_failed", reason="load_error", error=str(e), file=str(context_file)
+            )
+
+            if args.strict_context:
+                console.print(f"❌ {error_msg}")
+                sys.exit(1)
+            else:
+                console.print(f"⚠️  {error_msg}")
+                console.print("   Continuing without component context...")
+                context = None
+    else:
+        console.print("ℹ️  Component context disabled (--no-context)")
+        session.log_event("context_disabled", reason="user_flag")
+
     # Initialize conversational agent
     try:
         agent = ConversationalPipelineAgent(
-            llm_provider=args.provider, config=config, pro_mode=args.pro_mode
+            llm_provider=args.provider,
+            config=config,
+            pro_mode=args.pro_mode,
+            prompt_manager=prompt_manager,
+            context=context,
         )
 
         # Show pro mode status
