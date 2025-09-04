@@ -1602,7 +1602,30 @@ def prompts_command(args: list):
 
         log_level_int = getattr(logging, log_level.upper(), logging.INFO)
         enable_debug = log_level_int <= logging.DEBUG
+
+        # Remove any existing console handlers from root logger
+        # This prevents DEBUG messages from going to stdout unless explicitly requested
+        root_logger = logging.getLogger()
+        handlers_to_remove = []
+        for handler in root_logger.handlers:
+            if isinstance(handler, logging.StreamHandler):
+                handlers_to_remove.append(handler)
+        for handler in handlers_to_remove:
+            root_logger.removeHandler(handler)
+
+        # Setup session logging (only file handlers)
         session.setup_logging(level=log_level_int, enable_debug=enable_debug)
+
+        # Only add console handler back if user explicitly requested DEBUG level
+        if parsed_args.log_level and parsed_args.log_level.upper() == "DEBUG":
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(logging.DEBUG)
+            console_formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+            console_handler.setFormatter(console_formatter)
+            root_logger.addHandler(console_handler)
 
         # Print session ID unless JSON output
         if not parsed_args.json:

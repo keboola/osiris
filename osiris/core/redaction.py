@@ -82,7 +82,8 @@ FINGERPRINT_FIELDS = {
 }
 
 # Pattern for detecting key-like values
-KEY_PATTERN = re.compile(r"\b[A-Za-z0-9_\-]{20,}\b")
+# More specific: must look like actual API keys/tokens (mix of upper/lower/digits, very long)
+KEY_PATTERN = re.compile(r"\b(?=.*[A-Z])(?=.*[a-z])(?=.*[0-9])[A-Za-z0-9_\-]{32,}\b")
 
 # Pattern for detecting absolute paths
 ABSOLUTE_PATH_PATTERN = re.compile(r"^(/[^/]+(?:/[^/]+)*|[A-Z]:\\[^\\]+(?:\\[^\\]+)*)$")
@@ -223,7 +224,45 @@ class Redactor:
         if re.match(r"^[a-fA-F0-9]{32,64}$", value):
             return False
 
-        # Check for key-like pattern
+        # Skip common event names and identifiers
+        # Event names typically have underscores and are descriptive
+        if "_" in value and any(
+            part in value.lower()
+            for part in [
+                "start",
+                "complete",
+                "error",
+                "validation",
+                "build",
+                "load",
+                "cache",
+                "context",
+                "request",
+                "response",
+                "init",
+                "end",
+            ]
+        ):
+            return False
+
+        # Skip session IDs (date_time_hash format)
+        if re.match(r"^\d{8}_\d{6}_[a-f0-9]{8}$", value):
+            return False
+
+        # Check for known token patterns
+        # Slack tokens (xoxp-, xoxb-, xoxa-, xoxr-)
+        if re.match(r"^xox[pbar]-[\d\-a-zA-Z]+$", value):
+            return True
+
+        # AWS access keys
+        if re.match(r"^AKIA[A-Z0-9]{16}$", value):
+            return True
+
+        # GitHub tokens (ghp_, ghs_, gho_, etc)
+        if re.match(r"^gh[pousr]_[A-Za-z0-9]{36,}$", value):
+            return True
+
+        # Check for generic key-like pattern (long mixed-case strings with numbers)
         return bool(KEY_PATTERN.match(value))
 
     def redact_value(
@@ -273,6 +312,10 @@ class Redactor:
 
             # Special handling for cache keys and similar - don't mask them
             if key == "key":
+                return value
+
+            # Special handling for session and event fields - don't mask their values
+            if key in ["session", "session_id", "event", "event_type", "command"]:
                 return value
 
             # Check if value looks like a key (but not in certain contexts)
