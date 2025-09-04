@@ -33,8 +33,8 @@ This milestone implements the architectural decisions documented in ADRs 0005-00
   - [ADR-0011: Osiris Roadmap](../adr/0011-osiris-roadmap.md#m1--component-registry--context-aware-agent) - M1 in context of full roadmap
 
 #### Planning Documents
-- **Implementation Plan**: [Post-0.1.1 Implementation Plan](../post_0.1.1_plan.md#m1--component-registry-specs--capabilities)
-- **Development Timeline**: [Development Plan - M1a](../dev-plan.md#milestone-m1a-component-registry-foundation)
+- **Implementation Plan**: [Initial Plan - M1a](_initial_plan.md#m1a-component-registry-foundation)
+- **Development Timeline**: [Initial Plan - Resource Allocation](_initial_plan.md#resource-allocation)
 
 ## Milestone Phases
 
@@ -446,5 +446,5 @@ tools/
   - Deprecates 'load' mode with backward compatibility
 
 ### Planning Documents
-- **[Post-0.1.1 Implementation Plan](../post_0.1.1_plan.md)**: Detailed technical implementation
-- **[Development Plan](../dev-plan.md)**: Timeline and resource allocation
+- **[Initial Plan](_initial_plan.md)**: Consolidated implementation planning
+- **[Resource Allocation](_initial_plan.md#resource-allocation)**: Timeline and team distribution

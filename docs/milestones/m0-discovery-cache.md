@@ -150,7 +150,7 @@ cache_key = "mysql.table:0.1.0:@mysql:abc123...:def456..."
 
 ## Acceptance Criteria Results ✅
 
-**From dev-plan.md M0 acceptance criteria:**
+**From initial plan M0 acceptance criteria:**
 - [x] Cache invalidates when component options change (schema, table, columns)
 - [x] Cache invalidates when component spec schema changes  
 - [x] Basic validation catches missing required fields (connection, table, mode)

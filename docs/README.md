@@ -23,11 +23,21 @@ Security guidelines, best practices, and safety measures for SQL generation.
 - [Top Customers Revenue](examples/top_customers_revenue.yaml) - Business analytics example
 - [Examples README](examples/README.md) - Usage instructions for examples
 
+## Planning & Milestones
+
+### 🎯 [Milestones Directory](milestones/)
+- [Initial Plan](milestones/_initial_plan.md) - Consolidated development planning
+- [M0: Discovery Cache](milestones/m0-discovery-cache.md) - Cache fingerprinting (Complete)
+- [M1: Component Registry](milestones/m1-component-registry-and-runner.md) - Registry & runner
+- [M1b: Context Builder](milestones/m1b-context-builder-and-validation.md) - Validation & retry
+
+### 📚 [Architecture Decision Records](adr/)
+Key architectural decisions documented for the project
+
 ## Archived Documentation
 
 ### 📦 [Archive Directory](archive/)
 - [Component Interfaces](archive/component-interfaces.md) - Legacy interface documentation
-- [Development Plan](archive/dev-plan.md) - Historical development planning
 
 ## Quick Start
 

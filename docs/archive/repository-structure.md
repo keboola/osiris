@@ -76,7 +76,6 @@
 
 **`docs/archive/`** - Development artifacts
 - `component-interfaces.md` - Interface design documentation
-- `dev-plan.md` - Original development planning notes
 - **Purpose**: Historical reference, not user-facing
 
 ## Scripts (`scripts/`)
