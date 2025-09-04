@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Console logging for `prompts build-context`**: CLI now shows clean output by default, with DEBUG logs only written to session log files unless explicitly requested via `--log-level DEBUG`
+- **Redaction policy tuned**: Operational metrics (token counts, durations) now visible while secrets remain masked
 
 ### Added
 - Component Registry backend (`osiris/components/registry.py`) with mtime-based caching and three validation levels (basic/enhanced/strict)

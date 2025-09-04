@@ -109,7 +109,7 @@ This milestone implements the architectural decisions documented in ADRs 0005-00
 **Duration**: 2 weeks  
 **Priority**: High (critical for LLM improvement)  
 **Status**: 🚧 In Progress (started after M1a completion)  
-**Related ADRs**: [ADR-0007](../adr/0007-component-specification-and-capabilities.md), [ADR-0008](../adr/0008-component-registry.md)
+**Related ADRs**: [ADR-0007](../adr/0007-component-specification-and-capabilities.md), [ADR-0008](../adr/0008-component-registry.md), [ADR-0013](../adr/0013-chat-retry-policy.md)
 **Dependencies**: M1a outputs (Component Registry, FriendlyErrorMapper)
 
 #### Objectives
