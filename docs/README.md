@@ -27,9 +27,14 @@ Security guidelines, best practices, and safety measures for SQL generation.
 
 ### 🎯 [Milestones Directory](milestones/)
 - [Initial Plan](milestones/_initial_plan.md) - Consolidated development planning
-- [M0: Discovery Cache](milestones/m0-discovery-cache.md) - Cache fingerprinting (Complete)
-- [M1: Component Registry](milestones/m1-component-registry-and-runner.md) - Registry & runner
-- [M1b: Context Builder](milestones/m1b-context-builder-and-validation.md) - Validation & retry
+- **M0 Milestones (Complete)**:
+  - [M0: Discovery Cache](milestones/m0-discovery-cache.md) - Cache fingerprinting & validation modes
+  - [M0: Session Logs](milestones/m0-session-logs.md) - Session-scoped logging & artifacts
+- **M1 Milestones (In Progress)**:
+  - [M1: Component Registry](milestones/m1-component-registry-and-runner.md) - Registry & runner
+  - [M1b: Context Builder](milestones/m1b-context-builder-and-validation.md) - Validation & retry
+- **Reports**:
+  - [M0 Validation Test Report](milestones/reports/m0-validation-4-test-report.md) - Configuration & validation testing
 
 ### 📚 [Architecture Decision Records](adr/)
 Key architectural decisions documented for the project
