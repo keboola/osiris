@@ -1,0 +1,31 @@
+# Unfixable pipeline with invalid component types and constraint violations
+description: "Pipeline with unfixable validation errors"
+
+steps:
+  - type: invalid.extractor.type  # Invalid component type
+    config:
+      database: test_db
+      host: localhost
+      port: 3306
+      user: reader
+      password: "{{ secrets.password }}"
+      query: "SELECT * FROM users"
+
+  - type: mysql.extractor
+    config:
+      database: test_db
+      host: localhost
+      port: 999999  # Port out of valid range (1-65535)
+      user: reader
+      password: "hardcoded_password_violation"  # pragma: allowlist secret  # Not using secrets
+      query: "SELECT * FROM orders"
+
+  - type: nonexistent.transformer  # Another invalid component type
+    config:
+      invalid_field: "value"
+
+  - type: supabase.writer
+    config:
+      url: "not-a-url"  # Invalid URL format
+      key: "plain_text_key"  # Not using secrets
+      table: ""  # Empty table name

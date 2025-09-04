@@ -3,6 +3,8 @@
 Implements bounded retry logic per ADR-0013 with HITL escalation.
 """
 
+import asyncio
+import inspect
 import json
 import logging
 import time
@@ -14,7 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import yaml
 
 from osiris.core.pipeline_validator import PipelineValidator, ValidationResult
-from osiris.core.session_context import SessionContext
+from osiris.core.session_logging import SessionContext
 
 logger = logging.getLogger(__name__)
 
@@ -32,12 +34,26 @@ class RetryAttempt:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
+        # Get error categories
+        error_categories = []
+        if not self.validation_result.valid and self.validation_result.errors:
+            error_categories = list({e.error_type for e in self.validation_result.errors})
+
         return {
             "attempt_number": self.attempt_number,
-            "validation_result": self.validation_result.to_dict(),
-            "token_usage": self.token_usage,
+            "valid": self.validation_result.valid,
+            "error_count": (
+                len(self.validation_result.errors) if not self.validation_result.valid else 0
+            ),
+            "error_categories": error_categories,
             "duration_ms": self.duration_ms,
+            "tokens": {
+                "prompt": self.token_usage.get("prompt_tokens"),
+                "response": self.token_usage.get("completion_tokens"),
+                "total": self.token_usage.get("total_tokens", self.token_usage.get("total")),
+            },
             "timestamp": self.timestamp,
+            "validation_result": self.validation_result.to_dict(),
             "status": "success" if self.validation_result.valid else "failed",
         }
 
@@ -84,8 +100,6 @@ class RetryTrail:
 
         if attempt.validation_result.valid:
             self.final_status = "success"
-        elif len(self.attempts) >= self.max_attempts:
-            self.final_status = "failed"
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -232,9 +246,7 @@ class ValidationRetryManager:
         while attempt_num <= self.max_attempts + 1:  # +1 for initial attempt
             # Log validation start
             if session_ctx:
-                session_ctx.add_event(
-                    event_type="validation_attempt_start", payload={"attempt": attempt_num}
-                )
+                session_ctx.log_event("validation_attempt_start", attempt=attempt_num)
 
             # Validate
             start_time = time.time()
@@ -251,15 +263,13 @@ class ValidationRetryManager:
 
             # Log validation complete
             if session_ctx:
-                session_ctx.add_event(
-                    event_type="validation_attempt_complete",
-                    payload={
-                        "attempt": attempt_num,
-                        "status": "success" if result.valid else "failed",
-                        "error_count": len(result.errors),
-                        "error_categories": list({e.error_type for e in result.errors}),
-                        "duration_ms": duration_ms,
-                    },
+                session_ctx.log_event(
+                    "validation_attempt_complete",
+                    attempt=attempt_num,
+                    status="success" if result.valid else "failed",
+                    error_count=len(result.errors),
+                    error_categories=list({e.error_type for e in result.errors}),
+                    duration_ms=duration_ms,
                 )
 
             self.retry_trail.add_attempt(attempt)
@@ -279,18 +289,34 @@ class ValidationRetryManager:
 
                 # Log retry event
                 if session_ctx:
-                    session_ctx.add_event(
-                        event_type="validation_retry",
-                        payload={
-                            "attempt": attempt_num + 1,
-                            "previous_errors": len(result.errors),
-                            "retry_prompt_length": len(retry_prompt),
-                        },
+                    session_ctx.log_event(
+                        "validation_retry",
+                        attempt=attempt_num + 1,
+                        previous_errors=len(result.errors),
+                        retry_prompt_length=len(retry_prompt),
                     )
 
                 # Generate retry
                 try:
-                    new_yaml, token_usage = retry_callback(current_yaml, retry_prompt, attempt_num)
+                    # Handle both sync and async callbacks
+                    if inspect.iscoroutinefunction(retry_callback):
+                        # Async callback - run with asyncio
+                        try:
+                            new_yaml, token_usage = asyncio.run(
+                                retry_callback(current_yaml, retry_prompt, attempt_num)
+                            )
+                        except RuntimeError:
+                            # Already running in an event loop - this shouldn't happen in normal usage
+                            logger.error(
+                                "Cannot run async callback from within an existing event loop"
+                            )
+                            break
+                    else:
+                        # Synchronous callback
+                        new_yaml, token_usage = retry_callback(
+                            current_yaml, retry_prompt, attempt_num
+                        )
+
                     current_yaml = new_yaml
 
                     # Update token usage

@@ -7,19 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- **Console logging for `prompts build-context`**: CLI now shows clean output by default, with DEBUG logs only written to session log files unless explicitly requested via `--log-level DEBUG`
-- **Redaction policy tuned**: Operational metrics (token counts, durations) now visible while secrets remain masked
-
 ### Added
-- **Post-Generation Validation** (M1b.3): Automatic validation of LLM-generated pipelines against component specifications
-  - Pipeline validator (`osiris/core/pipeline_validator.py`) validates OML against registry specs
+- **Post-generation validation with component spec checks** (M1b.3)
+  - Automatic validation of LLM-generated pipelines against component specifications
+  - Pipeline validator validates OML against registry specs
+  - Friendly error messages using FriendlyErrorMapper from M1a.4
+  - Validation events logged to session with attempt tracking
+- **Configurable bounded retries, HITL escalation, retry trail artifacts & events**
   - Bounded retry mechanism with configurable attempts (0-5, default 2) per ADR-0013
   - HITL (Human-In-The-Loop) escalation when auto-retries fail, showing retry history
+  - Retry counter resets after HITL input for fresh validation cycle
   - Retry trail artifacts saved to session directories for debugging
-  - Validation events logged: `validation_attempt_start/complete`, `validation_retry`, `hitl_prompt_shown`
-  - Configuration: `validation.retry.max_attempts`, `include_history_in_hitl`, `history_limit`, `diff_format`
-  - CLI flag support: `--retry-attempts N`, ENV: `OSIRIS_VALIDATE_RETRY_ATTEMPTS`
+  - Comprehensive retry trail with events, artifacts, patches, and metrics
+- **Validation test harness** (`osiris test validation`)
+  - Automated end-to-end testing with scenario-based approach
+  - Pre-defined scenarios: valid (passes first try), broken (fixed after retry), unfixable (fails after max attempts)
+  - Exit codes: 0 for success scenarios, 1 for unfixable (CI/CD ready)
+  - Output structure with result.json, retry_trail.json, and artifacts/ directory
+  - Session creation for all test runs with proper event logging
+  
+### Changed
+- **Redaction policy tuned**: Token counts + durations visible; secrets still masked
+  - Operational metrics (prompt_tokens, response_tokens, duration_ms) preserved as integers
+  - Fingerprints shortened to 8-char prefix
+  - Paths converted to repo-relative format
+- **CLI logging**: DEBUG to console only with `--log-level DEBUG`
+  - Console shows clean output by default
+  - DEBUG logs written to session log files
+  - Validation error mapping warnings moved to DEBUG level
+
+### Fixed
+- **Over-masking of event names/session ids**
+  - Session IDs and event names no longer masked in logs
+  - Only actual secrets are redacted
+  - STRUCTURAL_KEYS whitelist prevents operational data masking
+- **Context builder console noise**
+  - Clean output by default, verbose logging only with --log-level DEBUG
+- **Test harness issues**
+  - Exit codes now correctly return 1 for failed scenarios
+  - --max-attempts parameter properly limits total attempts
+  - Artifacts consistently saved to --out directory with proper structure
+
+### Previously Added Features (M1a-M1b.2)
 - Component Registry backend (`osiris/components/registry.py`) with mtime-based caching and three validation levels (basic/enhanced/strict)
 - Session-aware `osiris components validate` command with structured event logging (run_start, component_validation_start/complete, run_end)
 - CLI flags for component validation: `--session-id`, `--logs-dir`, `--log-level`, `--events`, `--level`, `--json`
@@ -48,6 +77,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **LLM Context Integration** (M1b.2): Automatic component context injection into all LLM requests
   - Extended PromptManager with context loading, caching, and injection
   - Context injection into chat CLI with flags: `--context-file`, `--no-context`, `--context-strategy`, `--context-components`
+- **Automated Validation Test Harness** (M1b.3): CLI tool for end-to-end validation testing with scenario-based approach
+  - Command: `osiris test validation [--scenario valid|broken|unfixable|all] [--out DIR] [--max-attempts N]`
+  - Pre-defined scenarios: valid (passes first try), broken (fixed after retry), unfixable (fails after max attempts)
+  - Test harness module (`osiris/core/test_harness.py`) with structured artifact generation
+  - Comprehensive pytest tests (`tests/test_validation_harness.py`) for automated verification
+  - Rich terminal output with validation attempt summary tables
+  - JSON result artifacts with `return_code` field and retry history
+  - Enhanced `retry_trail.json` schema with `valid` boolean, error metrics, and token usage per attempt
+  - Scenario fixtures in `tests/scenarios/` for reproducible testing
+  - Works correctly from any directory including `testing_env/`
   - Token usage tracking and reporting in chat responses
   - Component-scoped context filtering for targeted prompts
   - Session event logging for context operations

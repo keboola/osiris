@@ -87,6 +87,18 @@ When HITL escalation occurs:
 - User can provide corrections or additional context
 - After user input, the retry counter resets for a fresh validation cycle
 - This allows iterative refinement with human guidance
+- Multi-turn clarifications are supported without consuming retry budget
+
+### Retry Trail Artifacts
+
+Each validation session maintains a comprehensive retry trail:
+- **Events**: Structured logging of each attempt (validation_attempt_start, validation_attempt_complete, validation_retry)
+- **Artifacts**: Per-attempt directories with pipeline.yaml and errors.json
+- **Patches**: Delta tracking between attempts for debugging
+- **Metrics**: Token usage, duration, and error categories per attempt
+- **Redaction**: Secrets masked, but operational metrics (tokens, durations) preserved
+
+Note: Runner logic for executing pipelines is explicitly NOT part of M1b scope (deferred to M1d).
 
 ## Consequences
 

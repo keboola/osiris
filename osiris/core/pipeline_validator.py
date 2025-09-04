@@ -325,7 +325,7 @@ class PipelineValidator:
                     )
                 except Exception as map_error:
                     # Fallback if error mapping fails
-                    logger.warning(f"Failed to map error: {map_error}")
+                    logger.debug(f"Failed to map error: {map_error}")
                     errors.append(
                         ValidationError(
                             component_type=component_type,

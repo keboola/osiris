@@ -98,8 +98,7 @@ steps:
             assert len(trail.attempts) == 1
             assert trail.final_status == "success"
 
-    @pytest.mark.asyncio
-    async def test_validate_with_retry_fixes_on_first_retry(self, invalid_pipeline, valid_pipeline):
+    def test_validate_with_retry_fixes_on_first_retry(self, invalid_pipeline, valid_pipeline):
         """Test validation that succeeds on first retry."""
         manager = ValidationRetryManager(max_attempts=2)
 
@@ -124,7 +123,7 @@ steps:
             mock_validate.side_effect = validation_results
 
             # Mock retry callback
-            async def mock_retry_callback(yaml_str, error_ctx, attempt):
+            def mock_retry_callback(yaml_str, error_ctx, attempt):
                 return valid_pipeline, {"total_tokens": 100}
 
             success, result, trail = manager.validate_with_retry(
@@ -137,8 +136,7 @@ steps:
             assert trail.attempts[1].validation_result.valid is True
             assert trail.final_status == "success"
 
-    @pytest.mark.asyncio
-    async def test_validate_with_retry_all_fail(self, invalid_pipeline):
+    def test_validate_with_retry_all_fail(self, invalid_pipeline):
         """Test validation that fails after all retries."""
         manager = ValidationRetryManager(max_attempts=2)
 
@@ -160,7 +158,7 @@ steps:
             mock_validate.return_value = validation_result
 
             # Mock retry callback that also produces invalid YAML
-            async def mock_retry_callback(yaml_str, error_ctx, attempt):
+            def mock_retry_callback(yaml_str, error_ctx, attempt):
                 return invalid_pipeline, {"total_tokens": 100}
 
             success, result, trail = manager.validate_with_retry(

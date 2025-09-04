@@ -7,6 +7,7 @@ testing_env/*.csv
 testing_env/*.log
 testing_env/*.json
 testing_env/.env
+testing_env/tmp/
 
 # Global artifacts that may appear anywhere
 .osiris_sessions/

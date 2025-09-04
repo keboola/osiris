@@ -1,0 +1,25 @@
+# Valid pipeline that passes validation on first attempt
+description: "Extract customer orders from MySQL and write to Supabase"
+
+steps:
+  - type: mysql.extractor
+    config:
+      database: ecommerce_db
+      host: localhost
+      port: 3306
+      user: reader
+      password: "{{ secrets.mysql_password }}"
+      query: |
+        SELECT
+          order_id,
+          customer_id,
+          order_date,
+          total_amount
+        FROM orders
+        WHERE order_date >= '2024-01-01'
+
+  - type: supabase.writer
+    config:
+      url: "https://example.supabase.co"
+      key: "{{ secrets.supabase_key }}"
+      table: customer_orders

@@ -1,0 +1,25 @@
+# Broken pipeline with fixable errors (missing required fields)
+description: "Extract product data with missing configuration"
+
+steps:
+  - type: mysql.extractor
+    config:
+      # Missing required 'database' field
+      host: localhost
+      port: 3306
+      user: reader
+      # Missing required 'password' field
+      query: |
+        SELECT
+          product_id,
+          name,
+          price,
+          category
+        FROM products
+        WHERE active = 1
+
+  - type: supabase.writer
+    config:
+      # Missing required 'url' field
+      # Missing required 'key' field
+      table: products

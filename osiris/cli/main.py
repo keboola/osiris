@@ -66,6 +66,7 @@ def show_main_help():
     console.print("  [cyan]chat[/cyan]         Conversational pipeline generation with LLM")
     console.print("  [cyan]run[/cyan]          Execute a pipeline YAML file")
     console.print("  [cyan]logs[/cyan]         Manage session logs (list, show, bundle, gc)")
+    console.print("  [cyan]test[/cyan]         Run automated test scenarios")
     console.print("  [cyan]components[/cyan]   Manage and inspect Osiris components")
     console.print(
         "  [cyan]dump-prompts[/cyan] Export LLM system prompts for customization (pro mode)\n"
@@ -98,6 +99,7 @@ def parse_main_args():
             "chat",
             "run",
             "logs",
+            "test",
             "components",
             "dump-prompts",
             "prompts",
@@ -191,6 +193,8 @@ def main():
         run_command(command_args)
     elif args.command == "logs":
         logs_command(command_args)
+    elif args.command == "test":
+        test_command(command_args)
     elif args.command == "components":
         components_command(command_args)
     elif args.command == "dump-prompts":
@@ -1450,6 +1454,96 @@ def logs_command(args: list) -> None:
         console.print(f"❌ Unknown subcommand: {subcommand}")
         console.print("Available subcommands: list, show, bundle, gc")
         console.print("Use 'osiris logs --help' for detailed help.")
+
+
+def test_command(args: list) -> None:
+    """Run automated test scenarios."""
+    import argparse
+
+    def show_test_help():
+        """Show test command help."""
+        console.print()
+        console.print("[bold green]osiris test - Automated Test Scenarios[/bold green]")
+        console.print("🧪 Run automated validation test scenarios for M1b.3")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris test SUBCOMMAND [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Subcommands[/bold blue]")
+        console.print("  [cyan]validation[/cyan]    Run validation test scenarios")
+        console.print()
+        console.print("[bold blue]Options for validation[/bold blue]")
+        console.print(
+            "  [cyan]--scenario NAME[/cyan]  Scenario to run (valid|broken|unfixable|all, default: all)"
+        )
+        console.print("  [cyan]--out DIR[/cyan]        Output directory for artifacts")
+        console.print("  [cyan]--max-attempts N[/cyan] Override max retry attempts")
+        console.print()
+        console.print("[bold blue]Scenarios[/bold blue]")
+        console.print("  [cyan]valid[/cyan]     Pipeline that passes validation on first attempt")
+        console.print("  [cyan]broken[/cyan]    Pipeline with fixable errors corrected after retry")
+        console.print("  [cyan]unfixable[/cyan] Pipeline that fails after max attempts")
+        console.print("  [cyan]all[/cyan]       Run all scenarios")
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print(
+            "  [green]osiris test validation[/green]                    # Run all scenarios"
+        )
+        console.print(
+            "  [green]osiris test validation --scenario broken[/green] # Run broken scenario"
+        )
+        console.print(
+            "  [green]osiris test validation --out ./results[/green]   # Custom output dir"
+        )
+        console.print()
+
+    parser = argparse.ArgumentParser(prog="osiris test", add_help=False)
+    parser.add_argument("subcommand", nargs="?", help="Subcommand to run")
+    parser.add_argument("--help", "-h", action="store_true", help="Show help")
+    parser.add_argument(
+        "--scenario", choices=["valid", "broken", "unfixable", "all"], default="all"
+    )
+    parser.add_argument("--out", type=str, help="Output directory")
+    parser.add_argument("--max-attempts", type=int, help="Max retry attempts")
+
+    # Parse args
+    try:
+        parsed_args = parser.parse_args(args)
+    except SystemExit:
+        show_test_help()
+        return
+
+    if parsed_args.help or not parsed_args.subcommand:
+        show_test_help()
+        return
+
+    if parsed_args.subcommand == "validation":
+        # Import and run test harness
+        from pathlib import Path
+
+        from osiris.core.test_harness import ValidationTestHarness
+
+        try:
+            harness = ValidationTestHarness(max_attempts=parsed_args.max_attempts)
+            output_dir = Path(parsed_args.out) if parsed_args.out else None
+
+            if parsed_args.scenario == "all":
+                results = harness.run_all_scenarios(output_dir=output_dir)
+                # Use the worst exit code from all scenarios
+                worst_code = max(result["return_code"] for _, result in results.values())
+                sys.exit(worst_code)
+            else:
+                success, result = harness.run_scenario(parsed_args.scenario, output_dir=output_dir)
+                # Use the return_code from the result
+                sys.exit(result["return_code"])
+
+        except Exception as e:
+            console.print(f"[bold red]Error running test scenario: {e}[/bold red]")
+            logger.error(f"Test scenario failed: {e}", exc_info=True)
+            sys.exit(1)
+    else:
+        console.print(f"❌ Unknown subcommand: {parsed_args.subcommand}")
+        console.print("Available subcommands: validation")
+        console.print("Use 'osiris test --help' for detailed help.")
 
 
 def prompts_command(args: list):

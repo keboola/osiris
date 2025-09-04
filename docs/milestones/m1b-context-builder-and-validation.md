@@ -53,7 +53,7 @@ M1b focuses on bridging the Component Registry (M1a) with the LLM-powered conver
 - Context injection kept strictly behind flags (`--no-context`) to disable if needed
 - Token accounting captured in session metrics for full visibility
 
-#### M1b.3: Post-Generation Validation 🚧
+#### M1b.3: Post-Generation Validation ✅
 - [x] Create `osiris/core/pipeline_validator.py` with OML validation logic
 - [x] Implement retry mechanism in `osiris/core/validation_retry.py` (per [ADR-0013](../adr/0013-chat-retry-policy.md))
 - [x] Integrate validation in `osiris/core/conversational_agent.py` after pipeline generation
@@ -74,6 +74,44 @@ M1b focuses on bridging the Component Registry (M1a) with the LLM-powered conver
 - ✅ All validation events logged to session with attempt tracking
 - ✅ HITL escalation shows retry history when auto-retries fail
 - ✅ Retry artifacts saved to session directory for debugging
+- ✅ Automated test harness (`osiris test validation`) validates all scenarios
+- ✅ Test scenarios: valid (passes first try), broken (fixed after retry), unfixable (fails after max attempts)
+
+### Validation Test Harness
+
+The `osiris test validation` command provides automated testing of the validation retry mechanism:
+
+**Command**:
+```bash
+osiris test validation --scenario <valid|broken|unfixable|all> --out ./path [--max-attempts N]
+```
+
+**Scenarios**:
+- `valid`: Pipeline that passes validation on first attempt
+- `broken`: Pipeline with fixable errors corrected after retry  
+- `unfixable`: Pipeline that fails after max attempts
+- `all`: Run all scenarios sequentially
+
+**Exit Codes**:
+- `0`: Success scenarios (valid, broken) pass their expectations
+- `1`: Unfixable scenario returns non-zero to indicate failure
+
+**Output Structure**:
+```
+<output-dir>/
+├── result.json                    # Overall test results
+├── retry_trail.json               # Complete retry history
+└── artifacts/                     # Per-attempt artifacts
+    ├── attempt_1/
+    │   ├── pipeline.yaml          # Generated pipeline
+    │   └── errors.json            # Validation errors (if failed)
+    ├── attempt_2/
+    │   └── ...
+```
+
+**Flags**:
+- `--out DIR`: Output directory for artifacts (required)
+- `--max-attempts N`: Override max retry attempts (default from config)
 
 ### Acceptance Criteria (Overall)
 
