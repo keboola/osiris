@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted (Implemented in M1b.3)
 
 ## Context
 
@@ -79,6 +79,14 @@ Each retry attempt will:
 - Default of 2 attempts balances user experience with token costs
 - Users see a progress indicator during retries
 - Final success/failure is clearly communicated
+
+### HITL Reset Extension
+
+When HITL escalation occurs:
+- User is shown the retry history with a concise summary of attempts
+- User can provide corrections or additional context
+- After user input, the retry counter resets for a fresh validation cycle
+- This allows iterative refinement with human guidance
 
 ## Consequences
 

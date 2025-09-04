@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Redaction policy tuned**: Operational metrics (token counts, durations) now visible while secrets remain masked
 
 ### Added
+- **Post-Generation Validation** (M1b.3): Automatic validation of LLM-generated pipelines against component specifications
+  - Pipeline validator (`osiris/core/pipeline_validator.py`) validates OML against registry specs
+  - Bounded retry mechanism with configurable attempts (0-5, default 2) per ADR-0013
+  - HITL (Human-In-The-Loop) escalation when auto-retries fail, showing retry history
+  - Retry trail artifacts saved to session directories for debugging
+  - Validation events logged: `validation_attempt_start/complete`, `validation_retry`, `hitl_prompt_shown`
+  - Configuration: `validation.retry.max_attempts`, `include_history_in_hitl`, `history_limit`, `diff_format`
+  - CLI flag support: `--retry-attempts N`, ENV: `OSIRIS_VALIDATE_RETRY_ATTEMPTS`
 - Component Registry backend (`osiris/components/registry.py`) with mtime-based caching and three validation levels (basic/enhanced/strict)
 - Session-aware `osiris components validate` command with structured event logging (run_start, component_validation_start/complete, run_end)
 - CLI flags for component validation: `--session-id`, `--logs-dir`, `--log-level`, `--events`, `--level`, `--json`

@@ -194,6 +194,17 @@ validate:
   mode: warn            # Validation mode: strict, warn, off
   json: false           # Output validation results in JSON format
   show_effective: true  # Show effective configuration values and their sources
+
+# ============================================================================
+# VALIDATION RETRY CONFIGURATION
+# Pipeline validation retry settings (M1b.3 per ADR-0013)
+# ============================================================================
+validation:
+  retry:
+    max_attempts: 2           # Maximum retry attempts (0-5, 0 = strict mode)
+    include_history_in_hitl: true  # Show retry history in HITL prompts
+    history_limit: 3          # Max attempts to show in HITL history
+    diff_format: patch        # Diff format: "patch" or "summary"
 """
         )
 

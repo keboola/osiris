@@ -53,12 +53,14 @@ M1b focuses on bridging the Component Registry (M1a) with the LLM-powered conver
 - Context injection kept strictly behind flags (`--no-context`) to disable if needed
 - Token accounting captured in session metrics for full visibility
 
-#### M1b.3: Post-Generation Validation
-- [ ] Integrate validation in `osiris/cli/chat.py` after pipeline generation
-- [ ] Validate generated OML against component specs from registry
-- [ ] Display validation errors with Rich formatting
-- [ ] Implement retry mechanism for invalid generations (per [ADR-0013](../adr/0013-chat-retry-policy.md))
-- [ ] Log validation events to session
+#### M1b.3: Post-Generation Validation 🚧
+- [x] Create `osiris/core/pipeline_validator.py` with OML validation logic
+- [x] Implement retry mechanism in `osiris/core/validation_retry.py` (per [ADR-0013](../adr/0013-chat-retry-policy.md))
+- [x] Integrate validation in `osiris/core/conversational_agent.py` after pipeline generation
+- [x] Validate generated OML against component specs from registry
+- [x] Implement HITL escalation with retry trail display
+- [x] Save retry artifacts to session directories
+- [x] Log validation events to session (validation_attempt_start/complete, validation_retry, hitl_prompt_shown)
 
 **Configuration** (planned):
 - CLI flag: `--retry-attempts N` (default: 2, range: 0-5)
@@ -66,10 +68,12 @@ M1b focuses on bridging the Component Registry (M1a) with the LLM-powered conver
 - YAML: `validation.retry.max_attempts`
 
 **Acceptance Criteria**:
-- Invalid field names/types are caught before display
-- User sees friendly error messages (using FriendlyErrorMapper from M1a.4)
-- Retry mechanism successfully regenerates on validation failure (per ADR-0013)
-- All validation events logged to session with attempt tracking
+- ✅ Invalid field names/types are caught before display
+- ✅ User sees friendly error messages (using FriendlyErrorMapper from M1a.4)
+- ✅ Retry mechanism successfully regenerates on validation failure (per ADR-0013)
+- ✅ All validation events logged to session with attempt tracking
+- ✅ HITL escalation shows retry history when auto-retries fail
+- ✅ Retry artifacts saved to session directory for debugging
 
 ### Acceptance Criteria (Overall)
 
