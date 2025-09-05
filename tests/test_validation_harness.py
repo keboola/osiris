@@ -32,9 +32,11 @@ class TestValidationHarness:
             "--out",
             str(output_dir),
         ]
-        return subprocess.run(cmd, capture_output=True, text=True)
+        # Get project root (where osiris.py is located)
+        project_root = Path(__file__).parent.parent
+        return subprocess.run(cmd, capture_output=True, text=True, cwd=str(project_root))
 
-    def test_valid_scenario(self, artifacts_dir):
+    def test_valid_scenario(self, artifacts_dir, clean_project_root):
         """Test that valid scenario passes on first attempt."""
         output_dir = artifacts_dir / "valid"
         result = self.run_osiris_test("valid", output_dir)
@@ -68,7 +70,7 @@ class TestValidationHarness:
         # Check no secrets in artifacts
         self._check_no_secrets(output_dir)
 
-    def test_broken_scenario(self, artifacts_dir):
+    def test_broken_scenario(self, artifacts_dir, clean_project_root):
         """Test that broken scenario is fixed after retry."""
         output_dir = artifacts_dir / "broken"
         result = self.run_osiris_test("broken", output_dir)
@@ -115,7 +117,7 @@ class TestValidationHarness:
         # Check no secrets
         self._check_no_secrets(output_dir)
 
-    def test_unfixable_scenario(self, artifacts_dir):
+    def test_unfixable_scenario(self, artifacts_dir, clean_project_root):
         """Test that unfixable scenario fails after max attempts."""
         output_dir = artifacts_dir / "unfixable"
         # Run with --max-attempts 3 to get 3 total attempts (1 initial + 2 retries)
@@ -181,7 +183,7 @@ class TestValidationHarness:
         # Check no secrets
         self._check_no_secrets(output_dir)
 
-    def test_all_scenarios(self, artifacts_dir):
+    def test_all_scenarios(self, artifacts_dir, clean_project_root):
         """Test running all scenarios at once."""
         result = self.run_osiris_test("all", artifacts_dir)
 
@@ -194,7 +196,7 @@ class TestValidationHarness:
             assert scenario_dir.exists(), f"{scenario} directory should exist"
             assert (scenario_dir / "result.json").exists()
 
-    def test_max_attempts_override(self, artifacts_dir):
+    def test_max_attempts_override(self, artifacts_dir, clean_project_root):
         """Test that max-attempts flag overrides default."""
         output_dir = artifacts_dir / "max_attempts_test"
 
@@ -223,7 +225,7 @@ class TestValidationHarness:
                 result_data = json.load(f)
             assert result_data["attempts"] == 1
 
-    def test_console_output_format(self, artifacts_dir):
+    def test_console_output_format(self, artifacts_dir, clean_project_root):
         """Test that console output is clean and formatted correctly."""
         output_dir = artifacts_dir / "console_test"
         result = self.run_osiris_test("valid", output_dir)
@@ -238,7 +240,7 @@ class TestValidationHarness:
         assert "DEBUG" not in result.stdout
         assert "TRACE" not in result.stdout
 
-    def test_no_console_warnings_in_default_mode(self, artifacts_dir):
+    def test_no_console_warnings_in_default_mode(self, artifacts_dir, clean_project_root):
         """Test that error mapping warnings don't appear in console output."""
         output_dir = artifacts_dir / "no_warnings"
         cmd = [
@@ -260,7 +262,7 @@ class TestValidationHarness:
         assert "Failed to map error" not in result.stderr
         assert "WARNING: Failed to map" not in result.stdout
 
-    def test_artifacts_structure(self, artifacts_dir):
+    def test_artifacts_structure(self, artifacts_dir, clean_project_root):
         """Test that artifacts are structured correctly."""
         output_dir = artifacts_dir / "structure_test"
         self.run_osiris_test("broken", output_dir)
@@ -314,26 +316,28 @@ class TestValidationHarness:
 class TestValidationHarnessIntegration:
     """Integration tests for validation harness with actual components."""
 
-    def test_with_real_validator(self):
+    def test_with_real_validator(self, tmp_path, clean_project_root):
         """Test harness with real pipeline validator."""
         from osiris.core.test_harness import ValidationTestHarness
 
         harness = ValidationTestHarness()
+        output_dir = tmp_path / "test_valid"
 
         # Run valid scenario
-        success, result = harness.run_scenario("valid")
+        success, result = harness.run_scenario("valid", output_dir)
         assert success is True
         assert result["status"] == "success"
         assert result["attempts"] == 1
 
-    def test_retry_mechanism(self):
+    def test_retry_mechanism(self, tmp_path, clean_project_root):
         """Test that retry mechanism works correctly."""
         from osiris.core.test_harness import ValidationTestHarness
 
         harness = ValidationTestHarness(max_attempts=2)
+        output_dir = tmp_path / "test_broken"
 
         # Run broken scenario
-        success, result = harness.run_scenario("broken")
+        success, result = harness.run_scenario("broken", output_dir)
         assert success is True
         assert result["attempts"] == 2
 
@@ -346,7 +350,7 @@ class TestValidationHarnessIntegration:
 class TestLogsRedaction:
     """Test logs redaction policy."""
 
-    def test_logs_list_not_masking_session_id(self):
+    def test_logs_list_not_masking_session_id(self, clean_project_root):
         """Test that logs list doesn't mask session_id."""
         # Test the masking function directly
         from osiris.core.secrets_masking import mask_sensitive_dict

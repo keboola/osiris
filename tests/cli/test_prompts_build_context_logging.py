@@ -11,11 +11,14 @@ import pytest
 class TestPromptsLogging:
     """Test that prompts build-context has clean console output."""
 
-    def test_default_clean_output(self, tmp_path):
+    def test_default_clean_output(self, tmp_path, clean_project_root):
         """Test that default run shows clean output without DEBUG messages."""
         # Run the command
         project_root = Path(__file__).parent.parent.parent
         osiris_py = project_root / "osiris.py"
+        # Create output directory in tmp_path to isolate .osiris_prompts
+        out_file = tmp_path / "context.json"
+
         result = subprocess.run(
             [
                 sys.executable,
@@ -24,6 +27,8 @@ class TestPromptsLogging:
                 "build-context",
                 "--logs-dir",
                 str(tmp_path),
+                "--out",
+                str(out_file),
             ],
             capture_output=True,
             text=True,
@@ -66,18 +71,17 @@ class TestPromptsLogging:
         # (might be cached, so DEBUG logs may not always be present)
         assert "INFO" in log_content or "DEBUG" in log_content
 
-    def test_debug_flag_shows_output(self, tmp_path, monkeypatch):
+    def test_debug_flag_shows_output(self, tmp_path, monkeypatch, clean_project_root):
         """Test that --log-level DEBUG shows DEBUG messages on console when appropriate."""
         # Clear the cache to force DEBUG logs to appear
-        cache_dir = Path(".osiris_prompts")
-        if cache_dir.exists():
-            import shutil
-
-            shutil.rmtree(cache_dir, ignore_errors=True)
+        # (this step might not be needed since we're using isolated output)
 
         # Run the command with DEBUG flag
         project_root = Path(__file__).parent.parent.parent
         osiris_py = project_root / "osiris.py"
+        # Create output directory in tmp_path to isolate .osiris_prompts
+        out_file = tmp_path / "context.json"
+
         result = subprocess.run(
             [
                 sys.executable,
@@ -88,6 +92,8 @@ class TestPromptsLogging:
                 "DEBUG",
                 "--logs-dir",
                 str(tmp_path),
+                "--out",
+                str(out_file),
             ],
             capture_output=True,
             text=True,
@@ -124,11 +130,14 @@ class TestPromptsLogging:
         # Should contain DEBUG entries in log file
         assert "DEBUG" in log_content
 
-    def test_json_output_clean(self, tmp_path):
+    def test_json_output_clean(self, tmp_path, clean_project_root):
         """Test that JSON output mode is also clean."""
         # Run the command with JSON output
         project_root = Path(__file__).parent.parent.parent
         osiris_py = project_root / "osiris.py"
+        # Create output directory in tmp_path to isolate .osiris_prompts
+        out_file = tmp_path / "context.json"
+
         result = subprocess.run(
             [
                 sys.executable,
@@ -138,6 +147,8 @@ class TestPromptsLogging:
                 "--json",
                 "--logs-dir",
                 str(tmp_path),
+                "--out",
+                str(out_file),
             ],
             capture_output=True,
             text=True,
