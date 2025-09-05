@@ -11,6 +11,9 @@ testing_env/tmp/
 testing_env/tests
 docs/m1c-tmp-gpt.md
 
+# ChatGPT mempack
+mempack.txt
+
 # Global artifacts that may appear anywhere
 .osiris_sessions/
 .osiris_prompts/
