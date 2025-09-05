@@ -1,0 +1,253 @@
+"""Minimal local runner for compiled manifests."""
+
+import json
+import logging
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict
+
+import yaml
+
+logger = logging.getLogger(__name__)
+
+
+class RunnerV0:
+    """Minimal sequential runner for linear pipelines."""
+
+    def __init__(self, manifest_path: str, output_dir: str = "_artifacts"):
+        self.manifest_path = Path(manifest_path)
+        self.output_dir = Path(output_dir)
+        self.manifest = None
+        self.components = {}
+        self.events = []
+
+    def run(self) -> bool:
+        """
+        Execute the manifest.
+
+        Returns:
+            True if successful, False on error
+        """
+        try:
+            # Load manifest
+            with open(self.manifest_path) as f:
+                self.manifest = yaml.safe_load(f)
+
+            # Log run start
+            self._log_event(
+                "run_start",
+                {
+                    "manifest_path": str(self.manifest_path),
+                    "pipeline_id": self.manifest["pipeline"]["id"],
+                    "profile": self.manifest["meta"].get("profile", "default"),
+                },
+            )
+
+            # Execute steps in order
+            for step in self.manifest["steps"]:
+                if not self._execute_step(step):
+                    self._log_event(
+                        "run_error", {"step_id": step["id"], "message": "Step execution failed"}
+                    )
+                    return False
+
+            # Log run complete
+            self._log_event(
+                "run_complete",
+                {
+                    "pipeline_id": self.manifest["pipeline"]["id"],
+                    "steps_executed": len(self.manifest["steps"]),
+                },
+            )
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Runner error: {str(e)}")
+            self._log_event("run_error", {"error": str(e)})
+            return False
+
+    def _log_event(self, event_type: str, data: Dict[str, Any]):
+        """Log an event."""
+        event = {"timestamp": datetime.utcnow().isoformat(), "type": event_type, "data": data}
+        self.events.append(event)
+        logger.info(f"Event: {event_type} - {data}")
+
+    def _execute_step(self, step: Dict[str, Any]) -> bool:
+        """Execute a single step."""
+        step_id = step["id"]
+        driver = step["driver"]
+        cfg_path = step["cfg_path"]
+
+        try:
+            # Log step start
+            self._log_event("step_start", {"step_id": step_id, "driver": driver})
+
+            # Create step output directory
+            step_output_dir = self.output_dir / step_id
+            step_output_dir.mkdir(parents=True, exist_ok=True)
+
+            # Load step config
+            with open(cfg_path) as f:
+                config = json.load(f)
+
+            # Execute based on driver type
+            success = self._run_component(driver, config, step_output_dir)
+
+            if success:
+                self._log_event(
+                    "step_complete",
+                    {"step_id": step_id, "driver": driver, "output_dir": str(step_output_dir)},
+                )
+            else:
+                self._log_event("step_error", {"step_id": step_id, "driver": driver})
+
+            return success
+
+        except Exception as e:
+            logger.error(f"Step {step_id} failed: {str(e)}")
+            self._log_event("step_error", {"step_id": step_id, "error": str(e)})
+            return False
+
+    def _run_component(self, driver: str, config: Dict, output_dir: Path) -> bool:
+        """Run a specific component."""
+
+        # Map drivers to component handlers
+        if driver == "extractors.supabase@0.1":
+            return self._run_supabase_extractor(config, output_dir)
+        elif driver == "transforms.duckdb@0.1":
+            return self._run_duckdb_transform(config, output_dir)
+        elif driver == "writers.mysql@0.1":
+            return self._run_mysql_writer(config, output_dir)
+        else:
+            logger.error(f"Unknown driver: {driver}")
+            return False
+
+    def _run_supabase_extractor(self, config: Dict, output_dir: Path) -> bool:
+        """Run Supabase extractor (simplified for MVP)."""
+        try:
+            # For MVP, create a stub implementation
+            # In production, would use osiris.connectors.supabase.extractor
+
+            # Simulate extraction
+            output_file = output_dir / "data.json"
+            sample_data = {
+                "table": config.get("table", "unknown"),
+                "rows": [
+                    {"id": 1, "email": "user1@example.com", "name": "User One"},
+                    {"id": 2, "email": "user2@example.com", "name": "User Two"},
+                ],
+                "extracted_at": datetime.utcnow().isoformat(),
+            }
+
+            with open(output_file, "w") as f:
+                json.dump(sample_data, f, indent=2)
+
+            logger.info(f"Extracted data to {output_file}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Supabase extraction failed: {str(e)}")
+            return False
+
+    def _run_duckdb_transform(self, config: Dict, output_dir: Path) -> bool:
+        """Run DuckDB transform."""
+        try:
+            import duckdb
+
+            # Get input from previous step
+            input_dir = self.output_dir / "extract_customers"
+            input_file = input_dir / "data.json"
+
+            if input_file.exists():
+                with open(input_file) as f:
+                    input_data = json.load(f)
+            else:
+                # Create sample data if no input
+                input_data = {
+                    "rows": [
+                        {"id": 1, "email": "user1@example.com"},
+                        {"id": 2, "email": "user2@example.com"},
+                    ]
+                }
+
+            # Connect to DuckDB (in-memory)
+            conn = duckdb.connect(":memory:")
+
+            # Create input table
+            if "rows" in input_data and input_data["rows"]:
+                import pandas as pd
+
+                df = pd.DataFrame(input_data["rows"])
+                conn.register("input", df)
+            else:
+                # Empty table
+                conn.execute("CREATE TABLE input (id INT, email VARCHAR)")
+
+            # Run SQL transform
+            sql = config.get("sql", "SELECT * FROM input")
+            result = conn.execute(sql).fetchdf()
+
+            # Save output
+            output_file = output_dir / "transformed.json"
+            result_dict = {
+                "rows": result.to_dict("records"),
+                "transformed_at": datetime.utcnow().isoformat(),
+            }
+
+            with open(output_file, "w") as f:
+                json.dump(result_dict, f, indent=2)
+
+            logger.info(f"Transformed data to {output_file}")
+            conn.close()
+            return True
+
+        except Exception as e:
+            logger.error(f"DuckDB transform failed: {str(e)}")
+            return False
+
+    def _run_mysql_writer(self, config: Dict, output_dir: Path) -> bool:
+        """Run MySQL writer (stub for MVP)."""
+        try:
+            # For MVP, simulate writing to MySQL by saving to CSV
+            # In production, would use osiris.connectors.mysql.writer
+
+            # Get input from previous step
+            input_dir = self.output_dir / "transform_enrich"
+            input_file = input_dir / "transformed.json"
+
+            if input_file.exists():
+                with open(input_file) as f:
+                    input_data = json.load(f)
+            else:
+                input_data = {"rows": []}
+
+            # Simulate write
+            output_file = output_dir / "mysql_load.csv"
+
+            if input_data.get("rows"):
+                import pandas as pd
+
+                df = pd.DataFrame(input_data["rows"])
+                df.to_csv(output_file, index=False)
+
+                # Also save metadata
+                meta_file = output_dir / "mysql_load_meta.json"
+                with open(meta_file, "w") as f:
+                    json.dump(
+                        {
+                            "table": config.get("table", "unknown"),
+                            "mode": config.get("mode", "append"),
+                            "rows_written": len(df),
+                            "written_at": datetime.utcnow().isoformat(),
+                        },
+                        f,
+                        indent=2,
+                    )
+
+            logger.info(f"Wrote data to {output_file}")
+            return True
+
+        except Exception as e:
+            logger.error(f"MySQL write failed: {str(e)}")
+            return False

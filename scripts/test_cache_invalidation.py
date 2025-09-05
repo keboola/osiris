@@ -125,7 +125,6 @@ async def run_scenarios() -> list[CacheTestResult]:
         discovery1.set_spec_schema(spec_schema)
 
         req1 = {"schema": "public", "table": "actors"}
-        initial_calls = extractor.call_count
 
         # First call should populate cache
         await discovery1.get_table_info("actors", req1)
@@ -157,7 +156,6 @@ async def run_scenarios() -> list[CacheTestResult]:
         req2_base = {"schema": "public", "table": "actors"}
         req2_changed = {"schema": "public", "table": "actors", "columns": ["actor_id", "name"]}
 
-        calls_before = extractor.call_count
         await discovery2.get_table_info("actors", req2_base)
         calls_after_base = extractor.call_count
 
@@ -187,7 +185,6 @@ async def run_scenarios() -> list[CacheTestResult]:
         discovery3.set_spec_schema(spec_schema)
 
         req3 = {"schema": "public", "table": "actors"}
-        calls_before = extractor.call_count
 
         # Populate cache with original spec
         await discovery3.get_table_info("actors", req3)
@@ -223,7 +220,6 @@ async def run_scenarios() -> list[CacheTestResult]:
         discovery4.set_spec_schema(spec_schema)
 
         req4 = {"schema": "public", "table": "actors"}
-        calls_before = extractor.call_count
 
         # Populate cache
         await discovery4.get_table_info("actors", req4)

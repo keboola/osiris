@@ -19,6 +19,13 @@ mempack.txt
 .osiris_prompts/
 output/
 
+# Compilation and execution artifacts (should only be in testing_env/tmp/)
+compiled/
+_artifacts/
+test_*/
+*_test/
+final_test/
+
 # Internal tools
 .claude/
 .audit/

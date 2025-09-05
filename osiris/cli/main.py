@@ -64,7 +64,9 @@ def show_main_help():
         "  [cyan]validate[/cyan]     Validate Osiris configuration file and environment setup"
     )
     console.print("  [cyan]chat[/cyan]         Conversational pipeline generation with LLM")
+    console.print("  [cyan]compile[/cyan]      Compile OML pipeline to deterministic manifest")
     console.print("  [cyan]run[/cyan]          Execute a pipeline YAML file")
+    console.print("  [cyan]execute[/cyan]      Execute a compiled manifest")
     console.print("  [cyan]logs[/cyan]         Manage session logs (list, show, bundle, gc)")
     console.print("  [cyan]test[/cyan]         Run automated test scenarios")
     console.print("  [cyan]components[/cyan]   Manage and inspect Osiris components")
@@ -98,6 +100,8 @@ def parse_main_args():
             "validate",
             "chat",
             "run",
+            "compile",
+            "execute",
             "logs",
             "test",
             "components",
@@ -197,6 +201,14 @@ def main():
         test_command(command_args)
     elif args.command == "components":
         components_command(command_args)
+    elif args.command == "compile":
+        from .compile import compile_command
+
+        compile_command(command_args)
+    elif args.command == "execute":
+        from .execute import execute_command
+
+        execute_command(command_args)
     elif args.command == "dump-prompts":
         dump_prompts_command(command_args)
     elif args.command == "prompts":
@@ -214,7 +226,9 @@ def main():
                             "init",
                             "validate",
                             "chat",
+                            "compile",
                             "run",
+                            "execute",
                             "logs",
                             "components",
                             "dump-prompts",
@@ -235,7 +249,9 @@ def main():
                             "init",
                             "validate",
                             "chat",
+                            "compile",
                             "run",
+                            "execute",
                             "logs",
                             "components",
                             "dump-prompts",

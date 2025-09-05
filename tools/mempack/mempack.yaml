@@ -8,13 +8,9 @@ notes: |
 
 # Include files (globs are allowed). They’ll be expanded, sorted, and packed.
 include:
-- docs/adr/0014-OML_v0.1.0-scope-and-schema.md
-- docs/adr/0015-compile-contract-determinism-fingerprints-nosecrets.md
-- docs/adr/0016-OML-Scheduling-Hints-and-Lightweight-Planner-(Proposed).md
-- docs/adr/0017-Memory-Store-Abstraction-(Proposed).md
-- docs/adr/0018-Agent-Call-Adapter-(Proposed).md
-- docs/milestones/m1c-compile-and-run-mvp.md
-- docs/roadmap/0.x-m1c-ideas.md
+- docs/adr/*.md
+- docs/milestones/*.md
+- docs/roadmap/*.md
 - osiris/cli/*.py
 - osiris/core/*.py
 - osiris/components/*.py

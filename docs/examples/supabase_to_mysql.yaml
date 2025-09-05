@@ -1,0 +1,53 @@
+oml_version: "0.1.0"
+name: "Supabase to MySQL ETL"
+description: "Extract customers from Supabase, transform with DuckDB, load to MySQL"
+
+params:
+  supabase_url:
+    type: string
+    default: "${OSIRIS_SUPABASE_URL}"
+  supabase_key:
+    type: string
+    default: "${OSIRIS_SUPABASE_ANON_KEY}"
+  mysql_dsn:
+    type: string
+    default: "${OSIRIS_MYSQL_DSN}"
+  source_table:
+    type: string
+    default: "public.customers"
+  target_table:
+    type: string
+    default: "dw.customers"
+  transform_sql:
+    type: string
+    default: "SELECT *, upper(email) AS email_up FROM input"
+
+profiles:
+  dev:
+    params:
+      source_table: "public.customers_dev"
+      target_table: "dw.customers_dev"
+  prod:
+    params:
+      source_table: "public.customers"
+      target_table: "dw.customers"
+
+steps:
+  - id: "extract_customers"
+    uses: "extractors.supabase"
+    with:
+      url: "${params.supabase_url}"
+      key: "${params.supabase_key}"
+      table: "${params.source_table}"
+
+  - id: "transform_enrich"
+    uses: "transforms.duckdb"
+    with:
+      sql: "${params.transform_sql}"
+
+  - id: "load_mysql"
+    uses: "writers.mysql"
+    with:
+      dsn: "${params.mysql_dsn}"
+      table: "${params.target_table}"
+      mode: "replace"

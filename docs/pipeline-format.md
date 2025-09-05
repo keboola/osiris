@@ -1,64 +1,113 @@
-# MVP OML Specification - Simplified ETL Format
+# OML Specification - ETL Pipeline Format
 
-**Version:** 1.0-MVP
-**Date:** 2025-08-28
-**Scope:** Basic ETL pipelines only
+**Version:** 0.1.0
+**Date:** 2025-01-15
+**Scope:** Linear ETL pipelines with deterministic compilation
 
 ## Overview
 
-Simplified Osiris Markup Language (OML) for MVP implementation. Focuses on essential ETL operations with minimal complexity.
+Osiris Markup Language (OML) for declarative pipeline definitions. Supports parameterization, profiles, and deterministic compilation to execution manifests.
 
-## Format
+## OML Format (v0.1.0)
 
 ```yaml
-version: "1.0"
-pipeline: <pipeline_name>
+oml_version: "0.1.0"
+name: "<pipeline_name>"
+description: "<optional_description>"
 
-extract:
-  - id: <unique_id>
-    source: <mysql|supabase|csv>
-    table: <table_name>  # for databases
-    path: <file_path>    # for files
-    connection: <connection_name>  # for databases
+# Parameter declarations with types and defaults
+params:
+  <param_name>:
+    type: <string|int|number|bool|list|map>
+    default: <default_value>
+    enum: [<allowed_values>]  # optional
 
-transform:
-  - id: <unique_id>
-    engine: duckdb
-    inputs: [<extract_id>, ...]
-    sql: |
-      <DuckDB SQL query>
+# Environment-specific profiles
+profiles:
+  <profile_name>:
+    params:
+      <param_name>: <override_value>
 
-load:
-  - id: <unique_id>
-    from: <transform_id>
-    to: <csv|parquet|json|mysql|supabase>
-    path: <output_path>      # for files
-    table: <table_name>      # for databases
-    connection: <connection_name>  # for databases
-    mode: <overwrite|append>  # optional, default: overwrite
+# Pipeline steps (linear for v0.1.0)
+steps:
+  - id: "<unique_step_id>"
+    uses: "<component_type>"
+    with:
+      <config_key>: "${params.param_name}"  # Parameter references
+    needs: [<dependency_ids>]  # optional, auto-determined for linear
 ```
 
-## Supported Components (MVP)
+## Manifest Format (Compiled Output)
+
+```yaml
+pipeline:
+  id: "<pipeline_id>"
+  version: "0.1.0"
+  fingerprints:
+    oml_fp: "sha256:..."
+    registry_fp: "sha256:..."
+    compiler_fp: "sha256:..."
+    params_fp: "sha256:..."
+    manifest_fp: "sha256:..."
+
+steps:
+  - id: "<step_id>"
+    driver: "<component@version>"
+    cfg_path: "compiled/cfg/<step_id>.json"
+    needs: [<dependency_ids>]
+
+meta:
+  oml_version: "0.1.0"
+  profile: "<active_profile>"
+  run_id: "${run_id}"
+  generated_at: "<timestamp>"
+  toolchain:
+    compiler: "osiris-compiler/0.1"
+    registry: "osiris-registry/0.1"
+```
+
+## Supported Components (v0.1.0)
 
 ### Extract Sources
 
-- `mysql` - MySQL/MariaDB databases
-- `supabase` - Supabase (PostgreSQL-compatible) databases
-- `csv` - CSV files
+- `extractors.supabase` - Supabase (PostgreSQL) extractor
+- `extractors.mysql` - MySQL/MariaDB extractor
 
 ### Transform Engine
 
-- `duckdb` - Local DuckDB engine only
+- `transforms.duckdb` - DuckDB SQL transform (single SQL statement)
 
 ### Load Destinations
 
-- `csv` - CSV files
-- `parquet` - Parquet files
-- `json` - JSON files
-- `mysql` - MySQL/MariaDB databases
-- `supabase` - Supabase (PostgreSQL-compatible) databases
+- `writers.mysql` - MySQL/MariaDB writer
+- `writers.supabase` - Supabase writer
 
 ## Example Pipeline
+
+For a complete working example, see `docs/examples/supabase_to_mysql.yaml`.
+
+### Compilation and Execution
+
+```bash
+# Set environment variables or create .env
+export OSIRIS_SUPABASE_URL="https://your-project.supabase.co"
+export OSIRIS_SUPABASE_ANON_KEY="your-anon-key"
+export OSIRIS_MYSQL_DSN="mysql://user:pass@localhost/db"
+
+# Compile OML to deterministic manifest
+osiris compile docs/examples/supabase_to_mysql.yaml \
+  --out compiled/ \
+  --profile dev \
+  --param run_id=run_123
+
+# Execute the compiled manifest
+osiris execute compiled/manifest.yaml --out _artifacts/
+
+# Verify no secrets in artifacts
+grep -r "password\|key\|secret" compiled/ || echo "✓ No secrets found"
+```
+
+## Pipeline Execution Model
 
 ```yaml
 version: "1.0"

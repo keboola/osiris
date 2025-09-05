@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **M1c Thin-Slice: Deterministic Compiler and Local Runner** 
+  - Minimal OML v0.1.0 to manifest compiler with deterministic output
+  - Canonical YAML/JSON serialization with stable key ordering
+  - SHA-256 fingerprinting for all compilation inputs/outputs
+  - Parameter resolution with precedence: defaults < ENV < profile < CLI
+  - Strict no-secrets enforcement (compile error on inline secrets)
+  - Local sequential runner for linear pipelines (Supabase → DuckDB → MySQL)
+  - CLI commands: `osiris compile` and `osiris execute`
+  - Structured artifacts in `_artifacts/{step_id}/` directories
+  - Example pipeline: `docs/examples/supabase_to_mysql.yaml`
+
+### Added
 - **Post-generation validation with component spec checks** (M1b.3)
   - Automatic validation of LLM-generated pipelines against component specifications
   - Pipeline validator validates OML against registry specs

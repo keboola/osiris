@@ -1,0 +1,35 @@
+---
+meta:
+  generated_at: '2025-01-15T10:00:00.000000Z'
+  oml_version: 0.1.0
+  profile: dev
+  run_id: ${run_id}
+  toolchain:
+    compiler: osiris-compiler/0.1
+    registry: osiris-registry/0.1
+pipeline:
+  fingerprints:
+    compiler_fp: sha256:7f68eafb369ac0bd1b34b3c15659dc6fda602677620969f91d2a00415e88a805
+    manifest_fp: sha256:DYNAMIC_BASED_ON_CONTENT
+    oml_fp: sha256:DYNAMIC_BASED_ON_OML
+    params_fp: sha256:DYNAMIC_BASED_ON_PARAMS
+    profile: dev
+    registry_fp: sha256:2c528c04bb5cf058decb2b93d0c02a47e5cea3f59c2e78b8005dd72837ef2203
+  id: supabase_to_mysql_etl
+  version: 0.1.0
+steps:
+- cfg_path: compiled/cfg/extract_customers.json
+  driver: extractors.supabase@0.1
+  id: extract_customers
+  needs: []
+- cfg_path: compiled/cfg/transform_enrich.json
+  driver: transforms.duckdb@0.1
+  id: transform_enrich
+  needs:
+  - extract_customers
+- cfg_path: compiled/cfg/load_mysql.json
+  driver: writers.mysql@0.1
+  id: load_mysql
+  needs:
+  - transform_enrich
+...
