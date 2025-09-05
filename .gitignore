@@ -8,6 +8,7 @@ testing_env/*.log
 testing_env/*.json
 testing_env/.env
 testing_env/tmp/
+testing_env/tests
 docs/m1c-tmp-gpt.md
 
 # Global artifacts that may appear anywhere
