@@ -229,3 +229,172 @@ This MVP format is designed to be forward-compatible with the full OML v2.0 spec
 - Advanced error handling
 
 For now, focus on simple, working ETL pipelines.
+
+---
+
+## Compiled Manifest Format (M1c)
+
+### Overview
+
+The compiler transforms OML documents into deterministic, secret-free execution artifacts. The primary artifact is the `manifest.yaml` which contains all information needed for execution.
+
+### Manifest Structure
+
+```yaml
+# manifest.yaml - Canonical execution plan
+version: "0.1.0"  # Manifest format version
+
+pipeline:
+  id: <pipeline_id>
+  name: <human_readable_name>
+  oml_version: "0.1.0"
+  fingerprints:
+    oml_fp: <sha256_hex>        # OML document fingerprint
+    registry_fp: <sha256_hex>    # Component registry fingerprint
+    compiler_fp: <sha256_hex>    # Compiler version fingerprint
+    params_fp: <sha256_hex>      # Parameters fingerprint
+    manifest_fp: <sha256_hex>    # This manifest's fingerprint
+
+steps:
+  - id: <step_id>
+    driver: <component_name>@<version>  # e.g., mysql.extractor@1.0.0
+    mode: <read|write|transform>
+    cfg_path: cfg/<step_id>.json       # Path to step configuration
+    needs: [<dependency_ids>]          # Step dependencies
+    retry:
+      max: <int>
+      backoff: <none|linear|exp>
+      delay_ms: <int>
+    timeout: <duration>                # e.g., "30s", "5m"
+    idempotency_key: <string>          # Optional
+    artifacts:
+      out: [<artifact_names>]          # Expected outputs
+    metrics: [<metric_names>]          # Tracked metrics
+    privacy: <standard|strict>         # Privacy level
+    resources:                         # Resource hints
+      cpu: <float>
+      memory: <string>                 # e.g., "2GB"
+
+meta:
+  profile: <active_profile>            # e.g., "dev", "prod"
+  run_id: <external_run_id>           # If provided
+  generated_at: <iso8601_timestamp>
+  toolchain:
+    compiler:
+      version: <semver>
+      build: <build_id>
+    registry:
+      version: <semver>
+      endpoint: <url>
+```
+
+### Per-Step Configuration
+
+```json
+// cfg/{step_id}.json - Minimal step configuration
+{
+  "component": "mysql.extractor",
+  "mode": "read",
+  "config": {
+    "connection": "@mysql_default",  // Symbolic reference, no secrets
+    "table": "users",
+    "query": "SELECT * FROM users WHERE active = true",
+    "batch_size": 1000
+  },
+  "inputs": ["upstream_data"],
+  "outputs": ["user_data"]
+}
+```
+
+### Metadata File
+
+```json
+// meta.json - Provenance and fingerprints
+{
+  "fingerprints": {
+    "oml_fp": "sha256:abc123...",
+    "registry_fp": "sha256:def456...",
+    "compiler_fp": "sha256:ghi789...",
+    "params_fp": "sha256:jkl012...",
+    "manifest_fp": "sha256:mno345..."
+  },
+  "compilation": {
+    "timestamp": "2025-01-04T12:34:56Z",
+    "duration_ms": 250,
+    "cache_hit": false,
+    "compiler_version": "0.1.0",
+    "oml_version": "0.1.0"
+  },
+  "provenance": {
+    "source_file": "pipelines/example.yaml",
+    "profile": "dev",
+    "parameters_used": ["region", "batch_size"]
+  }
+}
+```
+
+### Effective Configuration
+
+```json
+// effective_config.json - Resolved parameters
+{
+  "params": {
+    "region": "us-west",
+    "batch_size": 1000,
+    "enable_cache": true
+  },
+  "profile": "dev",
+  "profile_overrides": {
+    "batch_size": 1000  // Overridden from default 500
+  },
+  "resolution_order": [
+    "cli",
+    "env",
+    "profile",
+    "defaults"
+  ]
+}
+```
+
+### Artifact Directory Structure
+
+```
+compiled/                         # Compilation outputs
+├── manifest.yaml                 # Canonical execution plan
+├── cfg/
+│   ├── extract-users.json      # Per-step configurations
+│   ├── transform-aggregate.json
+│   └── load-results.json
+├── meta.json                    # Provenance & fingerprints
+└── effective_config.json        # Resolved parameters
+
+_artifacts/                      # Runtime outputs
+├── extract-users/
+│   └── output.parquet
+├── transform-aggregate/
+│   └── results.csv
+└── load-results/
+    └── summary.json
+```
+
+### Key Properties
+
+1. **Deterministic**: Same inputs always produce byte-identical manifests
+2. **Secret-Free**: No credentials or sensitive data in any artifact
+3. **Self-Contained**: Manifest contains all information needed for execution
+4. **Fingerprinted**: Every input contributes to cache key computation
+5. **Canonical**: Stable ordering, formatting, and serialization
+
+### Cache Key Computation
+
+```
+cache_key = SHA256(
+  oml_fp || 
+  registry_fp || 
+  compiler_fp || 
+  params_fp || 
+  profile
+)
+```
+
+Where `||` represents concatenation of the hex-encoded fingerprints.
