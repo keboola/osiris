@@ -101,7 +101,8 @@ async def create_supabase_tables():
         else:
             column_definitions = [f'"{col}" {sql_type}' for col, sql_type in schema.items()]
 
-        create_sql = f'CREATE TABLE "{table_name}" (\n  {",\n  ".join(column_definitions)}\n);'
+        column_defs = ",\n  ".join(column_definitions)
+        create_sql = f'CREATE TABLE "{table_name}" (\n  {column_defs}\n);'
         print(create_sql)
         print("")
 
@@ -202,9 +203,7 @@ async def test_mysql_to_supabase_transfer():
             # Quick test to see if table exists
             try:
                 # Try a simple query to check table existence
-                test_query = (
-                    supabase_writer.client.table(target_table).select("*").limit(0).execute()
-                )
+                (supabase_writer.client.table(target_table).select("*").limit(0).execute())
                 logger.info(f"✓ Table {target_table} exists")
             except Exception as e:
                 if "PGRST205" in str(e) or "not found" in str(e).lower():
