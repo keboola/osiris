@@ -55,7 +55,7 @@ class TestConversationalPipelineAgent:
 
     @patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"})  # pragma: allowlist secret
     @patch("pathlib.Path.mkdir")
-    def test_init_creates_directories(self, mock_mkdir):
+    def test_init_creates_directories(self, mock_mkdir, clean_project_root):
         """Test that initialization creates required directories."""
         agent = ConversationalPipelineAgent("openai", self.test_config)
 
@@ -64,7 +64,7 @@ class TestConversationalPipelineAgent:
 
     @patch.dict("os.environ", {"OPENAI_API_KEY": "test_key"})  # pragma: allowlist secret
     @pytest.mark.asyncio
-    async def test_chat_creates_new_session(self):
+    async def test_chat_creates_new_session(self, clean_project_root):
         """Test that chat creates new session when none provided."""
         agent = ConversationalPipelineAgent("openai", self.test_config)
 

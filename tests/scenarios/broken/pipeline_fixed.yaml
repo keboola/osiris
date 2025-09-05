@@ -1,0 +1,25 @@
+# Fixed version of the broken pipeline
+description: "Extract product data with complete configuration"
+
+steps:
+  - type: mysql.extractor
+    config:
+      database: product_db  # Added required field
+      host: localhost
+      port: 3306
+      user: reader
+      password: "{{ secrets.mysql_password }}"  # Added required field
+      query: |
+        SELECT
+          product_id,
+          name,
+          price,
+          category
+        FROM products
+        WHERE active = 1
+
+  - type: supabase.writer
+    config:
+      url: "https://example.supabase.co"  # Added required field
+      key: "{{ secrets.supabase_key }}"  # Added required field
+      table: products

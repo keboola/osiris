@@ -33,14 +33,16 @@ import os
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import yaml
 
 from ..connectors import ConnectorRegistry
 from .discovery import ExtractorFactory, ProgressiveDiscovery
 from .llm_adapter import ConversationContext, LLMAdapter, LLMResponse
+from .pipeline_validator import PipelineValidator
 from .state_store import SQLiteStateStore
+from .validation_retry import ValidationRetryManager
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +51,12 @@ class ConversationalPipelineAgent:
     """Single LLM agent handles entire pipeline generation conversation."""
 
     def __init__(
-        self, llm_provider: str = "openai", config: Optional[Dict] = None, pro_mode: bool = False
+        self,
+        llm_provider: str = "openai",
+        config: Optional[Dict] = None,
+        pro_mode: bool = False,
+        prompt_manager: Optional[Any] = None,
+        context: Optional[Dict[str, Any]] = None,
     ):
         """Initialize conversational pipeline agent.
 
@@ -57,10 +64,18 @@ class ConversationalPipelineAgent:
             llm_provider: LLM provider (openai, claude, gemini)
             config: Configuration dictionary
             pro_mode: Whether to enable pro mode with custom prompts
+            prompt_manager: Optional PromptManager instance with context loaded
+            context: Optional component context dictionary
         """
         self.config = config or {}
         self.pro_mode = pro_mode
-        self.llm = LLMAdapter(provider=llm_provider, config=self.config, pro_mode=pro_mode)
+        self.llm = LLMAdapter(
+            provider=llm_provider,
+            config=self.config,
+            pro_mode=pro_mode,
+            prompt_manager=prompt_manager,
+            context=context,
+        )
         self.state_stores = {}  # Session ID -> SQLiteStateStore
         self.connectors = ConnectorRegistry()
 
@@ -74,6 +89,18 @@ class ConversationalPipelineAgent:
 
         # Get database configuration
         self.database_config = self._get_database_config()
+
+        # Initialize validation components
+        self.validator = PipelineValidator()
+        validation_config = self.config.get("validation", {})
+        retry_config = validation_config.get("retry", {})
+        self.retry_manager = ValidationRetryManager(
+            validator=self.validator,
+            max_attempts=retry_config.get("max_attempts", 2),
+            include_history_in_hitl=retry_config.get("include_history_in_hitl", True),
+            history_limit=retry_config.get("history_limit", 3),
+            diff_format=retry_config.get("diff_format", "patch"),
+        )
 
     def _log_conversation(self, session_id: str, role: str, message: str, metadata: dict = None):
         """Log conversation to human-readable session file."""
@@ -165,15 +192,36 @@ class ConversationalPipelineAgent:
             # Save updated context
             self._save_context(context, state_store)
 
-            # Log assistant response
+            # Log assistant response with token usage
+            metadata = {
+                "action": response.action if "response" in locals() else "unknown",
+                "confidence": response.confidence if "response" in locals() else "unknown",
+            }
+
+            # Add token usage if available
+            if hasattr(response, "token_usage") and response.token_usage:
+                metadata["token_usage"] = response.token_usage
+
+                # Log token metrics to session
+                from ..core.session_logging import get_current_session
+
+                session = get_current_session()
+                if session:
+                    session.log_metric(
+                        "llm_tokens_used",
+                        response.token_usage.get("total_tokens", 0),
+                        unit="tokens",
+                        metadata={
+                            "prompt_tokens": response.token_usage.get("prompt_tokens", 0),
+                            "response_tokens": response.token_usage.get("response_tokens", 0),
+                        },
+                    )
+
             self._log_conversation(
                 session_id,
                 "assistant",
                 result_message,
-                {
-                    "action": response.action if "response" in locals() else "unknown",
-                    "confidence": response.confidence if "response" in locals() else "unknown",
-                },
+                metadata,
             )
 
             return result_message
@@ -464,6 +512,70 @@ What would you like to analyze or extract from this data?"""
             logger.error(f"Discovery failed: {e}")
             return f"I encountered an error during discovery: {str(e)}. Please check your database connection settings."
 
+    async def _validate_and_retry_pipeline(
+        self, pipeline_yaml: str, context: ConversationContext, session_ctx: Optional[Any] = None
+    ) -> Tuple[bool, str, Optional[Any]]:
+        """Validate pipeline with retry mechanism.
+
+        Returns:
+            Tuple of (valid, final_yaml, retry_trail)
+        """
+
+        async def retry_callback(
+            current_yaml: str, error_context: str, attempt: int  # noqa: ARG001
+        ) -> Tuple[str, Dict]:
+            """Generate retry with error context."""
+            # Create retry prompt
+            retry_prompt = f"""The pipeline validation failed with the following errors:
+
+{error_context}
+
+Here is the current pipeline that needs fixing:
+
+```yaml
+{current_yaml}
+```
+
+Please generate a corrected version that fixes only these validation errors. Keep all other fields unchanged."""
+
+            # Get LLM to fix the pipeline
+            response = await self.llm.chat(message=retry_prompt, context=context, fast_mode=True)
+
+            # Extract YAML from response
+            if "```yaml" in response.message:
+                # Extract YAML block
+                import re
+
+                yaml_match = re.search(r"```yaml\n(.*?)\n```", response.message, re.DOTALL)
+                new_yaml = yaml_match.group(1) if yaml_match else response.message
+            else:
+                new_yaml = response.message
+
+            # Return new YAML and token usage
+            token_usage = {
+                "prompt_tokens": getattr(response, "prompt_tokens", 0),
+                "completion_tokens": getattr(response, "completion_tokens", 0),
+                "total_tokens": getattr(response, "total_tokens", 0),
+            }
+
+            return new_yaml, token_usage
+
+        # Validate with retry
+        valid, result, retry_trail = self.retry_manager.validate_with_retry(
+            pipeline_yaml=pipeline_yaml, retry_callback=retry_callback, session_ctx=session_ctx
+        )
+
+        # Return the final validated YAML or the last attempted YAML
+        if valid:
+            final_yaml = pipeline_yaml
+        elif retry_trail and retry_trail.attempts:
+            # Use the last attempted YAML
+            final_yaml = retry_trail.attempts[-1].pipeline_yaml
+        else:
+            final_yaml = pipeline_yaml
+
+        return valid, final_yaml, retry_trail
+
     async def _generate_pipeline(self, params: Dict, context: ConversationContext) -> str:
         """Generate pipeline YAML configuration."""
         logger.info(f"_generate_pipeline called with params keys: {params.keys()}")
@@ -472,10 +584,67 @@ What would you like to analyze or extract from this data?"""
             # This should be checked BEFORE checking discovery_data since the LLM
             # may have already done the discovery and generated the YAML
             if "pipeline_yaml" in params:
-                logger.info("LLM provided complete pipeline YAML, saving it now")
+                logger.info("LLM provided complete pipeline YAML, validating it now")
                 pipeline_yaml = params["pipeline_yaml"]
                 pipeline_name = params.get("pipeline_name", "generated_pipeline")
                 description = params.get("description", "Generated pipeline")
+
+                # Get session context for logging
+                from .session_logging import get_current_session
+
+                session = get_current_session()
+
+                # Validate the pipeline with retry
+                valid, validated_yaml, retry_trail = await self._validate_and_retry_pipeline(
+                    pipeline_yaml=pipeline_yaml, context=context, session_ctx=session
+                )
+
+                # Use the validated/retried YAML
+                pipeline_yaml = validated_yaml
+
+                # Save artifacts if we have a retry trail
+                if retry_trail and session:
+                    session_dir = Path(session.logs_dir) / session.session_id
+                    retry_trail.save_artifacts(session_dir)
+
+                # Check if validation failed after all retries - trigger HITL
+                if not valid:
+                    hitl_prompt = self.retry_manager.get_hitl_prompt(retry_trail)
+
+                    # Log HITL event
+                    if session:
+                        session.add_event(
+                            event_type="hitl_prompt_shown",
+                            payload={
+                                "retry_attempts": len(retry_trail.attempts),
+                                "final_error_count": (
+                                    len(retry_trail.attempts[-1].validation_result.errors)
+                                    if retry_trail.attempts
+                                    else 0
+                                ),
+                            },
+                        )
+
+                    # Store the invalid pipeline in context for potential manual fixing
+                    context.pipeline_config = {
+                        "yaml": pipeline_yaml,
+                        "name": pipeline_name,
+                        "valid": False,
+                    }
+                    context.validation_status = "failed"
+
+                    return f"""{hitl_prompt}
+
+Here is the current pipeline that needs manual correction:
+
+```yaml
+{pipeline_yaml}
+```
+
+You can:
+1. Provide specific corrections or missing information
+2. Simplify your requirements
+3. Ask me to try a completely different approach"""
 
                 # Save pipeline to output directory
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -549,6 +718,60 @@ Would you like me to:
 
             # Generate YAML (secrets should already be masked in pipeline_config)
             pipeline_yaml = yaml.dump(pipeline_config, default_flow_style=False, indent=2)
+
+            # Get session context for validation logging
+            from .session_logging import get_current_session
+
+            session = get_current_session()
+
+            # Validate the generated pipeline with retry
+            valid, validated_yaml, retry_trail = await self._validate_and_retry_pipeline(
+                pipeline_yaml=pipeline_yaml, context=context, session_ctx=session
+            )
+
+            # Use the validated/retried YAML
+            pipeline_yaml = validated_yaml
+
+            # Save artifacts if we have a retry trail
+            if retry_trail and session:
+                session_dir = Path(session.logs_dir) / session.session_id
+                retry_trail.save_artifacts(session_dir)
+
+            # Check if validation failed after all retries - trigger HITL
+            if not valid:
+                hitl_prompt = self.retry_manager.get_hitl_prompt(retry_trail)
+
+                # Log HITL event
+                if session:
+                    session.add_event(
+                        event_type="hitl_prompt_shown",
+                        payload={
+                            "retry_attempts": len(retry_trail.attempts),
+                            "final_error_count": (
+                                len(retry_trail.attempts[-1].validation_result.errors)
+                                if retry_trail.attempts
+                                else 0
+                            ),
+                        },
+                    )
+
+                # Store the invalid pipeline in context
+                context.pipeline_config = pipeline_config
+                context.validation_status = "failed"
+
+                return f"""{hitl_prompt}
+
+Here is the current pipeline that needs manual correction:
+
+```yaml
+# osiris-pipeline-v2
+{pipeline_yaml}
+```
+
+You can:
+1. Provide specific corrections or missing information
+2. Simplify your requirements
+3. Ask me to try a completely different approach"""
 
             # Save to file for review
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

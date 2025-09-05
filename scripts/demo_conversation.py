@@ -2,6 +2,10 @@
 """
 Osiris Demo Conversation Simulator
 Demonstrates how Osiris would handle a Supabase to Shopify sync request
+
+NOTE: This is a conceptual demo from v0.1.x showing the conversational flow concept.
+It does not reflect the actual implementation with session logging, validation,
+or retry mechanisms that were added in v0.1.2+.
 """
 
 import sys

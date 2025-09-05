@@ -30,6 +30,7 @@
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import re
@@ -65,6 +66,7 @@ except ImportError:
 
 from ..core.config import ConfigManager
 from ..core.conversational_agent import ConversationalPipelineAgent
+from ..core.prompt_manager import PromptManager
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -127,6 +129,11 @@ def show_epic_help(json_output=False):
                 "--sql": "Direct SQL mode: provide SQL query directly",
                 "--config-file, -c": "Configuration file path",
                 "--pro-mode": "Use custom prompts from .osiris_prompts/ directory",
+                "--context-file": "Path to component context JSON file (default: .osiris_prompts/context.json)",
+                "--no-context": "Disable automatic component context injection",
+                "--context-strategy": "Context strategy: 'full' or 'component-scoped' (default: full)",
+                "--context-components": "Specific components to include (comma-separated)",
+                "--strict-context": "Fail if context loading fails (default: warn and continue)",
                 "--json": "Output in JSON format for programmatic use",
                 "--help, -h": "Show this help message",
             },
@@ -172,6 +179,14 @@ def show_epic_help(json_output=False):
     console.print(
         "  [cyan]--pro-mode[/cyan]          Use custom prompts from .osiris_prompts/ directory"
     )
+    console.print("  [cyan]--context-file[/cyan]     Path to component context JSON file")
+    console.print("  [cyan]--no-context[/cyan]       Disable automatic component context injection")
+    console.print(
+        "  [cyan]--context-strategy[/cyan] Context strategy: 'full' or 'component-scoped'"
+    )
+    console.print("  [cyan]--context-components[/cyan] Specific components to include")
+    console.print("  [cyan]--strict-context[/cyan]   Fail if context loading fails")
+    console.print("  [cyan]--privacy[/cyan]          Privacy level for logs (standard/strict)")
     console.print("  [cyan]--json[/cyan]             Output in JSON format for programmatic use")
     console.print("  [cyan]--help[/cyan], [cyan]-h[/cyan]         Show this help message")
     console.print()
@@ -253,6 +268,35 @@ def parse_args(args=None) -> argparse.Namespace:
     parser.add_argument(
         "--pro-mode", action="store_true", help="Enable pro mode with custom prompts"
     )
+    parser.add_argument(
+        "--context-file",
+        default=".osiris_prompts/context.json",
+        help="Path to component context JSON file",
+    )
+    parser.add_argument(
+        "--no-context", action="store_true", help="Disable automatic component context injection"
+    )
+    parser.add_argument(
+        "--context-strategy",
+        default="full",
+        choices=["full", "component-scoped"],
+        help="Context strategy: 'full' or 'component-scoped'",
+    )
+    parser.add_argument(
+        "--context-components",
+        help="Specific components to include (comma-separated)",
+    )
+    parser.add_argument(
+        "--strict-context",
+        action="store_true",
+        help="Fail if context loading fails (default: warn and continue)",
+    )
+    parser.add_argument(
+        "--privacy",
+        choices=["standard", "strict"],
+        default="standard",
+        help="Privacy level for logs (standard: show metrics, strict: mask prompts)",
+    )
     parser.add_argument("--json", action="store_true", help="Output in JSON format")
     parser.add_argument("--help", "-h", action="store_true", help="Show this help message")
     parser.add_argument("message", nargs="?", help="Chat message")
@@ -288,7 +332,10 @@ def chat(argv=None):
 
     session_id = getattr(args, "session_id", None) or f"chat_{int(time.time())}"
     session = SessionContext(
-        session_id=session_id, base_logs_dir=Path(logs_dir), allowed_events=allowed_events
+        session_id=session_id,
+        base_logs_dir=Path(logs_dir),
+        allowed_events=allowed_events,
+        privacy_level=getattr(args, "privacy", "standard"),
     )
     set_current_session(session)
 
@@ -333,10 +380,76 @@ def chat(argv=None):
     console.print(f"💡 Monitor with: tail -f {session.osiris_log}")
     console.print(f"📂 Session directory: {session.session_dir}")
 
+    # Load component context if not disabled
+    context = None
+    prompt_manager = None
+    if not args.no_context:
+        prompt_manager = PromptManager()
+        context_file = Path(args.context_file)
+
+        try:
+            # Load the context
+            context = prompt_manager.load_context(context_file)
+
+            # Get the context based on strategy
+            if args.context_strategy == "component-scoped" and args.context_components:
+                components = [c.strip() for c in args.context_components.split(",")]
+                context = prompt_manager.get_context(
+                    strategy="component-scoped", components=components
+                )
+            else:
+                context = prompt_manager.get_context(strategy=args.context_strategy)
+
+            # Log context loading success
+            session.log_event(
+                "context_loaded",
+                strategy=args.context_strategy,
+                components_count=len(context.get("components", [])),
+                context_file=str(context_file),
+            )
+
+            console.print(f"✅ Context loaded: {len(context.get('components', []))} components")
+
+        except FileNotFoundError:
+            error_msg = f"Context file not found: {context_file}"
+            session.log_event(
+                "context_load_failed", reason="file_not_found", file=str(context_file)
+            )
+
+            if args.strict_context:
+                console.print(f"❌ {error_msg}")
+                console.print("💡 Run 'osiris prompts build-context' to generate the context file")
+                sys.exit(1)
+            else:
+                console.print(f"⚠️  {error_msg}")
+                console.print("   Continuing without component context...")
+                context = None
+
+        except Exception as e:
+            error_msg = f"Failed to load context: {e}"
+            session.log_event(
+                "context_load_failed", reason="load_error", error=str(e), file=str(context_file)
+            )
+
+            if args.strict_context:
+                console.print(f"❌ {error_msg}")
+                sys.exit(1)
+            else:
+                console.print(f"⚠️  {error_msg}")
+                console.print("   Continuing without component context...")
+                context = None
+    else:
+        console.print("ℹ️  Component context disabled (--no-context)")
+        session.log_event("context_disabled", reason="user_flag")
+
     # Initialize conversational agent
     try:
         agent = ConversationalPipelineAgent(
-            llm_provider=args.provider, config=config, pro_mode=args.pro_mode
+            llm_provider=args.provider,
+            config=config,
+            pro_mode=args.pro_mode,
+            prompt_manager=prompt_manager,
+            context=context,
         )
 
         # Show pro mode status
@@ -448,6 +561,9 @@ async def _handle_single_message(
         if not _format_data_response(response):
             console.print(f"🤖 {response}")
 
+        # Display token usage if available
+        _display_token_usage(session)
+
     except Exception as e:
         logger.error(f"Error in single message mode: {e}")
         session.log_event("single_message_error", error_type=type(e).__name__, error_message=str(e))
@@ -537,6 +653,9 @@ async def _handle_interactive_mode(
                 if not _format_data_response(response):
                     console.print(f"🤖 Assistant: {response}")
 
+                # Display token usage if available
+                _display_token_usage(session)
+
             except Exception as e:
                 logger.error(f"Chat error: {e}")
                 session.log_event(
@@ -556,6 +675,47 @@ async def _handle_interactive_mode(
         session.log_event("chat_end")
         session.close()
         clear_session_context()
+
+
+def _display_token_usage(session: SessionContext) -> None:
+    """Display token usage from the last LLM interaction."""
+    # Read the last few events to find token usage
+    try:
+        events_file = session.session_dir / "events.jsonl"
+        if not events_file.exists():
+            return
+
+        # Read last 20 events (enough to find recent token usage)
+        events = []
+        with open(events_file) as f:
+            lines = f.readlines()
+            for line in lines[-20:] if len(lines) > 20 else lines:
+                try:
+                    event = json.loads(line)
+                    events.append(event)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+
+        # Find the most recent llm_response_complete event
+        token_event = None
+        for event in reversed(events):
+            if event.get("event") == "llm_response_complete":
+                token_event = event
+                break
+
+        if token_event:
+            prompt_tokens = token_event.get("prompt_tokens_est", 0)
+            response_tokens = token_event.get("response_tokens_est", 0)
+            total_tokens = token_event.get("total_tokens_est", 0)
+
+            # Create a simple token usage display
+            console.print(
+                f"[dim]📊 Tokens: {total_tokens:,} "
+                f"(prompt: {prompt_tokens:,}, response: {response_tokens:,})[/dim]"
+            )
+    except Exception as e:
+        # Silently fail - token display is not critical
+        logger.debug(f"Could not display token usage: {e}")
 
 
 def _format_data_response(response: str) -> bool:

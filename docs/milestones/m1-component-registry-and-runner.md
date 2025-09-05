@@ -33,8 +33,8 @@ This milestone implements the architectural decisions documented in ADRs 0005-00
   - [ADR-0011: Osiris Roadmap](../adr/0011-osiris-roadmap.md#m1--component-registry--context-aware-agent) - M1 in context of full roadmap
 
 #### Planning Documents
-- **Implementation Plan**: [Post-0.1.1 Implementation Plan](../post_0.1.1_plan.md#m1--component-registry-specs--capabilities)
-- **Development Timeline**: [Development Plan - M1a](../dev-plan.md#milestone-m1a-component-registry-foundation)
+- **Implementation Plan**: [Initial Plan - M1a](_initial_plan.md#m1a-component-registry-foundation)
+- **Development Timeline**: [Initial Plan - Resource Allocation](_initial_plan.md#resource-allocation)
 
 ## Milestone Phases
 
@@ -108,14 +108,19 @@ This milestone implements the architectural decisions documented in ADRs 0005-00
 ### Phase M1b: Context Builder and Validation
 **Duration**: 2 weeks  
 **Priority**: High (critical for LLM improvement)  
-**Status**: ⏳ Pending  
-**Related ADRs**: [ADR-0007](../adr/0007-component-specification-and-capabilities.md)
+**Status**: ✅ Complete  
+**Related ADRs**: [ADR-0007](../adr/0007-component-specification-and-capabilities.md), [ADR-0008](../adr/0008-component-registry.md), [ADR-0013](../adr/0013-chat-retry-policy.md)
+**Dependencies**: M1a outputs (Component Registry, FriendlyErrorMapper)
 
 #### Objectives
 - Export minimal component context for LLM consumption (per ADR-0007)
 - Integrate context into conversational agent
 - Validate LLM-generated OML against component specs
 - Improve chat experience with validation feedback
+
+#### Summary
+
+M1b successfully delivered post-generation validation with bounded retries and HITL escalation. The Context Builder (`osiris prompts build-context`) generates minimal component specifications for LLM consumption, while the validation layer ensures generated pipelines conform to component specs. The retry mechanism ([ADR-0013](../adr/0013-chat-retry-policy.md)) enables automatic correction of simple mistakes with configurable retry limits (0-5 attempts). A comprehensive test harness (`osiris test validation`) validates all retry scenarios. The redaction policy was refined to preserve operational metrics (tokens, durations) while masking secrets.
 
 #### Deliverables
 
@@ -194,13 +199,14 @@ This milestone implements the architectural decisions documented in ADRs 0005-00
 **Duration**: 2 weeks  
 **Priority**: Medium  
 **Status**: ⏳ Pending  
-**Related ADRs**: [ADR-0006](../adr/0006-pipeline-runner-and-execution.md), [ADR-0005](../adr/0005-component-specification-and-registry.md)
+**Related ADRs**: [ADR-0006](../adr/0006-pipeline-runner-and-execution.md), [ADR-0005](../adr/0005-component-specification-and-registry.md), [ADR-0008 Amendment](../adr/0008-component-registry.md#amendment-2025-01-03)
 
 #### Objectives
 - Execute compiled manifests locally (per ADR-0006)
 - Integrate with existing connectors
 - Generate structured logs and metrics with proper secrets masking (per ADR-0005)
 - Prepare for e2b remote execution
+- **Implement deferred `osiris components discover` CLI** from M1a.5
 
 #### Deliverables
 
@@ -229,6 +235,7 @@ This milestone implements the architectural decisions documented in ADRs 0005-00
 - [ ] Add `osiris run <pipeline.yaml>` with engine selection
 - [ ] Support `--engine=local|e2b` flag
 - [ ] Accept `--secrets-file` and `--param k=v` options
+- [ ] **Implement `osiris components discover <type>`** (deferred from M1a.5)
 - [ ] Create integration tests with docker-compose
 - [ ] Mock e2b for E2E testing
 
@@ -439,5 +446,5 @@ tools/
   - Deprecates 'load' mode with backward compatibility
 
 ### Planning Documents
-- **[Post-0.1.1 Implementation Plan](../post_0.1.1_plan.md)**: Detailed technical implementation
-- **[Development Plan](../dev-plan.md)**: Timeline and resource allocation
+- **[Initial Plan](_initial_plan.md)**: Consolidated implementation planning
+- **[Resource Allocation](_initial_plan.md#resource-allocation)**: Timeline and team distribution

@@ -1,0 +1,1 @@
+I need to analyze customer order patterns from our MySQL database. Extract orders from 2024, calculate metrics per customer (total orders, spending, average order value), and save as Parquet file.

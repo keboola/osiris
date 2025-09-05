@@ -66,9 +66,11 @@ def show_main_help():
     console.print("  [cyan]chat[/cyan]         Conversational pipeline generation with LLM")
     console.print("  [cyan]run[/cyan]          Execute a pipeline YAML file")
     console.print("  [cyan]logs[/cyan]         Manage session logs (list, show, bundle, gc)")
+    console.print("  [cyan]test[/cyan]         Run automated test scenarios")
     console.print("  [cyan]components[/cyan]   Manage and inspect Osiris components")
     console.print(
-        "  [cyan]dump-prompts[/cyan] Export LLM system prompts for customization (pro mode)"
+        "  [cyan]dump-prompts[/cyan] Export LLM system prompts for customization (pro mode)\n"
+        "  [cyan]prompts[/cyan]      Manage component context for LLM"
     )
     console.print()
 
@@ -97,8 +99,10 @@ def parse_main_args():
             "chat",
             "run",
             "logs",
+            "test",
             "components",
             "dump-prompts",
+            "prompts",
         ]:
             command = arg
             command_index = i
@@ -189,10 +193,14 @@ def main():
         run_command(command_args)
     elif args.command == "logs":
         logs_command(command_args)
+    elif args.command == "test":
+        test_command(command_args)
     elif args.command == "components":
         components_command(command_args)
     elif args.command == "dump-prompts":
         dump_prompts_command(command_args)
+    elif args.command == "prompts":
+        prompts_command(command_args)
     elif args.command == "chat":
         # This case is now handled early in main() to preserve argument order
         pass
@@ -210,6 +218,7 @@ def main():
                             "logs",
                             "components",
                             "dump-prompts",
+                            "prompts",
                         ],
                     }
                 )
@@ -230,6 +239,7 @@ def main():
                             "logs",
                             "components",
                             "dump-prompts",
+                            "prompts",
                         ],
                     }
                 )
@@ -1444,6 +1454,313 @@ def logs_command(args: list) -> None:
         console.print(f"❌ Unknown subcommand: {subcommand}")
         console.print("Available subcommands: list, show, bundle, gc")
         console.print("Use 'osiris logs --help' for detailed help.")
+
+
+def test_command(args: list) -> None:
+    """Run automated test scenarios."""
+    import argparse
+
+    def show_test_help():
+        """Show test command help."""
+        console.print()
+        console.print("[bold green]osiris test - Automated Test Scenarios[/bold green]")
+        console.print("🧪 Run automated validation test scenarios for M1b.3")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris test SUBCOMMAND [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Subcommands[/bold blue]")
+        console.print("  [cyan]validation[/cyan]    Run validation test scenarios")
+        console.print()
+        console.print("[bold blue]Options for validation[/bold blue]")
+        console.print(
+            "  [cyan]--scenario NAME[/cyan]  Scenario to run (valid|broken|unfixable|all, default: all)"
+        )
+        console.print("  [cyan]--out DIR[/cyan]        Output directory for artifacts")
+        console.print("  [cyan]--max-attempts N[/cyan] Override max retry attempts")
+        console.print()
+        console.print("[bold blue]Scenarios[/bold blue]")
+        console.print("  [cyan]valid[/cyan]     Pipeline that passes validation on first attempt")
+        console.print("  [cyan]broken[/cyan]    Pipeline with fixable errors corrected after retry")
+        console.print("  [cyan]unfixable[/cyan] Pipeline that fails after max attempts")
+        console.print("  [cyan]all[/cyan]       Run all scenarios")
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print(
+            "  [green]osiris test validation[/green]                    # Run all scenarios"
+        )
+        console.print(
+            "  [green]osiris test validation --scenario broken[/green] # Run broken scenario"
+        )
+        console.print(
+            "  [green]osiris test validation --out ./results[/green]   # Custom output dir"
+        )
+        console.print()
+
+    parser = argparse.ArgumentParser(prog="osiris test", add_help=False)
+    parser.add_argument("subcommand", nargs="?", help="Subcommand to run")
+    parser.add_argument("--help", "-h", action="store_true", help="Show help")
+    parser.add_argument(
+        "--scenario", choices=["valid", "broken", "unfixable", "all"], default="all"
+    )
+    parser.add_argument("--out", type=str, help="Output directory")
+    parser.add_argument("--max-attempts", type=int, help="Max retry attempts")
+
+    # Parse args
+    try:
+        parsed_args = parser.parse_args(args)
+    except SystemExit:
+        show_test_help()
+        return
+
+    if parsed_args.help or not parsed_args.subcommand:
+        show_test_help()
+        return
+
+    if parsed_args.subcommand == "validation":
+        # Import and run test harness
+        from pathlib import Path
+
+        from osiris.core.test_harness import ValidationTestHarness
+
+        try:
+            harness = ValidationTestHarness(max_attempts=parsed_args.max_attempts)
+            output_dir = Path(parsed_args.out) if parsed_args.out else None
+
+            if parsed_args.scenario == "all":
+                results = harness.run_all_scenarios(output_dir=output_dir)
+                # Use the worst exit code from all scenarios
+                worst_code = max(result["return_code"] for _, result in results.values())
+                sys.exit(worst_code)
+            else:
+                success, result = harness.run_scenario(parsed_args.scenario, output_dir=output_dir)
+                # Use the return_code from the result
+                sys.exit(result["return_code"])
+
+        except Exception as e:
+            console.print(f"[bold red]Error running test scenario: {e}[/bold red]")
+            logger.error(f"Test scenario failed: {e}", exc_info=True)
+            sys.exit(1)
+    else:
+        console.print(f"❌ Unknown subcommand: {parsed_args.subcommand}")
+        console.print("Available subcommands: validation")
+        console.print("Use 'osiris test --help' for detailed help.")
+
+
+def prompts_command(args: list):
+    """Manage component context for LLM."""
+    import argparse
+
+    def show_prompts_help():
+        """Show help for prompts command."""
+        if json_output:
+            help_data = {
+                "command": "prompts",
+                "description": "Manage component context for LLM",
+                "subcommands": {
+                    "build-context": {
+                        "description": "Build minimal component context for LLM",
+                        "usage": "osiris prompts build-context [OPTIONS]",
+                        "options": {
+                            "--out PATH": "Output file path (default: .osiris_prompts/context.json)",
+                            "--force": "Force rebuild even if cache is valid",
+                            "--session-id ID": "Use specific session ID (default: auto-generated)",
+                            "--logs-dir DIR": "Directory for session logs (default: logs)",
+                            "--log-level LEVEL": "Log level: DEBUG, INFO, WARNING, ERROR (default: INFO)",
+                            "--events PATTERN": "Event patterns to log, comma-separated (default: *)",
+                            "--json": "Output in JSON format",
+                            "--help": "Show this help message",
+                        },
+                        "outputs": "Compact JSON with component names, required configs, enums, examples",
+                        "metrics": "Size in bytes, estimated token count",
+                    }
+                },
+                "examples": [
+                    "osiris prompts build-context",
+                    "osiris prompts build-context --out context.json",
+                    "osiris prompts build-context --force",
+                    "osiris prompts build-context --json",
+                ],
+            }
+            print(json.dumps(help_data, indent=2))
+            return
+
+        console.print()
+        console.print("[bold green]osiris prompts - Component Context Management[/bold green]")
+        console.print("🧠 Build minimal component context for LLM consumption")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris prompts SUBCOMMAND [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Subcommands[/bold blue]")
+        console.print("  [cyan]build-context[/cyan]    Build minimal component context for LLM")
+        console.print()
+        console.print("[bold blue]Options for build-context[/bold blue]")
+        console.print(
+            "  [cyan]--out PATH[/cyan]       Output file path (default: .osiris_prompts/context.json)"
+        )
+        console.print("  [cyan]--force[/cyan]          Force rebuild even if cache is valid")
+        console.print(
+            "  [cyan]--session-id ID[/cyan]  Use specific session ID (default: auto-generated)"
+        )
+        console.print("  [cyan]--logs-dir DIR[/cyan]   Directory for session logs (default: logs)")
+        console.print("  [cyan]--log-level LEVEL[/cyan] Log level (default: INFO)")
+        console.print("  [cyan]--events PATTERN[/cyan] Event patterns to log (default: *)")
+        console.print("  [cyan]--json[/cyan]           Output in JSON format")
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print("  [green]osiris prompts build-context[/green]")
+        console.print("  [green]osiris prompts build-context --out context.json[/green]")
+        console.print("  [green]osiris prompts build-context --force --json[/green]")
+        console.print()
+
+    if not args or args[0] in ["--help", "-h"]:
+        show_prompts_help()
+        return
+
+    subcommand = args[0]
+    subcommand_args = args[1:]
+
+    if subcommand == "build-context":
+        # Parse arguments for build-context
+        import os
+        import time
+        from pathlib import Path
+
+        from ..core.session_logging import SessionContext, set_current_session
+
+        parser = argparse.ArgumentParser(description="Build component context", add_help=False)
+        parser.add_argument("--out", help="Output file path")
+        parser.add_argument("--force", action="store_true", help="Force rebuild")
+        parser.add_argument("--session-id", default=None, help="Session ID")
+        parser.add_argument("--logs-dir", default=None, help="Logs directory")
+        parser.add_argument("--log-level", default=None, help="Log level")
+        parser.add_argument("--events", default=None, help="Event patterns")
+        parser.add_argument("--json", action="store_true", help="JSON output")
+        parser.add_argument("--help", "-h", action="store_true", help="Show help")
+
+        # Parse known args only
+        parsed_args, _ = parser.parse_known_args(subcommand_args)
+
+        if parsed_args.help:
+            show_prompts_help()
+            return
+
+        # Load config to get defaults (with precedence: CLI > ENV > YAML > defaults)
+        from ..core.config import load_config
+
+        # Try to load config file
+        config_data = {}
+        with contextlib.suppress(Exception):
+            config_data = load_config("osiris.yaml")
+
+        # Determine logs_dir with precedence
+        logs_dir = "logs"  # default
+        if "logging" in config_data and "logs_dir" in config_data["logging"]:
+            logs_dir = config_data["logging"]["logs_dir"]  # YAML
+        if "OSIRIS_LOGS_DIR" in os.environ:
+            logs_dir = os.environ["OSIRIS_LOGS_DIR"]  # ENV
+        if parsed_args.logs_dir:
+            logs_dir = parsed_args.logs_dir  # CLI
+
+        # Determine log_level with precedence
+        log_level = "INFO"  # default
+        if "logging" in config_data and "level" in config_data["logging"]:
+            log_level = config_data["logging"]["level"]  # YAML
+        if "OSIRIS_LOG_LEVEL" in os.environ:
+            log_level = os.environ["OSIRIS_LOG_LEVEL"]  # ENV
+        if parsed_args.log_level:
+            log_level = parsed_args.log_level  # CLI
+
+        # Determine events with precedence
+        events = ["*"]  # default
+        if "logging" in config_data and "events" in config_data["logging"]:
+            events = config_data["logging"]["events"]  # YAML
+        if "OSIRIS_LOG_EVENTS" in os.environ:
+            events = [e.strip() for e in os.environ["OSIRIS_LOG_EVENTS"].split(",")]  # ENV
+        if parsed_args.events:
+            events = [e.strip() for e in parsed_args.events.split(",")]  # CLI
+
+        # Create session context
+        if parsed_args.session_id is None:
+            session_id = f"prompts_build_context_{int(time.time() * 1000)}"
+        else:
+            session_id = parsed_args.session_id
+
+        # Create session with logging configuration
+        session = SessionContext(
+            session_id=session_id, base_logs_dir=Path(logs_dir), allowed_events=events
+        )
+        set_current_session(session)
+
+        # Setup logging
+        import logging
+
+        log_level_int = getattr(logging, log_level.upper(), logging.INFO)
+        enable_debug = log_level_int <= logging.DEBUG
+
+        # Remove any existing console handlers from root logger
+        # This prevents DEBUG messages from going to stdout unless explicitly requested
+        root_logger = logging.getLogger()
+        handlers_to_remove = []
+        for handler in root_logger.handlers:
+            if isinstance(handler, logging.StreamHandler):
+                handlers_to_remove.append(handler)
+        for handler in handlers_to_remove:
+            root_logger.removeHandler(handler)
+
+        # Setup session logging (only file handlers)
+        session.setup_logging(level=log_level_int, enable_debug=enable_debug)
+
+        # Only add console handler back if user explicitly requested DEBUG level
+        if parsed_args.log_level and parsed_args.log_level.upper() == "DEBUG":
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(logging.DEBUG)
+            console_formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+            console_handler.setFormatter(console_formatter)
+            root_logger.addHandler(console_handler)
+
+        # Print session ID unless JSON output
+        if not parsed_args.json:
+            console.print(f"[dim]Session: {session_id}[/dim]")
+
+        # Import and run the context builder
+        try:
+            from ..prompts.build_context import main as build_context_main
+
+            result = build_context_main(
+                output_path=parsed_args.out,
+                force=parsed_args.force,
+                json_output=parsed_args.json,
+                session=session,
+            )
+
+            # If JSON output requested, include session_id
+            if parsed_args.json and result:
+                result["session_id"] = session_id
+                print(json.dumps(result, separators=(",", ":")))
+
+            # Close session properly
+            session.close()
+
+        except Exception as e:
+            # Log error and close session
+            session.log_event("run_error", error=str(e))
+            session.close()
+
+            if parsed_args.json:
+                print(json.dumps({"error": str(e), "session_id": session_id}))
+            else:
+                console.print(f"[red]Error building context: {e}[/red]")
+            sys.exit(1)
+    else:
+        if json_output:
+            print(json.dumps({"error": f"Unknown subcommand: {subcommand}"}))
+        else:
+            console.print(f"❌ Unknown subcommand: {subcommand}")
+            console.print("Available subcommands: build-context")
+            console.print("Use 'osiris prompts --help' for detailed help.")
 
 
 if __name__ == "__main__":

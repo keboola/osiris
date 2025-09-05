@@ -1,0 +1,1 @@
+Extract active products from MySQL database, perform price analysis, and export to CSV format for reporting.

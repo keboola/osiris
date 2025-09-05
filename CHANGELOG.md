@@ -8,6 +8,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Post-generation validation with component spec checks** (M1b.3)
+  - Automatic validation of LLM-generated pipelines against component specifications
+  - Pipeline validator validates OML against registry specs
+  - Friendly error messages using FriendlyErrorMapper from M1a.4
+  - Validation events logged to session with attempt tracking
+- **Configurable bounded retries, HITL escalation, retry trail artifacts & events**
+  - Bounded retry mechanism with configurable attempts (0-5, default 2) per ADR-0013
+  - HITL (Human-In-The-Loop) escalation when auto-retries fail, showing retry history
+  - Retry counter resets after HITL input for fresh validation cycle
+  - Retry trail artifacts saved to session directories for debugging
+  - Comprehensive retry trail with events, artifacts, patches, and metrics
+- **Validation test harness** (`osiris test validation`)
+  - Automated end-to-end testing with scenario-based approach
+  - Pre-defined scenarios: valid (passes first try), broken (fixed after retry), unfixable (fails after max attempts)
+  - Exit codes: 0 for success scenarios, 1 for unfixable (CI/CD ready)
+  - Output structure with result.json, retry_trail.json, and artifacts/ directory
+  - Session creation for all test runs with proper event logging
+  
+### Changed
+- **Redaction policy tuned**: Token counts + durations visible; secrets still masked
+  - Operational metrics (prompt_tokens, response_tokens, duration_ms) preserved as integers
+  - Fingerprints shortened to 8-char prefix
+  - Paths converted to repo-relative format
+- **CLI logging**: DEBUG to console only with `--log-level DEBUG`
+  - Console shows clean output by default
+  - DEBUG logs written to session log files
+  - Validation error mapping warnings moved to DEBUG level
+
+### Fixed
+- **Over-masking of event names/session ids**
+  - Session IDs and event names no longer masked in logs
+  - Only actual secrets are redacted
+  - STRUCTURAL_KEYS whitelist prevents operational data masking
+- **Context builder console noise**
+  - Clean output by default, verbose logging only with --log-level DEBUG
+- **Test harness issues**
+  - Exit codes now correctly return 1 for failed scenarios
+  - --max-attempts parameter properly limits total attempts
+  - Artifacts consistently saved to --out directory with proper structure
+
+### Previously Added Features (M1a-M1b.2)
 - Component Registry backend (`osiris/components/registry.py`) with mtime-based caching and three validation levels (basic/enhanced/strict)
 - Session-aware `osiris components validate` command with structured event logging (run_start, component_validation_start/complete, run_end)
 - CLI flags for component validation: `--session-id`, `--logs-dir`, `--log-level`, `--events`, `--level`, `--json`
@@ -23,11 +64,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Path-to-label mapping for common configuration fields (e.g., "/configSchema/properties/host" → "Database Host")
 - Error categorization system (config_error, type_error, constraint_error, etc.) with contextual examples
 - Verbose mode (`--verbose`) for components validate to show technical error details
+- **Context Builder for LLM** (M1b.1): Minimal component context export for token-efficient LLM consumption
+  - JSON schema for context format (`osiris/prompts/context.schema.json`)
+  - Context builder implementation with SHA-256 fingerprinting and disk caching (`osiris/prompts/build_context.py`)
+  - CLI command: `osiris prompts build-context [--out FILE] [--force] [--session-id ID] [--logs-dir DIR] [--json]`
+  - Session-aware logging with structured events (`context_build_start`, `context_build_complete`)
+  - Session management CLI flags match other commands (precedence: CLI > ENV > YAML > defaults)
+  - Automatic cache invalidation on component spec changes (mtime + fingerprint + filter version)
+  - **NO-SECRETS guarantee**: Secret fields excluded, suspicious values redacted (passwords, tokens, keys, etc.)
+  - Compact JSON serialization optimized for tokens (~330 tokens for 4 components)
+  - Comprehensive test coverage including secret filtering tests
+- **LLM Context Integration** (M1b.2): Automatic component context injection into all LLM requests
+  - Extended PromptManager with context loading, caching, and injection
+  - Context injection into chat CLI with flags: `--context-file`, `--no-context`, `--context-strategy`, `--context-components`
+- **Automated Validation Test Harness** (M1b.3): CLI tool for end-to-end validation testing with scenario-based approach
+  - Command: `osiris test validation [--scenario valid|broken|unfixable|all] [--out DIR] [--max-attempts N]`
+  - Pre-defined scenarios: valid (passes first try), broken (fixed after retry), unfixable (fails after max attempts)
+  - Test harness module (`osiris/core/test_harness.py`) with structured artifact generation
+  - Comprehensive pytest tests (`tests/test_validation_harness.py`) for automated verification
+  - Rich terminal output with validation attempt summary tables
+  - JSON result artifacts with `return_code` field and retry history
+  - Enhanced `retry_trail.json` schema with `valid` boolean, error metrics, and token usage per attempt
+  - Scenario fixtures in `tests/scenarios/` for reproducible testing
+  - Works correctly from any directory including `testing_env/`
+  - Token usage tracking and reporting in chat responses
+  - Component-scoped context filtering for targeted prompts
+  - Session event logging for context operations
+- **Relaxed Log Redaction Policy**: Operational metrics visible while secrets remain masked
+  - Privacy levels: `--privacy standard|strict` flag in chat CLI
+  - Numeric metrics preserved as integers (prompt_tokens, response_tokens, duration_ms, etc.)
+  - Fingerprints shortened to 8-char prefix with `...`
+  - Paths converted to repo-relative format
+  - Cache keys no longer treated as secrets
 
 ### Changed
+- Log redaction system completely rewritten with configurable privacy levels
+- SessionContext now uses advanced redaction with better granularity
+- Event payloads now show concrete numbers for token counts and durations
+- Fingerprints and hashes are partially revealed instead of fully masked
 - **BREAKING**: Supabase components now require `key` field (was optional)
 - Standardized on 'write' mode for data writing operations ('load' deprecated)
 - Component capabilities updated to reflect actual implementation
+
+### Fixed
+- Context builder now guarantees no secrets in exported JSON (M1b.1)
+- Session-aware logging properly tracks ephemeral sessions for prompts commands
 - Writers now support 'discover' mode for target schema inspection
 - CLI enhanced to show secrets and required config in property order
 - Component validation now creates session logs with proper status tracking (completed/failed)
