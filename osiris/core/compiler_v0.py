@@ -26,11 +26,25 @@ class CompilerV0:
         "connection_string",
     }
 
-    # Component mappings (minimal for thin-slice)
+    # Component mappings - map OML component names to driver paths
     COMPONENT_MAP = {
-        "extractors.supabase": "extractors.supabase@0.1",
-        "transforms.duckdb": "transforms.duckdb@0.1",
-        "writers.mysql": "writers.mysql@0.1",
+        # MySQL components
+        "mysql.extractor": "mysql.extractor",
+        "mysql.writer": "mysql.writer",
+        # Supabase components
+        "supabase.extractor": "supabase.extractor",
+        "supabase.writer": "supabase.writer",
+        # Filesystem components
+        "filesystem.csv_writer": "filesystem.csv_writer",
+        "filesystem.csv_reader": "filesystem.csv_reader",
+        # DuckDB components
+        "duckdb.transformer": "duckdb.transformer",
+        "duckdb.reader": "duckdb.reader",
+        "duckdb.writer": "duckdb.writer",
+        # Legacy mappings for backward compatibility
+        "extractors.supabase": "supabase.extractor",
+        "transforms.duckdb": "duckdb.transformer",
+        "writers.mysql": "mysql.writer",
     }
 
     def __init__(self, output_dir: str = "compiled"):
@@ -207,17 +221,27 @@ class CompilerV0:
         """Generate manifest from resolved OML."""
         steps = []
 
-        # Process steps (linear only for MVP)
+        # Process steps (support both linear and DAG)
         for i, step in enumerate(oml.get("steps", [])):
             step_id = step.get("id", f"step_{i}")
-            component = step.get("uses", "")
+            # Support both OML v0.1.0 'component' and legacy 'uses' field
+            component = step.get("component") or step.get("uses", "")
 
-            # Map component to versioned driver
+            # Map component to driver
             driver = self.COMPONENT_MAP.get(component, component)
 
-            # Determine needs (previous step for linear pipeline)
-            needs = []
-            if i > 0:
+            # If driver is empty or unknown, try to provide a helpful error
+            if not driver:
+                self.errors.append(
+                    f"Unknown component '{component}' in step '{step_id}'. "
+                    f"Check 'osiris components list' to see available components."
+                )
+                driver = "unknown"
+
+            # Determine needs - respect explicit dependencies or use linear default
+            needs = step.get("needs", [])
+            # Only default to previous step if no explicit needs and not first step
+            if not needs and i > 0:
                 prev_step = oml["steps"][i - 1]
                 needs = [prev_step.get("id", f"step_{i-1}")]
 
@@ -260,19 +284,25 @@ class CompilerV0:
 
         for step in oml.get("steps", []):
             step_id = step.get("id", "step")
-            config = step.get("with", {})
+            # Support both OML v0.1.0 'config' and legacy 'with' field
+            config = step.get("config") or step.get("with", {})
+
+            # Also include component and mode in the config for the runner
+            step_config = {
+                "component": step.get("component", ""),
+                "mode": step.get("mode", ""),
+            }
 
             # Filter out secrets (they'll be resolved at runtime)
-            clean_config = {}
             for key, value in config.items():
                 if not any(secret in key.lower() for secret in self.SECRET_FIELDS):
-                    clean_config[key] = value
+                    step_config[key] = value
                 else:
                     # Keep placeholder for secrets
                     if isinstance(value, str) and value.startswith("${"):
-                        clean_config[key] = value
+                        step_config[key] = value
 
-            configs[step_id] = clean_config
+            configs[step_id] = step_config
 
         return configs
 

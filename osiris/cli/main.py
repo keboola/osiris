@@ -70,6 +70,7 @@ def show_main_help():
     console.print("  [cyan]test[/cyan]         Run automated test scenarios")
     console.print("  [cyan]components[/cyan]   Manage and inspect Osiris components")
     console.print("  [cyan]connections[/cyan]  Manage database connections")
+    console.print("  [cyan]oml[/cyan]          Validate OML (Osiris Markup Language) files")
     console.print(
         "  [cyan]dump-prompts[/cyan] Export LLM system prompts for customization (pro mode)\n"
         "  [cyan]prompts[/cyan]      Manage component context for LLM"
@@ -105,6 +106,7 @@ def parse_main_args():
             "test",
             "components",
             "connections",
+            "oml",
             "dump-prompts",
             "prompts",
         ]:
@@ -203,6 +205,8 @@ def main():
         components_command(command_args)
     elif args.command == "connections":
         connections_command(command_args)
+    elif args.command == "oml":
+        oml_command(command_args)
     elif args.command == "compile":
         from .compile import compile_command
 
@@ -229,6 +233,7 @@ def main():
                             "logs",
                             "components",
                             "connections",
+                            "oml",
                             "dump-prompts",
                             "prompts",
                         ],
@@ -252,6 +257,7 @@ def main():
                             "logs",
                             "components",
                             "connections",
+                            "oml",
                             "dump-prompts",
                             "prompts",
                         ],
@@ -1677,6 +1683,161 @@ def prompts_command(args: list):
             console.print(f"❌ Unknown subcommand: {subcommand}")
             console.print("Available subcommands: build-context")
             console.print("Use 'osiris prompts --help' for detailed help.")
+
+
+def oml_command(args: list) -> None:
+    """OML validation command handler."""
+    # Check for help flag first
+    if "--help" in args or "-h" in args:
+        if "--json" in args or json_output:
+            help_data = {
+                "command": "oml",
+                "description": "Validate OML (Osiris Markup Language) files",
+                "usage": "osiris oml SUBCOMMAND [OPTIONS]",
+                "subcommands": {"validate": "Validate OML YAML files against v0.1.0 specification"},
+                "examples": [
+                    "osiris oml validate pipeline.yaml",
+                    "osiris oml validate pipeline.yaml --verbose",
+                    "osiris oml validate pipeline.yaml --json",
+                    "osiris oml validate *.yaml --json",
+                ],
+            }
+            print(json.dumps(help_data, indent=2))
+        else:
+            console.print()
+            console.print("[bold green]osiris oml - OML Management[/bold green]")
+            console.print("🔍 Validate and manage OML (Osiris Markup Language) files")
+            console.print()
+            console.print("[bold]Usage:[/bold] osiris oml SUBCOMMAND [OPTIONS]")
+            console.print()
+            console.print("[bold blue]Subcommands[/bold blue]")
+            console.print(
+                "  [cyan]validate[/cyan]  Validate OML YAML files against v0.1.0 specification"
+            )
+            console.print()
+            console.print("[bold blue]Examples[/bold blue]")
+            console.print(
+                "  [green]osiris oml validate pipeline.yaml[/green]         # Validate single file"
+            )
+            console.print(
+                "  [green]osiris oml validate pipeline.yaml --verbose[/green]  # Show details"
+            )
+            console.print(
+                "  [green]osiris oml validate pipeline.yaml --json[/green]  # JSON output"
+            )
+            console.print(
+                "  [green]osiris oml validate *.yaml[/green]                # Validate multiple files"
+            )
+            console.print()
+        return
+
+    # Parse subcommand
+    if not args:
+        if json_output:
+            print(json.dumps({"error": "No subcommand specified", "available": ["validate"]}))
+        else:
+            console.print("❌ No subcommand specified")
+            console.print("Available subcommands: validate")
+            console.print("Use 'osiris oml --help' for detailed help.")
+        return
+
+    subcommand = args[0]
+    sub_args = args[1:]
+
+    if subcommand == "validate":
+        # Import here to avoid circular dependencies
+        # Parse validate arguments
+        import argparse
+
+        from .oml_validate import validate_batch, validate_oml_command
+
+        parser = argparse.ArgumentParser(prog="osiris oml validate", add_help=False)
+        parser.add_argument("files", nargs="+", help="OML files to validate")
+        parser.add_argument("--json", action="store_true", help="Output as JSON")
+        parser.add_argument(
+            "--verbose", "-v", action="store_true", help="Show detailed information"
+        )
+        parser.add_argument("--help", "-h", action="store_true", help="Show help")
+
+        # Handle help for validate subcommand
+        if "--help" in sub_args or "-h" in sub_args:
+            if json_output or "--json" in sub_args:
+                help_data = {
+                    "subcommand": "validate",
+                    "description": "Validate OML YAML files against v0.1.0 specification",
+                    "usage": "osiris oml validate FILE [FILE...] [OPTIONS]",
+                    "options": {
+                        "--json": "Output results as JSON",
+                        "--verbose, -v": "Show detailed validation information",
+                        "--help, -h": "Show this help message",
+                    },
+                    "validation_checks": [
+                        "Required keys: oml_version, name, steps",
+                        "Forbidden keys: version, connectors, tasks, outputs",
+                        "Step structure and dependencies",
+                        "Connection reference format (@family.alias)",
+                        "Component configurations",
+                    ],
+                }
+                print(json.dumps(help_data, indent=2))
+            else:
+                console.print()
+                console.print("[bold green]osiris oml validate - Validate OML Files[/bold green]")
+                console.print("Validate OML YAML files against v0.1.0 specification")
+                console.print()
+                console.print("[bold]Usage:[/bold] osiris oml validate FILE [FILE...] [OPTIONS]")
+                console.print()
+                console.print("[bold blue]Options[/bold blue]")
+                console.print("  [cyan]--json[/cyan]         Output results as JSON")
+                console.print("  [cyan]--verbose, -v[/cyan]  Show detailed validation information")
+                console.print("  [cyan]--help, -h[/cyan]     Show this help message")
+                console.print()
+                console.print("[bold blue]Validation Checks[/bold blue]")
+                console.print("  • Required keys: oml_version, name, steps")
+                console.print("  • Forbidden keys: version, connectors, tasks, outputs")
+                console.print("  • Step structure and dependencies")
+                console.print("  • Connection reference format (@family.alias)")
+                console.print("  • Component configurations")
+                console.print()
+            return
+
+        try:
+            parsed = parser.parse_args(sub_args)
+
+            # Handle multiple files
+            if len(parsed.files) == 1:
+                exit_code = validate_oml_command(
+                    parsed.files[0], json_output=parsed.json or json_output, verbose=parsed.verbose
+                )
+            else:
+                exit_code = validate_batch(
+                    parsed.files, json_output=parsed.json or json_output, verbose=parsed.verbose
+                )
+
+            sys.exit(exit_code)
+
+        except SystemExit as e:
+            if e.code != 0:
+                if json_output:
+                    print(json.dumps({"error": "Invalid arguments"}))
+                else:
+                    console.print(
+                        "❌ Invalid arguments. Use 'osiris oml validate --help' for usage."
+                    )
+            sys.exit(e.code)
+        except Exception as e:
+            if json_output:
+                print(json.dumps({"error": str(e)}))
+            else:
+                console.print(f"❌ Error: {e}")
+            sys.exit(1)
+    else:
+        if json_output:
+            print(json.dumps({"error": f"Unknown subcommand: {subcommand}"}))
+        else:
+            console.print(f"❌ Unknown subcommand: {subcommand}")
+            console.print("Available subcommands: validate")
+            console.print("Use 'osiris oml --help' for detailed help.")
 
 
 if __name__ == "__main__":

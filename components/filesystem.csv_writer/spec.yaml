@@ -1,0 +1,159 @@
+# Filesystem CSV Writer Component Specification
+name: filesystem.csv_writer
+version: 1.0.0
+title: Filesystem CSV Writer
+description: Write data to CSV files with deterministic output and configurable formatting
+
+modes:
+  - write
+
+capabilities:
+  discover: false
+  adHocAnalytics: false
+  inMemoryMove: false
+  streaming: true        # Supports streaming writes
+  bulkOperations: true   # Handles batches efficiently
+  transactions: false    # No transaction support for files
+  partitioning: false    # No partitioning support
+  customTransforms: false
+
+configSchema:
+  type: object
+  properties:
+    path:
+      type: string
+      description: Output file path (absolute or relative)
+      minLength: 1
+    delimiter:
+      type: string
+      description: Field delimiter character
+      default: ","
+      maxLength: 1
+    header:
+      type: boolean
+      description: Include header row with column names
+      default: true
+    encoding:
+      type: string
+      description: File encoding
+      default: "utf-8"
+      enum:
+        - "utf-8"
+        - "utf-16"
+        - "ascii"
+        - "latin-1"
+    newline:
+      type: string
+      description: Newline character normalization
+      default: "lf"
+      enum:
+        - "lf"    # \n (Unix/Linux/Mac)
+        - "crlf"  # \r\n (Windows)
+    quoting:
+      type: string
+      description: CSV quoting strategy
+      default: "minimal"
+      enum:
+        - "minimal"  # Only quote when needed
+        - "all"      # Quote all fields
+        - "nonnumeric"  # Quote non-numeric fields
+    chunk_size:
+      type: integer
+      description: Number of rows to buffer before writing
+      default: 1000
+      minimum: 1
+      maximum: 100000
+    create_dirs:
+      type: boolean
+      description: Create parent directories if they don't exist
+      default: true
+  required:
+    - path
+  additionalProperties: false
+
+secrets: []  # No secrets needed for filesystem operations
+
+constraints:
+  required:
+    - when:
+        delimiter: "\t"
+      must:
+        quoting: "minimal"
+      error: "Tab delimiter requires minimal quoting to avoid conflicts"
+
+examples:
+  - title: Basic CSV export
+    config:
+      path: "output/data.csv"
+      delimiter: ","
+      header: true
+      encoding: "utf-8"
+    notes: Standard CSV with headers
+
+  - title: TSV export without headers
+    config:
+      path: "exports/data.tsv"
+      delimiter: "\t"
+      header: false
+      encoding: "utf-8"
+      newline: "lf"
+    notes: Tab-separated values without headers
+
+compatibility:
+  requires:
+    - python>=3.8
+  platforms:
+    - linux
+    - darwin
+    - windows
+    - docker
+
+llmHints:
+  inputAliases:
+    path:
+      - file_path
+      - output_path
+      - filename
+      - output_file
+    delimiter:
+      - separator
+      - field_separator
+      - delim
+    header:
+      - headers
+      - include_headers
+      - write_headers
+  promptGuidance: |
+    Use filesystem.csv_writer to save data to CSV files.
+    Path is required. Default is comma-delimited with headers.
+    Always uses UTF-8 encoding and LF newlines for consistency.
+  yamlSnippets:
+    - "component: filesystem.csv_writer"
+    - "mode: write"
+    - "path: output/data.csv"
+    - "delimiter: ','"
+    - "header: true"
+  commonPatterns:
+    - pattern: standard_csv
+      description: Comma-delimited with headers
+    - pattern: tsv_export
+      description: Tab-separated values
+    - pattern: headerless
+      description: CSV without column headers
+
+loggingPolicy:
+  sensitivePaths: []
+  eventDefaults:
+    - write.start
+    - write.progress
+    - write.complete
+  metricsToCapture:
+    - rows_written
+    - bytes_processed
+    - duration_ms
+    - errors
+
+limits:
+  maxRows: 100000000
+  maxSizeMB: 10240
+  maxDurationSeconds: 3600

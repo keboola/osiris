@@ -244,6 +244,8 @@ class RunnerV0:
             return self._run_supabase_writer(config, output_dir, connection)
         elif driver == "duckdb.writer":
             return self._run_duckdb_writer(config, output_dir, connection)
+        elif driver == "filesystem.csv_writer":
+            return self._run_filesystem_csv_writer(config, output_dir, connection)
         else:
             logger.error(f"Unknown driver: {driver}")
             return False
@@ -519,4 +521,52 @@ class RunnerV0:
 
         except Exception as e:
             logger.error(f"DuckDB write failed: {str(e)}")
+            return False
+
+    def _run_filesystem_csv_writer(
+        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
+    ) -> bool:
+        """Run filesystem CSV writer."""
+        try:
+            from osiris.connectors.filesystem.writer import FilesystemCSVWriter
+
+            # Get input data from previous step
+            # For MVP, look for common output files
+            input_files = [
+                output_dir.parent / "extract" / "data.json",
+                output_dir.parent / "transform" / "transformed.json",
+                # Try previous step output dirs
+            ]
+
+            input_data = []
+            for input_file in input_files:
+                if input_file.exists():
+                    with open(input_file) as f:
+                        data = json.load(f)
+                        if "rows" in data:
+                            input_data = data["rows"]
+                            break
+                        elif isinstance(data, list):
+                            input_data = data
+                            break
+
+            # If no input found, use empty data for testing
+            if not input_data:
+                logger.warning("No input data found, using empty dataset")
+                input_data = []
+
+            # Create writer and write data
+            writer = FilesystemCSVWriter(config)
+            result = writer.write(input_data)
+
+            # Save result metadata
+            result_file = output_dir / "write_result.json"
+            with open(result_file, "w") as f:
+                json.dump(result, f, indent=2)
+
+            logger.info(f"CSV write complete: {result}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Filesystem CSV write failed: {str(e)}")
             return False

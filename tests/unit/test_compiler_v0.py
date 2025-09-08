@@ -118,7 +118,7 @@ class TestCompilerV0:
         # Check steps
         assert len(manifest["steps"]) == 2
         assert manifest["steps"][0]["id"] == "step1"
-        assert manifest["steps"][0]["driver"] == "extractors.supabase@0.1"
+        assert manifest["steps"][0]["driver"] == "supabase.extractor"  # Updated mapping
         assert manifest["steps"][1]["needs"] == ["step1"]
 
     def test_generate_configs_filters_secrets(self):
