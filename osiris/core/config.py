@@ -22,6 +22,12 @@ from typing import Any, Dict, Optional
 import yaml
 
 
+class ConfigError(Exception):
+    """Configuration-related errors."""
+
+    pass
+
+
 def load_config(config_path: str = ".osiris.yaml") -> Dict[str, Any]:
     """Load configuration from YAML file.
 
@@ -346,8 +352,8 @@ def load_connections_yaml(substitute_env: bool = True) -> Dict[str, Any]:
             def replacer(match):
                 var_name = match.group(1)
                 value = os.environ.get(var_name)
-                if value is None:
-                    # Keep original if not found (will error later if required)
+                if value is None or value == "":
+                    # Keep original if not found or empty (will error later if required)
                     return match.group(0)
                 return value
 
@@ -468,7 +474,7 @@ def resolve_connection(family: str, alias: Optional[str] = None) -> Dict[str, An
                 if matches:
                     for var in matches:
                         field_name = path.split(".")[-1] if path else "field"
-                        raise ValueError(
+                        raise ConfigError(
                             f"Environment variable '{var}' not set for {field_name} in {family}.{alias}"
                         )
             elif isinstance(obj, dict):
@@ -498,7 +504,7 @@ def resolve_connection(family: str, alias: Optional[str] = None) -> Dict[str, An
                     if matches:
                         for var in matches:
                             field_name = path.split(".")[-1] if path else "field"
-                            raise ValueError(
+                            raise ConfigError(
                                 f"Environment variable '{var}' not set for {field_name} in {family}.{current_alias}"
                             )
                 elif isinstance(obj, dict):

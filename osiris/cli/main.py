@@ -22,6 +22,11 @@ import sys
 
 from rich.console import Console
 
+from osiris.core.env_loader import load_env
+
+# Load environment variables at CLI entry
+loaded_env_files = load_env()
+
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)

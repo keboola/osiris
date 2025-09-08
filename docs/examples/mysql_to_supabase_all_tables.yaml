@@ -1,0 +1,92 @@
+oml_version: "0.1.0"
+name: mysql-to-supabase-all-tables
+steps:
+# --- ACTORS ---
+- id: extract-actors
+  component: mysql.extractor
+  mode: read
+  config:
+    connection: "@mysql.db_movies"
+    query: "SELECT * FROM actors"
+
+- id: write-actors-supabase
+  component: supabase.writer
+  mode: write
+  needs: [ "extract-actors" ]
+  config:
+    connection: "@supabase.main"
+    table: "actors"
+    write_mode: "append" # use "upsert" only pokud doplníš primary_key
+    create_if_missing: true
+
+# --- DIRECTORS ---
+- id: extract-directors
+  component: mysql.extractor
+  mode: read
+  config:
+    connection: "@mysql.db_movies"
+    query: "SELECT * FROM directors"
+
+- id: write-directors-supabase
+  component: supabase.writer
+  mode: write
+  needs: [ "extract-directors" ]
+  config:
+    connection: "@supabase.main"
+    table: "directors"
+    write_mode: "append"
+    create_if_missing: true
+
+# --- MOVIE_ACTORS ---
+- id: extract-movie-actors
+  component: mysql.extractor
+  mode: read
+  config:
+    connection: "@mysql.db_movies"
+    query: "SELECT * FROM movie_actors"
+
+- id: write-movie-actors-supabase
+  component: supabase.writer
+  mode: write
+  needs: [ "extract-movie-actors" ]
+  config:
+    connection: "@supabase.main"
+    table: "movie_actors"
+    write_mode: "append"
+    create_if_missing: true
+
+# --- MOVIES ---
+- id: extract-movies
+  component: mysql.extractor
+  mode: read
+  config:
+    connection: "@mysql.db_movies"
+    query: "SELECT * FROM movies"
+
+- id: write-movies-supabase
+  component: supabase.writer
+  mode: write
+  needs: [ "extract-movies" ]
+  config:
+    connection: "@supabase.main"
+    table: "movies"
+    write_mode: "append"
+    create_if_missing: true
+
+# --- REVIEWS ---
+- id: extract-reviews
+  component: mysql.extractor
+  mode: read
+  config:
+    connection: "@mysql.db_movies"
+    query: "SELECT * FROM reviews"
+
+- id: write-reviews-supabase
+  component: supabase.writer
+  mode: write
+  needs: [ "extract-reviews" ]
+  config:
+    connection: "@supabase.main"
+    table: "reviews"
+    write_mode: "append"
+    create_if_missing: true

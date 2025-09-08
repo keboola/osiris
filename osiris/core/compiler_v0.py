@@ -4,8 +4,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+from ..components.registry import ComponentRegistry
 from .canonical import canonical_json, canonical_yaml
 from .fingerprint import combine_fingerprints, compute_fingerprint
+from .mode_mapper import ModeMapper
 from .params_resolver import ParamsResolver
 from .session_logging import log_event
 
@@ -26,32 +28,14 @@ class CompilerV0:
         "connection_string",
     }
 
-    # Component mappings - map OML component names to driver paths
-    COMPONENT_MAP = {
-        # MySQL components
-        "mysql.extractor": "mysql.extractor",
-        "mysql.writer": "mysql.writer",
-        # Supabase components
-        "supabase.extractor": "supabase.extractor",
-        "supabase.writer": "supabase.writer",
-        # Filesystem components
-        "filesystem.csv_writer": "filesystem.csv_writer",
-        "filesystem.csv_reader": "filesystem.csv_reader",
-        # DuckDB components
-        "duckdb.transformer": "duckdb.transformer",
-        "duckdb.reader": "duckdb.reader",
-        "duckdb.writer": "duckdb.writer",
-        # Legacy mappings for backward compatibility
-        "extractors.supabase": "supabase.extractor",
-        "transforms.duckdb": "duckdb.transformer",
-        "writers.mysql": "mysql.writer",
-    }
+    # No longer using COMPONENT_MAP - use Component Registry as single source of truth
 
     def __init__(self, output_dir: str = "compiled"):
         self.output_dir = Path(output_dir)
         self.resolver = ParamsResolver()
         self.fingerprints = {}
         self.errors = []
+        self.registry = ComponentRegistry()
 
     def compile(
         self,
@@ -227,23 +211,38 @@ class CompilerV0:
             # Support both OML v0.1.0 'component' and legacy 'uses' field
             component = step.get("component") or step.get("uses", "")
 
-            # Map component to driver
-            driver = self.COMPONENT_MAP.get(component, component)
-
-            # If driver is empty or unknown, try to provide a helpful error
-            if not driver:
+            # Validate component exists in registry
+            component_spec = self.registry.get_component(component)
+            if not component_spec:
                 self.errors.append(
                     f"Unknown component '{component}' in step '{step_id}'. "
                     f"Check 'osiris components list' to see available components."
                 )
                 driver = "unknown"
+            else:
+                # Use component name as driver (registry is source of truth)
+                driver = component
 
-            # Determine needs - respect explicit dependencies or use linear default
+                # Validate and map mode if specified
+                if "mode" in step:
+                    oml_mode = step["mode"]
+                    component_modes = component_spec.get("modes", [])
+
+                    # Check if mode is compatible
+                    if not ModeMapper.is_mode_compatible(oml_mode, component_modes):
+                        allowed_canonical = [
+                            m
+                            for m in ModeMapper.get_canonical_modes()
+                            if ModeMapper.is_mode_compatible(m, component_modes)
+                        ]
+                        self.errors.append(
+                            f"Step '{step_id}': mode '{oml_mode}' not supported by component '{component}'. "
+                            f"Allowed: {', '.join(allowed_canonical)}"
+                        )
+
+            # Determine needs - respect explicit dependencies
+            # If no explicit needs, leave empty (parallel execution possible)
             needs = step.get("needs", [])
-            # Only default to previous step if no explicit needs and not first step
-            if not needs and i > 0:
-                prev_step = oml["steps"][i - 1]
-                needs = [prev_step.get("id", f"step_{i-1}")]
 
             steps.append(
                 {
@@ -288,9 +287,13 @@ class CompilerV0:
             config = step.get("config") or step.get("with", {})
 
             # Also include component and mode in the config for the runner
+            # Apply mode aliasing for components
+            oml_mode = step.get("mode", "")
+            component_mode = ModeMapper.to_component_mode(oml_mode) if oml_mode else ""
+
             step_config = {
                 "component": step.get("component", ""),
-                "mode": step.get("mode", ""),
+                "mode": component_mode,  # Use mapped mode for runtime
             }
 
             # Filter out secrets (they'll be resolved at runtime)

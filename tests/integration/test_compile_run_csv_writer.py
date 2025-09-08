@@ -163,11 +163,11 @@ class TestCompileRunCSVWriter:
                 # Run the pipeline
                 runner = RunnerV0(str(manifest_path))
                 runner.manifest_dir = Path(tmpdir)
-                result = runner.run(manifest)
+                runner.manifest = manifest
+                success = runner.run()
 
                 # Check results
-                assert result["status"] == "success"
-                assert len(result["steps"]) == 2
+                assert success is True
 
                 # Verify CSV file was created
                 csv_path = Path(tmpdir) / "output.csv"
@@ -222,9 +222,8 @@ class TestCompileRunCSVWriter:
             # Mock step data to provide input
             runner.step_data = {"write-csv": [{"test": "data"}]}
 
-            result = runner.run(manifest)
+            runner.manifest = manifest
+            success = runner.run()
 
             # Should fail but not crash
-            assert result["status"] == "failed"
-            assert "write-csv" in result["steps"]
-            assert result["steps"]["write-csv"]["status"] == "failed"
+            assert success is False

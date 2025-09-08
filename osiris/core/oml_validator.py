@@ -3,6 +3,9 @@
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from ..components.registry import ComponentRegistry
+from .mode_mapper import ModeMapper
+
 
 class OMLValidator:
     """Validates OML (Osiris Markup Language) files according to v0.1.0 spec."""
@@ -32,6 +35,7 @@ class OMLValidator:
         """Initialize the validator."""
         self.errors: List[Dict[str, str]] = []
         self.warnings: List[Dict[str, str]] = []
+        self.registry = ComponentRegistry()
 
     def validate(self, oml: Any) -> Tuple[bool, List[Dict[str, str]], List[Dict[str, str]]]:
         """Validate an OML document.
@@ -244,14 +248,17 @@ class OMLValidator:
                         "location": f"{location}.component",
                     }
                 )
-            elif component not in self.KNOWN_COMPONENTS:
-                self.warnings.append(
-                    {
-                        "type": "unknown_component",
-                        "message": f"Unknown component: '{component}'",
-                        "location": f"{location}.component",
-                    }
-                )
+            else:
+                # Check if component exists in registry
+                component_spec = self.registry.get_component(component)
+                if not component_spec:
+                    self.warnings.append(
+                        {
+                            "type": "unknown_component",
+                            "message": f"Unknown component: '{component}'",
+                            "location": f"{location}.component",
+                        }
+                    )
 
         # Validate mode
         mode = step.get("mode")
@@ -272,6 +279,25 @@ class OMLValidator:
                         "location": f"{location}.mode",
                     }
                 )
+            elif component and isinstance(component, str):
+                # Check if mode is compatible with component
+                component_spec = self.registry.get_component(component)
+                if component_spec:
+                    component_modes = component_spec.get("modes", [])
+                    if not ModeMapper.is_mode_compatible(mode, component_modes):
+                        # Find which canonical modes are allowed
+                        allowed_canonical = [
+                            m
+                            for m in ModeMapper.get_canonical_modes()
+                            if ModeMapper.is_mode_compatible(m, component_modes)
+                        ]
+                        self.errors.append(
+                            {
+                                "type": "incompatible_mode",
+                                "message": f"Step '{step_id}': mode '{mode}' not supported by component '{component}'. Allowed: {', '.join(allowed_canonical)}",
+                                "location": f"{location}.mode",
+                            }
+                        )
 
         # Validate needs (dependencies)
         needs = step.get("needs")

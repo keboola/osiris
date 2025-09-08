@@ -130,3 +130,10 @@ Spill to disk is considered an implementation detail of the runner or components
 - Runner orchestrates streaming pipelines
 - Backward compatibility maintained
 - Tests pass with 10GB+ datasets without OOM
+
+## Implementation Notes (M1c)
+The driver-based runtime introduced in M1c provides the foundation for streaming IO:
+- Drivers implement the `run()` protocol which can return DataFrames or future RowStream objects
+- `filesystem.csv_writer` driver is the first concrete implementation with spill-to-disk capability
+- The DriverRegistry allows seamless registration of both DataFrame and streaming-based drivers
+- Metrics (`rows_read`, `rows_written`) are automatically tracked for data flow visibility

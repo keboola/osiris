@@ -12,6 +12,7 @@ import yaml
 from rich.console import Console
 
 from ..core.compiler_v0 import CompilerV0
+from ..core.env_loader import load_env
 from ..core.runner_v0 import RunnerV0
 from ..core.session_logging import SessionContext, log_event, log_metric, set_current_session
 
@@ -181,6 +182,9 @@ def detect_file_type(file_path: str) -> str:
 
 def run_command(args: List[str]):
     """Execute the run command."""
+    # Load environment variables (redundant but safe)
+    loaded_envs = load_env()
+
     # Check for help flag
     if "--help" in args or "-h" in args:
         json_mode = "--json" in args
@@ -352,6 +356,10 @@ def run_command(args: List[str]):
     session_id = f"run_{int(time.time() * 1000)}"
     session = SessionContext(session_id=session_id, base_logs_dir=Path("logs"))
     set_current_session(session)
+
+    # Log loaded env files (masked paths)
+    if loaded_envs:
+        log_event("env_loaded", files=[str(p) for p in loaded_envs])
 
     # Setup logging to session (not stdout)
     import logging

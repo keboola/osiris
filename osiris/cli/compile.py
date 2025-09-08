@@ -10,6 +10,7 @@ from typing import List
 from rich.console import Console
 
 from ..core.compiler_v0 import CompilerV0
+from ..core.env_loader import load_env
 from ..core.session_logging import SessionContext, log_event, log_metric, set_current_session
 
 console = Console()
@@ -121,6 +122,9 @@ def show_compile_help(json_output: bool = False):
 
 def compile_command(args: List[str]):
     """Execute the compile command."""
+    # Load environment variables (redundant but safe)
+    loaded_envs = load_env()
+
     # Check for help flag or no arguments
     if not args or "--help" in args or "-h" in args:
         json_mode = "--json" in args if args else False
@@ -253,6 +257,10 @@ def compile_command(args: List[str]):
     session_id = f"compile_{int(time.time() * 1000)}"
     session = SessionContext(session_id=session_id, base_logs_dir=Path("logs"))
     set_current_session(session)
+
+    # Log loaded env files (masked paths)
+    if loaded_envs:
+        log_event("env_loaded", files=[str(p) for p in loaded_envs])
 
     try:
         # Log compilation start

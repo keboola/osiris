@@ -8,6 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Runtime Driver Layer** (M1c)
+  - New `DriverRegistry` for dynamic driver registration and lookup
+  - Concrete drivers: `MySQLExtractorDriver` and `FilesystemCsvWriterDriver`
+  - Driver protocol: `run(step_id, config, inputs, ctx) -> dict`
+  - Automatic metrics emission: `rows_read` and `rows_written`
+  - In-memory result caching for DataFrame passing between steps
+  - Foundation for future streaming IO implementation (ADR-0022)
+
+### Changed
+- **Component Registry as Single Source of Truth**
+  - Removed legacy `COMPONENT_MAP` from compiler completely
+  - Runtime exclusively uses ComponentRegistry for component resolution
+  - Mode aliasing implemented at compile boundary (read→extract, write→write, transform→transform)
+  - Compiler generates manifests with canonical driver names (`mysql.extractor`, `filesystem.csv_writer`)
+
+### Fixed
+- **Pipeline Execution Issues**
+  - DataFrames now correctly passed between extract and write steps
+  - CSV writer produces non-empty files with proper column ordering (lexicographic sort)
+  - Manifest dependency ordering corrected - extract steps no longer depend on unrelated previous steps
+  - Newline handling in CSV writer fixed (lf/crlf/cr mapping)
+  - Connection resolution properly merges into step config as `resolved_connection`
+
+### Added
 - **Streaming IO and Spill** (ADR-0022)
   - Iterator-first RowStream interface for memory-safe data processing
   - Support for datasets of 10GB+ without loading into memory
@@ -48,6 +72,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CLI `osiris connections list` and `osiris connections doctor` commands with session logging and JSON output.
 - Component-level `doctor()` capability (ADR-0021).
+- Comprehensive driver unit tests and integration tests for MySQL→CSV pipeline.
+
+- **Registry-First Component Resolution and Mode Aliasing**
+  - Removed hardcoded COMPONENT_MAP - Component Registry is now single source of truth
+  - Mode aliasing for OML v0.1.0 compatibility: `read` → `extract` at runtime
+  - Component mode validation at compile time using registry specs
+  - Clear error messages for unsupported modes with allowed alternatives
+  - Support for both canonical OML modes {read, write, transform} and component modes
+  - Unified environment loading across all commands via `env_loader.py`
+  - Runtime safety: empty data from upstream steps triggers clear error
+  - Metrics logging: `rows_read` for extractors, `rows_written` for writers
 - **Runtime connection resolution integration** (ADR-0020):
   - Runner resolves connections using `resolve_connection()` at step execution
   - Components receive injected connection dicts - no direct ENV access

@@ -203,3 +203,10 @@ These are explicitly out of scope:
 - Examples demonstrate each cloud provider
 - Performance comparable to native cloud CLIs
 - Error messages actionable with clear remediation
+
+## Implementation Notes (M1c)
+The driver-based runtime provides the foundation for remote object store writers:
+- Cloud writers will extend the same Driver protocol used by `filesystem.csv_writer`
+- The deterministic CSV contract is already implemented in the filesystem driver
+- DriverRegistry allows registration of cloud-specific drivers alongside local ones
+- Connection resolution and metrics tracking work identically for all driver types

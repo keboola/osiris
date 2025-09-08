@@ -175,8 +175,10 @@ connections:
 
     def test_resolve_missing_env_var(self, sample_connections):
         """Test error when required env var is missing."""
+        from osiris.core.config import ConfigError
+
         with patch("osiris.core.config.Path.cwd", return_value=sample_connections):
-            with pytest.raises(ValueError) as exc_info:
+            with pytest.raises(ConfigError) as exc_info:
                 resolve_connection("mysql", "primary")
 
         assert "MYSQL_PASSWORD" in str(exc_info.value)

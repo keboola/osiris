@@ -10,12 +10,12 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import pymysql
-from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 from supabase import create_client
 
 from osiris.core.config import load_connections_yaml, resolve_connection
+from osiris.core.env_loader import load_env
 from osiris.core.secrets_masking import mask_sensitive_dict
 from osiris.core.session_logging import SessionContext, log_event, set_current_session
 
@@ -117,18 +117,8 @@ def list_connections(args: list) -> None:
     saved_levels = suppress_noisy_loggers()
 
     try:
-        # Load .env file FIRST before any other logic
-        from dotenv import find_dotenv
-
-        env_path = find_dotenv()
-        if env_path:
-            load_dotenv(env_path)
-        else:
-            # Try current and parent directories
-            if Path(".env").exists():
-                load_dotenv(".env")
-            elif (Path.cwd().parent / ".env").exists():
-                load_dotenv(Path.cwd().parent / ".env")
+        # Load environment variables using unified loader
+        load_env()
 
         # Log session start
         log_event("session_start", command="connections", subcommand="list", args=args)
@@ -476,18 +466,8 @@ def doctor_connections(args: list) -> None:
     saved_levels = suppress_noisy_loggers()
 
     try:
-        # Load .env file FIRST before any other logic
-        from dotenv import find_dotenv
-
-        env_path = find_dotenv()
-        if env_path:
-            load_dotenv(env_path)
-        else:
-            # Try current and parent directories
-            if Path(".env").exists():
-                load_dotenv(".env")
-            elif (Path.cwd().parent / ".env").exists():
-                load_dotenv(Path.cwd().parent / ".env")
+        # Load environment variables using unified loader
+        load_env()
 
         # Log session start
         log_event("session_start", command="connections", subcommand="doctor", args=args)

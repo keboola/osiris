@@ -2,7 +2,7 @@
 
 ## Status
 
-### Current State (December 2024)
+### Current State (January 2025)
 - **Chat FSM + post-discovery synthesis**: ✅ DONE (per ADR-0019)
   - State machine enforces DISCOVERY → OML_SYNTHESIS with no open questions
   - Deterministic conversation flow implemented
@@ -13,16 +13,26 @@
 - **Supabase writer hardened**: ✅ DONE
   - MySQL → PostgreSQL type mapping
   - Write modes (append, replace, upsert) with ON CONFLICT handling
-- **Golden path (MySQL → Supabase, no scheduler)**: 🎯 DEMO READY
-  - Complete flow: chat → OML → compile → run functional
-  - E2E pipeline generation and execution working
+- **Runtime Driver Layer**: ✅ DONE
+  - DriverRegistry with dynamic driver registration
+  - Concrete drivers: `mysql.extractor`, `filesystem.csv_writer`
+  - Metrics automatically emitted: `rows_read`, `rows_written`
+  - DataFrames correctly passed between steps via in-memory cache
+- **Golden path (MySQL → CSV)**: ✅ COMPLETE
+  - End-to-end flow: chat → OML → compile → run → CSV output
+  - Session logs capture dataflow metrics
+  - COMPONENT_MAP removed; runtime exclusively registry-first
 
 ### Supporting Work (Now Included in M1c)
-- **Connections (minimal)**: 🚧 IN PROGRESS
+- **Connections (minimal)**: ✅ DONE
   - Connection resolver implementation
   - `osiris_connections.yaml` format specification (ADR-0020)
   - CLI `connections list` - show aliases with masked secrets
   - CLI `connections doctor` - test MySQL/Supabase connectivity
+- **Component Registry Integration**: ✅ DONE
+  - Registry as single source of truth for component specs
+  - Mode aliasing (read→extract, write→write, transform→transform)
+  - Compiler generates manifests with canonical driver names
 
 ### Out of Scope → Next Milestone (M1d)
 - `connections add` interactive wizard for adding new connections
@@ -56,8 +66,16 @@ Transform validated OML pipelines into deterministic, secret-free execution arti
 
 ## Scope trim for e2b
 
-- In-scope (e2b): supabase.extractor → (duckdb.transform) → mysql.writer, sequential only.
+- In-scope (e2b): mysql.extractor → filesystem.csv_writer, sequential only.
 - Out-of-scope (post-e2b): branching/when/fan_out, retries/timeouts beyond basic error, manifest utilities (full), scheduling/distribution, agent calls, long-term memory/store, A2A/MCP.
+
+## Driver Runtime Foundation
+
+The DriverRegistry and concrete driver implementations form the baseline for M1c runtime:
+- **Driver Protocol**: `run(step_id, config, inputs, ctx) -> dict`
+- **Available Drivers**: `mysql.extractor`, `filesystem.csv_writer`
+- **Data Flow**: Extract drivers return `{"df": DataFrame}`, writers consume upstream DataFrames
+- **Metrics**: Automatic tracking of `rows_read` and `rows_written` for observability
 
 
 ## Scope
@@ -200,10 +218,10 @@ _artifacts/                       # Execution outputs
 - Create: `tests/unit/test_fingerprint.py`
 
 **Acceptance Criteria**:
-- [ ] Identical inputs produce byte-identical canonical outputs
-- [ ] Fingerprints change when any input changes
-- [ ] Unit tests prove determinism across different Python dict orderings
-- [ ] Golden snapshot test validates canonical format stability
+- [x] Identical inputs produce byte-identical canonical outputs
+- [x] Fingerprints change when any input changes
+- [x] Unit tests prove determinism across different Python dict orderings
+- [x] Golden snapshot test validates canonical format stability
 
 ### M1c.2: OML Schema Validation & Loading
 **Scope**: Implement OML v0.1.0 schema validation per ADR-0014.
@@ -221,10 +239,10 @@ _artifacts/                       # Execution outputs
 - Create: `tests/fixtures/oml/` (valid and invalid examples)
 
 **Acceptance Criteria**:
-- [ ] Valid OML documents load successfully
-- [ ] Invalid OML documents fail with clear error messages
-- [ ] Version compatibility checking works
-- [ ] Schema enforces all constraints from ADR-0014
+- [x] Valid OML documents load successfully
+- [x] Invalid OML documents fail with clear error messages
+- [x] Version compatibility checking works
+- [x] Schema enforces all constraints from ADR-0014
 
 ### M1c.3: Parameter Resolution Engine
 **Scope**: Implement parameter resolution with proper precedence per ADR-0014/0015.
@@ -242,11 +260,11 @@ _artifacts/                       # Execution outputs
 - Modify: `osiris/core/oml_loader.py` (integrate param resolution)
 
 **Acceptance Criteria**:
-- [ ] Precedence chain works correctly (CLI > ENV > profile > default)
-- [ ] All `${params.*}` placeholders are resolved
-- [ ] Unresolved parameters cause compilation failure
-- [ ] Type and enum constraints are enforced
-- [ ] Profile overrides work for allowed fields only
+- [x] Precedence chain works correctly (CLI > ENV > profile > default)
+- [x] All `${params.*}` placeholders are resolved
+- [x] Unresolved parameters cause compilation failure
+- [x] Type and enum constraints are enforced
+- [x] Profile overrides work for allowed fields only
 
 ### M1c.4: Secret Detection & Registry Integration
 **Scope**: Enforce no-secrets policy and integrate with Component Registry per ADR-0015.

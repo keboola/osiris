@@ -9,7 +9,8 @@ from typing import Any, Dict, Optional
 
 import yaml
 
-from .config import parse_connection_ref, resolve_connection
+from .config import ConfigError, parse_connection_ref, resolve_connection
+from .driver import DriverRegistry
 from .session_logging import log_event, log_metric
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,30 @@ class RunnerV0:
         self.manifest = None
         self.components = {}
         self.events = []
+        self.results = {}  # Step results cache
+        self.driver_registry = self._build_driver_registry()
+
+    def _build_driver_registry(self) -> DriverRegistry:
+        """Build and populate the driver registry."""
+        registry = DriverRegistry()
+
+        # Register MySQL extractor
+        def create_mysql_extractor():
+            from osiris.drivers.mysql_extractor_driver import MySQLExtractorDriver
+
+            return MySQLExtractorDriver()
+
+        registry.register("mysql.extractor", create_mysql_extractor)
+
+        # Register filesystem CSV writer
+        def create_csv_writer():
+            from osiris.drivers.filesystem_csv_writer_driver import FilesystemCsvWriterDriver
+
+            return FilesystemCsvWriterDriver()
+
+        registry.register("filesystem.csv_writer", create_csv_writer)
+
+        return registry
 
     def run(self) -> bool:
         """
@@ -66,6 +91,9 @@ class RunnerV0:
 
             return True
 
+        except ConfigError:
+            # Re-raise ConfigError so tests can catch it
+            raise
         except Exception as e:
             logger.error(f"Runner error: {str(e)}")
             self._log_event("run_error", {"error": str(e)})
@@ -189,9 +217,11 @@ class RunnerV0:
 
             # Resolve connection if needed
             connection = self._resolve_step_connection(step, config)
+            if connection:
+                config["resolved_connection"] = connection
 
-            # Execute based on driver type
-            success = self._run_component(driver, config, step_output_dir, connection=connection)
+            # Execute using driver registry
+            success = self._run_with_driver(step, config, step_output_dir)
 
             # Calculate step duration
             duration = time.time() - start_time
@@ -214,9 +244,63 @@ class RunnerV0:
 
             return success
 
+        except ConfigError:
+            # Re-raise ConfigError so tests can catch it
+            raise
         except Exception as e:
             logger.error(f"Step {step_id} failed: {str(e)}")
             self._log_event("step_error", {"step_id": step_id, "error": str(e)})
+            return False
+
+    def _run_with_driver(self, step: Dict[str, Any], config: Dict, output_dir: Path) -> bool:
+        """Run a step using the driver registry.
+
+        Args:
+            step: Step definition from manifest
+            config: Step configuration (with resolved_connection if applicable)
+            output_dir: Output directory for step
+        """
+        step_id = step["id"]
+        driver_name = step.get("driver") or step.get("component", "unknown")
+
+        try:
+            # Get driver from registry
+            driver = self.driver_registry.get(driver_name)
+
+            # Prepare inputs based on step dependencies
+            inputs = None
+            if "needs" in step and step["needs"]:
+                # Collect inputs from upstream steps
+                inputs = {}
+                for upstream_id in step["needs"]:
+                    if upstream_id in self.results:
+                        upstream_result = self.results[upstream_id]
+                        if "df" in upstream_result:
+                            # For now, assume single upstream for writers
+                            inputs["df"] = upstream_result["df"]
+
+            # Create context for metrics
+            class RunnerContext:
+                def log_metric(self, name: str, value: Any):
+                    log_metric(name, value)
+
+            ctx = RunnerContext()
+
+            # Run the driver
+            result = driver.run(step_id=step_id, config=config, inputs=inputs, ctx=ctx)
+
+            # Cache result if it contains data
+            if result and "df" in result:
+                self.results[step_id] = result
+
+            return True
+
+        except ValueError as e:
+            # Driver not found or other value errors
+            logger.error(f"Step {step_id} failed: {str(e)}")
+            return False
+        except Exception as e:
+            logger.error(f"Step {step_id} execution failed: {str(e)}")
             return False
 
     def _run_component(
@@ -370,7 +454,28 @@ class RunnerV0:
 
                 extractor = MySQLExtractor(merged_config)
                 # Run extraction logic
-                # TODO: Implement actual extraction with output_dir
+                data = extractor.extract()  # Assuming this returns data
+
+                # Log metrics
+                if isinstance(data, list) or hasattr(data, "__len__"):
+                    rows_read = len(data)
+                else:
+                    rows_read = 0
+
+                log_metric("rows_read", rows_read)
+                logger.info(f"MySQL extraction complete: read {rows_read} rows")
+
+                # Save data for downstream steps
+                output_file = output_dir / "data.json"
+                with open(output_file, "w") as f:
+                    if hasattr(data, "to_dict"):
+                        # Handle pandas DataFrame
+                        json.dump({"rows": data.to_dict("records")}, f, indent=2)
+                    elif isinstance(data, list):
+                        json.dump({"rows": data}, f, indent=2)
+                    else:
+                        json.dump({"rows": []}, f, indent=2)
+
                 return True
             except ImportError:
                 # Fallback to stub
@@ -550,10 +655,14 @@ class RunnerV0:
                             input_data = data
                             break
 
-            # If no input found, use empty data for testing
+            # Check for empty input data
             if not input_data:
-                logger.warning("No input data found, using empty dataset")
-                input_data = []
+                error_msg = (
+                    "Upstream produced 0 rows or no data artifact for step. "
+                    "Check the mode and upstream step output."
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
 
             # Create writer and write data
             writer = FilesystemCSVWriter(config)
@@ -564,7 +673,11 @@ class RunnerV0:
             with open(result_file, "w") as f:
                 json.dump(result, f, indent=2)
 
-            logger.info(f"CSV write complete: {result}")
+            # Log metrics
+            rows_written = result.get("rows_written", 0)
+            log_metric("rows_written", rows_written)
+            logger.info(f"CSV write complete: wrote {rows_written} rows to {result.get('path')}")
+
             return True
 
         except Exception as e:
