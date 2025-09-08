@@ -113,17 +113,47 @@ class LLMAdapter:
         self._setup_provider()
 
     def _setup_provider(self):
-        """Setup provider-specific configuration."""
+        """Setup provider-specific configuration.
+
+        Precedence order for model configuration:
+        1. CLI parameters (if passed in config)
+        2. Environment variables
+        3. osiris.yaml configuration
+        4. Hardcoded defaults
+        """
+        llm_config = self.config.get("llm", {})
+
         if self.provider == LLMProvider.OPENAI:
             self.api_key = os.environ.get("OPENAI_API_KEY")
-            self.model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
-            self.fallback_model = os.environ.get("OPENAI_MODEL_FALLBACK", "gpt-4o")
+            # Precedence: ENV > config > default
+            self.model = os.environ.get("OPENAI_MODEL") or llm_config.get("model") or "gpt-4o-mini"
+            self.fallback_model = (
+                os.environ.get("OPENAI_MODEL_FALLBACK")
+                or llm_config.get("fallback_model")
+                or "gpt-4o"
+            )
         elif self.provider == LLMProvider.CLAUDE:
             self.api_key = os.environ.get("CLAUDE_API_KEY")
-            self.model = os.environ.get("CLAUDE_MODEL", "claude-3-sonnet-20240229")
+            # Precedence: ENV > config > default
+            self.model = (
+                os.environ.get("CLAUDE_MODEL")
+                or llm_config.get("model")
+                or "claude-3-sonnet-20240229"
+            )
+            self.fallback_model = (
+                os.environ.get("CLAUDE_MODEL_FALLBACK")
+                or llm_config.get("fallback_model")
+                or "claude-3-opus-20240229"
+            )
         elif self.provider == LLMProvider.GEMINI:
             self.api_key = os.environ.get("GEMINI_API_KEY")
-            self.model = os.environ.get("GEMINI_MODEL", "gemini-pro")
+            # Precedence: ENV > config > default
+            self.model = os.environ.get("GEMINI_MODEL") or llm_config.get("model") or "gemini-pro"
+            self.fallback_model = (
+                os.environ.get("GEMINI_MODEL_FALLBACK")
+                or llm_config.get("fallback_model")
+                or "gemini-1.5-flash"
+            )
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
 

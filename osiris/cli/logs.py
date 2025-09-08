@@ -659,6 +659,7 @@ def _display_sessions_table(sessions: List[Dict[str, Any]], no_wrap: bool = Fals
     else:
         table.add_column("Session ID", style="cyan", overflow="fold", no_wrap=False, min_width=20)
 
+    table.add_column("Command", style="magenta")  # New column for command type
     table.add_column("Start Time", style="dim")
     table.add_column("Status", style="bold")
     table.add_column("Duration", style="green")
@@ -673,8 +674,24 @@ def _display_sessions_table(sessions: List[Dict[str, Any]], no_wrap: bool = Fals
             "unknown": "dim",
         }.get(session["status"], "dim")
 
+        # Determine command type from session ID
+        session_id = session["session_id"]
+        if session_id.startswith("compile_"):
+            command = "compile"
+        elif session_id.startswith("run_"):
+            command = "run"
+        elif session_id.startswith("execute_"):
+            command = "execute"  # Legacy
+        elif session_id.startswith("ephemeral_"):
+            # Extract command from ephemeral session
+            parts = session_id.split("_")
+            command = parts[1] if len(parts) > 1 else "ephemeral"
+        else:
+            command = "unknown"
+
         table.add_row(
             session["session_id"],
+            command,
             session["start_time"][:19].replace("T", " ") if session["start_time"] else "unknown",
             f"[{status_style}]{session['status']}[/{status_style}]",
             _format_duration(session["duration_seconds"]),

@@ -16,7 +16,8 @@
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List
+from decimal import Decimal
+from typing import Any, Dict, List, Union
 
 import numpy as np
 import pandas as pd
@@ -46,10 +47,10 @@ class SupabaseWriter(ILoader):
         self._initialized = False
 
         # Writer-specific config
-        self.batch_size = config.get("batch_size", 1000)
-        self.default_mode = config.get("mode", "append")
-        self.default_conflict_keys = config.get("conflict_keys", [])
-        self.auto_create_table = config.get("auto_create_table", False)
+        self.batch_size = config.get("batch_size", 100)
+        self.write_mode = config.get("write_mode", "append")
+        self.primary_key = config.get("primary_key", [])
+        self.create_if_missing = config.get("create_if_missing", False)
 
     def _serialize_data(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Convert pandas/numpy types to JSON-serializable types.
@@ -78,7 +79,7 @@ class SupabaseWriter(ILoader):
                     serialized_record[key] = value.isoformat()
                 elif isinstance(value, (np.integer, np.int64, np.int32)):
                     serialized_record[key] = int(value)
-                elif isinstance(value, (np.floating, np.float64, np.float32)):
+                elif isinstance(value, (np.floating, np.float64, np.float32, Decimal)):
                     serialized_record[key] = float(value)
                 elif isinstance(value, np.bool_):
                     serialized_record[key] = bool(value)
@@ -89,22 +90,88 @@ class SupabaseWriter(ILoader):
 
         return serialized_data
 
+    def _mysql_to_postgres_type(self, mysql_type: str, value: Any = None) -> str:
+        """Map MySQL types to PostgreSQL types.
+
+        Args:
+            mysql_type: MySQL type name (optional, inferred if not provided)
+            value: Sample value to infer type from
+
+        Returns:
+            PostgreSQL type string
+        """
+        # Type mapping MySQL -> PostgreSQL
+        type_map = {
+            # Integer types
+            "TINYINT": "SMALLINT",  # MySQL TINYINT(1) -> BOOLEAN handled separately
+            "SMALLINT": "SMALLINT",
+            "MEDIUMINT": "INTEGER",
+            "INT": "INTEGER",
+            "INTEGER": "INTEGER",
+            "BIGINT": "BIGINT",
+            # Decimal types
+            "DECIMAL": "NUMERIC",
+            "NUMERIC": "NUMERIC",
+            "FLOAT": "REAL",
+            "DOUBLE": "DOUBLE PRECISION",
+            # Date/Time types
+            "DATE": "DATE",
+            "TIME": "TIME",
+            "DATETIME": "TIMESTAMP",
+            "TIMESTAMP": "TIMESTAMPTZ",
+            "YEAR": "SMALLINT",
+            # String types
+            "CHAR": "CHAR",
+            "VARCHAR": "VARCHAR",
+            "TEXT": "TEXT",
+            "TINYTEXT": "TEXT",
+            "MEDIUMTEXT": "TEXT",
+            "LONGTEXT": "TEXT",
+            # Binary types
+            "BINARY": "BYTEA",
+            "VARBINARY": "BYTEA",
+            "BLOB": "BYTEA",
+            "TINYBLOB": "BYTEA",
+            "MEDIUMBLOB": "BYTEA",
+            "LONGBLOB": "BYTEA",
+            # JSON
+            "JSON": "JSONB",
+        }
+
+        # If we have a MySQL type string, use it
+        if mysql_type:
+            mysql_upper = mysql_type.upper().split("(")[0]  # Remove size specifier
+            if mysql_upper in type_map:
+                # Special case: TINYINT(1) is typically boolean
+                if mysql_upper == "TINYINT" and "(1)" in mysql_type.upper():
+                    return "BOOLEAN"
+                return type_map[mysql_upper]
+
+        # Fallback to inference from value
+        return self._infer_sql_type(value)
+
     def _infer_sql_type(self, value: Any) -> str:
-        """Infer SQL type from a Python value.
+        """Infer PostgreSQL type from a Python value.
 
         Args:
             value: Sample value to infer type from
 
         Returns:
-            SQL type string
+            PostgreSQL type string
         """
         if value is None or pd.isna(value):
             return "TEXT"  # Default for null values
-        elif isinstance(value, bool):
+        elif isinstance(value, bool) or (isinstance(value, (int, np.integer)) and value in (0, 1)):
             return "BOOLEAN"
-        elif isinstance(value, int):
-            return "BIGINT"
-        elif isinstance(value, float):
+        elif isinstance(value, (int, np.integer)):
+            # Choose appropriate integer type based on value
+            if -32768 <= value <= 32767:
+                return "SMALLINT"
+            elif -2147483648 <= value <= 2147483647:
+                return "INTEGER"
+            else:
+                return "BIGINT"
+        elif isinstance(value, (float, np.floating, Decimal)):
             return "DOUBLE PRECISION"
         elif isinstance(value, (datetime, pd.Timestamp, np.datetime64)):
             return "TIMESTAMPTZ"
@@ -189,7 +256,7 @@ class SupabaseWriter(ILoader):
         Returns:
             True if table was created or already exists
         """
-        if not self.auto_create_table:
+        if not self.create_if_missing:
             return False
 
         # Check if table already exists
@@ -256,7 +323,8 @@ class SupabaseWriter(ILoader):
             serialized_data = self._serialize_data(data)
 
             # Try to create table if it doesn't exist and auto_create_table is enabled
-            await self._create_table_if_not_exists(table_name, serialized_data)
+            if self.create_if_missing:
+                await self._create_table_if_not_exists(table_name, serialized_data)
 
             # Process in batches for large datasets
             for i in range(0, len(serialized_data), self.batch_size):
@@ -268,8 +336,8 @@ class SupabaseWriter(ILoader):
             return True
 
         except Exception as e:
-            # Check if it's a "table not found" error and auto_create_table is enabled
-            if "PGRST205" in str(e) and self.auto_create_table:
+            # Check if it's a "table not found" error and create_if_missing is enabled
+            if "PGRST205" in str(e) and self.create_if_missing:
                 logger.error(f"Failed to insert data into {table_name}: {e}")
                 logger.info(
                     "Table creation was attempted but failed. Please create the table manually using the SQL provided above."
@@ -279,36 +347,52 @@ class SupabaseWriter(ILoader):
             raise
 
     async def upsert_data(
-        self, table_name: str, data: List[Dict[str, Any]], conflict_keys: List[str] = None
+        self, table_name: str, data: List[Dict[str, Any]], primary_key: Union[str, List[str]] = None
     ) -> bool:
         """Upsert data (insert or update on conflict).
 
         Args:
             table_name: Name of the table
             data: List of dictionaries to upsert
-            conflict_keys: Columns to check for conflicts (default: use config)
+            primary_key: Column(s) for conflict resolution (required for upsert)
 
         Returns:
             True if successful
+
+        Raises:
+            ValueError: If primary_key not specified for upsert operation
         """
         if not self._initialized:
             await self.connect()
 
-        conflict_keys = conflict_keys or self.default_conflict_keys
+        primary_key = primary_key or self.primary_key
+
+        # Validate primary_key is provided for upsert
+        if not primary_key:
+            raise ValueError(
+                "primary_key must be specified for upsert operation. "
+                "Specify the column(s) that uniquely identify each row."
+            )
+
+        # Normalize to list
+        if isinstance(primary_key, str):
+            primary_key = [primary_key]
 
         try:
             # Serialize data to handle pandas/numpy types
             serialized_data = self._serialize_data(data)
 
             # Try to create table if it doesn't exist and auto_create_table is enabled
-            await self._create_table_if_not_exists(table_name, serialized_data)
+            if self.create_if_missing:
+                await self._create_table_if_not_exists(table_name, serialized_data)
 
             # Process in batches
             for i in range(0, len(serialized_data), self.batch_size):
                 batch = serialized_data[i : i + self.batch_size]
 
-                # Supabase upsert automatically handles conflicts on primary key
-                # For custom conflict resolution, you'd need to configure RLS policies
+                # Supabase upsert handles conflicts based on table's primary key
+                # Log which columns are being used for conflict resolution
+                logger.debug(f"Upserting with primary_key: {primary_key}")
                 self.client.table(table_name).upsert(batch).execute()
                 logger.debug(f"Upserted batch {i // self.batch_size + 1} ({len(batch)} rows)")
 
@@ -413,13 +497,20 @@ class SupabaseWriter(ILoader):
             logger.error(f"Failed to delete data from {table_name}: {e}")
             raise
 
-    async def load_dataframe(self, table_name: str, df: pd.DataFrame, mode: str = None) -> bool:
+    async def load_dataframe(
+        self,
+        table_name: str,
+        df: pd.DataFrame,
+        write_mode: str = None,
+        primary_key: Union[str, List[str]] = None,
+    ) -> bool:
         """Load a pandas DataFrame into a Supabase table.
 
         Args:
             table_name: Name of the table
             df: DataFrame to load
-            mode: "append", "replace", or "upsert" (default: use config)
+            write_mode: "append", "replace", or "upsert" (default: use config)
+            primary_key: Column(s) for upsert conflict resolution
 
         Returns:
             True if successful
@@ -427,16 +518,16 @@ class SupabaseWriter(ILoader):
         if not self._initialized:
             await self.connect()
 
-        mode = mode or self.default_mode
+        write_mode = write_mode or self.write_mode
 
         try:
             # Convert DataFrame to list of dicts
             data = df.to_dict("records")
 
-            if mode == "replace":
+            if write_mode == "replace":
                 return await self.replace_table(table_name, data)
-            elif mode == "upsert":
-                return await self.upsert_data(table_name, data)
+            elif write_mode == "upsert":
+                return await self.upsert_data(table_name, data, primary_key)
             else:  # append
                 return await self.insert_data(table_name, data)
 

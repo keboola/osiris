@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Unified run command with last-compile support**
+  - Single `run` command handles both OML and compiled manifests
+  - `--last-compile` flag runs most recently compiled manifest
+  - `--last-compile-in DIR` finds latest compile in specified directory
+  - Pointer files track successful compilations (`.last.json`, `.last_compile.json`)
+  - Environment variable fallbacks: `OSIRIS_LAST_MANIFEST`, `OSIRIS_LAST_COMPILE_DIR`
+  - Session-based execution with structured logs and artifacts
+
 - **M1c Thin-Slice: Deterministic Compiler and Local Runner** 
   - Minimal OML v0.1.0 to manifest compiler with deterministic output
   - Canonical YAML/JSON serialization with stable key ordering
@@ -15,11 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Parameter resolution with precedence: defaults < ENV < profile < CLI
   - Strict no-secrets enforcement (compile error on inline secrets)
   - Local sequential runner for linear pipelines (Supabase → DuckDB → MySQL)
-  - CLI commands: `osiris compile` and `osiris execute`
-  - Structured artifacts in `_artifacts/{step_id}/` directories
+  - CLI commands: `osiris compile` and unified `osiris run`
+  - Structured artifacts in session directories `logs/<session>/artifacts/`
   - Example pipeline: `docs/examples/supabase_to_mysql.yaml`
-
-### Added
 - **Post-generation validation with component spec checks** (M1b.3)
   - Automatic validation of LLM-generated pipelines against component specifications
   - Pipeline validator validates OML against registry specs
@@ -39,6 +45,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Session creation for all test runs with proper event logging
   
 ### Changed
+- **Unified CLI command structure**
+  - `run` command now handles both OML compilation and manifest execution
+  - All commands use consistent session directories (`logs/<type>_<timestamp>/`)
+  - Stdout limited to progress and summary; detailed logs in session files
+  - `osiris logs list` shows command type for each session
+  - INFO/DEBUG logging redirected from stdout to `logs/<session>/osiris.log`
 - **Redaction policy tuned**: Token counts + durations visible; secrets still masked
   - Operational metrics (prompt_tokens, response_tokens, duration_ms) preserved as integers
   - Fingerprints shortened to 8-char prefix
@@ -47,6 +59,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Console shows clean output by default
   - DEBUG logs written to session log files
   - Validation error mapping warnings moved to DEBUG level
+
+### Removed
+- **`execute` command** - functionality merged into unified `run` command
+- **Direct stdout INFO logging** - all detailed logs now in session files
 
 ### Fixed
 - **Over-masking of event names/session ids**

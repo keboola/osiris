@@ -1,13 +1,16 @@
 """CLI command for compiling OML to manifest with Rich formatting."""
 
 import json
+import shutil
 import sys
+import time
 from pathlib import Path
 from typing import List
 
 from rich.console import Console
 
 from ..core.compiler_v0 import CompilerV0
+from ..core.session_logging import SessionContext, log_event, log_metric, set_current_session
 
 console = Console()
 
@@ -246,41 +249,133 @@ def compile_command(args: List[str]):
             console.print(f"[red]❌ {error_msg}[/red]")
         sys.exit(2)
 
-    # Compile the pipeline
-    if not use_json:
-        console.print(f"[cyan]🔧 Compiling {pipeline_file}...[/cyan]")
+    # Create a session for this compilation
+    session_id = f"compile_{int(time.time() * 1000)}"
+    session = SessionContext(session_id=session_id, base_logs_dir=Path("logs"))
+    set_current_session(session)
 
-    compiler = CompilerV0(output_dir=output_dir)
-    success, message = compiler.compile(
-        oml_path=pipeline_file, profile=profile, cli_params=params, compile_mode=compile_mode
-    )
+    try:
+        # Log compilation start
+        log_event(
+            "compile_start",
+            pipeline=pipeline_file,
+            profile=profile,
+            params=params,
+            output_dir=output_dir,
+        )
+        start_time = time.time()
 
-    if success:
-        if use_json:
-            print(
-                json.dumps(
-                    {
-                        "status": "success",
-                        "message": message,
-                        "output_dir": output_dir,
-                        "manifest": f"{output_dir}/manifest.yaml",
-                    }
+        # Compile the pipeline
+        if not use_json:
+            console.print(f"[cyan]🔧 Compiling {pipeline_file}...[/cyan]")
+            console.print(f"[dim]📁 Session: logs/{session_id}/[/dim]")
+
+        # Determine session output directory
+        session_output_dir = session.session_dir / "compiled"
+        session_output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Use session directory for compilation
+        compiler = CompilerV0(output_dir=str(session_output_dir))
+        success, message = compiler.compile(
+            oml_path=pipeline_file, profile=profile, cli_params=params, compile_mode=compile_mode
+        )
+
+        # Calculate duration
+        duration = time.time() - start_time
+        log_metric("compilation_duration", duration, unit="seconds")
+
+        if success:
+            # Log successful compilation
+            log_event("compile_complete", message=message, duration=duration)
+
+            # Write pointer files for successful compilation
+            from datetime import datetime
+
+            pointer_data = {
+                "session_id": session_id,
+                "manifest_path": f"logs/{session_id}/compiled/manifest.yaml",
+                "compiled_dir": f"logs/{session_id}/compiled",
+                "generated_at": datetime.utcnow().isoformat() + "Z",
+            }
+
+            # Write session-specific pointer
+            session_pointer_file = session.session_dir / ".last.json"
+            with open(session_pointer_file, "w") as f:
+                json.dump(pointer_data, f, indent=2)
+
+            # Write global pointer
+            global_pointer_file = Path("logs") / ".last_compile.json"
+            with open(global_pointer_file, "w") as f:
+                json.dump(pointer_data, f, indent=2)
+
+            # If user specified --out, copy artifacts there too
+            if output_dir != "compiled":
+                user_output_dir = Path(output_dir)
+                user_output_dir.mkdir(parents=True, exist_ok=True)
+                # Copy compiled artifacts to user-specified location
+                for item in session_output_dir.iterdir():
+                    if item.is_file():
+                        shutil.copy2(item, user_output_dir / item.name)
+                    elif item.is_dir():
+                        shutil.copytree(item, user_output_dir / item.name, dirs_exist_ok=True)
+
+            if use_json:
+                print(
+                    json.dumps(
+                        {
+                            "status": "success",
+                            "message": message,
+                            "session_id": session_id,
+                            "session_dir": f"logs/{session_id}",
+                            "output_dir": (
+                                output_dir
+                                if output_dir != "compiled"
+                                else f"logs/{session_id}/compiled"
+                            ),
+                            "manifest": (
+                                f"{output_dir}/manifest.yaml"
+                                if output_dir != "compiled"
+                                else f"logs/{session_id}/compiled/manifest.yaml"
+                            ),
+                        }
+                    )
                 )
-            )
+            else:
+                console.print(f"[green]✅ {message}[/green]")
+                console.print(f"[dim]📁 Session: logs/{session_id}/[/dim]")
+                if output_dir != "compiled":
+                    console.print(f"[dim]📁 Output: {output_dir}/[/dim]")
+                console.print(f"[dim]📄 Manifest: logs/{session_id}/compiled/manifest.yaml[/dim]")
+            sys.exit(0)
         else:
-            console.print(f"[green]✅ {message}[/green]")
-            console.print(f"[dim]📁 Output: {output_dir}/[/dim]")
-            console.print(f"[dim]📄 Manifest: {output_dir}/manifest.yaml[/dim]")
-        sys.exit(0)
-    else:
-        if use_json:
-            error_type = "validation_error" if "secret" in message.lower() else "compilation_error"
-            print(json.dumps({"status": "error", "error_type": error_type, "message": message}))
-        else:
-            console.print(f"[red]❌ {message}[/red]")
+            # Log compilation error
+            log_event("compile_error", error=message, duration=duration)
 
-        # Exit code 2 for validation/secret errors, 1 for internal errors
-        if "secret" in message.lower() or "validation" in message.lower():
-            sys.exit(2)
-        else:
-            sys.exit(1)
+            if use_json:
+                error_type = (
+                    "validation_error" if "secret" in message.lower() else "compilation_error"
+                )
+                print(
+                    json.dumps(
+                        {
+                            "status": "error",
+                            "error_type": error_type,
+                            "message": message,
+                            "session_id": session_id,
+                            "session_dir": f"logs/{session_id}",
+                        }
+                    )
+                )
+            else:
+                console.print(f"[red]❌ {message}[/red]")
+                console.print(f"[dim]📁 Session logs: logs/{session_id}/[/dim]")
+
+            # Exit code 2 for validation/secret errors, 1 for internal errors
+            if "secret" in message.lower() or "validation" in message.lower():
+                sys.exit(2)
+            else:
+                sys.exit(1)
+    finally:
+        # Clean up session
+        session.close()
+        set_current_session(None)

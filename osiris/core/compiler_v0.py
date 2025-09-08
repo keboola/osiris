@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional, Tuple
 from .canonical import canonical_json, canonical_yaml
 from .fingerprint import combine_fingerprints, compute_fingerprint
 from .params_resolver import ParamsResolver
+from .session_logging import log_event
 
 
 class CompilerV0:
@@ -96,9 +97,12 @@ class CompilerV0:
                 cache_key = self._get_cache_key()
                 if self._check_cache(cache_key):
                     if compile_mode == "auto":
+                        log_event("cache_hit", cache_key=cache_key[:16])
                         return True, f"Cache hit: {cache_key}"
-                elif compile_mode == "never":
-                    return False, "No cache entry found (--compile=never)"
+                else:
+                    log_event("cache_miss", cache_key=cache_key[:16])
+                    if compile_mode == "never":
+                        return False, "No cache entry found (--compile=never)"
 
             # Generate manifest
             manifest = self._generate_manifest(resolved_oml)
@@ -221,7 +225,7 @@ class CompilerV0:
                 {
                     "id": step_id,
                     "driver": driver,
-                    "cfg_path": f"compiled/cfg/{step_id}.json",
+                    "cfg_path": f"cfg/{step_id}.json",  # Relative to manifest location
                     "needs": needs,
                 }
             )

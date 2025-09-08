@@ -41,21 +41,30 @@ configSchema:
       type: string
       description: Database schema
       default: public
-    mode:
+    write_mode:
       type: string
       description: Write mode for data writing
       enum:
-        - insert
+        - append
+        - replace
         - upsert
-        - update
-      default: insert
-    on_conflict:
-      type: string
-      description: Column(s) for conflict resolution in upsert mode
+      default: append
+    primary_key:
+      oneOf:
+        - type: string
+          description: Single column for upsert conflict resolution
+        - type: array
+          items:
+            type: string
+          description: Multiple columns for composite key upsert
     returning:
       type: string
       description: Columns to return after insert/upsert
       default: minimal
+    create_if_missing:
+      type: boolean
+      description: Auto-create table if it doesn't exist (shows SQL, doesn't execute)
+      default: false
     batch_size:
       type: integer
       description: Number of rows per API request
@@ -107,11 +116,11 @@ constraints:
           minLength: 1
       error: Either 'url' or 'project_id' must be specified
     - when:
-        mode: upsert
+        write_mode: upsert
       must:
-        on_conflict:
+        primary_key:
           minLength: 1
-      error: on_conflict must be specified when mode is 'upsert'
+      error: primary_key must be specified when write_mode is 'upsert'
 
 examples:
   - title: Basic insert to Supabase
@@ -119,7 +128,7 @@ examples:
       url: https://myproject.supabase.co
       key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
       table: users
-      mode: insert
+      write_mode: append
       batch_size: 100
     notes: Insert new records to users table
 
@@ -129,8 +138,8 @@ examples:
       key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
       table: daily_stats
       schema: public
-      mode: upsert
-      on_conflict: date,user_id
+      write_mode: upsert
+      primary_key: [date, user_id]
       returning: "*"
       batch_size: 500
       prefer: resolution=merge-duplicates

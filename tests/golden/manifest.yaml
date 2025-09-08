@@ -18,16 +18,16 @@ pipeline:
   id: supabase_to_mysql_etl
   version: 0.1.0
 steps:
-- cfg_path: compiled/cfg/extract_customers.json
+- cfg_path: cfg/extract_customers.json
   driver: extractors.supabase@0.1
   id: extract_customers
   needs: []
-- cfg_path: compiled/cfg/transform_enrich.json
+- cfg_path: cfg/transform_enrich.json
   driver: transforms.duckdb@0.1
   id: transform_enrich
   needs:
   - extract_customers
-- cfg_path: compiled/cfg/load_mysql.json
+- cfg_path: cfg/load_mysql.json
   driver: writers.mysql@0.1
   id: load_mysql
   needs:

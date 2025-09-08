@@ -2,11 +2,14 @@
 
 import json
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
 import yaml
+
+from .session_logging import log_event, log_metric
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +74,10 @@ class RunnerV0:
         """Log an event."""
         event = {"timestamp": datetime.utcnow().isoformat(), "type": event_type, "data": data}
         self.events.append(event)
-        logger.info(f"Event: {event_type} - {data}")
+        logger.debug(f"Event: {event_type} - {data}")
+
+        # Also emit to session logging
+        log_event(event_type, **data)
 
     def _execute_step(self, step: Dict[str, Any]) -> bool:
         """Execute a single step."""
@@ -81,26 +87,44 @@ class RunnerV0:
 
         try:
             # Log step start
+            start_time = time.time()
             self._log_event("step_start", {"step_id": step_id, "driver": driver})
 
             # Create step output directory
             step_output_dir = self.output_dir / step_id
             step_output_dir.mkdir(parents=True, exist_ok=True)
 
+            # Resolve config path relative to manifest
+            if not Path(cfg_path).is_absolute():
+                cfg_full_path = self.manifest_path.parent / cfg_path
+            else:
+                cfg_full_path = Path(cfg_path)
+
             # Load step config
-            with open(cfg_path) as f:
+            with open(cfg_full_path) as f:
                 config = json.load(f)
 
             # Execute based on driver type
             success = self._run_component(driver, config, step_output_dir)
 
+            # Calculate step duration
+            duration = time.time() - start_time
+            log_metric(f"step_{step_id}_duration", duration, unit="seconds")
+
             if success:
                 self._log_event(
                     "step_complete",
-                    {"step_id": step_id, "driver": driver, "output_dir": str(step_output_dir)},
+                    {
+                        "step_id": step_id,
+                        "driver": driver,
+                        "output_dir": str(step_output_dir),
+                        "duration": duration,
+                    },
                 )
             else:
-                self._log_event("step_error", {"step_id": step_id, "driver": driver})
+                self._log_event(
+                    "step_error", {"step_id": step_id, "driver": driver, "duration": duration}
+                )
 
             return success
 
@@ -143,7 +167,7 @@ class RunnerV0:
             with open(output_file, "w") as f:
                 json.dump(sample_data, f, indent=2)
 
-            logger.info(f"Extracted data to {output_file}")
+            logger.debug(f"Extracted data to {output_file}")
             return True
 
         except Exception as e:
@@ -198,7 +222,7 @@ class RunnerV0:
             with open(output_file, "w") as f:
                 json.dump(result_dict, f, indent=2)
 
-            logger.info(f"Transformed data to {output_file}")
+            logger.debug(f"Transformed data to {output_file}")
             conn.close()
             return True
 
@@ -245,7 +269,7 @@ class RunnerV0:
                         indent=2,
                     )
 
-            logger.info(f"Wrote data to {output_file}")
+            logger.debug(f"Wrote data to {output_file}")
             return True
 
         except Exception as e:
