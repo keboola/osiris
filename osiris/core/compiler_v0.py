@@ -240,9 +240,17 @@ class CompilerV0:
                             f"Allowed: {', '.join(allowed_canonical)}"
                         )
 
-            # Determine needs - respect explicit dependencies
-            # If no explicit needs, leave empty (parallel execution possible)
-            needs = step.get("needs", [])
+            # Determine needs - respect explicit dependencies or infer linear chain
+            if "needs" in step:
+                # Explicit dependencies specified
+                needs = step["needs"]
+            elif i > 0:
+                # No explicit needs and not the first step - infer linear chain
+                # This maintains backward compatibility with linear pipelines
+                needs = [oml["steps"][i - 1].get("id", f"step_{i-1}")]
+            else:
+                # First step has no dependencies
+                needs = []
 
             steps.append(
                 {

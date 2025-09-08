@@ -173,9 +173,12 @@ connections:
         assert "No default connection" in str(exc_info.value)
         assert "local" in str(exc_info.value)  # Should list available aliases
 
-    def test_resolve_missing_env_var(self, sample_connections):
+    def test_resolve_missing_env_var(self, sample_connections, monkeypatch):
         """Test error when required env var is missing."""
         from osiris.core.config import ConfigError
+
+        # Ensure MYSQL_PASSWORD is not set for this test
+        monkeypatch.delenv("MYSQL_PASSWORD", raising=False)
 
         with patch("osiris.core.config.Path.cwd", return_value=sample_connections):
             with pytest.raises(ConfigError) as exc_info:

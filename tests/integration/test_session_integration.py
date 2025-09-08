@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -27,16 +27,18 @@ class TestSessionIntegration:
             "steps": [
                 {
                     "id": "extract",
-                    "uses": "extractors.supabase",
-                    "with": {
+                    "component": "supabase.extractor",
+                    "mode": "read",
+                    "config": {
                         "url": "${params.url}",
                         "table": "${params.table}",
                     },
                 },
                 {
                     "id": "transform",
-                    "uses": "transforms.duckdb",
-                    "with": {
+                    "component": "duckdb.transform",
+                    "mode": "transform",
+                    "config": {
                         "sql": "SELECT 1 as id, 'test' as name",  # Simple SQL that doesn't require tables
                     },
                 },
@@ -130,13 +132,29 @@ class TestSessionIntegration:
             yaml.dump(connections, f)
 
         try:
-            # Mock sys.exit to prevent test from exiting
-            with patch("sys.exit") as mock_exit:
-                # Run command
-                run_command([sample_oml])
+            # Mock compilation to avoid actual compilation
+            with patch("osiris.cli.run.CompilerV0") as mock_compiler_class:
+                mock_compiler = MagicMock()
+                mock_compiler.compile.return_value = (True, "Compilation successful")
+                mock_compiler_class.return_value = mock_compiler
 
-                # Check that exit was called with success (0)
-                mock_exit.assert_called_once_with(0)
+                # Mock drivers to avoid actual DB connections
+                with patch("osiris.cli.run.RunnerV0") as mock_runner_class:
+                    mock_runner = MagicMock()
+                    mock_runner.run.return_value = True
+                    mock_runner.events = [
+                        {"type": "step_complete", "step_id": "extract"},
+                        {"type": "step_complete", "step_id": "transform"},
+                    ]
+                    mock_runner_class.return_value = mock_runner
+
+                    # Mock sys.exit to prevent test from exiting
+                    with patch("sys.exit") as mock_exit:
+                        # Run command
+                        run_command([sample_oml])
+
+                        # Check that exit was called with success (0)
+                        mock_exit.assert_called_once_with(0)
 
             # Check that session directory was created
             logs_dir = Path("logs")

@@ -89,8 +89,11 @@ connections:
         # When env var is not set, it should show as missing
         assert "MYSQL_PASSWORD" in output
 
-    def test_list_connections_json(self, sample_connections_file):
+    def test_list_connections_json(self, sample_connections_file, monkeypatch):
         """Test listing connections in JSON format."""
+        # Ensure MYSQL_PASSWORD is not set for this test
+        monkeypatch.delenv("MYSQL_PASSWORD", raising=False)
+
         with patch("osiris.core.config.Path.cwd", return_value=sample_connections_file):
             # Import and call the function directly
             # Capture output

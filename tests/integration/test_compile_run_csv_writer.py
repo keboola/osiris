@@ -1,6 +1,7 @@
 """Integration test for compile and run with filesystem.csv_writer."""
 
 import json
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -149,25 +150,57 @@ class TestCompileRunCSVWriter:
             with open(cfg_dir / "write-csv.json", "w") as f:
                 json.dump(write_config, f)
 
-            # Mock MySQL extractor to return test data
-            with patch("osiris.connectors.mysql.extractor.MySQLExtractor") as mock_mysql:
-                mock_extractor = MagicMock()
-                mock_extractor.extract.return_value = test_data
-                mock_mysql.return_value = mock_extractor
+            # Create dummy connections file
+            connections = {
+                "version": 1,
+                "connections": {
+                    "mysql": {
+                        "test_db": {
+                            "host": "localhost",
+                            "database": "test_db",
+                            "user": "test_user",
+                            "password": "test_pass",  # pragma: allowlist secret
+                        }
+                    }
+                },
+            }
+            connections_path = Path(tmpdir) / "osiris_connections.yaml"
+            with open(connections_path, "w") as f:
+                yaml.dump(connections, f)
 
-                # Save manifest
-                manifest_path = Path(tmpdir) / "manifest.yaml"
-                with open(manifest_path, "w") as f:
-                    yaml.dump(manifest, f)
+            # Save manifest
+            manifest_path = Path(tmpdir) / "manifest.yaml"
+            with open(manifest_path, "w") as f:
+                yaml.dump(manifest, f)
 
-                # Run the pipeline
+            # Change to tmpdir so connections file is found
+            original_cwd = Path.cwd()
+            try:
+                os.chdir(tmpdir)
+
+                # Run the pipeline with mocked MySQL driver
                 runner = RunnerV0(str(manifest_path))
                 runner.manifest_dir = Path(tmpdir)
-                runner.manifest = manifest
-                success = runner.run()
+
+                # Mock the MySQL driver to return test data
+                mock_mysql_driver = MagicMock()
+                mock_mysql_driver.run.return_value = {"df": test_data}
+
+                # Only mock mysql.extractor, let filesystem.csv_writer run normally
+                def get_driver(name):
+                    if name == "mysql.extractor":
+                        return mock_mysql_driver
+                    else:
+                        # Return the real driver for filesystem.csv_writer
+                        return runner.driver_registry._drivers[name]()
+
+                with patch.object(runner.driver_registry, "get", side_effect=get_driver):
+                    success = runner.run()
 
                 # Check results
                 assert success is True
+            finally:
+                os.chdir(original_cwd)
 
                 # Verify CSV file was created
                 csv_path = Path(tmpdir) / "output.csv"

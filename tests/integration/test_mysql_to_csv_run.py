@@ -65,6 +65,7 @@ class TestMySQLToCSVRun:
                     "id": "extract-directors",
                     "component": "mysql.extractor",
                     "mode": "read",
+                    "needs": [],  # Explicit empty needs for parallel execution
                     "config": {"connection": "@mysql.test", "query": "SELECT * FROM directors"},
                 },
                 {
@@ -133,7 +134,7 @@ class TestMySQLToCSVRun:
 
         assert len(manifest["steps"]) == 4
 
-        # Verify extract steps have no dependencies
+        # Verify extract steps have no dependencies (explicit DAG structure)
         extract_actors = next(s for s in manifest["steps"] if s["id"] == "extract-actors")
         assert extract_actors["needs"] == []
 

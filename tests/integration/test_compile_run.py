@@ -26,8 +26,9 @@ class TestCompileIntegration:
             "steps": [
                 {
                     "id": "extract",
-                    "uses": "extractors.supabase",
-                    "with": {
+                    "component": "supabase.extractor",
+                    "mode": "read",
+                    "config": {
                         "url": "${params.url}",
                         "key": "${params.key}",
                         "table": "${params.table}",
@@ -35,13 +36,15 @@ class TestCompileIntegration:
                 },
                 {
                     "id": "transform",
-                    "uses": "transforms.duckdb",
-                    "with": {"sql": "SELECT * FROM input"},
+                    "component": "duckdb.transform",
+                    "mode": "transform",
+                    "config": {"sql": "SELECT * FROM input"},
                 },
                 {
                     "id": "load",
-                    "uses": "writers.mysql",
-                    "with": {"dsn": "${params.dsn}", "table": "output_table"},
+                    "component": "mysql.writer",
+                    "mode": "write",
+                    "config": {"dsn": "${params.dsn}", "table": "output_table"},
                 },
             ],
         }
@@ -196,19 +199,19 @@ class TestRunnerIntegration:
             "steps": [
                 {
                     "id": "extract",
-                    "driver": "extractors.supabase@0.1",
+                    "driver": "supabase.extractor",
                     "cfg_path": str(tmp_path / "cfg" / "extract.json"),
                     "needs": [],
                 },
                 {
                     "id": "transform",
-                    "driver": "transforms.duckdb@0.1",
+                    "driver": "duckdb.transform",
                     "cfg_path": str(tmp_path / "cfg" / "transform.json"),
                     "needs": ["extract"],
                 },
                 {
                     "id": "load",
-                    "driver": "writers.mysql@0.1",
+                    "driver": "mysql.writer",
                     "cfg_path": str(tmp_path / "cfg" / "load.json"),
                     "needs": ["transform"],
                 },
@@ -261,14 +264,22 @@ class TestRunnerIntegration:
             yaml.dump(connections, f)
 
         # Run with patched cwd for connections
-        from unittest.mock import patch
+        from unittest.mock import MagicMock, patch
+
+        import pandas as pd
 
         with patch("osiris.core.config.Path.cwd", return_value=tmp_path):
             runner = RunnerV0(
                 manifest_path=str(manifest_path), output_dir=str(tmp_path / "_artifacts")
             )
-            success = runner.run()
-            assert success
+
+            # Mock all drivers for this test
+            mock_driver = MagicMock()
+            mock_driver.run.return_value = {"df": pd.DataFrame({"test": [1, 2, 3]})}
+
+            with patch.object(runner.driver_registry, "get", return_value=mock_driver):
+                success = runner.run()
+                assert success
 
         # Check artifacts were created
         artifacts_dir = tmp_path / "_artifacts"

@@ -99,8 +99,8 @@ class TestCompilerV0:
             "oml_version": "0.1.0",
             "name": "Test Pipeline",
             "steps": [
-                {"id": "step1", "uses": "extractors.supabase"},
-                {"id": "step2", "uses": "transforms.duckdb"},
+                {"id": "step1", "component": "supabase.extractor", "mode": "read"},
+                {"id": "step2", "component": "duckdb.transform", "mode": "transform"},
             ],
         }
 
@@ -118,7 +118,7 @@ class TestCompilerV0:
         # Check steps
         assert len(manifest["steps"]) == 2
         assert manifest["steps"][0]["id"] == "step1"
-        assert manifest["steps"][0]["driver"] == "supabase.extractor"  # Updated mapping
+        assert manifest["steps"][0]["driver"] == "supabase.extractor"
         assert manifest["steps"][1]["needs"] == ["step1"]
 
     def test_generate_configs_filters_secrets(self):
