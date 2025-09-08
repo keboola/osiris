@@ -63,7 +63,12 @@ steps:
         agent = ConversationalPipelineAgent(
             llm_provider="openai",
             config={
-                "mysql": {"host": "test", "database": "test", "user": "test", "password": "test"}  # pragma: allowlist secret
+                "mysql": {
+                    "host": "test",
+                    "database": "test",
+                    "user": "test",
+                    "password": "test",  # pragma: allowlist secret
+                }
             },
         )
 

@@ -215,6 +215,7 @@ exclude = [
 "tests/**/*.py" = ["S101", "ARG001", "ARG002"]
 "tests/cli/test_connections_cmd.py" = ["S101", "ARG001", "ARG002", "SIM117"]
 "tests/core/test_config_connections.py" = ["SIM117"]
+"tests/chat/test_chat_mysql_to_csv.py" = ["SIM117"]
 
 # Coverage configuration
 [tool.coverage.run]
