@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Streaming IO and Spill** (ADR-0022)
+  - Iterator-first RowStream interface for memory-safe data processing
+  - Support for datasets of 10GB+ without loading into memory
+  - Optional spill-to-disk capability with DuckDB temp tables or Parquet files
+  - Backward compatibility via DataFrame adapters
+  - Progressive data processing with estimated row counts
+  - Unified streaming protocol across all extractors and writers
+
+- **Remote Object Store Writers** (ADR-0023)
+  - Direct writing to S3, Azure Blob Storage, and Google Cloud Storage
+  - Multipart upload support for files >100MB
+  - Deterministic CSV contract matching filesystem.csv_writer
+  - Connection-based credential management (no secrets in OML)
+  - Support for storage classes, tiers, and cloud-specific features
+  - Resilient error handling with retry logic and resume capability
+  - ADR-0023 now includes comparison table for filesystem vs. remote writers
+
 - **Chat State Machine and OML Synthesis** (ADR-0019)
   - Mandatory FSM flow: INIT → INTENT_CAPTURED → DISCOVERY → OML_SYNTHESIS → VALIDATE_OML → COMPILE → RUN → COMPLETE
   - Hard rule: NO open questions after discovery phase - immediate OML synthesis
@@ -39,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Automatic family detection from component names (e.g., `mysql.extractor` → `mysql`)
 
 ### Changed
+- Clarified ADR-0022: Spill to disk is implementation detail only
 - **MySQL/Supabase/DuckDB connectors** now consume injected connections from runner
   - Removed direct environment variable access at runtime
   - All connection data passed via config dict
