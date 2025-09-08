@@ -50,7 +50,10 @@ class SupabaseClient:
                 self.url = f"https://{project_id}.supabase.co"
 
         self.key = (
-            config.get("key")
+            config.get("service_role_key")
+            or config.get("anon_key")
+            or config.get("key")
+            or os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
             or os.environ.get("SUPABASE_ANON_PUBLIC_KEY")
             or os.environ.get("SUPABASE_KEY")  # Legacy support
         )
@@ -87,3 +90,103 @@ class SupabaseClient:
     def is_connected(self) -> bool:
         """Check if client is connected."""
         return self._initialized and self.client is not None
+
+    def doctor(self, connection: dict, timeout: float = 2.0) -> tuple[bool, dict]:
+        """Health check for Supabase connection.
+
+        Args:
+            connection: Connection configuration dict
+            timeout: Maximum time to wait for connection (seconds)
+
+        Returns:
+            Tuple of (ok: bool, details: dict) where details contains:
+                - latency_ms: Connection latency in milliseconds
+                - category: Error category (auth/network/permission/timeout/unknown)
+                - message: Redacted error message
+        """
+        import time
+
+        import requests
+
+        start_time = time.time()
+
+        try:
+            # Get URL and key
+            url = connection.get("url")
+            if not url and connection.get("project_id"):
+                url = f"https://{connection['project_id']}.supabase.co"
+
+            key = (
+                connection.get("service_role_key")
+                or connection.get("anon_key")
+                or connection.get("key")
+            )
+
+            if not url or not key:
+                return False, {
+                    "latency_ms": 0,
+                    "category": "config",
+                    "message": "Missing required URL or key",
+                }
+
+            # Try health endpoint first (public, fastest)
+            health_url = f"{url}/auth/v1/health"
+
+            try:
+                response = requests.get(health_url, timeout=timeout)
+                if response.status_code == 200:
+                    latency_ms = (time.time() - start_time) * 1000
+                    return True, {
+                        "latency_ms": round(latency_ms, 2),
+                        "message": "Connection successful",
+                    }
+            except requests.RequestException:
+                pass  # Try fallback
+
+            # Fallback: REST API base with auth
+            try:
+                rest_url = f"{url}/rest/v1/"
+                headers = {"apikey": key, "Authorization": f"Bearer {key}"}
+                response = requests.head(rest_url, headers=headers, timeout=timeout)
+                if 200 <= response.status_code < 300:
+                    latency_ms = (time.time() - start_time) * 1000
+                    return True, {
+                        "latency_ms": round(latency_ms, 2),
+                        "message": "Connection successful",
+                    }
+                elif response.status_code == 401:
+                    latency_ms = (time.time() - start_time) * 1000
+                    return False, {
+                        "latency_ms": round(latency_ms, 2),
+                        "category": "auth",
+                        "message": "Authentication failed",
+                    }
+                else:
+                    latency_ms = (time.time() - start_time) * 1000
+                    return False, {
+                        "latency_ms": round(latency_ms, 2),
+                        "category": "network",
+                        "message": f"HTTP {response.status_code}",
+                    }
+            except requests.Timeout:
+                latency_ms = (time.time() - start_time) * 1000
+                return False, {
+                    "latency_ms": round(latency_ms, 2),
+                    "category": "timeout",
+                    "message": "Connection timeout",
+                }
+            except requests.ConnectionError:
+                latency_ms = (time.time() - start_time) * 1000
+                return False, {
+                    "latency_ms": round(latency_ms, 2),
+                    "category": "network",
+                    "message": "Cannot connect to server",
+                }
+
+        except Exception:
+            latency_ms = (time.time() - start_time) * 1000
+            return False, {
+                "latency_ms": round(latency_ms, 2),
+                "category": "unknown",
+                "message": "Connection test failed",
+            }

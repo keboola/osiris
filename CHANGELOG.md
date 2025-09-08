@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Complete separation of secrets from pipeline definitions
   - Support for multiple connections per connector family
 
+- CLI `osiris connections list` and `osiris connections doctor` commands with session logging and JSON output.
+- Component-level `doctor()` capability (ADR-0021).
+
 - **Unified run command with last-compile support**
   - Single `run` command handles both OML and compiled manifests
   - `--last-compile` flag runs most recently compiled manifest
@@ -80,6 +83,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Console shows clean output by default
   - DEBUG logs written to session log files
   - Validation error mapping warnings moved to DEBUG level
+- Connection JSON output shape: now under `connections` with top-level `session_id`.
+- Tests updated to align with the new JSON shape.
+- **CLI Framework**: Completely removed Click library dependency, using only Rich framework for all CLI commands.
 
 ### Removed
 - **`execute` command** - functionality merged into unified `run` command
@@ -104,6 +110,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Exit codes now correctly return 1 for failed scenarios
   - --max-attempts parameter properly limits total attempts
   - Artifacts consistently saved to --out directory with proper structure
+- Supabase health check avoids 404s, uses `/auth/v1/health` with fallback.
+- Secrets redacted consistently in `connections` CLI outputs.
 
 ### Previously Added Features (M1a-M1b.2)
 - Component Registry backend (`osiris/components/registry.py`) with mtime-based caching and three validation levels (basic/enhanced/strict)
