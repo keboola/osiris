@@ -235,11 +235,40 @@ class TestRunnerIntegration:
         with open(manifest_path, "w") as f:
             yaml.dump(manifest, f)
 
-        # Run
-        runner = RunnerV0(manifest_path=str(manifest_path), output_dir=str(tmp_path / "_artifacts"))
+        # Create dummy connections file for test
+        connections = {
+            "version": 1,
+            "connections": {
+                "supabase": {
+                    "default": {
+                        "url": "https://test.supabase.co",
+                        "key": "test_key",  # pragma: allowlist secret
+                    }
+                },
+                "mysql": {
+                    "default": {
+                        "host": "localhost",
+                        "port": 3306,
+                        "database": "test",
+                        "user": "test",
+                        "password": "test",  # pragma: allowlist secret
+                    }
+                },
+            },
+        }
+        connections_path = tmp_path / "osiris_connections.yaml"
+        with open(connections_path, "w") as f:
+            yaml.dump(connections, f)
 
-        success = runner.run()
-        assert success
+        # Run with patched cwd for connections
+        from unittest.mock import patch
+
+        with patch("osiris.core.config.Path.cwd", return_value=tmp_path):
+            runner = RunnerV0(
+                manifest_path=str(manifest_path), output_dir=str(tmp_path / "_artifacts")
+            )
+            success = runner.run()
+            assert success
 
         # Check artifacts were created
         artifacts_dir = tmp_path / "_artifacts"

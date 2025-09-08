@@ -362,6 +362,41 @@ def load_connections_yaml(substitute_env: bool = True) -> Dict[str, Any]:
     return substitute_env_vars(connections)
 
 
+def parse_connection_ref(ref: str) -> tuple[Optional[str], Optional[str]]:
+    """Parse a connection reference string like '@family.alias'.
+
+    Args:
+        ref: Connection reference string (e.g., '@mysql.primary')
+
+    Returns:
+        Tuple of (family, alias) or (None, None) if invalid format
+
+    Examples:
+        parse_connection_ref('@mysql.primary') -> ('mysql', 'primary')
+        parse_connection_ref('@mysql') -> Error
+        parse_connection_ref('mysql.primary') -> (None, None)
+    """
+    if not ref or not ref.startswith("@"):
+        return None, None
+
+    # Strip @ and split
+    ref = ref[1:]  # Remove @
+    if "." not in ref:
+        raise ValueError(f"Invalid connection reference format: '@{ref}'. Expected '@family.alias'")
+
+    parts = ref.split(".", 1)
+    if len(parts) != 2:
+        raise ValueError(f"Invalid connection reference format: '@{ref}'. Expected '@family.alias'")
+
+    family, alias = parts
+    if not family or not alias:
+        raise ValueError(
+            f"Invalid connection reference format: '@{ref}'. Family and alias cannot be empty"
+        )
+
+    return family, alias
+
+
 def resolve_connection(family: str, alias: Optional[str] = None) -> Dict[str, Any]:
     """Resolve connection by family and optional alias.
 

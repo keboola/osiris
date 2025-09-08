@@ -212,7 +212,7 @@ load:
 - `to`: One of [csv, parquet, json, mysql, supabase]
 - `path`: Output file path (for files)
 - `table`: Table name (for databases)
-- `connection`: Connection name (for databases)
+- `connection`: Connection reference (for databases) - see Connection References section
 
 ### Naming Conventions
 
@@ -234,9 +234,54 @@ These features are NOT supported in MVP:
 - Caching directives
 - Metadata/documentation sections
 
-## Environment Variables
+## Connection References (ADR-0020)
 
-Database connections use environment variables:
+As of v0.2.0, pipelines can reference connections from `osiris_connections.yaml`:
+
+### Connection Format
+
+```yaml
+# In step config:
+config:
+  connection: "@family.alias"  # Explicit reference
+  # OR omit for default resolution
+```
+
+### Resolution Precedence
+
+When no explicit connection is specified:
+1. Connection with `default: true` flag
+2. Connection with alias named "default"
+3. Error with helpful message listing available aliases
+
+### Examples
+
+```yaml
+# Explicit connection reference
+- id: extract-users
+  component: mysql.extractor
+  config:
+    connection: "@mysql.primary"  # Use mysql.primary from osiris_connections.yaml
+    query: "SELECT * FROM users"
+
+# Default connection (no reference)
+- id: extract-products  
+  component: mysql.extractor
+  config:
+    # No connection field - will use default mysql connection
+    query: "SELECT * FROM products"
+```
+
+### Benefits
+
+- Secrets stay in `osiris_connections.yaml` and `.env` files
+- OML/pipeline files contain no secrets
+- Easy environment switching
+- Components receive resolved connection dicts at runtime
+
+## Environment Variables (Legacy)
+
+For backward compatibility, connections can still use environment variables:
 
 **MySQL:**
 

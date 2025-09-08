@@ -15,7 +15,6 @@
 """Shared Supabase client for connection management."""
 
 import logging
-import os
 from typing import Any, Dict, Optional
 
 from supabase import Client, create_client
@@ -41,22 +40,16 @@ class SupabaseClient:
         self.client: Optional[Client] = None
         self._initialized = False
 
-        # Get credentials from config or environment
+        # Get credentials from config only (no ENV fallback for runtime)
         # Support both direct URL and project ID approaches
-        self.url = config.get("url") or os.environ.get("SUPABASE_URL")
+        self.url = config.get("url")
         if not self.url:
-            project_id = config.get("project_id") or os.environ.get("SUPABASE_PROJECT_ID")
+            project_id = config.get("project_id")
             if project_id:
                 self.url = f"https://{project_id}.supabase.co"
 
-        self.key = (
-            config.get("service_role_key")
-            or config.get("anon_key")
-            or config.get("key")
-            or os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-            or os.environ.get("SUPABASE_ANON_PUBLIC_KEY")
-            or os.environ.get("SUPABASE_KEY")  # Legacy support
-        )
+        # Support various key field names for compatibility
+        self.key = config.get("service_role_key") or config.get("anon_key") or config.get("key")
         self.schema = config.get("schema", "public")
         self.timeout = config.get("timeout", 30)
         self.retries = config.get("retries", 3)

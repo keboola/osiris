@@ -100,6 +100,35 @@ class TestSessionIntegration:
 
         os.environ["OSIRIS_PARAM_URL"] = "https://test.supabase.co"
 
+        # Create dummy connections file for test
+        connections = {
+            "version": 1,
+            "connections": {
+                "supabase": {
+                    "default": {
+                        "url": "https://test.supabase.co",
+                        "key": "test_key",  # pragma: allowlist secret
+                    }
+                },
+                "mysql": {
+                    "default": {
+                        "host": "localhost",
+                        "port": 3306,
+                        "database": "test",
+                        "user": "test",
+                        "password": "test",  # pragma: allowlist secret
+                    }
+                },
+            },
+        }
+        from pathlib import Path
+
+        import yaml
+
+        connections_path = Path.cwd() / "osiris_connections.yaml"
+        with open(connections_path, "w") as f:
+            yaml.dump(connections, f)
+
         try:
             # Mock sys.exit to prevent test from exiting
             with patch("sys.exit") as mock_exit:
@@ -147,6 +176,9 @@ class TestSessionIntegration:
             # Clean up
             if "OSIRIS_PARAM_URL" in os.environ:
                 del os.environ["OSIRIS_PARAM_URL"]
+            # Clean up connections file
+            if connections_path.exists():
+                connections_path.unlink()
 
     def test_session_with_custom_output_dir(self, sample_oml, tmp_path):
         """Test that --out option still creates session but copies artifacts."""

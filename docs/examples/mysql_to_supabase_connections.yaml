@@ -1,0 +1,63 @@
+# Example pipeline using connection references (ADR-0020)
+# This shows both explicit connection references and default resolution
+
+oml_version: "0.1.0"
+name: mysql-to-supabase-with-connections
+description: Export MySQL data to Supabase using connection references
+
+steps:
+  # Example 1: Explicit connection reference
+  - id: extract-users
+    component: mysql.extractor
+    mode: read
+    config:
+      # Explicit reference to mysql.primary connection
+      connection: "@mysql.primary"
+      query: "SELECT id, email, name, created_at FROM users WHERE active = 1"
+
+  - id: extract-orders
+    component: mysql.extractor
+    mode: read
+    config:
+      # No connection specified - will use default
+      # Precedence: 1) default:true flag, 2) alias named "default", 3) error
+      query: "SELECT * FROM orders WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)"
+
+  - id: transform-users
+    component: duckdb.transform
+    mode: transform
+    needs: ["extract-users"]
+    config:
+      # DuckDB local operations don't need connection
+      sql: |
+        SELECT
+          id,
+          LOWER(email) as email,
+          name,
+          created_at,
+          NOW() as synced_at
+        FROM input
+
+  - id: write-to-supabase
+    component: supabase.writer
+    mode: write
+    needs: ["transform-users"]
+    config:
+      # Explicit reference to supabase.prod connection
+      connection: "@supabase.prod"
+      table: "users"
+      write_mode: "upsert"
+      primary_key: ["id"]
+
+# Connection resolution at runtime:
+# 1. Runner reads step.config.connection
+# 2. If @family.alias format, parses and validates
+# 3. Calls resolve_connection(family, alias)
+# 4. Injects resolved dict into component
+# 5. No ENV access in components - all from injected config
+
+# Benefits:
+# - Secrets stay in osiris_connections.yaml + .env
+# - OML files contain no secrets
+# - Easy to switch between environments
+# - Components are testable with injected configs

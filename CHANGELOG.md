@@ -31,6 +31,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CLI `osiris connections list` and `osiris connections doctor` commands with session logging and JSON output.
 - Component-level `doctor()` capability (ADR-0021).
+- **Runtime connection resolution integration** (ADR-0020):
+  - Runner resolves connections using `resolve_connection()` at step execution
+  - Components receive injected connection dicts - no direct ENV access
+  - Per-step events: `connection_resolve_start` and `connection_resolve_complete`
+  - Connection reference parsing with `@family.alias` format validation
+  - Automatic family detection from component names (e.g., `mysql.extractor` → `mysql`)
+
+### Changed
+- **MySQL/Supabase/DuckDB connectors** now consume injected connections from runner
+  - Removed direct environment variable access at runtime
+  - All connection data passed via config dict
+  - Backward compatibility maintained for testing
+
+### Security
+- **Enhanced secrets protection in runner path**:
+  - Connection passwords/keys never logged in runner events
+  - Automatic redaction of sensitive fields in connection dicts
+  - No secrets written to manifest.yaml or config artifacts
+  - Connection resolution events log only family and alias names
 
 - **Unified run command with last-compile support**
   - Single `run` command handles both OML and compiled manifests
