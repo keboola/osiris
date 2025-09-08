@@ -69,6 +69,7 @@ def show_main_help():
     console.print("  [cyan]logs[/cyan]         Manage session logs (list, show, bundle, gc)")
     console.print("  [cyan]test[/cyan]         Run automated test scenarios")
     console.print("  [cyan]components[/cyan]   Manage and inspect Osiris components")
+    console.print("  [cyan]connections[/cyan]  Manage database connections")
     console.print(
         "  [cyan]dump-prompts[/cyan] Export LLM system prompts for customization (pro mode)\n"
         "  [cyan]prompts[/cyan]      Manage component context for LLM"
@@ -103,6 +104,7 @@ def parse_main_args():
             "logs",
             "test",
             "components",
+            "connections",
             "dump-prompts",
             "prompts",
         ]:
@@ -199,6 +201,8 @@ def main():
         test_command(command_args)
     elif args.command == "components":
         components_command(command_args)
+    elif args.command == "connections":
+        connections_command(command_args)
     elif args.command == "compile":
         from .compile import compile_command
 
@@ -224,6 +228,7 @@ def main():
                             "run",
                             "logs",
                             "components",
+                            "connections",
                             "dump-prompts",
                             "prompts",
                         ],
@@ -246,6 +251,7 @@ def main():
                             "run",
                             "logs",
                             "components",
+                            "connections",
                             "dump-prompts",
                             "prompts",
                         ],
@@ -1231,6 +1237,77 @@ def components_command(args: list) -> None:
         console.print(f"❌ Unknown subcommand: {subcommand}")
         console.print("Available subcommands: list, show, validate, config-example, discover")
         console.print("Use 'osiris components --help' for detailed help.")
+
+
+def connections_command(args: list) -> None:
+    """Manage database connections."""
+
+    def show_connections_help():
+        """Show connections command help."""
+        if json_output:
+            help_data = {
+                "command": "connections",
+                "description": "Manage database connections",
+                "subcommands": {
+                    "list": {
+                        "description": "List all configured connections",
+                        "options": {"--json": "Output in JSON format"},
+                    },
+                    "doctor": {
+                        "description": "Test connectivity for all configured connections",
+                        "options": {
+                            "--json": "Output in JSON format",
+                            "--family": "Test only connections for this family",
+                            "--alias": "Test only this specific connection",
+                        },
+                    },
+                },
+            }
+            print(json.dumps(help_data, indent=2))
+        else:
+            console.print()
+            console.print("[bold green]osiris connections - Connection Management[/bold green]")
+            console.print("🔌 Manage and test Osiris database connections")
+            console.print()
+            console.print("[bold]Usage:[/bold] osiris connections SUBCOMMAND [OPTIONS]")
+            console.print()
+            console.print("[bold blue]Subcommands[/bold blue]")
+            console.print("  [cyan]list[/cyan]      List all configured connections")
+            console.print("  [cyan]doctor[/cyan]    Test connectivity for all connections")
+            console.print()
+            console.print("[bold blue]Examples[/bold blue]")
+            console.print("  [green]osiris connections list[/green]")
+            console.print("  [green]osiris connections list --json[/green]")
+            console.print("  [green]osiris connections doctor[/green]")
+            console.print("  [green]osiris connections doctor --family mysql[/green]")
+            console.print(
+                "  [green]osiris connections doctor --family mysql --alias db_movies[/green]"
+            )
+            console.print()
+
+    if not args or args[0] in ["--help", "-h"]:
+        show_connections_help()
+        return
+
+    # Import the connections module functions directly
+    try:
+        from .connections_cmd import doctor_connections, list_connections
+    except ImportError as e:
+        console.print(f"❌ Failed to import connections module: {e}")
+        sys.exit(1)
+
+    # Get subcommand and pass remaining args
+    subcommand = args[0]
+    subcommand_args = args[1:]
+
+    if subcommand == "list":
+        list_connections(subcommand_args)
+    elif subcommand == "doctor":
+        doctor_connections(subcommand_args)
+    else:
+        console.print(f"❌ Unknown subcommand: {subcommand}")
+        console.print("Available subcommands: list, doctor")
+        console.print("Use 'osiris connections --help' for detailed help.")
 
 
 def logs_command(args: list) -> None:

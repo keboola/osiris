@@ -214,6 +214,7 @@ exclude = [
 "__init__.py" = ["F401"]
 "tests/**/*.py" = ["S101", "ARG001", "ARG002"]
 "tests/cli/test_connections_cmd.py" = ["S101", "ARG001", "ARG002", "SIM117"]
+"tests/core/test_config_connections.py" = ["SIM117"]
 
 # Coverage configuration
 [tool.coverage.run]
