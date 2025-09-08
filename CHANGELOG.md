@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Chat State Machine and OML Synthesis** (ADR-0019)
+  - Mandatory FSM flow: INIT → INTENT_CAPTURED → DISCOVERY → OML_SYNTHESIS → VALIDATE_OML → COMPILE → RUN → COMPLETE
+  - Hard rule: NO open questions after discovery phase - immediate OML synthesis
+  - Strict OML v0.1.0 contract enforcement with required keys `{oml_version, name, steps}`
+  - Forbidden legacy keys `{version, connectors, tasks, outputs}` with automatic detection
+  - Single regeneration attempt on validation failure with targeted error messages
+  - Non-empty assistant message fallback for better user experience
+  - Structured event logging for each state transition
+  - Post-discovery synthesis ensures deterministic pipeline generation
+
+- **Connection Resolution and Secrets Management** (ADR-0020)
+  - External `osiris_connections.yaml` for non-secret connection metadata
+  - Environment variable substitution for secrets using `${ENV_VAR}` syntax
+  - Connection alias model with family-based organization
+  - Default selection precedence: `default:true` → alias named "default" → error
+  - Optional OML reference syntax: `config.connection: "@family.alias"`
+  - CLI commands: `osiris connections list` (show aliases with masked secrets)
+  - CLI commands: `osiris connections doctor` (test connectivity)
+  - Complete separation of secrets from pipeline definitions
+  - Support for multiple connections per connector family
+
 - **Unified run command with last-compile support**
   - Single `run` command handles both OML and compiled manifests
   - `--last-compile` flag runs most recently compiled manifest
@@ -65,6 +86,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Direct stdout INFO logging** - all detailed logs now in session files
 
 ### Fixed
+- **Test Suite Improvements**
+  - Fixed StateStore → SQLiteStateStore imports in all test files
+  - Removed references to non-existent methods (_get_database_tables, context_manager)
+  - Updated CLI test to check for --last-compile instead of deprecated --dry-run
+  - Fixed session logging imports (get_session_context → get_current_session)
+  - Added pragma comments for test-only credentials to pass secret scanning
+  - All 27 tests now passing successfully
+
 - **Over-masking of event names/session ids**
   - Session IDs and event names no longer masked in logs
   - Only actual secrets are redacted

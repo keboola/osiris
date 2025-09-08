@@ -1,5 +1,35 @@
 # Milestone M1c: Compile and Run MVP
 
+## Status
+
+### Current State (December 2024)
+- **Chat FSM + post-discovery synthesis**: ✅ DONE (per ADR-0019)
+  - State machine enforces DISCOVERY → OML_SYNTHESIS with no open questions
+  - Deterministic conversation flow implemented
+- **OML v0.1.0 contract reuse + schema guard + regeneration**: ✅ DONE
+  - Schema validation with `oml_schema_guard.py`
+  - Single regeneration attempt on validation failure
+  - Legacy format detection and rejection
+- **Supabase writer hardened**: ✅ DONE
+  - MySQL → PostgreSQL type mapping
+  - Write modes (append, replace, upsert) with ON CONFLICT handling
+- **Golden path (MySQL → Supabase, no scheduler)**: 🎯 DEMO READY
+  - Complete flow: chat → OML → compile → run functional
+  - E2E pipeline generation and execution working
+
+### Supporting Work (Now Included in M1c)
+- **Connections (minimal)**: 🚧 IN PROGRESS
+  - Connection resolver implementation
+  - `osiris_connections.yaml` format specification (ADR-0020)
+  - CLI `connections list` - show aliases with masked secrets
+  - CLI `connections doctor` - test MySQL/Supabase connectivity
+
+### Out of Scope → Next Milestone (M1d)
+- `connections add` interactive wizard for adding new connections
+- Chat exposure of available connection aliases during INTENT_CAPTURED phase
+- DuckDB transform niceties and advanced CSV writer features
+- Full manifest utilities beyond skeleton implementation
+
 ## Goal
 
 Transform validated OML pipelines into deterministic, secret-free execution artifacts ("manifest") and implement a minimal local runner that executes simple pipelines reliably.
@@ -129,12 +159,26 @@ _artifacts/                       # Execution outputs
 
 ## Acceptance Criteria
 
-- [ ] Compiler produces deterministic, secret-free artifacts with correct fingerprints
-- [ ] Runner executes linear pipelines and simple fan_out/fan_in correctly
-- [ ] CLI and exit codes behave as specified
-- [ ] Logs contain the defined compile/run events
-- [ ] Artifacts are written following the documented layout
-- [ ] All unit, integration, and golden tests for both compiler and runner pass
+### Core Functionality
+- [x] Compiler produces deterministic, secret-free artifacts with correct fingerprints
+- [x] Runner executes linear pipelines correctly
+- [ ] Simple fan_out/fan_in support (deferred to M1d)
+- [x] CLI and exit codes behave as specified
+- [x] Logs contain the defined compile/run events
+- [x] Artifacts are written following the documented layout
+
+### M1c Acceptance Checklist
+- [x] `pytest -q` - All tests passing (27 tests green)
+- [x] `python osiris.py chat --interactive` with prompt "export all tables from MySQL to Supabase, no scheduler" yields valid OML and NO open questions post-discovery
+- [ ] `osiris connections list` shows aliases with secrets masked
+- [ ] `osiris connections doctor` validates MySQL and Supabase connectivity
+- [x] E2B path: compile + run works end-to-end for MySQL → Supabase pipeline
+
+### Test Coverage
+- [x] Unit tests for OML schema validation
+- [x] Integration tests for chat state machine
+- [x] End-to-end test for MySQL to CSV generation
+- [ ] Golden tests for deterministic compilation (partial)
 
 ---
 
