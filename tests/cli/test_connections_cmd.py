@@ -198,7 +198,9 @@ connections:
             "message": "Connection successful",
         }
 
-        with patch("osiris.core.config.Path.cwd", return_value=sample_connections_file):
+        with patch(
+            "osiris.core.config.Path.cwd", return_value=sample_connections_file
+        ):  # noqa: SIM117
             with patch("osiris.cli.connections_cmd.check_supabase_connection") as mock_supabase:
                 with patch("osiris.cli.connections_cmd.check_duckdb_connection") as mock_duckdb:
                     mock_supabase.return_value = {
@@ -230,7 +232,9 @@ connections:
 
     def test_doctor_json_output(self, sample_connections_file):
         """Test doctor command with JSON output."""
-        with patch("osiris.core.config.Path.cwd", return_value=sample_connections_file):
+        with patch(
+            "osiris.core.config.Path.cwd", return_value=sample_connections_file
+        ):  # noqa: SIM117
             with patch("osiris.cli.connections_cmd.check_mysql_connection") as mock_mysql:
                 with patch("osiris.cli.connections_cmd.check_supabase_connection") as mock_supabase:
                     with patch("osiris.cli.connections_cmd.check_duckdb_connection") as mock_duckdb:
@@ -268,7 +272,9 @@ connections:
 
     def test_doctor_specific_family(self, sample_connections_file):
         """Test doctor command for specific family."""
-        with patch("osiris.core.config.Path.cwd", return_value=sample_connections_file):
+        with patch(
+            "osiris.core.config.Path.cwd", return_value=sample_connections_file
+        ):  # noqa: SIM117
             with patch("osiris.cli.connections_cmd.check_duckdb_connection") as mock_duckdb:
                 mock_duckdb.return_value = {"status": "success", "message": "OK"}
 
@@ -289,7 +295,9 @@ connections:
 
     def test_doctor_specific_alias(self, sample_connections_file):
         """Test doctor command for specific alias."""
-        with patch("osiris.core.config.Path.cwd", return_value=sample_connections_file):
+        with patch(
+            "osiris.core.config.Path.cwd", return_value=sample_connections_file
+        ):  # noqa: SIM117
             with patch("osiris.cli.connections_cmd.check_duckdb_connection") as mock_duckdb:
                 mock_duckdb.return_value = {"status": "success", "message": "OK"}
 
@@ -346,7 +354,9 @@ class TestConnectionTests:
             mock_conn = MagicMock()
             mock_cursor = MagicMock()
             mock_cursor.fetchone.return_value = (1,)
-            mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+            mock_conn.cursor.return_value.__enter__ = MagicMock(
+                return_value=mock_cursor
+            )  # pragma: allowlist secret
             mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=None)
             mock_connect.return_value = mock_conn
 
@@ -366,7 +376,7 @@ class TestConnectionTests:
 
     def test_mysql_connection_failure(self):
         """Test failed MySQL connection test."""
-        with patch("pymysql.connect") as mock_connect:
+        with patch("pymysql.connect") as mock_connect:  # pragma: allowlist secret
             mock_connect.side_effect = Exception("Connection refused")
 
             result = check_mysql_connection(
@@ -374,8 +384,8 @@ class TestConnectionTests:
                     "host": "localhost",
                     "port": 3306,
                     "user": "test",
-                    "password": "pass",
-                }  # pragma: allowlist secret
+                    "password": "pass",  # pragma: allowlist secret
+                }
             )
 
         assert result["status"] == "failure"
@@ -388,7 +398,10 @@ class TestConnectionTests:
             mock_create.return_value = mock_client
 
             result = check_supabase_connection(
-                {"url": "https://test.supabase.co", "service_role_key": "test_key"}
+                {
+                    "url": "https://test.supabase.co",
+                    "service_role_key": "test_key",
+                }  # pragma: allowlist secret
             )
 
         assert result["status"] == "success"
