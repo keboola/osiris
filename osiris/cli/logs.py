@@ -1009,3 +1009,239 @@ def _tail_session_log(log_file: Path) -> None:
         console.print("\n👋 Stopped following log file")
     except Exception as e:
         console.print(f"\n❌ Error following log file: {e}")
+
+
+def html_report(args: list) -> None:
+    """Generate static HTML report from session logs."""
+    import sys
+    import webbrowser
+
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+    def show_html_help():
+        """Show help for logs html subcommand."""
+        console.print()
+        console.print("[bold green]osiris logs html - Generate HTML Logs Browser[/bold green]")
+        console.print("🌐 Generate a static HTML report for viewing logs in a browser")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris logs html [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Optional Arguments[/bold blue]")
+        console.print("  [cyan]--out DIR[/cyan]             Output directory (default: dist/logs)")
+        console.print("  [cyan]--open[/cyan]                Open browser after generation")
+        console.print("  [cyan]--sessions N[/cyan]          Limit to N sessions")
+        console.print("  [cyan]--since ISO[/cyan]           Sessions since ISO timestamp")
+        console.print("  [cyan]--label NAME[/cyan]          Filter by label")
+        console.print(
+            "  [cyan]--status STATUS[/cyan]       Filter by status (success|failed|running)"
+        )
+        console.print("  [cyan]--logs-dir DIR[/cyan]        Base logs directory (default: logs)")
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print(
+            "  [green]osiris logs html --sessions 5 --open[/green]     # Generate and open browser"
+        )
+        console.print(
+            "  [green]osiris logs html --since 2025-01-01T00:00:00Z[/green]  # Recent sessions"
+        )
+        console.print(
+            "  [green]osiris logs html --status failed[/green]         # Failed sessions only"
+        )
+        console.print()
+
+    if args and args[0] in ["--help", "-h"]:
+        show_html_help()
+        return
+
+    # Get default logs directory from config
+    default_logs_dir = _get_logs_dir_from_config()
+
+    parser = argparse.ArgumentParser(description="Generate HTML logs browser", add_help=False)
+    parser.add_argument("--out", default="dist/logs", help="Output directory")
+    parser.add_argument("--open", action="store_true", help="Open browser after generation")
+    parser.add_argument("--sessions", type=int, help="Limit to N sessions")
+    parser.add_argument("--since", help="Sessions since ISO timestamp")
+    parser.add_argument("--label", help="Filter by label")
+    parser.add_argument(
+        "--status", choices=["success", "failed", "running"], help="Filter by status"
+    )
+    parser.add_argument(
+        "--logs-dir",
+        default=default_logs_dir,
+        help=f"Base logs directory (default: {default_logs_dir})",
+    )
+
+    try:
+        parsed_args = parser.parse_args(args)
+    except SystemExit:
+        console.print("❌ Invalid arguments. Use 'osiris logs html --help' for usage information.")
+        return
+
+    try:
+        from tools.logs_report.generate import generate_html_report
+
+        console.print(f"🔨 Generating HTML report in {parsed_args.out}...")
+        generate_html_report(
+            logs_dir=parsed_args.logs_dir,
+            output_dir=parsed_args.out,
+            status_filter=parsed_args.status,
+            label_filter=parsed_args.label,
+            since_filter=parsed_args.since,
+            limit=parsed_args.sessions,
+        )
+
+        index_path = Path(parsed_args.out) / "index.html"
+        console.print(f"✅ HTML report generated: {index_path}")
+
+        if parsed_args.open:
+            url = f"file://{index_path.absolute()}"
+            console.print(f"🌐 Opening browser: {url}")
+            webbrowser.open(url)
+
+    except Exception as e:
+        console.print(f"❌ Error generating HTML report: {e}")
+
+
+def open_session(args: list) -> None:
+    """Generate and open a single-session HTML report."""
+    import sys
+    import webbrowser
+
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+    def show_open_help():
+        """Show help for logs open subcommand."""
+        console.print()
+        console.print("[bold green]osiris logs open - Open Session in Browser[/bold green]")
+        console.print("🌐 Generate and open a single-session HTML report")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris logs open <session_id|last> [OPTIONS]")
+        console.print("       osiris logs open --label NAME [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Arguments[/bold blue]")
+        console.print("  [cyan]session_id[/cyan]            Session ID to open")
+        console.print("  [cyan]last[/cyan]                  Open the most recent session")
+        console.print()
+        console.print("[bold blue]Optional Arguments[/bold blue]")
+        console.print("  [cyan]--label NAME[/cyan]          Open session with this label")
+        console.print("  [cyan]--out DIR[/cyan]             Output directory (default: dist/logs)")
+        console.print("  [cyan]--logs-dir DIR[/cyan]        Base logs directory (default: logs)")
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print(
+            "  [green]osiris logs open last[/green]                    # Open most recent session"
+        )
+        console.print(
+            "  [green]osiris logs open session_001[/green]             # Open specific session"
+        )
+        console.print(
+            "  [green]osiris logs open --label production[/green]      # Open session with label"
+        )
+        console.print()
+
+    if not args or args[0] in ["--help", "-h"]:
+        show_open_help()
+        return
+
+    # Get default logs directory from config
+    default_logs_dir = _get_logs_dir_from_config()
+
+    # Parse arguments
+    session_id = None
+    label_filter = None
+    output_dir = "dist/logs"
+    logs_dir = default_logs_dir
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--label" and i + 1 < len(args):
+            label_filter = args[i + 1]
+            i += 2
+        elif arg == "--out" and i + 1 < len(args):
+            output_dir = args[i + 1]
+            i += 2
+        elif arg == "--logs-dir" and i + 1 < len(args):
+            logs_dir = args[i + 1]
+            i += 2
+        elif not arg.startswith("--"):
+            session_id = arg
+            i += 1
+        else:
+            console.print(f"❌ Unknown argument: {arg}")
+            return
+
+    # Determine which session to open
+    if label_filter:
+        # Find session with label
+        reader = SessionReader(logs_dir)
+        sessions = reader.list_sessions()
+        for session in sessions:
+            if label_filter in session.labels:
+                session_id = session.session_id
+                break
+        if not session_id:
+            console.print(f"❌ No session found with label: {label_filter}")
+            return
+    elif not session_id:
+        console.print("❌ Please specify a session ID, 'last', or use --label")
+        return
+
+    try:
+        from tools.logs_report.generate import generate_single_session_html
+
+        console.print(f"🔨 Generating HTML report for session: {session_id}...")
+        html_path = generate_single_session_html(session_id, logs_dir, output_dir)
+        console.print(f"✅ HTML report generated: {html_path}")
+
+        url = f"file://{html_path}"
+        console.print(f"🌐 Opening browser: {url}")
+        webbrowser.open(url)
+
+    except Exception as e:
+        console.print(f"❌ Error: {e}")
+
+
+# ============================================================================
+# DEPRECATION SHIMS FOR LEGACY "runs" COMMANDS (per ADR-0025)
+# ============================================================================
+
+
+def runs_list(args: list) -> None:
+    """Deprecated: Legacy shim for 'osiris runs list'."""
+    console.print("[yellow]⚠️  Warning: 'osiris runs list' is deprecated.[/yellow]")
+    console.print("[yellow]   Please use 'osiris logs list' instead.[/yellow]")
+    console.print()
+    list_sessions(args)
+
+
+def runs_show(args: list) -> None:
+    """Deprecated: Legacy shim for 'osiris runs show'."""
+    console.print("[yellow]⚠️  Warning: 'osiris runs show' is deprecated.[/yellow]")
+    console.print("[yellow]   Please use 'osiris logs show' instead.[/yellow]")
+    console.print()
+    show_session(args)
+
+
+def runs_last(args: list) -> None:
+    """Deprecated: Legacy shim for 'osiris runs last'."""
+    console.print("[yellow]⚠️  Warning: 'osiris runs last' is deprecated.[/yellow]")
+    console.print("[yellow]   Please use 'osiris logs last' instead.[/yellow]")
+    console.print()
+    last_session(args)
+
+
+def runs_bundle(args: list) -> None:
+    """Deprecated: Legacy shim for 'osiris runs bundle'."""
+    console.print("[yellow]⚠️  Warning: 'osiris runs bundle' is deprecated.[/yellow]")
+    console.print("[yellow]   Please use 'osiris logs bundle' instead.[/yellow]")
+    console.print()
+    bundle_session(args)
+
+
+def runs_gc(args: list) -> None:
+    """Deprecated: Legacy shim for 'osiris runs gc'."""
+    console.print("[yellow]⚠️  Warning: 'osiris runs gc' is deprecated.[/yellow]")
+    console.print("[yellow]   Please use 'osiris logs gc' instead.[/yellow]")
+    console.print()
+    gc_sessions(args)

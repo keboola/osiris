@@ -200,8 +200,45 @@ class SessionReader:
                         event = json.loads(line.strip())
                         event_type = event.get("event")
 
+                        # Track session timing
+                        if event_type == "run_start":
+                            summary.started_at = event.get("ts")
+                            summary.status = "running"
+
+                        elif event_type == "run_end":
+                            summary.finished_at = event.get("ts", event.get("end_time"))
+                            # Extract duration from event if available
+                            if "duration_seconds" in event:
+                                summary.duration_ms = int(event["duration_seconds"] * 1000)
+                            # Determine final status
+                            if summary.errors > 0 or summary.steps_failed > 0:
+                                summary.status = "failed"
+                            else:
+                                summary.status = "success"
+
+                        # Track compile sessions
+                        elif event_type == "compile_start":
+                            summary.started_at = event.get("ts")
+                            summary.status = "running"
+                            summary.pipeline_name = (
+                                event.get("pipeline", "").split("/")[-1].replace(".yaml", "")
+                            )
+
+                        elif event_type == "compile_complete":
+                            summary.finished_at = event.get("ts")
+                            if "duration" in event:
+                                summary.duration_ms = int(event["duration"] * 1000)
+                            summary.status = "success"
+
+                        # Track connection sessions
+                        elif event_type == "connections_list" or event_type == "connections_doctor":
+                            if not summary.started_at:
+                                summary.started_at = event.get("ts")
+                            summary.finished_at = event.get("ts")
+                            summary.status = "success"
+
                         # Track steps
-                        if event_type == "step_start":
+                        elif event_type == "step_start":
                             step_id = event.get("step_id")
                             if step_id and step_id not in steps_seen:
                                 steps_seen.add(step_id)
