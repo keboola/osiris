@@ -12,6 +12,9 @@ sqlalchemy>=2.0         # Database abstraction
 supabase>=2.7.0         # Supabase Python client (security fix for CVE-2024-24213)
 pandas>=1.3.0           # Data manipulation for connectors
 
+# Remote execution
+e2b-code-interpreter>=2.0.0  # E2B sandbox execution for remote pipelines
+
 # LLM providers (Day 5 - Required for conversational agent)
 openai>=1.3.0           # OpenAI API (GPT-4o, GPT-4o-mini) - security fix for CVE-2024-27564
 anthropic>=0.25.0       # Claude API (Claude-3 Sonnet) - security fix for CVE-2025-49596

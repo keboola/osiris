@@ -89,7 +89,8 @@ class E2BLiveTransport:
 
     def __init__(self, api_key: str):
         """Initialize with E2B API key."""
-        self.api_key = api_key
+        # Set the API key in environment for E2B SDK
+        os.environ["E2B_API_KEY"] = api_key
         # Lazy import to avoid requiring e2b-code-interpreter for tests
         self._e2b = None
 
@@ -111,80 +112,127 @@ class E2BLiveTransport:
         """Create a new E2B sandbox."""
         self._ensure_e2b()
 
-        # Create sandbox with specified resources
-        sandbox = self._e2b(
-            api_key=self.api_key,
-            env_vars=env,
-            cpu=cpu,
-            memory_mb=mem_gb * 1024,
+        # Create sandbox with new API using create() class method
+        sandbox = self._e2b.create(
             timeout=timeout,
+            envs=env
         )
 
         return SandboxHandle(
-            sandbox_id=sandbox.id,
+            sandbox_id=getattr(sandbox, 'id', 'unknown'),
             status=SandboxStatus.RUNNING,
-            metadata={"sandbox": sandbox, "processes": {}},
+            metadata={
+                "sandbox": sandbox, 
+                "processes": {},
+                "env": env,
+                "timeout": timeout
+            },
         )
 
     def upload_file(self, handle: SandboxHandle, local_path: Path, remote_path: str) -> None:
         """Upload a file to the sandbox."""
         sandbox = handle.metadata["sandbox"]
         with open(local_path, "rb") as f:
-            sandbox.files.write(remote_path, f.read())
+            content = f.read()
+        # Use files.write method in new API
+        sandbox.files.write(remote_path, content)
 
     def execute_command(self, handle: SandboxHandle, command: List[str]) -> str:
         """Execute a command in the sandbox."""
         sandbox = handle.metadata["sandbox"]
-        # Execute command asynchronously
-        process = sandbox.process.start(
-            cmd=" ".join(command),  # E2B expects a command string
-            on_stdout=None,  # We'll poll for output
-            on_stderr=None,
+        env = handle.metadata.get("env", {})
+        timeout = handle.metadata.get("timeout", 300)
+        
+        # Use run_code to execute shell commands in new API
+        cmd_str = " ".join(command)
+        execution = sandbox.run_code(
+            f"import subprocess; subprocess.run('{cmd_str}', shell=True, check=True)",
+            envs=env,
+            timeout=timeout
         )
-        process_id = str(process.pid)
-        handle.metadata["processes"][process_id] = process
+        
+        # Store execution for later retrieval
+        process_id = f"exec_{len(handle.metadata['processes'])}"
+        handle.metadata["processes"][process_id] = execution
         return process_id
 
     def get_process_status(self, handle: SandboxHandle, process_id: str) -> SandboxStatus:
         """Check status of a running process."""
-        process = handle.metadata["processes"].get(process_id)
-        if not process:
+        execution = handle.metadata["processes"].get(process_id)
+        if not execution:
             return SandboxStatus.FAILED
 
-        if process.finished:
-            return SandboxStatus.SUCCESS if process.exit_code == 0 else SandboxStatus.FAILED
-        return SandboxStatus.RUNNING
+        # In new API, execution is synchronous, so it's always complete
+        if hasattr(execution, 'error') and execution.error:
+            return SandboxStatus.FAILED
+        return SandboxStatus.SUCCESS
 
     def get_process_output(
         self, handle: SandboxHandle, process_id: str
     ) -> tuple[Optional[str], Optional[str], Optional[int]]:
         """Get stdout, stderr, and exit code of a process."""
-        process = handle.metadata["processes"].get(process_id)
-        if not process:
+        execution = handle.metadata["processes"].get(process_id)
+        if not execution:
             return None, None, None
 
-        return process.stdout, process.stderr, process.exit_code
+        # Extract output from execution results
+        stdout = ""
+        stderr = ""
+        exit_code = 1 if (hasattr(execution, 'error') and execution.error) else 0
+        
+        # Concatenate output messages from logs
+        if hasattr(execution, 'logs'):
+            logs = execution.logs
+            if hasattr(logs, 'stdout') and logs.stdout:
+                stdout = "\n".join(logs.stdout)
+            if hasattr(logs, 'stderr') and logs.stderr:
+                stderr = "\n".join(logs.stderr)
+        
+        if hasattr(execution, 'error') and execution.error:
+            stderr = str(execution.error)
+            
+        return stdout or None, stderr or None, exit_code
 
     def download_file(self, handle: SandboxHandle, remote_path: str, local_path: Path) -> None:
         """Download a file from the sandbox."""
         sandbox = handle.metadata["sandbox"]
-        content = sandbox.files.read(remote_path)
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(local_path, "wb") as f:
-            f.write(content)
+        # Use files.read method in new API
+        try:
+            content = sandbox.files.read(remote_path)
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Handle both bytes and string content
+            if isinstance(content, str):
+                with open(local_path, "w") as f:
+                    f.write(content)
+            else:
+                with open(local_path, "wb") as f:
+                    f.write(content)
+        except Exception:
+            # File might not exist, which is OK for artifact downloads
+            pass
 
     def list_files(self, handle: SandboxHandle, path: str) -> List[str]:
         """List files in a directory."""
         sandbox = handle.metadata["sandbox"]
-        result = sandbox.files.list(path)
-        return [f.name for f in result]
+        # Use files.list method in new API
+        try:
+            result = sandbox.files.list(path)
+            # Extract filenames from result
+            if isinstance(result, list):
+                return [str(item) for item in result]
+            else:
+                return []
+        except Exception:
+            return []
 
     def close_sandbox(self, handle: SandboxHandle) -> None:
         """Close and cleanup sandbox resources."""
         sandbox = handle.metadata.get("sandbox")
         if sandbox:
             with contextlib.suppress(Exception):
-                sandbox.close()  # Best effort cleanup
+                # Use kill method in new API
+                sandbox.kill()  # Best effort cleanup
 
 
 class E2BClient:
