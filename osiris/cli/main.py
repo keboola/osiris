@@ -106,6 +106,7 @@ def parse_main_args():
             "validate",
             "chat",
             "run",
+            "runs",  # deprecated but still supported
             "compile",
             "logs",
             "test",
@@ -202,6 +203,8 @@ def main():
         validate_command(command_args)
     elif args.command == "run":
         run_command(command_args)
+    elif args.command == "runs":
+        runs_command(command_args)  # deprecated
     elif args.command == "logs":
         logs_command(command_args)
     elif args.command == "test":
@@ -1397,8 +1400,16 @@ def connections_command(args: list) -> None:
 
 
 def logs_command(args: list) -> None:
-    """Manage session logs (list, show, bundle, gc)."""
-    from .logs import bundle_session, gc_sessions, list_sessions, show_session
+    """Manage session logs (list, show, bundle, gc, html, open)."""
+    from .logs import (
+        bundle_session,
+        gc_sessions,
+        html_report,
+        last_session,
+        list_sessions,
+        open_session,
+        show_session,
+    )
 
     def show_logs_help():
         """Show logs command help."""
@@ -1412,13 +1423,19 @@ def logs_command(args: list) -> None:
         console.print(
             "  [cyan]list[/cyan]                   List recent session directories (wraps IDs by default)"
         )
+        console.print("  [cyan]last[/cyan]                   Show the most recent session")
         console.print("  [cyan]show --session <id>[/cyan]   Show session details and summary")
         console.print("  [cyan]bundle --session <id>[/cyan] Bundle session into zip file")
         console.print("  [cyan]gc[/cyan]                     Garbage collect old sessions")
+        console.print("  [cyan]html[/cyan]                   Generate static HTML report")
+        console.print("  [cyan]open <session>[/cyan]        Generate and open single-session HTML")
         console.print()
         console.print("[bold blue]Examples[/bold blue]")
         console.print(
             "  [green]osiris logs list[/green]                         # List recent sessions"
+        )
+        console.print(
+            "  [green]osiris logs last[/green]                         # Show most recent session"
         )
         console.print(
             "  [green]osiris logs list --no-wrap[/green]               # List with single-line IDs"
@@ -1435,6 +1452,12 @@ def logs_command(args: list) -> None:
         console.print(
             "  [green]osiris logs gc --days 7 --max-gb 0.5[/green]    # Clean up old sessions"
         )
+        console.print(
+            "  [green]osiris logs html --open[/green]                  # Generate and open HTML report"
+        )
+        console.print(
+            "  [green]osiris logs open last[/green]                    # Open the last session in browser"
+        )
         console.print()
 
     if not args or args[0] in ["--help", "-h"]:
@@ -1446,16 +1469,67 @@ def logs_command(args: list) -> None:
 
     if subcommand == "list":
         list_sessions(subcommand_args)
+    elif subcommand == "last":
+        last_session(subcommand_args)
     elif subcommand == "show":
         show_session(subcommand_args)
     elif subcommand == "bundle":
         bundle_session(subcommand_args)
     elif subcommand == "gc":
         gc_sessions(subcommand_args)
+    elif subcommand == "html":
+        html_report(subcommand_args)
+    elif subcommand == "open":
+        open_session(subcommand_args)
     else:
         console.print(f"❌ Unknown subcommand: {subcommand}")
-        console.print("Available subcommands: list, show, bundle, gc")
+        console.print("Available subcommands: list, last, show, bundle, gc, html, open")
         console.print("Use 'osiris logs --help' for detailed help.")
+
+
+def runs_command(args: list) -> None:
+    """Deprecated: Legacy shim for 'osiris runs' commands."""
+    from .logs import runs_bundle, runs_gc, runs_last, runs_list, runs_show
+
+    def show_runs_help():
+        """Show deprecated runs command help."""
+        console.print()
+        console.print("[yellow]⚠️  Warning: 'osiris runs' is deprecated.[/yellow]")
+        console.print("[yellow]   Please use 'osiris logs' instead.[/yellow]")
+        console.print()
+        console.print("[bold red]DEPRECATED: osiris runs[/bold red]")
+        console.print("This command is deprecated. Please use 'osiris logs' instead.")
+        console.print()
+        console.print("[bold]Migration guide:[/bold]")
+        console.print("  osiris runs list    → osiris logs list")
+        console.print("  osiris runs show    → osiris logs show")
+        console.print("  osiris runs last    → osiris logs last")
+        console.print("  osiris runs bundle  → osiris logs bundle")
+        console.print("  osiris runs gc      → osiris logs gc")
+        console.print()
+
+    if not args or args[0] in ["--help", "-h"]:
+        show_runs_help()
+        return
+
+    subcommand = args[0]
+    subcommand_args = args[1:]
+
+    if subcommand == "list":
+        runs_list(subcommand_args)
+    elif subcommand == "last":
+        runs_last(subcommand_args)
+    elif subcommand == "show":
+        runs_show(subcommand_args)
+    elif subcommand == "bundle":
+        runs_bundle(subcommand_args)
+    elif subcommand == "gc":
+        runs_gc(subcommand_args)
+    else:
+        console.print(f"❌ Unknown subcommand: {subcommand}")
+        console.print(
+            "[yellow]Note: 'osiris runs' is deprecated. Use 'osiris logs' instead.[/yellow]"
+        )
 
 
 def test_command(args: list) -> None:

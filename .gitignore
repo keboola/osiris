@@ -30,6 +30,7 @@ tools/mempack/gen/*
 # Internal tools
 .claude/
 .audit/
+.playwright-mcp/*
 
 # Python artifacts
 __pycache__/
