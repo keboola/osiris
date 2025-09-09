@@ -28,6 +28,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from osiris.core.logs_serialize import to_index_json, to_session_json
+from osiris.core.session_reader import SessionReader
+
 console = Console()
 
 
@@ -111,35 +114,16 @@ def list_sessions(args: list) -> None:
         console.print("❌ Invalid arguments. Use 'osiris logs list --help' for usage information.")
         return
 
-    logs_dir = Path(parsed_args.logs_dir)
-
-    if not logs_dir.exists():
-        if parsed_args.json:
-            print(json.dumps({"error": "Logs directory not found", "path": str(logs_dir)}))
-        else:
-            console.print(f"❌ Logs directory not found: {logs_dir}")
-        return
-
-    # Scan session directories
-    sessions = []
-    for session_dir in logs_dir.iterdir():
-        if not session_dir.is_dir():
-            continue
-
-        session_info = _get_session_info(session_dir)
-        if session_info:
-            sessions.append(session_info)
-
-    # Sort by start time (newest first)
-    sessions.sort(key=lambda s: s["start_time"], reverse=True)
-
-    # Limit results
-    sessions = sessions[: parsed_args.limit]
+    # Use SessionReader to get sessions
+    reader = SessionReader(logs_dir=parsed_args.logs_dir)
+    sessions = reader.list_sessions(limit=parsed_args.limit)
 
     if parsed_args.json:
-        print(json.dumps({"sessions": sessions}, indent=2))
+        # Output as JSON using the serializer
+        json_output = to_index_json(sessions)
+        print(json_output)
     else:
-        _display_sessions_table(sessions, no_wrap=parsed_args.no_wrap)
+        _display_sessions_table_v2(sessions, no_wrap=parsed_args.no_wrap)
 
 
 def show_session(args: list) -> None:
@@ -245,6 +229,74 @@ def show_session(args: list) -> None:
         print(json.dumps(session_info, indent=2))
     else:
         _display_session_summary(session_info, session_dir)
+
+
+def last_session(args: list) -> None:
+    """Show the most recent session."""
+
+    def show_last_help():
+        """Show help for logs last subcommand."""
+        console.print()
+        console.print("[bold green]osiris logs last - Show Most Recent Session[/bold green]")
+        console.print("🕐 Display details of the most recent session")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris logs last [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Optional Arguments[/bold blue]")
+        console.print("  [cyan]--json[/cyan]                Output in JSON format")
+        console.print("  [cyan]--logs-dir DIR[/cyan]        Base logs directory (default: logs)")
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print(
+            "  [green]osiris logs last[/green]                        # Show most recent session"
+        )
+        console.print(
+            "  [green]osiris logs last --json[/green]                 # JSON format output"
+        )
+        console.print(
+            "  [green]osiris logs last --logs-dir /path/to/logs[/green]  # Custom logs directory"
+        )
+        console.print()
+
+    if args and args[0] in ["--help", "-h"]:
+        show_last_help()
+        return
+
+    # Get default logs directory from config
+    default_logs_dir = _get_logs_dir_from_config()
+
+    parser = argparse.ArgumentParser(description="Show most recent session", add_help=False)
+    parser.add_argument("--json", action="store_true", help="Output in JSON format")
+    parser.add_argument(
+        "--logs-dir",
+        default=default_logs_dir,
+        help=f"Base logs directory (default: {default_logs_dir})",
+    )
+
+    try:
+        parsed_args = parser.parse_args(args)
+    except SystemExit:
+        console.print("❌ Invalid arguments. Use 'osiris logs last --help' for usage information.")
+        return
+
+    # Use SessionReader to get the last session
+    reader = SessionReader(logs_dir=parsed_args.logs_dir)
+    session = reader.get_last_session()
+
+    if not session:
+        if parsed_args.json:
+            print(json.dumps({"error": "No sessions found"}))
+        else:
+            console.print("❌ No sessions found")
+        return
+
+    if parsed_args.json:
+        # Output as JSON using the serializer
+        json_output = to_session_json(session, logs_dir=parsed_args.logs_dir)
+        print(json_output)
+    else:
+        # Display in Rich format
+        _display_session_summary_v2(session)
 
 
 def bundle_session(args: list) -> None:
@@ -637,6 +689,103 @@ def _format_duration(seconds: Optional[float]) -> str:
     else:
         hours = seconds / 3600
         return f"{hours:.1f}h"
+
+
+def _display_sessions_table_v2(sessions: List, no_wrap: bool = False) -> None:
+    """Display SessionSummary objects in a Rich table.
+
+    Args:
+        sessions: List of SessionSummary objects.
+        no_wrap: If True, session IDs will be on one line (may truncate).
+                 If False (default), session IDs will wrap to show full value.
+    """
+    if not sessions:
+        console.print("No sessions found.")
+        return
+
+    table = Table(title="Session Directories")
+
+    # Configure Session ID column based on wrap preference
+    if no_wrap:
+        table.add_column("Session ID", style="cyan")
+    else:
+        table.add_column("Session ID", style="cyan", overflow="fold", no_wrap=False, min_width=20)
+
+    table.add_column("Pipeline", style="magenta")
+    table.add_column("Start Time", style="dim")
+    table.add_column("Status", style="bold")
+    table.add_column("Duration", style="green")
+    table.add_column("Steps", style="blue")
+    table.add_column("Errors", style="red")
+
+    for session in sessions:
+        status_style = {
+            "success": "green",
+            "failed": "red",
+            "running": "yellow",
+            "unknown": "dim",
+        }.get(session.status, "dim")
+
+        # Format duration
+        duration_str = (
+            _format_duration(session.duration_ms / 1000) if session.duration_ms else "unknown"
+        )
+
+        # Format steps as "ok/total"
+        steps_str = f"{session.steps_ok}/{session.steps_total}" if session.steps_total else "0/0"
+
+        # Format errors/warnings
+        error_str = str(session.errors) if session.errors else "-"
+
+        table.add_row(
+            session.session_id,
+            session.pipeline_name or "unknown",
+            session.started_at[:19].replace("T", " ") if session.started_at else "unknown",
+            f"[{status_style}]{session.status}[/{status_style}]",
+            duration_str,
+            steps_str,
+            error_str,
+        )
+
+    console.print(table)
+
+
+def _display_session_summary_v2(session) -> None:
+    """Display detailed SessionSummary."""
+    # Session header
+    console.print(
+        Panel(
+            f"[bold cyan]Session: {session.session_id}[/bold cyan]\n"
+            f"[dim]Pipeline: {session.pipeline_name or 'unknown'}[/dim]",
+            title="Session Details",
+        )
+    )
+
+    # Session stats
+    duration_str = (
+        _format_duration(session.duration_ms / 1000) if session.duration_ms else "unknown"
+    )
+    success_rate_str = f"{session.success_rate:.1%}" if session.steps_total else "N/A"
+
+    stats_text = f"""
+[bold]Status:[/bold] {session.status}
+[bold]Start Time:[/bold] {session.started_at or 'unknown'}
+[bold]End Time:[/bold] {session.finished_at or 'unknown'}
+[bold]Duration:[/bold] {duration_str}
+[bold]Steps:[/bold] {session.steps_ok}/{session.steps_total} (Success rate: {success_rate_str})
+[bold]Data Flow:[/bold] {session.rows_in:,} rows in → {session.rows_out:,} rows out
+[bold]Errors:[/bold] {session.errors}
+[bold]Warnings:[/bold] {session.warnings}
+"""
+    console.print(Panel(stats_text.strip(), title="Statistics"))
+
+    # Tables accessed
+    if session.tables:
+        console.print(Panel("\n".join(session.tables), title="Tables Accessed"))
+
+    # Labels
+    if session.labels:
+        console.print(Panel(", ".join(session.labels), title="Labels"))
 
 
 def _display_sessions_table(sessions: List[Dict[str, Any]], no_wrap: bool = False) -> None:

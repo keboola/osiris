@@ -1398,7 +1398,7 @@ def connections_command(args: list) -> None:
 
 def logs_command(args: list) -> None:
     """Manage session logs (list, show, bundle, gc)."""
-    from .logs import bundle_session, gc_sessions, list_sessions, show_session
+    from .logs import bundle_session, gc_sessions, last_session, list_sessions, show_session
 
     def show_logs_help():
         """Show logs command help."""
@@ -1412,6 +1412,7 @@ def logs_command(args: list) -> None:
         console.print(
             "  [cyan]list[/cyan]                   List recent session directories (wraps IDs by default)"
         )
+        console.print("  [cyan]last[/cyan]                   Show the most recent session")
         console.print("  [cyan]show --session <id>[/cyan]   Show session details and summary")
         console.print("  [cyan]bundle --session <id>[/cyan] Bundle session into zip file")
         console.print("  [cyan]gc[/cyan]                     Garbage collect old sessions")
@@ -1419,6 +1420,9 @@ def logs_command(args: list) -> None:
         console.print("[bold blue]Examples[/bold blue]")
         console.print(
             "  [green]osiris logs list[/green]                         # List recent sessions"
+        )
+        console.print(
+            "  [green]osiris logs last[/green]                         # Show most recent session"
         )
         console.print(
             "  [green]osiris logs list --no-wrap[/green]               # List with single-line IDs"
@@ -1446,6 +1450,8 @@ def logs_command(args: list) -> None:
 
     if subcommand == "list":
         list_sessions(subcommand_args)
+    elif subcommand == "last":
+        last_session(subcommand_args)
     elif subcommand == "show":
         show_session(subcommand_args)
     elif subcommand == "bundle":
@@ -1454,7 +1460,7 @@ def logs_command(args: list) -> None:
         gc_sessions(subcommand_args)
     else:
         console.print(f"❌ Unknown subcommand: {subcommand}")
-        console.print("Available subcommands: list, show, bundle, gc")
+        console.print("Available subcommands: list, last, show, bundle, gc")
         console.print("Use 'osiris logs --help' for detailed help.")
 
 

@@ -1,0 +1,136 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Osiris Session Details",
+  "description": "Schema for detailed session information",
+  "type": "object",
+  "required": ["version", "session_id", "status"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "1.0.0",
+      "description": "Schema version"
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Unique session identifier"
+    },
+    "started_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when session started"
+    },
+    "finished_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when session finished"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Session duration in milliseconds"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["success", "failed", "running", "unknown"],
+      "description": "Overall session status"
+    },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "User-defined labels for the session"
+    },
+    "pipeline_name": {
+      "type": ["string", "null"],
+      "description": "Name of the pipeline executed"
+    },
+    "oml_version": {
+      "type": ["string", "null"],
+      "description": "OML version used"
+    },
+    "steps": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "completed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "success_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "data_flow": {
+      "type": "object",
+      "properties": {
+        "rows_in": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total rows read"
+        },
+        "rows_out": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total rows written"
+        },
+        "tables": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of tables accessed"
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warnings": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "properties": {
+        "pipeline_yaml": {
+          "type": ["string", "null"],
+          "description": "Path to generated pipeline YAML"
+        },
+        "manifest": {
+          "type": ["string", "null"],
+          "description": "Path to compiled manifest"
+        },
+        "logs": {
+          "type": "object",
+          "properties": {
+            "events": {
+              "type": "string",
+              "description": "Path to events.jsonl"
+            },
+            "metrics": {
+              "type": "string",
+              "description": "Path to metrics.jsonl"
+            }
+          }
+        }
+      }
+    }
+  }
+}

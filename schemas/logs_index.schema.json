@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Osiris Logs Index",
+  "description": "Schema for the logs index containing summaries of all sessions",
+  "type": "object",
+  "required": ["version", "generated_at", "sessions"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "1.0.0",
+      "description": "Schema version"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when index was generated"
+    },
+    "total_sessions": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total number of sessions in the index"
+    },
+    "sessions": {
+      "type": "array",
+      "description": "Array of session summaries, ordered newest first",
+      "items": {
+        "type": "object",
+        "required": ["session_id", "status"],
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Unique session identifier"
+          },
+          "started_at": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when session started"
+          },
+          "finished_at": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when session finished"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Session duration in milliseconds"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["success", "failed", "running", "unknown"],
+            "description": "Overall session status"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "User-defined labels for the session"
+          },
+          "pipeline_name": {
+            "type": ["string", "null"],
+            "description": "Name of the pipeline executed"
+          },
+          "steps_total": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Total number of steps in the pipeline"
+          },
+          "steps_ok": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of successfully completed steps"
+          },
+          "rows_in": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Total rows read across all steps"
+          },
+          "rows_out": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Total rows written across all steps"
+          },
+          "errors": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of errors encountered"
+          },
+          "warnings": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of warnings encountered"
+          }
+        }
+      }
+    }
+  }
+}
