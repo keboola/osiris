@@ -8,6 +8,10 @@
 **Depends on:** M1c (compile & run MVP)  
 **Deliverable:** Unified UX for run vs logs, HTML logs browser
 
+## Links
+- Implements: docs/adr/0025-cli-ux-unification.md
+- Depends on: docs/milestones/m1c-compile-and-run-mvp.md
+
 ## Goals
 - Unify CLI: `run` = action, `logs` = inspection.  
 - Keep stable `session_id` and add `--label` as metadata.  
@@ -43,3 +47,6 @@
 - `osiris logs html --sessions 5 --open` opens a browser with the last sessions.  
 - No renaming of session directories; optional symlinks under `./logs/@label/` allowed.  
 - `runs` commands display deprecation notice.
+- HTML Logs Browser loads overview page in < 2s on a repository with ≤ 50 sessions.
+- `osiris logs last --json` conforms to the published JSON schema (validated in CI).
+- All legacy `runs` commands print a deprecation notice with a migration hint to `logs` namespace.

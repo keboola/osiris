@@ -1,3 +1,5 @@
+ARCHIVED (2025-09-09): This document has been merged conceptually into docs/milestones/m1c-compile-and-run-mvp.md to keep a single source of truth for Milestone M1c. The thin-slice details remain as historical reference.
+
 # Milestone M1c: Thin-Slice Compile and Run
 
 ## Status

@@ -1,5 +1,10 @@
 # Milestone M1c: Compile and Run MVP
 
+## Status: Complete (Golden Path)
+
+## Links
+- docs/adr/0020-connection-resolution-and-secrets.md
+
 ## Status
 
 ### Current State (January 2025)
@@ -462,3 +467,12 @@ _artifacts/                       # Execution outputs
 - Updated `docs/pipeline-format.md` with manifest schema and examples
 - CHANGELOG + updated milestone status
 - Example pipelines under `docs/examples/` with golden snapshots
+
+## Completion Report (2025-09-09)
+- Golden Path MySQL → Supabase: ✅ complete
+- Chat FSM & OML v0.1.0 validation: ✅ complete
+- Runtime Driver Layer (Registry; MySQL extractor; Supabase writer; metrics): ✅ complete
+- Connections precedence & resolution: ✅ complete (see ADR-0020)
+- Tests: ✅ all passing
+- Manifest utilities: ❌ deferred (skeleton only) → moved to M1d
+- Fan-out/Fan-in: ❌ out of scope → tracked post-M1c

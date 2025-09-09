@@ -42,3 +42,4 @@ We want to simplify mental model:
 ## References
 - Milestone M1d – Logs & CLI Unification
 - ADR-0003 Session-Scoped Logging
+- Implementation tracked in Milestone: docs/milestones/m1d-logs-and-cli-unification.md
