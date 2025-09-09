@@ -1,0 +1,746 @@
+"""Minimal local runner for compiled manifests."""
+
+import importlib
+import json
+import logging
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+import yaml
+
+from ..components.registry import ComponentRegistry
+from .config import ConfigError, parse_connection_ref, resolve_connection
+from .driver import DriverRegistry
+from .session_logging import log_event, log_metric
+
+logger = logging.getLogger(__name__)
+
+
+class RunnerV0:
+    """Minimal sequential runner for linear pipelines."""
+
+    def __init__(self, manifest_path: str, output_dir: str = "_artifacts"):
+        self.manifest_path = Path(manifest_path)
+        self.output_dir = Path(output_dir)
+        self.manifest = None
+        self.components = {}
+        self.events = []
+        self.results = {}  # Step results cache
+        self.driver_registry = self._build_driver_registry()
+
+    def _build_driver_registry(self) -> DriverRegistry:
+        """Build and populate the driver registry from component specs."""
+        registry = DriverRegistry()
+
+        # Load component registry
+        component_registry = ComponentRegistry()
+        specs = component_registry.load_specs()
+
+        # Register drivers from specs
+        for component_name, spec in specs.items():
+            # Check for x-runtime.driver
+            runtime_config = spec.get("x-runtime", {})
+            driver_path = runtime_config.get("driver")
+
+            if driver_path:
+                try:
+                    # Parse module and class name
+                    module_path, class_name = driver_path.rsplit(".", 1)
+
+                    # Create factory function
+                    def create_driver(module_path=module_path, class_name=class_name):
+                        module = importlib.import_module(module_path)
+                        driver_class = getattr(module, class_name)
+                        return driver_class()
+
+                    # Register with component name
+                    registry.register(component_name, create_driver)
+                    logger.debug(f"Registered driver for {component_name}: {driver_path}")
+
+                except Exception as e:
+                    # Provide helpful error message
+                    error_msg = (
+                        f"Failed to register driver for component '{component_name}'. "
+                        f"x-runtime.driver value: '{driver_path}'. "
+                        f"Error: {str(e)}"
+                    )
+                    logger.error(error_msg)
+                    # Don't fail here - let compile-time check catch missing drivers
+            else:
+                logger.debug(f"Component {component_name} has no x-runtime.driver specified")
+
+        return registry
+
+    def run(self) -> bool:
+        """
+        Execute the manifest.
+
+        Returns:
+            True if successful, False on error
+        """
+        try:
+            # Load manifest
+            with open(self.manifest_path) as f:
+                self.manifest = yaml.safe_load(f)
+
+            # Log run start
+            self._log_event(
+                "run_start",
+                {
+                    "manifest_path": str(self.manifest_path),
+                    "pipeline_id": self.manifest["pipeline"]["id"],
+                    "profile": self.manifest["meta"].get("profile", "default"),
+                },
+            )
+
+            # Execute steps in order
+            for step in self.manifest["steps"]:
+                if not self._execute_step(step):
+                    self._log_event(
+                        "run_error", {"step_id": step["id"], "message": "Step execution failed"}
+                    )
+                    return False
+
+            # Log run complete
+            self._log_event(
+                "run_complete",
+                {
+                    "pipeline_id": self.manifest["pipeline"]["id"],
+                    "steps_executed": len(self.manifest["steps"]),
+                },
+            )
+
+            return True
+
+        except ConfigError:
+            # Re-raise ConfigError so tests can catch it
+            raise
+        except Exception as e:
+            logger.error(f"Runner error: {str(e)}")
+            self._log_event("run_error", {"error": str(e)})
+            return False
+
+    def _log_event(self, event_type: str, data: Dict[str, Any]):
+        """Log an event."""
+        event = {"timestamp": datetime.utcnow().isoformat(), "type": event_type, "data": data}
+        self.events.append(event)
+        logger.debug(f"Event: {event_type} - {data}")
+
+        # Also emit to session logging
+        log_event(event_type, **data)
+
+    def _family_from_component(self, component: str) -> str:
+        """Extract family from component name.
+
+        Examples:
+            'mysql.extractor' -> 'mysql'
+            'supabase.writer' -> 'supabase'
+            'duckdb.writer' -> 'duckdb'
+        """
+        return component.split(".", 1)[0]
+
+    def _resolve_step_connection(
+        self, step: Dict[str, Any], config: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Resolve connection for a step.
+
+        Returns None if no connection needed (e.g., duckdb local operations).
+        """
+        # Get component from step
+        component = step.get("component", "")
+        if not component:
+            # Legacy driver format, try to infer from driver
+            driver = step.get("driver", "")
+            if "mysql" in driver:
+                family = "mysql"
+            elif "supabase" in driver:
+                family = "supabase"
+            elif "duckdb" in driver:
+                # DuckDB may not need connection for local operations
+                return None
+            else:
+                return None
+        else:
+            family = self._family_from_component(component)
+
+        # Special case: duckdb with no connection needed
+        if family == "duckdb" and "connection" not in config:
+            return None
+
+        # Parse connection reference from config
+        conn_ref = config.get("connection")
+        alias = None
+
+        if isinstance(conn_ref, str) and conn_ref.startswith("@"):
+            ref_family, alias = parse_connection_ref(conn_ref)
+            if ref_family and ref_family != family:
+                raise ValueError(
+                    f"Connection family mismatch: step uses {family}, ref is {ref_family}"
+                )
+
+        # Log connection resolution start
+        log_event(
+            "connection_resolve_start",
+            step_id=step.get("id", "unknown"),
+            family=family,
+            alias=alias or "(default)",
+        )
+
+        try:
+            resolved = resolve_connection(family, alias)
+
+            # Log success (with masked values)
+            log_event(
+                "connection_resolve_complete",
+                step_id=step.get("id", "unknown"),
+                family=family,
+                alias=alias or "(default)",
+                ok=True,
+            )
+
+            return resolved
+
+        except Exception as e:
+            log_event(
+                "connection_resolve_complete",
+                step_id=step.get("id", "unknown"),
+                family=family,
+                alias=alias or "(default)",
+                ok=False,
+                error=str(e),
+            )
+            raise
+
+    def _execute_step(self, step: Dict[str, Any]) -> bool:
+        """Execute a single step."""
+        step_id = step["id"]
+        driver = step.get("driver") or step.get("component", "unknown")
+        cfg_path = step["cfg_path"]
+
+        try:
+            # Log step start
+            start_time = time.time()
+            self._log_event("step_start", {"step_id": step_id, "driver": driver})
+
+            # Create step output directory
+            step_output_dir = self.output_dir / step_id
+            step_output_dir.mkdir(parents=True, exist_ok=True)
+
+            # Resolve config path relative to manifest
+            if not Path(cfg_path).is_absolute():
+                cfg_full_path = self.manifest_path.parent / cfg_path
+            else:
+                cfg_full_path = Path(cfg_path)
+
+            # Load step config
+            with open(cfg_full_path) as f:
+                config = json.load(f)
+
+            # Resolve connection if needed
+            connection = self._resolve_step_connection(step, config)
+            if connection:
+                config["resolved_connection"] = connection
+
+            # Clean config for driver (strip meta keys)
+            clean_config = config.copy()
+            meta_keys_removed = []
+
+            if "component" in clean_config:
+                del clean_config["component"]
+                meta_keys_removed.append("component")
+
+            if "connection" in clean_config:
+                del clean_config["connection"]
+                meta_keys_removed.append("connection")
+
+            # Log that meta keys were stripped
+            if meta_keys_removed:
+                log_event(
+                    "config_meta_stripped",
+                    step_id=step_id,
+                    keys_removed=meta_keys_removed,
+                    config_meta_stripped=True,
+                )
+
+            # Save cleaned config as artifact (no secrets in resolved_connection)
+            cleaned_config_path = step_output_dir / "cleaned_config.json"
+            with open(cleaned_config_path, "w") as f:
+                # Create a version without secrets for artifact
+                artifact_config = clean_config.copy()
+                if "resolved_connection" in artifact_config:
+                    # Mask sensitive fields in resolved connection
+                    conn = artifact_config["resolved_connection"].copy()
+                    for key in ["password", "key", "token", "secret"]:
+                        if key in conn:
+                            conn[key] = "***MASKED***"
+                    artifact_config["resolved_connection"] = conn
+                json.dump(artifact_config, f, indent=2)
+
+            # Execute using driver registry with cleaned config
+            success = self._run_with_driver(step, clean_config, step_output_dir)
+
+            # Calculate step duration
+            duration = time.time() - start_time
+            log_metric(f"step_{step_id}_duration", duration, unit="seconds")
+
+            if success:
+                self._log_event(
+                    "step_complete",
+                    {
+                        "step_id": step_id,
+                        "driver": driver,
+                        "output_dir": str(step_output_dir),
+                        "duration": duration,
+                    },
+                )
+            else:
+                self._log_event(
+                    "step_error", {"step_id": step_id, "driver": driver, "duration": duration}
+                )
+
+            return success
+
+        except ConfigError:
+            # Re-raise ConfigError so tests can catch it
+            raise
+        except Exception as e:
+            logger.error(f"Step {step_id} failed: {str(e)}")
+            self._log_event("step_error", {"step_id": step_id, "error": str(e)})
+            return False
+
+    def _run_with_driver(self, step: Dict[str, Any], config: Dict, output_dir: Path) -> bool:
+        """Run a step using the driver registry.
+
+        Args:
+            step: Step definition from manifest
+            config: Step configuration (with resolved_connection if applicable)
+            output_dir: Output directory for step
+        """
+        step_id = step["id"]
+        driver_name = step.get("driver") or step.get("component", "unknown")
+
+        try:
+            # Get driver from registry
+            driver = self.driver_registry.get(driver_name)
+
+            # Prepare inputs based on step dependencies
+            inputs = None
+            if "needs" in step and step["needs"]:
+                # Collect inputs from upstream steps
+                inputs = {}
+                for upstream_id in step["needs"]:
+                    if upstream_id in self.results:
+                        upstream_result = self.results[upstream_id]
+                        if "df" in upstream_result:
+                            # For now, assume single upstream for writers
+                            inputs["df"] = upstream_result["df"]
+
+            # Create context for metrics and output
+            class RunnerContext:
+                def __init__(self, output_dir):
+                    self.output_dir = output_dir
+
+                def log_metric(self, name: str, value: Any):
+                    log_metric(name, value)
+
+            ctx = RunnerContext(output_dir)
+
+            # Run the driver
+            result = driver.run(step_id=step_id, config=config, inputs=inputs, ctx=ctx)
+
+            # Cache result if it contains data
+            if result and "df" in result:
+                self.results[step_id] = result
+
+            return True
+
+        except ValueError as e:
+            # Driver not found or other value errors
+            logger.error(f"Step {step_id} failed: {str(e)}")
+            return False
+        except Exception as e:
+            logger.error(f"Step {step_id} execution failed: {str(e)}")
+            return False
+
+    def _run_component(
+        self, driver: str, config: Dict, output_dir: Path, connection: Optional[Dict] = None
+    ) -> bool:
+        """Run a specific component.
+
+        Args:
+            driver: Component driver/type
+            config: Step configuration
+            output_dir: Output directory for step
+            connection: Resolved connection dict (if applicable)
+        """
+
+        # Map drivers to component handlers
+        if driver == "extractors.supabase@0.1" or driver == "supabase.extractor":
+            return self._run_supabase_extractor(config, output_dir, connection)
+        elif driver == "transforms.duckdb@0.1" or driver == "duckdb.transform":
+            return self._run_duckdb_transform(config, output_dir, connection)
+        elif driver == "writers.mysql@0.1" or driver == "mysql.writer":
+            return self._run_mysql_writer(config, output_dir, connection)
+        elif driver == "mysql.extractor" or driver == "extractors.mysql@0.1":
+            return self._run_mysql_extractor(config, output_dir, connection)
+        elif driver == "supabase.writer" or driver == "writers.supabase@0.1":
+            return self._run_supabase_writer(config, output_dir, connection)
+        elif driver == "duckdb.writer":
+            return self._run_duckdb_writer(config, output_dir, connection)
+        elif driver == "filesystem.csv_writer":
+            return self._run_filesystem_csv_writer(config, output_dir, connection)
+        else:
+            logger.error(f"Unknown driver: {driver}")
+            return False
+
+    def _run_supabase_extractor(
+        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
+    ) -> bool:
+        """Run Supabase extractor."""
+        try:
+            # Use real connector if available
+            try:
+                from osiris.connectors.supabase.extractor import SupabaseExtractor
+
+                # Merge connection into config if provided
+                if connection:
+                    # Connection overrides config values
+                    merged_config = {**config, **connection}
+                else:
+                    merged_config = config
+
+                extractor = SupabaseExtractor(merged_config)
+                # Run extraction logic
+                # TODO: Implement actual extraction
+                return True
+            except ImportError:
+                # Fallback to stub for MVP
+                pass
+
+            # Simulate extraction
+            output_file = output_dir / "data.json"
+            sample_data = {
+                "table": config.get("table", "unknown"),
+                "rows": [
+                    {"id": 1, "email": "user1@example.com", "name": "User One"},
+                    {"id": 2, "email": "user2@example.com", "name": "User Two"},
+                ],
+                "extracted_at": datetime.utcnow().isoformat(),
+            }
+
+            with open(output_file, "w") as f:
+                json.dump(sample_data, f, indent=2)
+
+            logger.debug(f"Extracted data to {output_file}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Supabase extraction failed: {str(e)}")
+            return False
+
+    def _run_duckdb_transform(
+        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
+    ) -> bool:
+        """Run DuckDB transform."""
+        try:
+            import duckdb
+
+            # Get input from previous step
+            input_dir = self.output_dir / "extract_customers"
+            input_file = input_dir / "data.json"
+
+            if input_file.exists():
+                with open(input_file) as f:
+                    input_data = json.load(f)
+            else:
+                # Create sample data if no input
+                input_data = {
+                    "rows": [
+                        {"id": 1, "email": "user1@example.com"},
+                        {"id": 2, "email": "user2@example.com"},
+                    ]
+                }
+
+            # Connect to DuckDB (in-memory)
+            conn = duckdb.connect(":memory:")
+
+            # Create input table
+            if "rows" in input_data and input_data["rows"]:
+                import pandas as pd
+
+                df = pd.DataFrame(input_data["rows"])
+                conn.register("input", df)
+            else:
+                # Empty table
+                conn.execute("CREATE TABLE input (id INT, email VARCHAR)")
+
+            # Run SQL transform
+            sql = config.get("sql", "SELECT * FROM input")
+            result = conn.execute(sql).fetchdf()
+
+            # Save output
+            output_file = output_dir / "transformed.json"
+            result_dict = {
+                "rows": result.to_dict("records"),
+                "transformed_at": datetime.utcnow().isoformat(),
+            }
+
+            with open(output_file, "w") as f:
+                json.dump(result_dict, f, indent=2)
+
+            logger.debug(f"Transformed data to {output_file}")
+            conn.close()
+            return True
+
+        except Exception as e:
+            logger.error(f"DuckDB transform failed: {str(e)}")
+            return False
+
+    def _run_mysql_extractor(
+        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
+    ) -> bool:
+        """Run MySQL extractor."""
+        try:
+            # Use real connector if available
+            try:
+                from osiris.connectors.mysql.extractor import MySQLExtractor
+
+                # Merge connection into config if provided
+                if connection:
+                    merged_config = {**config, **connection}
+                else:
+                    merged_config = config
+
+                extractor = MySQLExtractor(merged_config)
+                # Run extraction logic
+                data = extractor.extract()  # Assuming this returns data
+
+                # Log metrics
+                if isinstance(data, list) or hasattr(data, "__len__"):
+                    rows_read = len(data)
+                else:
+                    rows_read = 0
+
+                log_metric("rows_read", rows_read)
+                logger.info(f"MySQL extraction complete: read {rows_read} rows")
+
+                # Save data for downstream steps
+                output_file = output_dir / "data.json"
+                with open(output_file, "w") as f:
+                    if hasattr(data, "to_dict"):
+                        # Handle pandas DataFrame
+                        json.dump({"rows": data.to_dict("records")}, f, indent=2)
+                    elif isinstance(data, list):
+                        json.dump({"rows": data}, f, indent=2)
+                    else:
+                        json.dump({"rows": []}, f, indent=2)
+
+                return True
+            except ImportError:
+                # Fallback to stub
+                pass
+
+            # Stub implementation
+            output_file = output_dir / "data.json"
+            sample_data = {
+                "table": config.get("table", "unknown"),
+                "rows": [{"id": 1, "data": "sample"}],
+                "extracted_at": datetime.utcnow().isoformat(),
+            }
+            with open(output_file, "w") as f:
+                json.dump(sample_data, f, indent=2)
+            return True
+
+        except Exception as e:
+            logger.error(f"MySQL extraction failed: {str(e)}")
+            return False
+
+    def _run_mysql_writer(
+        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
+    ) -> bool:
+        """Run MySQL writer."""
+        try:
+            # Use real connector if available
+            try:
+                from osiris.connectors.mysql.writer import MySQLWriter
+
+                # Merge connection into config if provided
+                if connection:
+                    merged_config = {**config, **connection}
+                else:
+                    merged_config = config
+
+                writer = MySQLWriter(merged_config)
+                # Run write logic
+                # TODO: Implement actual writing from input
+                return True
+            except ImportError:
+                # Fallback to stub
+                pass
+
+            # Get input from previous step
+            input_dir = self.output_dir / "transform_enrich"
+            input_file = input_dir / "transformed.json"
+
+            if input_file.exists():
+                with open(input_file) as f:
+                    input_data = json.load(f)
+            else:
+                input_data = {"rows": []}
+
+            # Simulate write
+            output_file = output_dir / "mysql_load.csv"
+
+            if input_data.get("rows"):
+                import pandas as pd
+
+                df = pd.DataFrame(input_data["rows"])
+                df.to_csv(output_file, index=False)
+
+                # Also save metadata
+                meta_file = output_dir / "mysql_load_meta.json"
+                with open(meta_file, "w") as f:
+                    json.dump(
+                        {
+                            "table": config.get("table", "unknown"),
+                            "mode": config.get("mode", "append"),
+                            "rows_written": len(df),
+                            "written_at": datetime.utcnow().isoformat(),
+                        },
+                        f,
+                        indent=2,
+                    )
+
+            logger.debug(f"Wrote data to {output_file}")
+            return True
+
+        except Exception as e:
+            logger.error(f"MySQL write failed: {str(e)}")
+            return False
+
+    def _run_supabase_writer(
+        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
+    ) -> bool:
+        """Run Supabase writer."""
+        try:
+            # Use real connector if available
+            try:
+                from osiris.connectors.supabase.writer import SupabaseWriter
+
+                # Merge connection into config if provided
+                if connection:
+                    merged_config = {**config, **connection}
+                else:
+                    merged_config = config
+
+                writer = SupabaseWriter(merged_config)
+                # Run write logic
+                # TODO: Implement actual writing
+                return True
+            except ImportError:
+                # Fallback to stub
+                pass
+
+            # Stub implementation
+            output_file = output_dir / "write_result.json"
+            result = {
+                "table": config.get("table", "unknown"),
+                "rows_written": 0,
+                "written_at": datetime.utcnow().isoformat(),
+            }
+            with open(output_file, "w") as f:
+                json.dump(result, f, indent=2)
+            return True
+
+        except Exception as e:
+            logger.error(f"Supabase write failed: {str(e)}")
+            return False
+
+    def _run_duckdb_writer(
+        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
+    ) -> bool:
+        """Run DuckDB writer."""
+        try:
+            import duckdb
+
+            # DuckDB connection can be local (no connection dict) or remote
+            if connection and "path" in connection:
+                conn = duckdb.connect(connection["path"])
+            else:
+                # Local/in-memory
+                conn = duckdb.connect(":memory:")
+
+            # Stub implementation
+            output_file = output_dir / "duckdb_result.json"
+            result = {
+                "format": config.get("format", "parquet"),
+                "path": config.get("path", "output.parquet"),
+                "written_at": datetime.utcnow().isoformat(),
+            }
+            with open(output_file, "w") as f:
+                json.dump(result, f, indent=2)
+
+            conn.close()
+            return True
+
+        except Exception as e:
+            logger.error(f"DuckDB write failed: {str(e)}")
+            return False
+
+    def _run_filesystem_csv_writer(
+        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
+    ) -> bool:
+        """Run filesystem CSV writer."""
+        try:
+            from osiris.connectors.filesystem.writer import FilesystemCSVWriter
+
+            # Get input data from previous step
+            # For MVP, look for common output files
+            input_files = [
+                output_dir.parent / "extract" / "data.json",
+                output_dir.parent / "transform" / "transformed.json",
+                # Try previous step output dirs
+            ]
+
+            input_data = []
+            for input_file in input_files:
+                if input_file.exists():
+                    with open(input_file) as f:
+                        data = json.load(f)
+                        if "rows" in data:
+                            input_data = data["rows"]
+                            break
+                        elif isinstance(data, list):
+                            input_data = data
+                            break
+
+            # Check for empty input data
+            if not input_data:
+                error_msg = (
+                    "Upstream produced 0 rows or no data artifact for step. "
+                    "Check the mode and upstream step output."
+                )
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+
+            # Create writer and write data
+            writer = FilesystemCSVWriter(config)
+            result = writer.write(input_data)
+
+            # Save result metadata
+            result_file = output_dir / "write_result.json"
+            with open(result_file, "w") as f:
+                json.dump(result, f, indent=2)
+
+            # Log metrics
+            rows_written = result.get("rows_written", 0)
+            log_metric("rows_written", rows_written)
+            logger.info(f"CSV write complete: wrote {rows_written} rows to {result.get('path')}")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Filesystem CSV write failed: {str(e)}")
+            return False

@@ -179,11 +179,10 @@ class TestListSessions:
 
     def test_list_sessions_empty_directory(self):
         """Test listing sessions when no sessions exist."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with patch("sys.stdout") as mock_stdout:
-                list_sessions(["--logs-dir", temp_dir])
+        with tempfile.TemporaryDirectory() as temp_dir, patch("sys.stdout"):
+            list_sessions(["--logs-dir", temp_dir])
 
-                # Should not crash and should indicate no sessions found
+            # Should not crash and should indicate no sessions found
 
     def test_list_sessions_with_sessions(self):
         """Test listing sessions with actual session directories."""
@@ -372,12 +371,13 @@ class TestShowSession:
 
     def test_show_session_nonexistent(self):
         """Test showing nonexistent session."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with patch("rich.console.Console.print") as mock_print:
-                show_session(["--session", "nonexistent", "--logs-dir", temp_dir])
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
+            "rich.console.Console.print"
+        ) as mock_print:
+            show_session(["--session", "nonexistent", "--logs-dir", temp_dir])
 
-                # Should print error message
-                assert mock_print.called
+            # Should print error message
+            assert mock_print.called
 
     def test_show_session_json_output(self):
         """Test showing session with JSON output."""
@@ -491,7 +491,7 @@ class TestBundleSession:
 
                 os.chdir(temp_dir)
 
-                with patch("rich.console.Console.print") as mock_print:
+                with patch("rich.console.Console.print"):
                     bundle_session(["--session", "test_session", "--logs-dir", temp_dir])
 
                     # Should create test_session.zip in current directory
@@ -503,12 +503,13 @@ class TestBundleSession:
 
     def test_bundle_session_nonexistent(self):
         """Test bundling nonexistent session."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with patch("rich.console.Console.print") as mock_print:
-                bundle_session(["--session", "nonexistent", "--logs-dir", temp_dir])
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
+            "rich.console.Console.print"
+        ) as mock_print:
+            bundle_session(["--session", "nonexistent", "--logs-dir", temp_dir])
 
-                # Should print error message
-                assert mock_print.called
+            # Should print error message
+            assert mock_print.called
 
     def test_bundle_session_json_output(self):
         """Test bundling session with JSON output."""
@@ -630,7 +631,7 @@ class TestGcSessions:
                 os.utime(session_dir, (old_time, old_time))
 
             # Set size limit to ~2KB (should keep only 2 newest sessions)
-            with patch("rich.console.Console.print") as mock_print:
+            with patch("rich.console.Console.print"):
                 gc_sessions(["--max-gb", "0.000002", "--logs-dir", temp_dir])  # ~2KB
 
                 # Oldest session should be deleted

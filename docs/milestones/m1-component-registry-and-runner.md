@@ -1,5 +1,7 @@
 # Milestone M1: Component Registry and Runner
 
+Note (2025-09-09): This is the parent overview for the M1 series. Child milestones M1a.1–M1a.4 are marked Complete. Remaining M1 work is tracked in M1c (Complete) and M1d (Planned).
+
 ## Status
 🔄 **In Progress** (Target: v0.2.0)
 

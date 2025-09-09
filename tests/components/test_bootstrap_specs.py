@@ -173,9 +173,9 @@ class TestBootstrapSpecs:
         # Find upsert constraint
         has_upsert_constraint = False
         for constraint in required_constraints:
-            if constraint.get("when", {}).get("mode") == "upsert":
+            if constraint.get("when", {}).get("write_mode") == "upsert":
                 has_upsert_constraint = True
-                assert "on_conflict" in constraint.get("must", {})
+                assert "primary_key" in constraint.get("must", {})
                 break
 
         assert has_upsert_constraint, "Supabase writer should have upsert constraint"

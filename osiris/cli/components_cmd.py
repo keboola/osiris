@@ -19,14 +19,50 @@ logger = logging.getLogger(__name__)
 
 
 def list_components(
-    mode: str = "all", as_json: bool = False, session_context: Optional[SessionContext] = None
+    mode: str = "all",
+    as_json: bool = False,
+    runnable: bool = False,
+    session_context: Optional[SessionContext] = None,
 ):
-    """List available components and their capabilities."""
+    """List available components and their capabilities.
+
+    Args:
+        mode: Filter by mode ('all', 'extract', 'write', etc.)
+        as_json: Output as JSON
+        runnable: Show only components with runtime drivers
+        session_context: Session context for logging
+    """
     registry = get_registry(session_context=session_context)
 
     # Get components filtered by mode
     filter_mode = None if mode == "all" else mode
     components = registry.list_components(mode=filter_mode)
+
+    # Check runtime driver availability if requested
+    if runnable or as_json:  # Always check for JSON output
+        import importlib
+
+        for component in components:
+            spec = registry.get_component(component["name"])
+            runtime_config = spec.get("x-runtime", {}) if spec else {}
+            driver_path = runtime_config.get("driver")
+
+            has_driver = False
+            if driver_path:
+                try:
+                    module_path, class_name = driver_path.rsplit(".", 1)
+                    module = importlib.import_module(module_path)
+                    getattr(module, class_name)
+                    has_driver = True
+                except Exception:
+                    pass
+
+            component["runnable"] = has_driver
+            component["runtime_driver"] = driver_path if driver_path else None
+
+    # Filter by runnable if requested
+    if runnable:
+        components = [c for c in components if c.get("runnable", False)]
 
     if not components:
         if as_json:
@@ -44,32 +80,46 @@ def list_components(
         # Output as clean JSON array
         json_output = []
         for component in components:
-            json_output.append(
-                {
-                    "name": component["name"],
-                    "version": component["version"],
-                    "modes": component["modes"],
-                    "description": component["description"]
-                    .rstrip(".")
-                    .rstrip("."),  # Remove the ellipsis we add
-                }
-            )
+            # Convert to strings to avoid MagicMock issues
+            desc = str(component.get("description", ""))
+            if desc.endswith("..."):
+                desc = desc[:-3]
+
+            item = {
+                "name": str(component.get("name", "")),
+                "version": str(component.get("version", "")),
+                "modes": list(component.get("modes", [])),
+                "description": desc,
+            }
+            # Include runnable status if available
+            if "runnable" in component:
+                item["runnable"] = bool(component["runnable"])
+            if "runtime_driver" in component and component["runtime_driver"]:
+                item["runtime_driver"] = str(component["runtime_driver"])
+            json_output.append(item)
         print(json.dumps(json_output, indent=2))
     else:
         # Display as Rich table
-        table = Table(title="Available Components")
+        title = "Available Components" + (" (Runnable)" if runnable else "")
+        table = Table(title=title)
         table.add_column("Component", style="cyan")
         table.add_column("Version", style="green")
         table.add_column("Modes", style="yellow")
+        if runnable or any("runnable" in c for c in components):
+            table.add_column("Runnable", style="magenta")
         table.add_column("Description", style="white")
 
         for component in components:
-            table.add_row(
+            row = [
                 component["name"],
                 component["version"],
                 ", ".join(component["modes"]),
-                component["description"],
-            )
+            ]
+            if runnable or any("runnable" in c for c in components):
+                runnable_status = "✓" if component.get("runnable", False) else "✗"
+                row.append(runnable_status)
+            row.append(component["description"])
+            table.add_row(*row)
 
         console.print(table)
 
@@ -88,7 +138,25 @@ def show_component(
     try:
 
         if as_json:
-            print(json.dumps(spec, indent=2))
+            # Convert spec to pure JSON-serializable dict
+            json_spec = {
+                "name": spec.get("name", ""),
+                "version": spec.get("version", ""),
+                "title": spec.get("title", ""),
+                "description": spec.get("description", ""),
+                "modes": spec.get("modes", []),
+                "capabilities": spec.get("capabilities", {}),
+                "configSchema": spec.get("configSchema", {}),
+                "secrets": spec.get("secrets", []),
+                "redaction": spec.get("redaction", {}),
+            }
+            # Add runtime info if available
+            if "x-runtime" in spec:
+                json_spec["x-runtime"] = spec["x-runtime"]
+            # Add examples if available
+            if "examples" in spec:
+                json_spec["examples"] = spec["examples"]
+            print(json.dumps(json_spec, indent=2))
         else:
             console.print(f"\n[bold cyan]{spec['name']}[/bold cyan] v{spec['version']}")
             console.print(f"[yellow]{spec.get('title', 'No title')}[/yellow]")

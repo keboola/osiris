@@ -1,0 +1,97 @@
+oml_version: "0.1.0"
+name: mysql-to-local-csv-all-tables
+steps:
+# --- ACTORS ---
+- id: extract-actors
+  component: mysql.extractor
+  mode: read
+  config:
+    connection: "@mysql.db_movies"
+    query: "SELECT * FROM actors"
+
+- id: write-actors-csv
+  component: filesystem.csv_writer
+  mode: write
+  needs: [ "extract-actors" ]
+  config:
+    path: "./output/actors.csv"
+    delimiter: ","
+    header: true
+    encoding: "utf-8"
+    newline: "lf"
+
+# --- DIRECTORS ---
+- id: extract-directors
+  component: mysql.extractor
+  mode: read
+  config:
+    connection: "@mysql.db_movies"
+    query: "SELECT * FROM directors"
+
+- id: write-directors-csv
+  component: filesystem.csv_writer
+  mode: write
+  needs: [ "extract-directors" ]
+  config:
+    path: "./output/directors.csv"
+    delimiter: ","
+    header: true
+    encoding: "utf-8"
+    newline: "lf"
+
+# --- MOVIE_ACTORS ---
+- id: extract-movie-actors
+  component: mysql.extractor
+  mode: read
+  config:
+    connection: "@mysql.db_movies"
+    query: "SELECT * FROM movie_actors"
+
+- id: write-movie-actors-csv
+  component: filesystem.csv_writer
+  mode: write
+  needs: [ "extract-movie-actors" ]
+  config:
+    path: "./output/movie_actors.csv"
+    delimiter: ","
+    header: true
+    encoding: "utf-8"
+    newline: "lf"
+
+# --- MOVIES ---
+- id: extract-movies
+  component: mysql.extractor
+  mode: read
+  config:
+    connection: "@mysql.db_movies"
+    query: "SELECT * FROM movies"
+
+- id: write-movies-csv
+  component: filesystem.csv_writer
+  mode: write
+  needs: [ "extract-movies" ]
+  config:
+    path: "./output/movies.csv"
+    delimiter: ","
+    header: true
+    encoding: "utf-8"
+    newline: "lf"
+
+# --- REVIEWS ---
+- id: extract-reviews
+  component: mysql.extractor
+  mode: read
+  config:
+    connection: "@mysql.db_movies"
+    query: "SELECT * FROM reviews"
+
+- id: write-reviews-csv
+  component: filesystem.csv_writer
+  mode: write
+  needs: [ "extract-reviews" ]
+  config:
+    path: "./output/reviews.csv"
+    delimiter: ","
+    header: true
+    encoding: "utf-8"
+    newline: "lf"

@@ -1,7 +1,7 @@
 # Milestone M1b: Context Builder and Validation
 
 ## Status
-⏳ **Not Started** (Target: v0.2.0)
+**In Progress (partial)** (Target: v0.2.0)
 
 ## Overview
 
@@ -207,3 +207,11 @@ After M1b completion, proceed to:
   - Will provide actual component execution capabilities (NO RUNNER LOGIC in M1b)
 
 **Note**: The `osiris components discover <type>` command deferred from M1a.5 will be implemented in M1d alongside the runner infrastructure, as documented in [ADR-0008 Amendment](../adr/0008-component-registry.md#amendment-2025-01-03).
+
+## Definition of Done
+- Context export ≤2000 tokens
+- NO-SECRETS guarantee enforced by validator
+- Validation integrated into chat FSM
+- Golden test: sample pipeline validated end-to-end without secrets leakage
+
+**Note**: Some parts implemented; remaining validation checks deferred to M1e (future).

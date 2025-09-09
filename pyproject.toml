@@ -38,7 +38,6 @@ classifiers = [
 ]
 requires-python = ">=3.9"
 dependencies = [
-    "click>=8.0.0",
     "rich>=13.0.0",
     "pyyaml>=6.0.2",
     "duckdb>=0.9.0",
@@ -214,6 +213,11 @@ exclude = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/**/*.py" = ["S101", "ARG001", "ARG002"]
+"tests/cli/test_connections_cmd.py" = ["S101", "ARG001", "ARG002", "SIM117"]
+"tests/core/test_config_connections.py" = ["SIM117"]
+"tests/chat/test_chat_mysql_to_csv.py" = ["SIM117"]
+"tests/integration/test_runner_connections.py" = ["SIM117"]
+"osiris/core/runner_v0.py" = ["SIM108", "F841", "ARG002"]
 
 # Coverage configuration
 [tool.coverage.run]

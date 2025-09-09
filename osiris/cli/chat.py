@@ -649,8 +649,13 @@ async def _handle_interactive_mode(
                     session_name=current_session,
                 )
 
+                # Handle empty responses
+                if not response or not response.strip():
+                    logger.warning("Received empty response from agent")
+                    session.log_event("empty_response_detected", session_name=current_session)
+                    console.print("⚠️ No response received. Please try rephrasing your request.")
                 # Try to format as table, if not successful, print normally
-                if not _format_data_response(response):
+                elif not _format_data_response(response):
                     console.print(f"🤖 Assistant: {response}")
 
                 # Display token usage if available
@@ -723,6 +728,10 @@ def _format_data_response(response: str) -> bool:
 
     Returns True if the response was formatted as a table, False if not.
     """
+    # Handle None or empty responses
+    if not response:
+        return False
+
     # Look for patterns like "movie_id=1, title=Barbie, release_year=2023..."
     data_pattern = r"(?:Row \d+: |-)([^=\n]+=[^,\n]+(?:, [^=\n]+=[^,\n]+)*)"
     matches = re.findall(data_pattern, response)

@@ -132,11 +132,11 @@ class TestCacheInvalidationIntegration:
         options2 = {"table": "users", "schema": "private"}
 
         # First request
-        result1 = await discovery.get_table_info("users", options1)
+        await discovery.get_table_info("users", options1)
         assert mock_extractor.get_table_info_calls == 1
 
         # Second request with different options - should invalidate cache
-        result2 = await discovery.get_table_info("users", options2)
+        await discovery.get_table_info("users", options2)
         assert mock_extractor.get_table_info_calls == 2  # Cache miss, new call
 
     @pytest.mark.asyncio
@@ -145,7 +145,7 @@ class TestCacheInvalidationIntegration:
         options = {"table": "users", "schema": "public"}
 
         # First request
-        result1 = await discovery.get_table_info("users", options)
+        await discovery.get_table_info("users", options)
         assert mock_extractor.get_table_info_calls == 1
 
         # Change spec schema
@@ -161,7 +161,7 @@ class TestCacheInvalidationIntegration:
         discovery.set_spec_schema(new_spec_schema)
 
         # Second request with same options but different spec - should invalidate
-        result2 = await discovery.get_table_info("users", options)
+        await discovery.get_table_info("users", options)
         assert mock_extractor.get_table_info_calls == 2  # Cache miss due to spec change
 
     @pytest.mark.asyncio
@@ -170,7 +170,7 @@ class TestCacheInvalidationIntegration:
         options = {"table": "users", "schema": "public"}
 
         # First request
-        result1 = await discovery.get_table_info("users", options)
+        await discovery.get_table_info("users", options)
         assert mock_extractor.get_table_info_calls == 1
 
         # Create new discovery with different version
@@ -184,7 +184,7 @@ class TestCacheInvalidationIntegration:
         discovery2.set_spec_schema(discovery.spec_schema)
 
         # Second request with same options but different version - should invalidate
-        result2 = await discovery2.get_table_info("users", options)
+        await discovery2.get_table_info("users", options)
         assert mock_extractor.get_table_info_calls == 2  # Cache miss due to version change
 
     @pytest.mark.asyncio
@@ -193,7 +193,7 @@ class TestCacheInvalidationIntegration:
         options = {"table": "users", "schema": "public"}
 
         # First request
-        result1 = await discovery.get_table_info("users", options)
+        await discovery.get_table_info("users", options)
         assert mock_extractor.get_table_info_calls == 1
 
         # Create new discovery with different connection ref
@@ -207,7 +207,7 @@ class TestCacheInvalidationIntegration:
         discovery2.set_spec_schema(discovery.spec_schema)
 
         # Second request with same options but different connection - should invalidate
-        result2 = await discovery2.get_table_info("users", options)
+        await discovery2.get_table_info("users", options)
         assert mock_extractor.get_table_info_calls == 2  # Cache miss due to connection change
 
     @pytest.mark.asyncio
@@ -216,18 +216,18 @@ class TestCacheInvalidationIntegration:
         options = {"schema": "public"}
 
         # Request info for different tables
-        result1 = await discovery.get_table_info("users", options)
+        await discovery.get_table_info("users", options)
         assert mock_extractor.get_table_info_calls == 1
 
-        result2 = await discovery.get_table_info("orders", options)
+        await discovery.get_table_info("orders", options)
         assert mock_extractor.get_table_info_calls == 2
 
         # Re-request first table - should use cache
-        result3 = await discovery.get_table_info("users", options)
+        await discovery.get_table_info("users", options)
         assert mock_extractor.get_table_info_calls == 2  # No additional call
 
         # Re-request second table - should use cache
-        result4 = await discovery.get_table_info("orders", options)
+        await discovery.get_table_info("orders", options)
         assert mock_extractor.get_table_info_calls == 2  # No additional call
 
     @pytest.mark.asyncio
@@ -250,7 +250,7 @@ class TestCacheInvalidationIntegration:
         discovery1.set_spec_schema(spec_schema)
 
         options = {"table": "users"}
-        result1 = await discovery1.get_table_info("users", options)
+        await discovery1.get_table_info("users", options)
         assert mock_extractor.get_table_info_calls == 1
 
         # Second discovery instance with same configuration
@@ -264,7 +264,7 @@ class TestCacheInvalidationIntegration:
         discovery2.set_spec_schema(spec_schema)
 
         # Should use cached result
-        result2 = await discovery2.get_table_info("users", options)
+        await discovery2.get_table_info("users", options)
         assert mock_extractor.get_table_info_calls == 1  # No additional call
 
     @pytest.mark.asyncio
@@ -310,11 +310,11 @@ class TestCacheInvalidationIntegration:
         discovery.cache_ttl = 1  # 1 second
 
         # First request
-        result1 = await discovery.get_table_info("users", options)
+        await discovery.get_table_info("users", options)
         assert mock_extractor.get_table_info_calls == 1
 
         # Immediately after - should use cache
-        result2 = await discovery.get_table_info("users", options)
+        await discovery.get_table_info("users", options)
         assert mock_extractor.get_table_info_calls == 1
 
         # Wait for expiry (in real test, would sleep, but for unit test we can mock time)
@@ -323,7 +323,7 @@ class TestCacheInvalidationIntegration:
         time.sleep(1.1)
 
         # After expiry - should make new call
-        result3 = await discovery.get_table_info("users", options)
+        await discovery.get_table_info("users", options)
         assert mock_extractor.get_table_info_calls == 2
 
     @pytest.mark.asyncio
@@ -349,7 +349,7 @@ class TestCacheInvalidationIntegration:
 
         # Request should not use legacy cache (no fingerprint validation)
         # and should create new fingerprinted cache
-        result = await discovery.get_table_info("users", options)
+        await discovery.get_table_info("users", options)
         assert mock_extractor.get_table_info_calls == 1
 
         # Check that new fingerprinted cache was created
@@ -380,11 +380,11 @@ class TestCacheInvalidationIntegration:
         }
 
         # First request
-        result1 = await discovery.get_table_info("users", options1)
+        await discovery.get_table_info("users", options1)
         assert mock_extractor.get_table_info_calls == 1
 
         # Second request with same content and same array ordering - should use cache
-        result2 = await discovery.get_table_info("users", options2)
+        await discovery.get_table_info("users", options2)
         assert (
             mock_extractor.get_table_info_calls == 1
         )  # Should use cache due to canonical ordering
@@ -401,7 +401,7 @@ class TestCacheInvalidationIntegration:
             "sort": {"column": "id", "direction": "asc"},
         }
 
-        result3 = await discovery.get_table_info("users", options3)
+        await discovery.get_table_info("users", options3)
         assert (
             mock_extractor.get_table_info_calls == 2
         )  # Cache miss due to different array ordering

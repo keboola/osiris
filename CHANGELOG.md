@@ -8,6 +8,120 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Runtime Driver Layer** (M1c)
+  - New `DriverRegistry` for dynamic driver registration and lookup
+  - Concrete drivers: `MySQLExtractorDriver` and `FilesystemCsvWriterDriver`
+  - Driver protocol: `run(step_id, config, inputs, ctx) -> dict`
+  - Automatic metrics emission: `rows_read` and `rows_written`
+  - In-memory result caching for DataFrame passing between steps
+  - Foundation for future streaming IO implementation (ADR-0022)
+
+### Changed
+- **Component Registry as Single Source of Truth**
+  - Removed legacy `COMPONENT_MAP` from compiler completely
+  - Runtime exclusively uses ComponentRegistry for component resolution
+  - Mode aliasing implemented at compile boundary (read→extract, write→write, transform→transform)
+  - Compiler generates manifests with canonical driver names (`mysql.extractor`, `filesystem.csv_writer`)
+
+### Fixed
+- **Pipeline Execution Issues**
+  - DataFrames now correctly passed between extract and write steps
+  - CSV writer produces non-empty files with proper column ordering (lexicographic sort)
+  - Manifest dependency ordering corrected - extract steps no longer depend on unrelated previous steps
+  - Newline handling in CSV writer fixed (lf/crlf/cr mapping)
+  - Connection resolution properly merges into step config as `resolved_connection`
+
+### Added
+- **Streaming IO and Spill** (ADR-0022)
+  - Iterator-first RowStream interface for memory-safe data processing
+  - Support for datasets of 10GB+ without loading into memory
+  - Optional spill-to-disk capability with DuckDB temp tables or Parquet files
+  - Backward compatibility via DataFrame adapters
+  - Progressive data processing with estimated row counts
+  - Unified streaming protocol across all extractors and writers
+
+- **Remote Object Store Writers** (ADR-0023)
+  - Direct writing to S3, Azure Blob Storage, and Google Cloud Storage
+  - Multipart upload support for files >100MB
+  - Deterministic CSV contract matching filesystem.csv_writer
+  - Connection-based credential management (no secrets in OML)
+  - Support for storage classes, tiers, and cloud-specific features
+  - Resilient error handling with retry logic and resume capability
+  - ADR-0023 now includes comparison table for filesystem vs. remote writers
+
+- **Chat State Machine and OML Synthesis** (ADR-0019)
+  - Mandatory FSM flow: INIT → INTENT_CAPTURED → DISCOVERY → OML_SYNTHESIS → VALIDATE_OML → COMPILE → RUN → COMPLETE
+  - Hard rule: NO open questions after discovery phase - immediate OML synthesis
+  - Strict OML v0.1.0 contract enforcement with required keys `{oml_version, name, steps}`
+  - Forbidden legacy keys `{version, connectors, tasks, outputs}` with automatic detection
+  - Single regeneration attempt on validation failure with targeted error messages
+  - Non-empty assistant message fallback for better user experience
+  - Structured event logging for each state transition
+  - Post-discovery synthesis ensures deterministic pipeline generation
+
+- **Connection Resolution and Secrets Management** (ADR-0020)
+  - External `osiris_connections.yaml` for non-secret connection metadata
+  - Environment variable substitution for secrets using `${ENV_VAR}` syntax
+  - Connection alias model with family-based organization
+  - Default selection precedence: `default:true` → alias named "default" → error
+  - Optional OML reference syntax: `config.connection: "@family.alias"`
+  - CLI commands: `osiris connections list` (show aliases with masked secrets)
+  - CLI commands: `osiris connections doctor` (test connectivity)
+  - Complete separation of secrets from pipeline definitions
+  - Support for multiple connections per connector family
+
+- CLI `osiris connections list` and `osiris connections doctor` commands with session logging and JSON output.
+- Component-level `doctor()` capability (ADR-0021).
+- Comprehensive driver unit tests and integration tests for MySQL→CSV pipeline.
+
+- **Registry-First Component Resolution and Mode Aliasing**
+  - Removed hardcoded COMPONENT_MAP - Component Registry is now single source of truth
+  - Mode aliasing for OML v0.1.0 compatibility: `read` → `extract` at runtime
+  - Component mode validation at compile time using registry specs
+  - Clear error messages for unsupported modes with allowed alternatives
+  - Support for both canonical OML modes {read, write, transform} and component modes
+  - Unified environment loading across all commands via `env_loader.py`
+  - Runtime safety: empty data from upstream steps triggers clear error
+  - Metrics logging: `rows_read` for extractors, `rows_written` for writers
+- **Runtime connection resolution integration** (ADR-0020):
+  - Runner resolves connections using `resolve_connection()` at step execution
+  - Components receive injected connection dicts - no direct ENV access
+  - Per-step events: `connection_resolve_start` and `connection_resolve_complete`
+  - Connection reference parsing with `@family.alias` format validation
+  - Automatic family detection from component names (e.g., `mysql.extractor` → `mysql`)
+
+### Changed
+- Clarified ADR-0022: Spill to disk is implementation detail only
+- **MySQL/Supabase/DuckDB connectors** now consume injected connections from runner
+  - Removed direct environment variable access at runtime
+  - All connection data passed via config dict
+  - Backward compatibility maintained for testing
+
+### Security
+- **Enhanced secrets protection in runner path**:
+  - Connection passwords/keys never logged in runner events
+  - Automatic redaction of sensitive fields in connection dicts
+  - No secrets written to manifest.yaml or config artifacts
+  - Connection resolution events log only family and alias names
+
+- **Unified run command with last-compile support**
+  - Single `run` command handles both OML and compiled manifests
+  - `--last-compile` flag runs most recently compiled manifest
+  - `--last-compile-in DIR` finds latest compile in specified directory
+  - Pointer files track successful compilations (`.last.json`, `.last_compile.json`)
+  - Environment variable fallbacks: `OSIRIS_LAST_MANIFEST`, `OSIRIS_LAST_COMPILE_DIR`
+  - Session-based execution with structured logs and artifacts
+
+- **M1c Thin-Slice: Deterministic Compiler and Local Runner** 
+  - Minimal OML v0.1.0 to manifest compiler with deterministic output
+  - Canonical YAML/JSON serialization with stable key ordering
+  - SHA-256 fingerprinting for all compilation inputs/outputs
+  - Parameter resolution with precedence: defaults < ENV < profile < CLI
+  - Strict no-secrets enforcement (compile error on inline secrets)
+  - Local sequential runner for linear pipelines (Supabase → DuckDB → MySQL)
+  - CLI commands: `osiris compile` and unified `osiris run`
+  - Structured artifacts in session directories `logs/<session>/artifacts/`
+  - Example pipeline: `docs/examples/supabase_to_mysql.yaml`
 - **Post-generation validation with component spec checks** (M1b.3)
   - Automatic validation of LLM-generated pipelines against component specifications
   - Pipeline validator validates OML against registry specs
@@ -27,6 +141,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Session creation for all test runs with proper event logging
   
 ### Changed
+- **Unified CLI command structure**
+  - `run` command now handles both OML compilation and manifest execution
+  - All commands use consistent session directories (`logs/<type>_<timestamp>/`)
+  - Stdout limited to progress and summary; detailed logs in session files
+  - `osiris logs list` shows command type for each session
+  - INFO/DEBUG logging redirected from stdout to `logs/<session>/osiris.log`
 - **Redaction policy tuned**: Token counts + durations visible; secrets still masked
   - Operational metrics (prompt_tokens, response_tokens, duration_ms) preserved as integers
   - Fingerprints shortened to 8-char prefix
@@ -35,8 +155,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Console shows clean output by default
   - DEBUG logs written to session log files
   - Validation error mapping warnings moved to DEBUG level
+- Connection JSON output shape: now under `connections` with top-level `session_id`.
+- Tests updated to align with the new JSON shape.
+- **CLI Framework**: Completely removed Click library dependency, using only Rich framework for all CLI commands.
+
+### Removed
+- **`execute` command** - functionality merged into unified `run` command
+- **Direct stdout INFO logging** - all detailed logs now in session files
 
 ### Fixed
+- **Test Suite Improvements**
+  - Fixed StateStore → SQLiteStateStore imports in all test files
+  - Removed references to non-existent methods (_get_database_tables, context_manager)
+  - Updated CLI test to check for --last-compile instead of deprecated --dry-run
+  - Fixed session logging imports (get_session_context → get_current_session)
+  - Added pragma comments for test-only credentials to pass secret scanning
+  - All 27 tests now passing successfully
+
 - **Over-masking of event names/session ids**
   - Session IDs and event names no longer masked in logs
   - Only actual secrets are redacted
@@ -47,6 +182,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Exit codes now correctly return 1 for failed scenarios
   - --max-attempts parameter properly limits total attempts
   - Artifacts consistently saved to --out directory with proper structure
+- Supabase health check avoids 404s, uses `/auth/v1/health` with fallback.
+- Secrets redacted consistently in `connections` CLI outputs.
 
 ### Previously Added Features (M1a-M1b.2)
 - Component Registry backend (`osiris/components/registry.py`) with mtime-based caching and three validation levels (basic/enhanced/strict)

@@ -217,3 +217,7 @@ env-info: ## Show environment information
 	@echo ""
 	@echo "📦 Installed packages:"
 	@pip list | grep -E "(osiris|click|rich|duckdb|openai|anthropic)" || echo "No Osiris-related packages found"
+
+# mempack for ChatGPT
+mempack:
+	python tools/mempack/mempack.py -c tools/mempack/mempack.yaml

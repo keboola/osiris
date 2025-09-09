@@ -35,7 +35,7 @@ Bot: I'll help analyze your top customers! Let me discover your database...
 
 You: "Perfect, run it!"
 
-Bot: ✓ Pipeline executed! Found 10 customers, saved to output/results.csv
+Bot: ✓ Pipeline run complete! Found 10 customers, saved to output/results.csv
 ```
 
 ## 🎯 Pro Mode - Custom LLM Prompts

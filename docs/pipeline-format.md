@@ -1,64 +1,156 @@
-# MVP OML Specification - Simplified ETL Format
+# OML Specification - ETL Pipeline Format
 
-**Version:** 1.0-MVP
-**Date:** 2025-08-28
-**Scope:** Basic ETL pipelines only
+**Version:** 0.1.0
+**Date:** 2025-01-15
+**Scope:** Linear ETL pipelines with deterministic compilation
 
 ## Overview
 
-Simplified Osiris Markup Language (OML) for MVP implementation. Focuses on essential ETL operations with minimal complexity.
+Osiris Markup Language (OML) for declarative pipeline definitions. Supports parameterization, profiles, and deterministic compilation to execution manifests.
 
-## Format
+## OML Format (v0.1.0)
 
 ```yaml
-version: "1.0"
-pipeline: <pipeline_name>
+oml_version: "0.1.0"
+name: "<pipeline_name>"
+description: "<optional_description>"
 
-extract:
-  - id: <unique_id>
-    source: <mysql|supabase|csv>
-    table: <table_name>  # for databases
-    path: <file_path>    # for files
-    connection: <connection_name>  # for databases
+# Parameter declarations with types and defaults
+params:
+  <param_name>:
+    type: <string|int|number|bool|list|map>
+    default: <default_value>
+    enum: [<allowed_values>]  # optional
 
-transform:
-  - id: <unique_id>
-    engine: duckdb
-    inputs: [<extract_id>, ...]
-    sql: |
-      <DuckDB SQL query>
+# Environment-specific profiles
+profiles:
+  <profile_name>:
+    params:
+      <param_name>: <override_value>
 
-load:
-  - id: <unique_id>
-    from: <transform_id>
-    to: <csv|parquet|json|mysql|supabase>
-    path: <output_path>      # for files
-    table: <table_name>      # for databases
-    connection: <connection_name>  # for databases
-    mode: <overwrite|append>  # optional, default: overwrite
+# Pipeline steps (linear for v0.1.0)
+steps:
+  - id: "<unique_step_id>"
+    uses: "<component_type>"
+    with:
+      <config_key>: "${params.param_name}"  # Parameter references
+    needs: [<dependency_ids>]  # optional, auto-determined for linear
 ```
 
-## Supported Components (MVP)
+## Manifest Format (Compiled Output)
+
+```yaml
+pipeline:
+  id: "<pipeline_id>"
+  version: "0.1.0"
+  fingerprints:
+    oml_fp: "sha256:..."
+    registry_fp: "sha256:..."
+    compiler_fp: "sha256:..."
+    params_fp: "sha256:..."
+    manifest_fp: "sha256:..."
+
+steps:
+  - id: "<step_id>"
+    driver: "<component@version>"
+    cfg_path: "compiled/cfg/<step_id>.json"
+    needs: [<dependency_ids>]
+
+meta:
+  oml_version: "0.1.0"
+  profile: "<active_profile>"
+  run_id: "${run_id}"
+  generated_at: "<timestamp>"
+  toolchain:
+    compiler: "osiris-compiler/0.1"
+    registry: "osiris-registry/0.1"
+```
+
+## Supported Components (v0.1.0)
 
 ### Extract Sources
 
-- `mysql` - MySQL/MariaDB databases
-- `supabase` - Supabase (PostgreSQL-compatible) databases
-- `csv` - CSV files
+- `mysql.extractor` - MySQL/MariaDB data extractor
+- `supabase.extractor` - Supabase (PostgreSQL) extractor
 
 ### Transform Engine
 
-- `duckdb` - Local DuckDB engine only
+- `duckdb.transform` - DuckDB SQL transform (single SQL statement)
 
-### Load Destinations
+### Write Destinations
 
-- `csv` - CSV files
-- `parquet` - Parquet files
-- `json` - JSON files
-- `mysql` - MySQL/MariaDB databases
-- `supabase` - Supabase (PostgreSQL-compatible) databases
+- `supabase.writer` - Supabase data writer with DDL generation
+- `mysql.writer` - MySQL/MariaDB data writer
+- `filesystem.csv_writer` - CSV file writer with deterministic output
+
+## Write Modes and Configuration
+
+### Supabase Writer
+
+The `supabase.writer` component supports multiple write modes:
+
+- **`append`** (default) - Insert new rows to the table
+- **`upsert`** - Insert or update based on primary key conflict
+  - Requires `primary_key` configuration (string or array)
+- **`replace`** - Delete all existing rows then insert new data
+
+#### DDL Generation (`create_if_missing`)
+
+When `create_if_missing: true` and the target table doesn't exist:
+
+1. **DDL Plan Generation**: Always generates `ddl_plan.sql` artifact with CREATE TABLE statement
+2. **Automatic Execution**: If a SQL channel is available (DSN or SQL connection params), attempts to execute the DDL
+3. **Manual Creation**: If no SQL channel, logs the DDL plan for manual execution
+
+Example configuration:
+```yaml
+- id: write-users
+  component: supabase.writer
+  mode: write
+  config:
+    connection: "@supabase.main"
+    table: users
+    write_mode: upsert
+    primary_key: [id, email]  # Composite key for upsert
+    create_if_missing: true    # Generate/execute DDL if needed
+    batch_size: 500           # Rows per API request
+```
+
+### Runtime Behavior
+
+The runner automatically:
+1. **Strips meta keys** (`component`, `connection`) before passing config to drivers
+2. **Resolves connections** from references (`@family.alias`) to actual credentials
+3. **Saves cleaned config** as `cleaned_config.json` artifact (with secrets masked)
+4. **Logs events** for config cleaning, DDL planning/execution, and data flow metrics
+- `writers.supabase` - Supabase writer
 
 ## Example Pipeline
+
+For a complete working example, see `docs/examples/supabase_to_mysql.yaml`.
+
+### Compilation and Execution
+
+```bash
+# Set environment variables or create .env
+export OSIRIS_SUPABASE_URL="https://your-project.supabase.co"
+export OSIRIS_SUPABASE_ANON_KEY="your-anon-key"
+export OSIRIS_MYSQL_DSN="mysql://user:pass@localhost/db"
+
+# Compile OML to deterministic manifest
+osiris compile docs/examples/supabase_to_mysql.yaml \
+  --out compiled/ \
+  --profile dev \
+  --param run_id=run_123
+
+# Run the compiled manifest
+osiris run compiled/manifest.yaml --out _artifacts/
+
+# Verify no secrets in artifacts
+grep -r "password\|key\|secret" compiled/ || echo "✓ No secrets found"
+```
+
+## Pipeline Execution Model
 
 ```yaml
 version: "1.0"
@@ -163,7 +255,7 @@ load:
 - `to`: One of [csv, parquet, json, mysql, supabase]
 - `path`: Output file path (for files)
 - `table`: Table name (for databases)
-- `connection`: Connection name (for databases)
+- `connection`: Connection reference (for databases) - see Connection References section
 
 ### Naming Conventions
 
@@ -185,9 +277,54 @@ These features are NOT supported in MVP:
 - Caching directives
 - Metadata/documentation sections
 
-## Environment Variables
+## Connection References (ADR-0020)
 
-Database connections use environment variables:
+As of v0.2.0, pipelines can reference connections from `osiris_connections.yaml`:
+
+### Connection Format
+
+```yaml
+# In step config:
+config:
+  connection: "@family.alias"  # Explicit reference
+  # OR omit for default resolution
+```
+
+### Resolution Precedence
+
+When no explicit connection is specified:
+1. Connection with `default: true` flag
+2. Connection with alias named "default"
+3. Error with helpful message listing available aliases
+
+### Examples
+
+```yaml
+# Explicit connection reference
+- id: extract-users
+  component: mysql.extractor
+  config:
+    connection: "@mysql.primary"  # Use mysql.primary from osiris_connections.yaml
+    query: "SELECT * FROM users"
+
+# Default connection (no reference)
+- id: extract-products  
+  component: mysql.extractor
+  config:
+    # No connection field - will use default mysql connection
+    query: "SELECT * FROM products"
+```
+
+### Benefits
+
+- Secrets stay in `osiris_connections.yaml` and `.env` files
+- OML/pipeline files contain no secrets
+- Easy environment switching
+- Components receive resolved connection dicts at runtime
+
+## Environment Variables (Legacy)
+
+For backward compatibility, connections can still use environment variables:
 
 **MySQL:**
 

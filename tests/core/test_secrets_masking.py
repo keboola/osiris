@@ -111,7 +111,7 @@ class TestSecretsMasking:
         """Test that non-dict input is returned unchanged."""
         assert mask_sensitive_dict("string") == "string"
         assert mask_sensitive_dict(123) == 123
-        assert mask_sensitive_dict(None) == None
+        assert mask_sensitive_dict(None) is None
         assert mask_sensitive_dict([1, 2, 3]) == [1, 2, 3]
 
     def test_mask_sensitive_dict_handles_lists_with_dicts(self):
@@ -246,8 +246,7 @@ class TestSecretsMasking:
         circular = {"key": "value"}
         circular["self"] = circular
         # Should not crash (exact behavior may vary)
-        try:
+        import contextlib
+
+        with contextlib.suppress(ValueError, RecursionError):
             mask_sensitive_dict(circular)
-        except (ValueError, RecursionError):
-            # Acceptable to fail gracefully on circular refs
-            pass
