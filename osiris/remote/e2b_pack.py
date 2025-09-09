@@ -11,6 +11,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import yaml
+
 
 @dataclass
 class PayloadManifest:
@@ -89,10 +91,10 @@ class PayloadBuilder:
 
                 shutil.rmtree(item)
 
-        # Copy manifest
+        # Copy manifest (convert YAML to JSON)
         manifest_dest = self.payload_dir / "manifest.json"
         with open(manifest_path) as src, open(manifest_dest, "w") as dst:
-            manifest_data = json.load(src)
+            manifest_data = yaml.safe_load(src)
             json.dump(manifest_data, dst, indent=2)
 
         # Create or copy mini_runner.py
