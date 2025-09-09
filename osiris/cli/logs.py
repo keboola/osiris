@@ -114,6 +114,16 @@ def list_sessions(args: list) -> None:
         console.print("❌ Invalid arguments. Use 'osiris logs list --help' for usage information.")
         return
 
+    # Check if logs directory exists
+    logs_dir = Path(parsed_args.logs_dir)
+    if not logs_dir.exists():
+        if parsed_args.json:
+            error_response = {"error": f"Logs directory not found: {parsed_args.logs_dir}"}
+            print(json.dumps(error_response))
+        else:
+            console.print(f"❌ Logs directory not found: {parsed_args.logs_dir}")
+        return
+
     # Use SessionReader to get sessions
     reader = SessionReader(logs_dir=parsed_args.logs_dir)
     sessions = reader.list_sessions(limit=parsed_args.limit)
