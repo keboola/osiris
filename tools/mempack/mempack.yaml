@@ -48,35 +48,160 @@ include:
 - README.md
 
 exclude:
-# Python noise
+# Python noise (still needed since .gitignore doesn't have these)
 - "**/__pycache__/**"
 - "**/*.pyc"
 
-# Runtime outputs / logs / artifacts (huge & non-deterministic)
-- logs/**
-- output/**
-- tmp/**
-- "**/artifacts/**"
+# Additional exclusions not in .gitignore
 - "**/events.jsonl"
 - "**/metrics.jsonl"
 - "**/*.log"
 
-# testing_env: keep only .osiris_prompts/**
-- testing_env/logs/**
-- testing_env/output/**
-- testing_env/tmp/**
-- testing_env/**/artifacts/**
-- testing_env/**/events.jsonl
-- testing_env/**/metrics.jsonl
-- testing_env/**/*.log
-
-# Repo internals
+# Repo internals not in .gitignore
 - .git/**
 - osiris_pipeline.egg-info/**
 - uv.lock
+- .venv/**
+- .vscode/**
+- .pytest_cache/**
+
+# Note: Most other exclusions are now handled by .gitignore:
+# - testing_env/ artifacts (handled by .gitignore)
+# - output/ directories (handled by .gitignore)
+# - compiled/ and _artifacts/ (handled by .gitignore)
+# - mempack.txt itself (handled by .gitignore)
 
 # Also embed a fresh project tree (so I can see structure at-a-glance)
 embed_tree: true
 
-# Safety: cap the size so we don’t over-feed the model by accident
+# Automatically exclude files/dirs from .gitignore
+# When true, patterns from .gitignore are applied before explicit excludes
+# Include patterns can override gitignore/exclude patterns (include wins)
+use_gitignore: true
+
+# Safety: cap the size so we don't over-feed the model by accident
 max_bytes: 6000000 # ~6 MB, uprav když bude potřeba
+
+# ----------------------------------------------------------
+# Commands: run before packing and include their stdout files
+# ----------------------------------------------------------
+commands:
+- output_path: tools/mempack/gen/osiris-components-list.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    python ../osiris.py components list --json
+  with_cmd: true
+  shell: bash
+  timeout: 30s
+  on_error: fail
+
+- output_path: tools/mempack/gen/osiris-connections-list.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    python ../osiris.py connections list --json
+  with_cmd: true
+  shell: bash
+  timeout: 30s
+  on_error: fail
+
+- output_path: tools/mempack/gen/osiris.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    python ../osiris.py --help
+  with_cmd: true
+  shell: bash
+  timeout: 30s
+  on_error: keep # Keep output even if it fails (might not have connections configured)
+
+- output_path: tools/mempack/gen/osiris-compile.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    python ../osiris.py compile --help
+  with_cmd: true
+  shell: bash
+  timeout: 30s
+  on_error: keep # Keep output even if it fails (might not have connections configured)
+
+- output_path: tools/mempack/gen/osiris-run.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    python ../osiris.py run --help
+  with_cmd: true
+  shell: bash
+  timeout: 30s
+  on_error: keep # Keep output even if it fails (might not have connections configured)
+
+- output_path: tools/mempack/gen/osiris-logs.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    python ../osiris.py logs --help
+  with_cmd: true
+  shell: bash
+  timeout: 30s
+  on_error: keep # Keep output even if it fails (might not have connections configured)
+
+- output_path: tools/mempack/gen/osiris-test.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    python ../osiris.py test --help
+  with_cmd: true
+  shell: bash
+  timeout: 30s
+  on_error: keep # Keep output even if it fails (might not have connections configured)
+
+- output_path: tools/mempack/gen/osiris-connections.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    python ../osiris.py connections --help
+  with_cmd: true
+  shell: bash
+  timeout: 30s
+  on_error: keep # Keep output even if it fails (might not have connections configured)
+
+- output_path: tools/mempack/gen/osiris-components.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    python ../osiris.py components --help
+  with_cmd: true
+  shell: bash
+  timeout: 30s
+  on_error: keep # Keep output even if it fails (might not have connections configured)
+
+- output_path: tools/mempack/gen/osiris-oml.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    python ../osiris.py oml --help
+  with_cmd: true
+  shell: bash
+  timeout: 30s
+  on_error: keep # Keep output even if it fails (might not have connections configured)
+
+- output_path: tools/mempack/gen/osiris-dump-prompts.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    python ../osiris.py dump-prompts --help
+  with_cmd: true
+  shell: bash
+  timeout: 30s
+  on_error: keep # Keep output even if it fails (might not have connections configured)
+
+- output_path: tools/mempack/gen/osiris-prompts.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    python ../osiris.py prompts --help
+  with_cmd: true
+  shell: bash
+  timeout: 30s
+  on_error: keep # Keep output even if it fails (might not have connections configured)

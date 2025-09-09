@@ -213,3 +213,6 @@ limits:
   rateLimit:
     requests: 100
     period: second
+
+x-runtime:
+  driver: osiris.drivers.supabase_writer_driver.SupabaseWriterDriver

@@ -70,16 +70,59 @@ meta:
 
 ### Extract Sources
 
-- `extractors.supabase` - Supabase (PostgreSQL) extractor
-- `extractors.mysql` - MySQL/MariaDB extractor
+- `mysql.extractor` - MySQL/MariaDB data extractor
+- `supabase.extractor` - Supabase (PostgreSQL) extractor
 
 ### Transform Engine
 
-- `transforms.duckdb` - DuckDB SQL transform (single SQL statement)
+- `duckdb.transform` - DuckDB SQL transform (single SQL statement)
 
-### Load Destinations
+### Write Destinations
 
-- `writers.mysql` - MySQL/MariaDB writer
+- `supabase.writer` - Supabase data writer with DDL generation
+- `mysql.writer` - MySQL/MariaDB data writer
+- `filesystem.csv_writer` - CSV file writer with deterministic output
+
+## Write Modes and Configuration
+
+### Supabase Writer
+
+The `supabase.writer` component supports multiple write modes:
+
+- **`append`** (default) - Insert new rows to the table
+- **`upsert`** - Insert or update based on primary key conflict
+  - Requires `primary_key` configuration (string or array)
+- **`replace`** - Delete all existing rows then insert new data
+
+#### DDL Generation (`create_if_missing`)
+
+When `create_if_missing: true` and the target table doesn't exist:
+
+1. **DDL Plan Generation**: Always generates `ddl_plan.sql` artifact with CREATE TABLE statement
+2. **Automatic Execution**: If a SQL channel is available (DSN or SQL connection params), attempts to execute the DDL
+3. **Manual Creation**: If no SQL channel, logs the DDL plan for manual execution
+
+Example configuration:
+```yaml
+- id: write-users
+  component: supabase.writer
+  mode: write
+  config:
+    connection: "@supabase.main"
+    table: users
+    write_mode: upsert
+    primary_key: [id, email]  # Composite key for upsert
+    create_if_missing: true    # Generate/execute DDL if needed
+    batch_size: 500           # Rows per API request
+```
+
+### Runtime Behavior
+
+The runner automatically:
+1. **Strips meta keys** (`component`, `connection`) before passing config to drivers
+2. **Resolves connections** from references (`@family.alias`) to actual credentials
+3. **Saves cleaned config** as `cleaned_config.json` artifact (with secrets masked)
+4. **Logs events** for config cleaning, DDL planning/execution, and data flow metrics
 - `writers.supabase` - Supabase writer
 
 ## Example Pipeline
@@ -100,8 +143,8 @@ osiris compile docs/examples/supabase_to_mysql.yaml \
   --profile dev \
   --param run_id=run_123
 
-# Execute the compiled manifest
-osiris execute compiled/manifest.yaml --out _artifacts/
+# Run the compiled manifest
+osiris run compiled/manifest.yaml --out _artifacts/
 
 # Verify no secrets in artifacts
 grep -r "password\|key\|secret" compiled/ || echo "✓ No secrets found"

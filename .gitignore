@@ -25,6 +25,7 @@ _artifacts/
 test_*/
 *_test/
 final_test/
+tools/mempack/gen/*
 
 # Internal tools
 .claude/

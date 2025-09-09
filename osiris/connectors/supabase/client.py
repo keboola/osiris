@@ -57,7 +57,7 @@ class SupabaseClient:
         if not self.url or not self.key:
             raise ValueError("Supabase URL and key are required (config or env vars)")
 
-    async def connect(self) -> Client:
+    def connect(self) -> Client:
         """Connect to Supabase and return client."""
         if self._initialized and self.client:
             return self.client
@@ -73,12 +73,21 @@ class SupabaseClient:
             logger.error(f"Failed to connect to Supabase: {e}")
             raise
 
-    async def disconnect(self) -> None:
+    def disconnect(self) -> None:
         """Close Supabase connection."""
         # Supabase client doesn't need explicit disconnect
         self.client = None
         self._initialized = False
         logger.debug("Supabase connection closed")
+
+    def __enter__(self) -> Client:
+        """Context manager entry."""
+        return self.connect()
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Context manager exit."""
+        # Supabase client doesn't need explicit cleanup
+        pass
 
     def is_connected(self) -> bool:
         """Check if client is connected."""

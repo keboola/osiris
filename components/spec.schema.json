@@ -137,6 +137,19 @@
     },
     "limits": {
       "$ref": "#/$defs/limits"
+    },
+    "x-runtime": {
+      "type": "object",
+      "description": "Runtime implementation metadata (vendor extensions)",
+      "properties": {
+        "driver": {
+          "type": "string",
+          "description": "Fully-qualified Python class path for the driver implementation",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)+$",
+          "examples": ["osiris.drivers.mysql_extractor_driver.MySQLExtractorDriver"]
+        }
+      },
+      "additionalProperties": false
     }
   },
   "$defs": {

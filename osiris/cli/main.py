@@ -1079,6 +1079,8 @@ def components_command(args: list) -> None:
         console.print("[bold blue]Examples[/bold blue]")
         console.print("  [green]osiris components list[/green]")
         console.print("  [green]osiris components list --mode write[/green]")
+        console.print("  [green]osiris components list --runnable[/green]")
+        console.print("  [green]osiris components list --runnable --json[/green]")
         console.print("  [green]osiris components show mysql.extractor[/green]")
         console.print("  [green]osiris components validate mysql.writer[/green]")
         console.print("  [green]osiris components config-example supabase.extractor[/green]")
@@ -1105,9 +1107,26 @@ def components_command(args: list) -> None:
     subcommand_args = args[1:]
 
     if subcommand == "list":
+        # Check for help flag first
+        if "--help" in subcommand_args or "-h" in subcommand_args:
+            console.print("[bold]Usage:[/bold] osiris components list [OPTIONS]")
+            console.print()
+            console.print("[bold blue]Options:[/bold blue]")
+            console.print("  [cyan]--mode MODE[/cyan]      Filter by mode (extract, write, transform, etc.)")
+            console.print("  [cyan]--runnable[/cyan]       Show only components with runtime drivers")
+            console.print("  [cyan]--json[/cyan]           Output as JSON")
+            console.print()
+            console.print("[bold blue]Examples:[/bold blue]")
+            console.print("  [green]osiris components list[/green]")
+            console.print("  [green]osiris components list --mode write[/green]")
+            console.print("  [green]osiris components list --runnable[/green]")
+            console.print("  [green]osiris components list --runnable --json[/green]")
+            return
+        
         # Parse list options
         mode = "all"
         as_json = False
+        runnable = False
         i = 0
         while i < len(subcommand_args):
             arg = subcommand_args[i]
@@ -1117,38 +1136,48 @@ def components_command(args: list) -> None:
             elif arg == "--json":
                 as_json = True
                 i += 1
+            elif arg == "--runnable":
+                runnable = True
+                i += 1
             else:
                 i += 1
-        list_components(mode, as_json)
+        list_components(mode, as_json, runnable)
     elif subcommand == "show":
-        if not subcommand_args:
-            console.print("❌ Component name required")
-            console.print("Usage: osiris components show <component_name>")
-            sys.exit(1)
+        if not subcommand_args or "--help" in subcommand_args or "-h" in subcommand_args:
+            console.print("[bold]Usage:[/bold] osiris components show <component_name> [OPTIONS]")
+            console.print()
+            console.print("[bold blue]Options:[/bold blue]")
+            console.print("  [cyan]--json[/cyan]           Output as JSON")
+            console.print()
+            console.print("[bold blue]Examples:[/bold blue]")
+            console.print("  [green]osiris components show mysql.extractor[/green]")
+            console.print("  [green]osiris components show supabase.writer --json[/green]")
+            if not subcommand_args:
+                sys.exit(1)
+            return
         as_json = "--json" in subcommand_args
         component_name = subcommand_args[0]
         show_component(component_name, as_json)
     elif subcommand == "validate":
-        if not subcommand_args:
-            console.print("❌ Component name required")
-            console.print("Usage: osiris components validate <component_name> [OPTIONS]")
-            console.print("Options:")
-            console.print(
-                "  --level LEVEL        Validation level: basic, enhanced, strict (default: enhanced)"
-            )
-            console.print(
-                "  --session-id ID      Use specific session ID (default: auto-generated)"
-            )
-            console.print("  --logs-dir DIR       Directory for session logs (default: logs)")
-            console.print(
-                "  --log-level LEVEL    Log level: DEBUG, INFO, WARNING, ERROR (default: INFO)"
-            )
-            console.print(
-                "  --events PATTERN     Event patterns to log, comma-separated (default: *)"
-            )
-            console.print("  --json               Output in JSON format")
-            console.print("  --verbose            Include technical error details")
-            sys.exit(1)
+        if not subcommand_args or "--help" in subcommand_args or "-h" in subcommand_args:
+            console.print("[bold]Usage:[/bold] osiris components validate <component_name> [OPTIONS]")
+            console.print()
+            console.print("[bold blue]Options:[/bold blue]")
+            console.print("  [cyan]--level LEVEL[/cyan]        Validation level: basic, enhanced, strict (default: enhanced)")
+            console.print("  [cyan]--session-id ID[/cyan]      Use specific session ID (default: auto-generated)")
+            console.print("  [cyan]--logs-dir DIR[/cyan]       Directory for session logs (default: logs)")
+            console.print("  [cyan]--log-level LEVEL[/cyan]    Log level: DEBUG, INFO, WARNING, ERROR (default: INFO)")
+            console.print("  [cyan]--events PATTERN[/cyan]     Event patterns to log, comma-separated (default: *)")
+            console.print("  [cyan]--json[/cyan]               Output in JSON format")
+            console.print("  [cyan]--verbose[/cyan]            Include technical error details")
+            console.print()
+            console.print("[bold blue]Examples:[/bold blue]")
+            console.print("  [green]osiris components validate mysql.extractor[/green]")
+            console.print("  [green]osiris components validate supabase.writer --level strict[/green]")
+            console.print("  [green]osiris components validate mysql.writer --json --verbose[/green]")
+            if not subcommand_args:
+                sys.exit(1)
+            return
 
         # Parse arguments for components validate
         import argparse
@@ -1219,10 +1248,18 @@ def components_command(args: list) -> None:
             console.print(f"❌ Error: {e}")
             sys.exit(1)
     elif subcommand == "config-example":
-        if not subcommand_args:
-            console.print("❌ Component name required")
-            console.print("Usage: osiris components config-example <component_name>")
-            sys.exit(1)
+        if not subcommand_args or "--help" in subcommand_args or "-h" in subcommand_args:
+            console.print("[bold]Usage:[/bold] osiris components config-example <component_name> [OPTIONS]")
+            console.print()
+            console.print("[bold blue]Options:[/bold blue]")
+            console.print("  [cyan]--example-index N[/cyan]    Example index to show (default: 0)")
+            console.print()
+            console.print("[bold blue]Examples:[/bold blue]")
+            console.print("  [green]osiris components config-example mysql.extractor[/green]")
+            console.print("  [green]osiris components config-example supabase.writer --example-index 1[/green]")
+            if not subcommand_args:
+                sys.exit(1)
+            return
         example_index = 0
         component_name = subcommand_args[0]
         for i, arg in enumerate(subcommand_args):
@@ -1234,10 +1271,20 @@ def components_command(args: list) -> None:
                     sys.exit(1)
         show_config_example(component_name, example_index)
     elif subcommand == "discover":
-        if not subcommand_args:
-            console.print("❌ Component name required")
-            console.print("Usage: osiris components discover <component_name> [--config FILE]")
-            sys.exit(1)
+        if not subcommand_args or "--help" in subcommand_args or "-h" in subcommand_args:
+            console.print("[bold]Usage:[/bold] osiris components discover <component_name> [OPTIONS]")
+            console.print()
+            console.print("[bold blue]Options:[/bold blue]")
+            console.print("  [cyan]--config FILE[/cyan]        Configuration file for discovery")
+            console.print()
+            console.print("[bold blue]Examples:[/bold blue]")
+            console.print("  [green]osiris components discover mysql.extractor[/green]")
+            console.print("  [green]osiris components discover supabase.extractor --config config.yaml[/green]")
+            console.print()
+            console.print("[dim]Note: Component must support discovery mode[/dim]")
+            if not subcommand_args:
+                sys.exit(1)
+            return
         config_file = None
         component_name = subcommand_args[0]
         for i, arg in enumerate(subcommand_args):

@@ -157,3 +157,6 @@ limits:
   maxRows: 100000000
   maxSizeMB: 10240
   maxDurationSeconds: 3600
+
+x-runtime:
+  driver: osiris.drivers.filesystem_csv_writer_driver.FilesystemCsvWriterDriver

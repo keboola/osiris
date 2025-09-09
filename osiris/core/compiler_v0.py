@@ -104,6 +104,15 @@ class CompilerV0:
 
             # Generate manifest
             manifest = self._generate_manifest(resolved_oml)
+            
+            # Validate all components have drivers
+            if not self._validate_drivers(manifest):
+                missing_drivers = [
+                    f"{step['id']} (component: {step['driver']})" 
+                    for step in manifest["steps"] 
+                    if not self._has_driver(step['driver'])
+                ]
+                return False, f"Components missing runtime drivers: {', '.join(missing_drivers)}"
 
             # Generate per-step configs
             configs = self._generate_configs(resolved_oml)
@@ -355,3 +364,49 @@ class CompilerV0:
             f.write(
                 canonical_json({"params": self.resolver.get_effective_params(), "profile": profile})
             )
+    
+    def _has_driver(self, component_name: str) -> bool:
+        """Check if a component has a runtime driver.
+        
+        Args:
+            component_name: Name of the component
+            
+        Returns:
+            True if driver exists, False otherwise
+        """
+        if component_name == "unknown":
+            return False
+            
+        spec = self.registry.get_component(component_name)
+        if not spec:
+            return False
+            
+        runtime_config = spec.get("x-runtime", {})
+        driver_path = runtime_config.get("driver")
+        
+        if not driver_path:
+            return False
+            
+        # Try to import the driver to verify it exists
+        try:
+            import importlib
+            module_path, class_name = driver_path.rsplit(".", 1)
+            module = importlib.import_module(module_path)
+            getattr(module, class_name)
+            return True
+        except Exception:
+            return False
+    
+    def _validate_drivers(self, manifest: Dict) -> bool:
+        """Validate all steps have runtime drivers.
+        
+        Args:
+            manifest: Compiled manifest
+            
+        Returns:
+            True if all drivers exist, False otherwise
+        """
+        for step in manifest["steps"]:
+            if not self._has_driver(step["driver"]):
+                return False
+        return True

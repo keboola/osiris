@@ -1,5 +1,6 @@
 """Minimal local runner for compiled manifests."""
 
+import importlib
 import json
 import logging
 import time
@@ -9,6 +10,7 @@ from typing import Any, Dict, Optional
 
 import yaml
 
+from ..components.registry import ComponentRegistry
 from .config import ConfigError, parse_connection_ref, resolve_connection
 from .driver import DriverRegistry
 from .session_logging import log_event, log_metric
@@ -29,25 +31,46 @@ class RunnerV0:
         self.driver_registry = self._build_driver_registry()
 
     def _build_driver_registry(self) -> DriverRegistry:
-        """Build and populate the driver registry."""
+        """Build and populate the driver registry from component specs."""
         registry = DriverRegistry()
-
-        # Register MySQL extractor
-        def create_mysql_extractor():
-            from osiris.drivers.mysql_extractor_driver import MySQLExtractorDriver
-
-            return MySQLExtractorDriver()
-
-        registry.register("mysql.extractor", create_mysql_extractor)
-
-        # Register filesystem CSV writer
-        def create_csv_writer():
-            from osiris.drivers.filesystem_csv_writer_driver import FilesystemCsvWriterDriver
-
-            return FilesystemCsvWriterDriver()
-
-        registry.register("filesystem.csv_writer", create_csv_writer)
-
+        
+        # Load component registry
+        component_registry = ComponentRegistry()
+        specs = component_registry.load_specs()
+        
+        # Register drivers from specs
+        for component_name, spec in specs.items():
+            # Check for x-runtime.driver
+            runtime_config = spec.get("x-runtime", {})
+            driver_path = runtime_config.get("driver")
+            
+            if driver_path:
+                try:
+                    # Parse module and class name
+                    module_path, class_name = driver_path.rsplit(".", 1)
+                    
+                    # Create factory function
+                    def create_driver(module_path=module_path, class_name=class_name):
+                        module = importlib.import_module(module_path)
+                        driver_class = getattr(module, class_name)
+                        return driver_class()
+                    
+                    # Register with component name
+                    registry.register(component_name, create_driver)
+                    logger.debug(f"Registered driver for {component_name}: {driver_path}")
+                    
+                except Exception as e:
+                    # Provide helpful error message
+                    error_msg = (
+                        f"Failed to register driver for component '{component_name}'. "
+                        f"x-runtime.driver value: '{driver_path}'. "
+                        f"Error: {str(e)}"
+                    )
+                    logger.error(error_msg)
+                    # Don't fail here - let compile-time check catch missing drivers
+            else:
+                logger.debug(f"Component {component_name} has no x-runtime.driver specified")
+        
         return registry
 
     def run(self) -> bool:
@@ -219,9 +242,44 @@ class RunnerV0:
             connection = self._resolve_step_connection(step, config)
             if connection:
                 config["resolved_connection"] = connection
+            
+            # Clean config for driver (strip meta keys)
+            clean_config = config.copy()
+            meta_keys_removed = []
+            
+            if "component" in clean_config:
+                del clean_config["component"]
+                meta_keys_removed.append("component")
+            
+            if "connection" in clean_config:
+                del clean_config["connection"]
+                meta_keys_removed.append("connection")
+            
+            # Log that meta keys were stripped
+            if meta_keys_removed:
+                log_event(
+                    "config_meta_stripped",
+                    step_id=step_id,
+                    keys_removed=meta_keys_removed,
+                    config_meta_stripped=True
+                )
+            
+            # Save cleaned config as artifact (no secrets in resolved_connection)
+            cleaned_config_path = step_output_dir / "cleaned_config.json"
+            with open(cleaned_config_path, "w") as f:
+                # Create a version without secrets for artifact
+                artifact_config = clean_config.copy()
+                if "resolved_connection" in artifact_config:
+                    # Mask sensitive fields in resolved connection
+                    conn = artifact_config["resolved_connection"].copy()
+                    for key in ["password", "key", "token", "secret"]:
+                        if key in conn:
+                            conn[key] = "***MASKED***"
+                    artifact_config["resolved_connection"] = conn
+                json.dump(artifact_config, f, indent=2)
 
-            # Execute using driver registry
-            success = self._run_with_driver(step, config, step_output_dir)
+            # Execute using driver registry with cleaned config
+            success = self._run_with_driver(step, clean_config, step_output_dir)
 
             # Calculate step duration
             duration = time.time() - start_time
@@ -279,12 +337,15 @@ class RunnerV0:
                             # For now, assume single upstream for writers
                             inputs["df"] = upstream_result["df"]
 
-            # Create context for metrics
+            # Create context for metrics and output
             class RunnerContext:
+                def __init__(self, output_dir):
+                    self.output_dir = output_dir
+                    
                 def log_metric(self, name: str, value: Any):
                     log_metric(name, value)
 
-            ctx = RunnerContext()
+            ctx = RunnerContext(output_dir)
 
             # Run the driver
             result = driver.run(step_id=step_id, config=config, inputs=inputs, ctx=ctx)

@@ -220,4 +220,4 @@ env-info: ## Show environment information
 
 # mempack for ChatGPT
 mempack:
-	python tools/mempack/make_mempack.py -c tools/mempack/mempack.yaml
+	python tools/mempack/mempack.py -c tools/mempack/mempack.yaml
