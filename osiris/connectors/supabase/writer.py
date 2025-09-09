@@ -296,12 +296,12 @@ class SupabaseWriter(ILoader):
         if self._initialized:
             return
 
-        self.client = await self.base_client.connect()
+        self.client = self.base_client.connect()
         self._initialized = True
 
     async def disconnect(self) -> None:
         """Close Supabase connection."""
-        await self.base_client.disconnect()
+        self.base_client.disconnect()
         self.client = None
         self._initialized = False
 

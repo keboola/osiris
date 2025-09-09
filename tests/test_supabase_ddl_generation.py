@@ -118,9 +118,9 @@ class TestSupabaseDDLGeneration:
 
                 mock_client_instance = MagicMock()
                 mock_client_instance.table.return_value = mock_table
-                mock_client.return_value.connect.return_value.__enter__.return_value = (
-                    mock_client_instance
-                )
+                # Setup context manager for SupabaseClient itself
+                mock_client.__enter__ = MagicMock(return_value=mock_client_instance)
+                mock_client.__exit__ = MagicMock(return_value=None)
                 MockClient.return_value = mock_client
 
                 # Try to run with create_if_missing=true
@@ -156,32 +156,116 @@ class TestSupabaseDDLGeneration:
         driver = SupabaseWriterDriver()
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})
 
-        with patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient, patch(
-            "osiris.drivers.supabase_writer_driver.log_event"
-        ):
-            mock_client = MagicMock()
-            mock_table = MagicMock()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir)
+            mock_ctx = MagicMock()
+            mock_ctx.output_dir = output_dir
 
-            # Table doesn't exist
-            mock_table.select.return_value.limit.return_value.execute.side_effect = Exception(
-                "Table not found"
-            )
+            with patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient, patch(
+                "osiris.drivers.supabase_writer_driver.log_event"
+            ):
+                mock_client = MagicMock()
+                mock_table = MagicMock()
 
-            mock_client_instance = MagicMock()
-            mock_client_instance.table.return_value = mock_table
-            mock_client.return_value.connect.return_value.__enter__.return_value = (
-                mock_client_instance
-            )
-            MockClient.return_value = mock_client
+                # Table doesn't exist first, then exists after DDL execution
+                check_count = [0]
 
-            # Connection with SQL DSN (has SQL channel)
-            connection_config = {
-                "url": "http://test",
-                "key": "test",
-                "dsn": "postgresql://user:pass@host/db",  # pragma: allowlist secret
-            }
+                def table_check(*args, **kwargs):
+                    check_count[0] += 1
+                    if check_count[0] == 1:
+                        raise Exception("Table not found")
+                    return MagicMock()  # Table exists on second check
 
-            try:
+                mock_table.select.return_value.limit.return_value.execute.side_effect = table_check
+                # Insert succeeds after table creation
+                mock_table.insert.return_value.execute.return_value = None
+
+                mock_client_instance = MagicMock()
+                mock_client_instance.table.return_value = mock_table
+                # Setup context manager for SupabaseClient itself
+                mock_client.__enter__ = MagicMock(return_value=mock_client_instance)
+                mock_client.__exit__ = MagicMock(return_value=None)
+                MockClient.return_value = mock_client
+
+                # Connection with SQL DSN (has SQL channel)
+                connection_config = {
+                    "url": "http://test",
+                    "key": "test",
+                    "dsn": "postgresql://user:pass@host/db",  # pragma: allowlist secret
+                }
+
+                # Mock psycopg2 to avoid actual connection - patch where it's imported
+                with patch("psycopg2.connect") as mock_connect:
+                    mock_conn = MagicMock()
+                    mock_cursor = MagicMock()
+                    mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+                    mock_conn.__enter__.return_value = mock_conn
+                    mock_conn.__exit__.return_value = None
+                    mock_connect.return_value = mock_conn
+
+                    # This should now succeed in creating the DDL
+                    driver.run(
+                        step_id="test",
+                        config={
+                            "resolved_connection": connection_config,
+                            "table": "test_table",
+                            "create_if_missing": True,
+                        },
+                        inputs={"df": df},
+                        ctx=mock_ctx,
+                    )
+
+                    # Check that DDL was executed via psycopg2
+                    mock_connect.assert_called_once()
+                    mock_cursor.execute.assert_called_once()
+                    # Check DDL plan was also saved
+                    ddl_path = output_dir / "ddl_plan.sql"
+                    assert ddl_path.exists()
+
+    def test_ddl_plan_only_without_sql_channel(self):
+        """Test that only DDL plan is created when no SQL channel available."""
+        driver = SupabaseWriterDriver()
+        df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir)
+            mock_ctx = MagicMock()
+            mock_ctx.output_dir = output_dir
+
+            with patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient, patch(
+                "osiris.drivers.supabase_writer_driver.log_event"
+            ) as mock_log_event:
+                mock_client = MagicMock()
+                mock_table = MagicMock()
+
+                # Table doesn't exist first, then simulate it was created manually
+                check_count = [0]
+
+                def table_check(*args, **kwargs):
+                    check_count[0] += 1
+                    if check_count[0] == 1:
+                        raise Exception("Table not found")
+                    return MagicMock()  # Table exists on second check
+
+                mock_table.select.return_value.limit.return_value.execute.side_effect = table_check
+                # Insert succeeds
+                mock_table.insert.return_value.execute.return_value = None
+
+                mock_client_instance = MagicMock()
+                mock_client_instance.table.return_value = mock_table
+                # Setup context manager for SupabaseClient itself
+                mock_client.__enter__ = MagicMock(return_value=mock_client_instance)
+                mock_client.__exit__ = MagicMock(return_value=None)
+                MockClient.return_value = mock_client
+
+                # Connection without SQL channel
+                connection_config = {
+                    "url": "http://test",
+                    "key": "test",
+                    # No DSN or SQL params
+                }
+
+                # This should succeed (continue with write attempt)
                 driver.run(
                     step_id="test",
                     config={
@@ -190,71 +274,20 @@ class TestSupabaseDDLGeneration:
                         "create_if_missing": True,
                     },
                     inputs={"df": df},
-                    ctx=MagicMock(),
+                    ctx=mock_ctx,
                 )
-            except NotImplementedError as e:
-                # Expected - DDL execution not fully implemented
-                assert "SQL channel DDL execution not yet implemented" in str(e)
 
-    def test_ddl_plan_only_without_sql_channel(self):
-        """Test that only DDL plan is created when no SQL channel available."""
-        driver = SupabaseWriterDriver()
-        df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})
+                # Check that ddl_planned event was logged
+                ddl_planned_calls = [
+                    call
+                    for call in mock_log_event.call_args_list
+                    if call[0][0] == "table.ddl_planned"
+                ]
 
-        with patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient, patch(
-            "osiris.drivers.supabase_writer_driver.log_event"
-        ) as mock_log_event:
-            mock_client = MagicMock()
-            mock_table = MagicMock()
-
-            # Table doesn't exist first, then simulate it was created manually
-            check_count = [0]
-
-            def table_check(*args, **kwargs):
-                check_count[0] += 1
-                if check_count[0] == 1:
-                    raise Exception("Table not found")
-                return MagicMock()  # Table exists on second check
-
-            mock_table.select.return_value.limit.return_value.execute.side_effect = table_check
-            # Insert succeeds
-            mock_table.insert.return_value.execute.return_value = None
-
-            mock_client_instance = MagicMock()
-            mock_client_instance.table.return_value = mock_table
-            mock_client.return_value.connect.return_value.__enter__.return_value = (
-                mock_client_instance
-            )
-            MockClient.return_value = mock_client
-
-            # Connection without SQL channel
-            connection_config = {
-                "url": "http://test",
-                "key": "test",
-                # No DSN or SQL params
-            }
-
-            # This should succeed (continue with write attempt)
-            driver.run(
-                step_id="test",
-                config={
-                    "resolved_connection": connection_config,
-                    "table": "test_table",
-                    "create_if_missing": True,
-                },
-                inputs={"df": df},
-                ctx=MagicMock(),
-            )
-
-            # Check that ddl_planned event was logged
-            ddl_planned_calls = [
-                call for call in mock_log_event.call_args_list if call[0][0] == "table.ddl_planned"
-            ]
-
-            assert len(ddl_planned_calls) == 1
-            event_data = ddl_planned_calls[0][1]
-            assert event_data["executed"] is False
-            assert event_data["reason"] == "No SQL channel available"
+                assert len(ddl_planned_calls) == 1
+                event_data = ddl_planned_calls[0][1]
+                assert event_data["executed"] is False
+                assert event_data["reason"] == "No SQL channel available"
 
     def test_no_ddl_when_table_exists(self):
         """Test that no DDL is generated when table already exists."""
@@ -273,9 +306,9 @@ class TestSupabaseDDLGeneration:
 
             mock_client_instance = MagicMock()
             mock_client_instance.table.return_value = mock_table
-            mock_client.return_value.connect.return_value.__enter__.return_value = (
-                mock_client_instance
-            )
+            # Setup context manager for SupabaseClient itself
+            mock_client.__enter__ = MagicMock(return_value=mock_client_instance)
+            mock_client.__exit__ = MagicMock(return_value=None)
             MockClient.return_value = mock_client
 
             driver.run(

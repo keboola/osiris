@@ -374,9 +374,18 @@ class SupabaseWriterDriver(Driver):
         if any(k in connection_config for k in ["dsn", "sql_dsn", "pg_dsn"]):
             return True
 
-        # Check for separate PostgreSQL connection parameters
+        # Check for SQL endpoint variants
+        if any(k in connection_config for k in ["sql_url", "sql_endpoint"]):
+            return True
+
+        # Check for separate PostgreSQL connection parameters (pg_ prefixed)
         pg_params = ["pg_host", "pg_database", "pg_user", "pg_password"]
-        return all(param in connection_config for param in pg_params)
+        if all(param in connection_config for param in pg_params):
+            return True
+
+        # Check for standard PostgreSQL connection parameters
+        std_params = ["host", "database", "user", "password"]
+        return all(param in connection_config for param in std_params)
 
     def _execute_ddl(
         self, connection_config: Dict[str, Any], ddl_sql: str, schema: str, table_name: str
@@ -400,17 +409,29 @@ class SupabaseWriterDriver(Driver):
         )
 
         # If no DSN, try to build one from separate params
-        if not dsn and all(
-            k in connection_config for k in ["pg_host", "pg_database", "pg_user", "pg_password"]
-        ):
-            pg_port = connection_config.get("pg_port", 5432)
-            dsn = (
-                f"postgresql://{connection_config['pg_user']}:{connection_config['pg_password']}"
-                f"@{connection_config['pg_host']}:{pg_port}/{connection_config['pg_database']}"
-            )
-            logger.info(
-                f"Built PostgreSQL DSN from separate parameters (host={connection_config['pg_host']})"
-            )
+        if not dsn:
+            # Try pg_ prefixed params first
+            if all(
+                k in connection_config for k in ["pg_host", "pg_database", "pg_user", "pg_password"]
+            ):
+                pg_port = connection_config.get("pg_port", 5432)
+                dsn = (
+                    f"postgresql://{connection_config['pg_user']}:{connection_config['pg_password']}"
+                    f"@{connection_config['pg_host']}:{pg_port}/{connection_config['pg_database']}"
+                )
+                logger.info(
+                    f"Built PostgreSQL DSN from pg_ parameters (host={connection_config['pg_host']})"
+                )
+            # Try standard params
+            elif all(k in connection_config for k in ["host", "database", "user", "password"]):
+                port = connection_config.get("port", 5432)
+                dsn = (
+                    f"postgresql://{connection_config['user']}:{connection_config['password']}"
+                    f"@{connection_config['host']}:{port}/{connection_config['database']}"
+                )
+                logger.info(
+                    f"Built PostgreSQL DSN from standard parameters (host={connection_config['host']})"
+                )
 
         if dsn:
             try:

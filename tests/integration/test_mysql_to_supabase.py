@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -104,7 +104,10 @@ class TestMySQLToSupabaseIntegration:
         """Test appending rows with simple types to Supabase."""
         writer = SupabaseWriter(supabase_config)
 
-        with patch.object(writer.base_client, "connect", new_callable=AsyncMock) as mock_connect:
+        with patch.object(
+            writer.base_client,
+            "connect",
+        ) as mock_connect:
             # Mock Supabase client
             mock_client = MagicMock()
             mock_table = MagicMock()
@@ -161,7 +164,10 @@ class TestMySQLToSupabaseIntegration:
             {"id": 4, "name": "New Dave", "score": 85.5},
         ]
 
-        with patch.object(writer.base_client, "connect", new_callable=AsyncMock) as mock_connect:
+        with patch.object(
+            writer.base_client,
+            "connect",
+        ) as mock_connect:
             mock_client = MagicMock()
             mock_table = MagicMock()
             mock_client.table.return_value = mock_table
@@ -193,7 +199,10 @@ class TestMySQLToSupabaseIntegration:
         config = {**supabase_config, "write_mode": "replace"}
         writer = SupabaseWriter(config)
 
-        with patch.object(writer.base_client, "connect", new_callable=AsyncMock) as mock_connect:
+        with patch.object(
+            writer.base_client,
+            "connect",
+        ) as mock_connect:
             mock_client = MagicMock()
             mock_table = MagicMock()
             mock_client.table.return_value = mock_table
@@ -228,7 +237,10 @@ class TestMySQLToSupabaseIntegration:
             }
         ]
 
-        with patch.object(writer, "_table_exists", new_callable=AsyncMock) as mock_exists:
+        with patch.object(
+            writer,
+            "_table_exists",
+        ) as mock_exists:
             mock_exists.return_value = False
 
             with patch("osiris.connectors.supabase.writer.logger") as mock_logger:
@@ -255,7 +267,10 @@ class TestMySQLToSupabaseIntegration:
         # Create dataset larger than batch size
         large_data = [{"id": i, "value": f"item_{i}"} for i in range(5)]
 
-        with patch.object(writer.base_client, "connect", new_callable=AsyncMock) as mock_connect:
+        with patch.object(
+            writer.base_client,
+            "connect",
+        ) as mock_connect:
             mock_client = MagicMock()
             mock_table = MagicMock()
             mock_client.table.return_value = mock_table
@@ -283,7 +298,10 @@ class TestMySQLToSupabaseIntegration:
             }
         )
 
-        with patch.object(writer, "insert_data", new_callable=AsyncMock) as mock_insert:
+        with patch.object(
+            writer,
+            "insert_data",
+        ) as mock_insert:
             mock_insert.return_value = True
 
             result = await writer.load_dataframe("users", df)
@@ -338,7 +356,10 @@ class TestMySQLToSupabaseIntegration:
         """Test error handling when table doesn't exist."""
         writer = SupabaseWriter(supabase_config)
 
-        with patch.object(writer.base_client, "connect", new_callable=AsyncMock) as mock_connect:
+        with patch.object(
+            writer.base_client,
+            "connect",
+        ) as mock_connect:
             mock_client = MagicMock()
             mock_table = MagicMock()
             mock_client.table.return_value = mock_table
@@ -371,7 +392,10 @@ class TestMySQLToSupabaseIntegration:
             {"date": "2024-01-01", "user_id": 2, "visits": 5},
         ]
 
-        with patch.object(writer.base_client, "connect", new_callable=AsyncMock) as mock_connect:
+        with patch.object(
+            writer.base_client,
+            "connect",
+        ) as mock_connect:
             mock_client = MagicMock()
             mock_table = MagicMock()
             mock_client.table.return_value = mock_table

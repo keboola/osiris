@@ -161,8 +161,9 @@ class TestCompilerV0:
             "steps": [
                 {
                     "id": "extract",
-                    "uses": "extractors.supabase",
-                    "with": {"url": "${params.url}", "table": "${params.db}"},
+                    "component": "mysql.extractor",
+                    "mode": "read",
+                    "config": {"connection": "@mysql.main", "query": "SELECT * FROM ${params.db}"},
                 }
             ],
         }
@@ -173,9 +174,7 @@ class TestCompilerV0:
 
         # Compile
         compiler = CompilerV0(output_dir=str(tmp_path / "out"))
-        success, message = compiler.compile(
-            oml_path=str(oml_path), cli_params={"url": "https://test.com", "key": "test"}
-        )
+        success, message = compiler.compile(oml_path=str(oml_path), cli_params={"db": "test_db"})
 
         assert success, f"Compilation failed: {message}"
 

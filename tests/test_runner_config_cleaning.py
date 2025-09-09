@@ -17,7 +17,7 @@ def test_runner_strips_meta_keys(tmp_path):
         "steps": [
             {
                 "id": "test_step",
-                "driver": "test.driver",
+                "driver": "mysql.extractor",
                 "cfg_path": "cfg/test_step.json",
                 "needs": [],
             }
@@ -32,8 +32,8 @@ def test_runner_strips_meta_keys(tmp_path):
     cfg_dir.mkdir()
     config_path = cfg_dir / "test_step.json"
     config = {
-        "component": "test.driver",  # Meta key
-        "connection": "@test.main",  # Meta key
+        "component": "mysql.extractor",  # Meta key
+        "connection": "@mysql.main",  # Meta key
         "table": "test_table",  # Driver config
         "mode": "write",  # Driver config
     }
@@ -85,7 +85,7 @@ def test_cleaned_config_artifact_saved(tmp_path):
         "steps": [
             {
                 "id": "test_step",
-                "driver": "test.driver",
+                "driver": "mysql.extractor",
                 "cfg_path": "cfg/test_step.json",
                 "needs": [],
             }
@@ -99,7 +99,7 @@ def test_cleaned_config_artifact_saved(tmp_path):
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir()
     config_path = cfg_dir / "test_step.json"
-    config = {"component": "test.driver", "connection": "@test.main", "table": "test_table"}
+    config = {"component": "mysql.extractor", "connection": "@mysql.main", "table": "test_table"}
     with open(config_path, "w") as f:
         json.dump(config, f)
 
@@ -155,7 +155,7 @@ def test_config_meta_stripped_event_logged(tmp_path):
         "steps": [
             {
                 "id": "test_step",
-                "driver": "test.driver",
+                "driver": "mysql.extractor",
                 "cfg_path": "cfg/test_step.json",
                 "needs": [],
             }
@@ -169,7 +169,7 @@ def test_config_meta_stripped_event_logged(tmp_path):
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir()
     config_path = cfg_dir / "test_step.json"
-    config = {"component": "test.driver", "connection": "@test.main", "table": "test_table"}
+    config = {"component": "mysql.extractor", "connection": "@mysql.main", "table": "test_table"}
     with open(config_path, "w") as f:
         json.dump(config, f)
 
@@ -215,7 +215,7 @@ def test_no_meta_keys_no_stripping(tmp_path):
         "steps": [
             {
                 "id": "test_step",
-                "driver": "test.driver",
+                "driver": "mysql.extractor",
                 "cfg_path": "cfg/test_step.json",
                 "needs": [],
             }

@@ -27,19 +27,20 @@ class TestSessionIntegration:
             "steps": [
                 {
                     "id": "extract",
-                    "component": "supabase.extractor",
+                    "component": "mysql.extractor",
                     "mode": "read",
                     "config": {
-                        "url": "${params.url}",
-                        "table": "${params.table}",
+                        "connection": "@mysql.main",
+                        "query": "SELECT * FROM ${params.table}",
                     },
                 },
                 {
-                    "id": "transform",
-                    "component": "duckdb.transform",
-                    "mode": "transform",
+                    "id": "load",
+                    "component": "supabase.writer",
+                    "mode": "write",
                     "config": {
-                        "sql": "SELECT 1 as id, 'test' as name",  # Simple SQL that doesn't require tables
+                        "connection": "@supabase.main",
+                        "table": "output_${params.table}",
                     },
                 },
             ],
@@ -53,11 +54,6 @@ class TestSessionIntegration:
 
     def test_compile_creates_session(self, sample_oml, tmp_path):
         """Test that compile command creates a session."""
-        # Set up environment
-        import os
-
-        os.environ["OSIRIS_PARAM_URL"] = "https://test.supabase.co"
-
         try:
             # Mock sys.exit to prevent test from exiting
             with patch("sys.exit") as mock_exit:
@@ -92,15 +88,11 @@ class TestSessionIntegration:
 
         finally:
             # Clean up
-            if "OSIRIS_PARAM_URL" in os.environ:
-                del os.environ["OSIRIS_PARAM_URL"]
+            pass
 
     def test_run_creates_unified_session(self, sample_oml, tmp_path):
         """Test that run command creates a unified session for compile + execute."""
         # Set up environment
-        import os
-
-        os.environ["OSIRIS_PARAM_URL"] = "https://test.supabase.co"
 
         # Create dummy connections file for test
         connections = {
@@ -192,8 +184,7 @@ class TestSessionIntegration:
 
         finally:
             # Clean up
-            if "OSIRIS_PARAM_URL" in os.environ:
-                del os.environ["OSIRIS_PARAM_URL"]
+            pass
             # Clean up connections file
             if connections_path.exists():
                 connections_path.unlink()
@@ -201,9 +192,7 @@ class TestSessionIntegration:
     def test_session_with_custom_output_dir(self, sample_oml, tmp_path):
         """Test that --out option still creates session but copies artifacts."""
         # Set up environment
-        import os
 
-        os.environ["OSIRIS_PARAM_URL"] = "https://test.supabase.co"
         custom_output = str(tmp_path / "custom_output")
 
         try:
@@ -232,5 +221,4 @@ class TestSessionIntegration:
 
         finally:
             # Clean up
-            if "OSIRIS_PARAM_URL" in os.environ:
-                del os.environ["OSIRIS_PARAM_URL"]
+            pass

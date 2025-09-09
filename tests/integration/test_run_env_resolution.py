@@ -181,9 +181,11 @@ class TestRunEnvResolution:
                     assert len(driver_configs) > 0
                     config = driver_configs[0]
                     # The connection should have been resolved with env var
+                    assert "resolved_connection" in config
                     assert (
-                        config.get("password") == "test_password" or "connection" in config
-                    )  # pragma: allowlist secret
+                        config["resolved_connection"]["password"]
+                        == "test_password"  # pragma: allowlist secret
+                    )
 
             finally:
                 os.chdir(original_cwd)

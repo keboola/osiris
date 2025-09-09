@@ -1,7 +1,7 @@
 """Unit tests for Supabase writer component."""
 
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
@@ -146,7 +146,7 @@ class TestSupabaseWriter:
     @pytest.mark.asyncio
     async def test_insert_data(self, writer):
         """Test data insertion."""
-        with patch.object(writer.base_client, "connect", new_callable=AsyncMock) as mock_connect:
+        with patch.object(writer.base_client, "connect") as mock_connect:
             mock_client = MagicMock()
             mock_table = MagicMock()
             mock_client.table.return_value = mock_table
@@ -167,7 +167,7 @@ class TestSupabaseWriter:
     @pytest.mark.asyncio
     async def test_upsert_without_primary_key_raises_error(self, writer):
         """Test that upsert without primary_key raises ValueError."""
-        with patch.object(writer.base_client, "connect", new_callable=AsyncMock):
+        with patch.object(writer.base_client, "connect"):
             data = [{"id": 1, "name": "Test"}]
 
             with pytest.raises(ValueError, match="primary_key must be specified"):
@@ -176,7 +176,7 @@ class TestSupabaseWriter:
     @pytest.mark.asyncio
     async def test_upsert_with_primary_key(self, writer):
         """Test upsert with primary_key specified."""
-        with patch.object(writer.base_client, "connect", new_callable=AsyncMock) as mock_connect:
+        with patch.object(writer.base_client, "connect") as mock_connect:
             mock_client = MagicMock()
             mock_table = MagicMock()
             mock_client.table.return_value = mock_table
@@ -196,7 +196,7 @@ class TestSupabaseWriter:
     @pytest.mark.asyncio
     async def test_replace_table(self, writer):
         """Test table replacement."""
-        with patch.object(writer.base_client, "connect", new_callable=AsyncMock) as mock_connect:
+        with patch.object(writer.base_client, "connect") as mock_connect:
             mock_client = MagicMock()
             mock_table = MagicMock()
             mock_client.table.return_value = mock_table
@@ -226,7 +226,7 @@ class TestSupabaseWriter:
             }
         )
 
-        with patch.object(writer, "insert_data", new_callable=AsyncMock) as mock_insert:
+        with patch.object(writer, "insert_data") as mock_insert:
             mock_insert.return_value = True
 
             result = await writer.load_dataframe("test_table", df, write_mode="append")
@@ -248,7 +248,7 @@ class TestSupabaseWriter:
             }
         )
 
-        with patch.object(writer, "upsert_data", new_callable=AsyncMock) as mock_upsert:
+        with patch.object(writer, "upsert_data") as mock_upsert:
             mock_upsert.return_value = True
 
             result = await writer.load_dataframe(
@@ -268,7 +268,7 @@ class TestSupabaseWriter:
             }
         )
 
-        with patch.object(writer, "replace_table", new_callable=AsyncMock) as mock_replace:
+        with patch.object(writer, "replace_table") as mock_replace:
             mock_replace.return_value = True
 
             result = await writer.load_dataframe("test_table", df, write_mode="replace")
@@ -281,7 +281,7 @@ class TestSupabaseWriter:
         """Test that create_if_missing logs SQL but doesn't execute."""
         writer.create_if_missing = True
 
-        with patch.object(writer, "_table_exists", new_callable=AsyncMock) as mock_exists:
+        with patch.object(writer, "_table_exists") as mock_exists:
             mock_exists.return_value = False
 
             data = [{"id": 1, "name": "Test", "active": True}]
@@ -317,19 +317,18 @@ class TestSupabaseWriter:
     @pytest.mark.asyncio
     async def test_connect_disconnect(self, writer):
         """Test connection lifecycle."""
-        with patch.object(writer.base_client, "connect", new_callable=AsyncMock) as mock_connect:
-            with patch.object(
-                writer.base_client, "disconnect", new_callable=AsyncMock
-            ) as mock_disconnect:
-                mock_connect.return_value = MagicMock()
+        with patch.object(writer.base_client, "connect") as mock_connect, patch.object(
+            writer.base_client, "disconnect"
+        ) as mock_disconnect:
+            mock_connect.return_value = MagicMock()
 
-                # Connect
-                await writer.connect()
-                assert writer._initialized is True
-                mock_connect.assert_called_once()
+            # Connect
+            await writer.connect()
+            assert writer._initialized is True
+            mock_connect.assert_called_once()
 
-                # Disconnect
-                await writer.disconnect()
-                assert writer._initialized is False
-                assert writer.client is None
-                mock_disconnect.assert_called_once()
+            # Disconnect
+            await writer.disconnect()
+            assert writer._initialized is False
+            assert writer.client is None
+            mock_disconnect.assert_called_once()

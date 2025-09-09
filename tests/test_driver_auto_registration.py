@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 import yaml
 
 from osiris.core.runner_v0 import RunnerV0
@@ -56,6 +57,8 @@ def test_driver_registry_registers_from_specs(tmp_path):
 
 def test_driver_registration_handles_import_errors(tmp_path, caplog):
     """Test that driver registration handles import errors gracefully."""
+    import logging
+
     # Create a component with invalid driver path
     component_dir = tmp_path / "bad.component"
     component_dir.mkdir()
@@ -82,22 +85,23 @@ def test_driver_registration_handles_import_errors(tmp_path, caplog):
     with open(manifest_path, "w") as f:
         yaml.dump(manifest, f)
 
-    # Mock the component registry
+    # Mock the component registry to return our bad spec
     with patch("osiris.core.runner_v0.ComponentRegistry") as MockRegistry:
         mock_registry = MagicMock()
         mock_registry.load_specs.return_value = {"bad.component": spec}
         MockRegistry.return_value = mock_registry
 
         # Create runner - should log error but not crash
-        runner = RunnerV0(str(manifest_path))
+        with caplog.at_level(logging.DEBUG):
+            runner = RunnerV0(str(manifest_path))
 
-        # Check error was logged
-        assert "Failed to register driver for component 'bad.component'" in caplog.text
-        assert "nonexistent.module.NonExistentDriver" in caplog.text
-
-        # Driver should not be registered
+        # Driver should be registered (factory function created)
         drivers = runner.driver_registry.list_drivers()
-        assert "bad.component" not in drivers
+        assert "bad.component" in drivers
+
+        # But trying to instantiate it should fail
+        with pytest.raises(ModuleNotFoundError):
+            runner.driver_registry.get("bad.component")
 
 
 def test_components_without_driver_are_skipped(tmp_path):

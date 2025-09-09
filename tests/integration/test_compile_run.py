@@ -26,25 +26,21 @@ class TestCompileIntegration:
             "steps": [
                 {
                     "id": "extract",
-                    "component": "supabase.extractor",
+                    "component": "mysql.extractor",
                     "mode": "read",
                     "config": {
-                        "url": "${params.url}",
-                        "key": "${params.key}",
-                        "table": "${params.table}",
+                        "connection": "@mysql.main",
+                        "query": "SELECT * FROM ${params.table}",
                     },
                 },
                 {
-                    "id": "transform",
-                    "component": "duckdb.transform",
-                    "mode": "transform",
-                    "config": {"sql": "SELECT * FROM input"},
-                },
-                {
                     "id": "load",
-                    "component": "mysql.writer",
+                    "component": "supabase.writer",
                     "mode": "write",
-                    "config": {"dsn": "${params.dsn}", "table": "output_table"},
+                    "config": {
+                        "connection": "@supabase.main",
+                        "table": "output_table",
+                    },
                 },
             ],
         }
@@ -58,9 +54,7 @@ class TestCompileIntegration:
         success, message = compiler.compile(
             oml_path=str(oml_path),
             cli_params={
-                "url": "https://test.supabase.co",
-                "key": "test_key",
-                "dsn": "mysql://localhost/test",
+                "table": "test_table",
             },
         )
 
@@ -74,10 +68,9 @@ class TestCompileIntegration:
             manifest = yaml.safe_load(f)
 
         assert manifest["pipeline"]["id"] == "test_pipeline"
-        assert len(manifest["steps"]) == 3
+        assert len(manifest["steps"]) == 2
         assert manifest["steps"][0]["id"] == "extract"
         assert manifest["steps"][1]["needs"] == ["extract"]
-        assert manifest["steps"][2]["needs"] == ["transform"]
 
     def test_compile_with_profiles(self, tmp_path):
         """Test compilation with profiles."""
@@ -87,7 +80,15 @@ class TestCompileIntegration:
             "params": {"env": {"default": "dev"}},
             "profiles": {"prod": {"params": {"env": "production"}}},
             "steps": [
-                {"id": "test", "uses": "extractors.supabase", "with": {"env": "${params.env}"}}
+                {
+                    "id": "test",
+                    "component": "mysql.extractor",
+                    "mode": "read",
+                    "config": {
+                        "connection": "@mysql.main",
+                        "query": "SELECT '${params.env}' as env",
+                    },
+                }
             ],
         }
 
@@ -97,9 +98,7 @@ class TestCompileIntegration:
 
         # Compile with prod profile
         compiler = CompilerV0(output_dir=str(tmp_path / "compiled"))
-        success, _ = compiler.compile(
-            oml_path=str(oml_path), profile="prod", cli_params={"key": "test", "url": "test"}
-        )
+        success, _ = compiler.compile(oml_path=str(oml_path), profile="prod")
 
         assert success
 
@@ -145,7 +144,15 @@ class TestCompileIntegration:
             "name": "determinism test",
             "params": {"value": {"default": "42"}},
             "steps": [
-                {"id": "step1", "uses": "extractors.supabase", "with": {"value": "${params.value}"}}
+                {
+                    "id": "step1",
+                    "component": "mysql.extractor",
+                    "mode": "read",
+                    "config": {
+                        "connection": "@mysql.main",
+                        "query": "SELECT ${params.value} as value",
+                    },
+                }
             ],
         }
 
@@ -160,12 +167,8 @@ class TestCompileIntegration:
         compiler1 = CompilerV0(output_dir=str(out1))
         compiler2 = CompilerV0(output_dir=str(out2))
 
-        success1, _ = compiler1.compile(
-            oml_path=str(oml_path), cli_params={"key": "test", "url": "test"}
-        )
-        success2, _ = compiler2.compile(
-            oml_path=str(oml_path), cli_params={"key": "test", "url": "test"}
-        )
+        success1, _ = compiler1.compile(oml_path=str(oml_path))
+        success2, _ = compiler2.compile(oml_path=str(oml_path))
 
         assert success1 and success2
 
