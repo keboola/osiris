@@ -136,10 +136,13 @@ def test_mysql_to_supabase_e2e_flow():
                             "host": "localhost",
                             "database": "test",
                             "user": "user",
-                            "password": "pass",
+                            "password": "pass",  # pragma: allowlist secret
                         }
                     elif family == "supabase":
-                        return {"url": "https://test.supabase.co", "key": "secret_key"}
+                        return {
+                            "url": "https://test.supabase.co",
+                            "key": "secret_key",
+                        }  # pragma: allowlist secret
                     return None
 
                 mock_resolve.side_effect = resolve
@@ -215,70 +218,68 @@ def test_supabase_writer_ddl_plan_generation():
         mock_ctx.output_dir = output_dir
 
         # Mock Supabase client - table doesn't exist
-        with patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient:
-            with patch("osiris.drivers.supabase_writer_driver.log_event") as mock_log_event:
-                mock_client = MagicMock()
-                mock_table = MagicMock()
+        with patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient, patch(
+            "osiris.drivers.supabase_writer_driver.log_event"
+        ) as mock_log_event:
+            mock_client = MagicMock()
+            mock_table = MagicMock()
 
-                # First check: table doesn't exist
-                # Second check after "manual creation": table exists
-                check_count = [0]
+            # First check: table doesn't exist
+            # Second check after "manual creation": table exists
+            check_count = [0]
 
-                def table_check(*args, **kwargs):
-                    check_count[0] += 1
-                    if check_count[0] == 1:
-                        raise Exception("Table not found")
-                    return MagicMock()  # Success on second check
+            def table_check(*args, **kwargs):
+                check_count[0] += 1
+                if check_count[0] == 1:
+                    raise Exception("Table not found")
+                return MagicMock()  # Success on second check
 
-                mock_table.select.return_value.limit.return_value.execute.side_effect = table_check
-                mock_table.insert.return_value.execute.return_value = None
+            mock_table.select.return_value.limit.return_value.execute.side_effect = table_check
+            mock_table.insert.return_value.execute.return_value = None
 
-                mock_client_instance = MagicMock()
-                mock_client_instance.table.return_value = mock_table
-                # Setup context manager for SupabaseClient itself
-                mock_client.__enter__ = MagicMock(return_value=mock_client_instance)
-                mock_client.__exit__ = MagicMock(return_value=None)
-                MockClient.return_value = mock_client
+            mock_client_instance = MagicMock()
+            mock_client_instance.table.return_value = mock_table
+            # Setup context manager for SupabaseClient itself
+            mock_client.__enter__ = MagicMock(return_value=mock_client_instance)
+            mock_client.__exit__ = MagicMock(return_value=None)
+            MockClient.return_value = mock_client
 
-                # Run without SQL channel (REST API only)
-                result = driver.run(
-                    step_id="write-users",
-                    config={
-                        "resolved_connection": {
-                            "url": "https://test.supabase.co",
-                            "key": "test_key",
-                        },
-                        "table": "users",
-                        "write_mode": "append",
-                        "create_if_missing": True,
+            # Run without SQL channel (REST API only)
+            driver.run(
+                step_id="write-users",
+                config={
+                    "resolved_connection": {
+                        "url": "https://test.supabase.co",
+                        "key": "test_key",
                     },
-                    inputs={"df": df},
-                    ctx=mock_ctx,
-                )
+                    "table": "users",
+                    "write_mode": "append",
+                    "create_if_missing": True,
+                },
+                inputs={"df": df},
+                ctx=mock_ctx,
+            )
 
-                # Check DDL plan was generated
-                ddl_path = output_dir / "ddl_plan.sql"
-                assert ddl_path.exists()
+            # Check DDL plan was generated
+            ddl_path = output_dir / "ddl_plan.sql"
+            assert ddl_path.exists()
 
-                with open(ddl_path) as f:
-                    ddl = f.read()
+            with open(ddl_path) as f:
+                ddl = f.read()
 
-                # Verify DDL content
-                assert "CREATE TABLE IF NOT EXISTS public.users" in ddl
-                assert "id INTEGER" in ddl
-                assert "name TEXT" in ddl
-                assert "amount DOUBLE PRECISION" in ddl
-                assert "is_active BOOLEAN" in ddl
+            # Verify DDL content
+            assert "CREATE TABLE IF NOT EXISTS public.users" in ddl
+            assert "id INTEGER" in ddl
+            assert "name TEXT" in ddl
+            assert "amount DOUBLE PRECISION" in ddl
+            assert "is_active BOOLEAN" in ddl
 
-                # Check event was logged
-                ddl_events = [
-                    call
-                    for call in mock_log_event.call_args_list
-                    if call[0][0] == "table.ddl_planned"
-                ]
-                assert len(ddl_events) == 1
-                event_data = ddl_events[0][1]
-                assert event_data["table"] == "users"
-                assert event_data["executed"] is False
-                assert event_data["reason"] == "No SQL channel available"
-
+            # Check event was logged
+            ddl_events = [
+                call for call in mock_log_event.call_args_list if call[0][0] == "table.ddl_planned"
+            ]
+            assert len(ddl_events) == 1
+            event_data = ddl_events[0][1]
+            assert event_data["table"] == "users"
+            assert event_data["executed"] is False
+            assert event_data["reason"] == "No SQL channel available"

@@ -137,11 +137,9 @@ class SupabaseWriterDriver(Driver):
 
             with supabase_client as client:
                 # Pre-flight check: verify table exists
-                table_exists = False
                 try:
                     # Try to fetch 0 rows to check table existence
                     client.table(table_name).select("*").limit(0).execute()
-                    table_exists = True
                 except Exception as e:
                     if create_if_missing:
                         # Generate CREATE TABLE SQL
@@ -177,7 +175,6 @@ class SupabaseWriterDriver(Driver):
 
                                 logger.info("Waiting 3s for PostgREST schema cache refresh...")
                                 time.sleep(3)
-                                table_exists = True
                             except Exception as ddl_error:
                                 logger.error(f"Failed to execute DDL: {str(ddl_error)}")
                                 log_event(
@@ -186,7 +183,9 @@ class SupabaseWriterDriver(Driver):
                                     table=table_name,
                                     error=str(ddl_error),
                                 )
-                                raise RuntimeError(f"Table creation failed: {str(ddl_error)}") from ddl_error
+                                raise RuntimeError(
+                                    f"Table creation failed: {str(ddl_error)}"
+                                ) from ddl_error
                         else:
                             # No SQL channel available, only log the plan
                             logger.warning(
@@ -258,7 +257,7 @@ class SupabaseWriterDriver(Driver):
                             except Exception as retry_e:
                                 raise RuntimeError(
                                     f"Batch write failed after retry: {str(retry_e)}"
-                                )
+                                ) from retry_e
                         else:
                             raise
 
@@ -285,7 +284,7 @@ class SupabaseWriterDriver(Driver):
             # Log error
             if ctx:
                 log_event("write.error", step_id=step_id, error=str(e))
-            raise RuntimeError(f"Supabase write failed: {str(e)}")
+            raise RuntimeError(f"Supabase write failed: {str(e)}") from e
 
     def _prepare_records(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
         """Convert DataFrame to list of records with proper serialization.
@@ -306,10 +305,7 @@ class SupabaseWriterDriver(Driver):
                 # Handle datetime types
                 elif isinstance(value, (pd.Timestamp, np.datetime64)):
                     record[col] = pd.Timestamp(value).isoformat()
-                elif isinstance(value, datetime):
-                    record[col] = value.isoformat()
-                # Handle date types (without time)
-                elif isinstance(value, date):
+                elif isinstance(value, (datetime, date)):
                     record[col] = value.isoformat()
                 # Handle numeric types
                 elif isinstance(value, (np.integer, np.int64, np.int32)):
@@ -380,10 +376,7 @@ class SupabaseWriterDriver(Driver):
 
         # Check for separate PostgreSQL connection parameters
         pg_params = ["pg_host", "pg_database", "pg_user", "pg_password"]
-        if all(param in connection_config for param in pg_params):
-            return True
-
-        return False
+        return all(param in connection_config for param in pg_params)
 
     def _execute_ddl(
         self, connection_config: Dict[str, Any], ddl_sql: str, schema: str, table_name: str
@@ -424,10 +417,9 @@ class SupabaseWriterDriver(Driver):
                 import psycopg2
 
                 logger.info(f"SQL channel detected: psycopg2 (schema={schema}, table={table_name})")
-                with psycopg2.connect(dsn) as conn:
-                    with conn.cursor() as cur:
-                        cur.execute(ddl_sql)
-                        conn.commit()
+                with psycopg2.connect(dsn) as conn, conn.cursor() as cur:
+                    cur.execute(ddl_sql)
+                    conn.commit()
                 logger.info(f"Successfully executed DDL for {schema}.{table_name}")
                 return
             except ImportError:
@@ -435,7 +427,7 @@ class SupabaseWriterDriver(Driver):
                 raise RuntimeError(
                     "SQL channel available but psycopg2 not installed. "
                     "Install with: pip install psycopg2-binary"
-                )
+                ) from None
             except Exception as e:
                 logger.error(f"Failed to execute DDL: {str(e)}")
                 raise RuntimeError(f"DDL execution failed: {str(e)}") from e
@@ -446,4 +438,3 @@ class SupabaseWriterDriver(Driver):
             "SQL channel DDL execution not available. "
             "Please create the table manually using the generated DDL plan."
         )
-

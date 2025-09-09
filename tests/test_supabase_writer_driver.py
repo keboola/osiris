@@ -233,53 +233,55 @@ class TestSupabaseWriterDriver:
         # Mock context for metrics
         mock_ctx = MagicMock()
 
-        with patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient:
-            with patch("osiris.drivers.supabase_writer_driver.log_metric") as mock_log_metric:
-                with patch("osiris.drivers.supabase_writer_driver.log_event") as mock_log_event:
-                    mock_client_instance = MagicMock()
-                    mock_table = MagicMock()
+        with patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient, patch(
+            "osiris.drivers.supabase_writer_driver.log_metric"
+        ) as mock_log_metric, patch(
+            "osiris.drivers.supabase_writer_driver.log_event"
+        ) as mock_log_event:
+            mock_client_instance = MagicMock()
+            mock_table = MagicMock()
 
-                    # Setup the client mock
-                    mock_client = MagicMock()
-                    MockClient.return_value = mock_client
+            # Setup the client mock
+            mock_client = MagicMock()
+            MockClient.return_value = mock_client
 
-                    # Setup context manager for SupabaseClient itself
-                    mock_client.__enter__ = MagicMock(return_value=mock_client_instance)
-                    mock_client.__exit__ = MagicMock(return_value=None)
+            # Setup context manager for SupabaseClient itself
+            mock_client.__enter__ = MagicMock(return_value=mock_client_instance)
+            mock_client.__exit__ = MagicMock(return_value=None)
 
-                    # Setup table mock
-                    mock_client_instance.table.return_value = mock_table
-                    mock_table.select.return_value.limit.return_value.execute.return_value = None
-                    mock_table.insert.return_value.execute.return_value = None
+            # Setup table mock
+            mock_client_instance.table.return_value = mock_table
+            mock_table.select.return_value.limit.return_value.execute.return_value = None
+            mock_table.insert.return_value.execute.return_value = None
 
-                    result = driver.run(
-                        step_id="test_step",
-                        config={
-                            "resolved_connection": {"url": "http://test", "key": "test"},
-                            "table": "test_table",
-                        },
-                        inputs={"df": df},
-                        ctx=mock_ctx,
-                    )
+            result = driver.run(
+                step_id="test_step",
+                config={
+                    "resolved_connection": {"url": "http://test", "key": "test"},
+                    "table": "test_table",
+                },
+                inputs={"df": df},
+                ctx=mock_ctx,
+            )
 
-                    # Check metrics were logged
-                    mock_log_metric.assert_any_call("rows_written", 3, step_id="test_step")
-                    mock_log_metric.assert_any_call(
-                        "duration_ms", pytest.approx(10, abs=500), step_id="test_step"
-                    )
+            # Check metrics were logged
+            mock_log_metric.assert_any_call("rows_written", 3, step_id="test_step")
+            mock_log_metric.assert_any_call(
+                "duration_ms", pytest.approx(10, abs=500), step_id="test_step"
+            )
 
-                    # Check events were logged
-                    mock_log_event.assert_any_call(
-                        "write.start",
-                        step_id="test_step",
-                        table="test_table",
-                        mode="insert",
-                        rows=3,
-                        batch_size=500,
-                    )
+            # Check events were logged
+            mock_log_event.assert_any_call(
+                "write.start",
+                step_id="test_step",
+                table="test_table",
+                mode="insert",
+                rows=3,
+                batch_size=500,
+            )
 
-                    # Check result is empty dict (writers return {})
-                    assert result == {}
+            # Check result is empty dict (writers return {})
+            assert result == {}
 
     def test_context_manager_usage(self):
         """Test that SupabaseClient is used as a context manager."""
@@ -340,4 +342,3 @@ class TestSupabaseWriterDriver:
         assert "is_active BOOLEAN" in sql
         assert "created_at TIMESTAMP" in sql
         assert "PRIMARY KEY (id)" in sql
-

@@ -33,32 +33,32 @@ class RunnerV0:
     def _build_driver_registry(self) -> DriverRegistry:
         """Build and populate the driver registry from component specs."""
         registry = DriverRegistry()
-        
+
         # Load component registry
         component_registry = ComponentRegistry()
         specs = component_registry.load_specs()
-        
+
         # Register drivers from specs
         for component_name, spec in specs.items():
             # Check for x-runtime.driver
             runtime_config = spec.get("x-runtime", {})
             driver_path = runtime_config.get("driver")
-            
+
             if driver_path:
                 try:
                     # Parse module and class name
                     module_path, class_name = driver_path.rsplit(".", 1)
-                    
+
                     # Create factory function
                     def create_driver(module_path=module_path, class_name=class_name):
                         module = importlib.import_module(module_path)
                         driver_class = getattr(module, class_name)
                         return driver_class()
-                    
+
                     # Register with component name
                     registry.register(component_name, create_driver)
                     logger.debug(f"Registered driver for {component_name}: {driver_path}")
-                    
+
                 except Exception as e:
                     # Provide helpful error message
                     error_msg = (
@@ -70,7 +70,7 @@ class RunnerV0:
                     # Don't fail here - let compile-time check catch missing drivers
             else:
                 logger.debug(f"Component {component_name} has no x-runtime.driver specified")
-        
+
         return registry
 
     def run(self) -> bool:
@@ -242,28 +242,28 @@ class RunnerV0:
             connection = self._resolve_step_connection(step, config)
             if connection:
                 config["resolved_connection"] = connection
-            
+
             # Clean config for driver (strip meta keys)
             clean_config = config.copy()
             meta_keys_removed = []
-            
+
             if "component" in clean_config:
                 del clean_config["component"]
                 meta_keys_removed.append("component")
-            
+
             if "connection" in clean_config:
                 del clean_config["connection"]
                 meta_keys_removed.append("connection")
-            
+
             # Log that meta keys were stripped
             if meta_keys_removed:
                 log_event(
                     "config_meta_stripped",
                     step_id=step_id,
                     keys_removed=meta_keys_removed,
-                    config_meta_stripped=True
+                    config_meta_stripped=True,
                 )
-            
+
             # Save cleaned config as artifact (no secrets in resolved_connection)
             cleaned_config_path = step_output_dir / "cleaned_config.json"
             with open(cleaned_config_path, "w") as f:
@@ -341,7 +341,7 @@ class RunnerV0:
             class RunnerContext:
                 def __init__(self, output_dir):
                     self.output_dir = output_dir
-                    
+
                 def log_metric(self, name: str, value: Any):
                     log_metric(name, value)
 
