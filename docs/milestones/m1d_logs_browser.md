@@ -140,20 +140,99 @@ osiris runs list  # Should show warning
 - **ADR-0021**: Session-scoped logging - Provides the data model we visualize
 - **ADR-0023**: Log commands - Original specification for log management
 
-## Next Steps
+## Data Engineer Assessment & Enhancements
+
+### Investigation Results (Sep 2025)
+After examining the current implementation against actual session data (`run_1757461848561`), identified critical gaps for data engineering workflows:
+
+**Current State:**
+- ✅ Basic overview with session grouping
+- ✅ Clickable links to session details
+- ❌ **Broken event display** - only shows "INFO" levels without timestamps/messages
+- ❌ **Useless metrics** - raw numbers (2138, 1.31) without context/units
+- ❌ **Missing execution context** - no indication of E2B remote vs local runs
+- ❌ **Missing critical data** - no artifacts, logs, pipeline steps
+
+**Rich Data Available:**
+```json
+// Events with structured data
+{"event":"e2b.prepare.start", "ts":"2025-09-09T23:50:48.562968+00:00"}
+{"event":"e2b.upload.finish", "duration":2.916, "sandbox_id":"unknown"}
+
+// Metrics with proper units
+{"metric":"e2b.payload.size", "value":2138, "unit":"bytes"}
+{"metric":"e2b.exec.duration", "value":1.31, "unit":"seconds"}
+
+// Files: artifacts/, osiris.log, metadata.json, build/
+```
+
+### M1d+ Priority Enhancements (Data Engineer Tool)
+
+#### Overview Page Improvements
+- [x] **E2B execution badges** - Orange "E2B" indicator for remote runs
+- [x] **Duration column** - Show execution times (5.8s, 1.3s)
+- [ ] **Pipeline names** - Extract from session metadata
+- [ ] **Row counts per session** - Data throughput visibility
+- [ ] **Sortable table** - By date, duration, status, rows
+- [ ] **Search/filter bar** - Quick session lookup
+
+#### Detail Page New Tabs
+- [ ] **Pipeline Steps** - Mermaid flow diagram with timings
+- [x] **Artifacts** - File browser for artifacts/, build/, remote/
+- [ ] **Technical Logs** - osiris.log viewer with syntax highlighting  
+- [ ] **Metadata** - Execution context, environment details
+- [ ] **Performance** - Metrics dashboard with proper units
+
+#### Fixed Core Issues
+- [x] **Fix Events tab** - Show timestamps, messages, structured data
+- [x] **Fix Metrics tab** - Display with units, formatted values
+- [ ] **Add log streaming** - Access to debug.log, osiris.log content
+
+### Implementation Approach
+Keep "raw" data engineer tool aesthetic:
+- **No fancy UI** - Focus on data visibility
+- **Mermaid diagrams** - For pipeline visualization
+- **Monospace fonts** - For technical content
+- **Fast implementation** - Minimal CSS, direct HTML generation
+- **Tabular data** - Sortable tables for analysis
+
+### Implementation Progress (January 2025)
+
+#### Completed Enhancements
+1. **Fixed Events Tab**
+   - Proper timestamp formatting (HH:MM:SS.mmm)
+   - Event names displayed correctly
+   - Structured data shown with key=value pairs
+   - Color coding for E2B events
+
+2. **Fixed Metrics Tab**
+   - Unit-aware formatting (2.1KB instead of 2138)
+   - Duration formatting (1.31s instead of 1.31)
+   - Color coding by metric type
+
+3. **E2B Execution Badges**
+   - Orange badges on overview page
+   - Automatic detection via metadata.json or e2b.* events
+   - Visual distinction for remote executions
+
+4. **Duration Column**
+   - Added to overview page
+   - Smart formatting (ms, s, m based on value)
+   - Grid layout for better alignment
+
+5. **Artifacts Tab**
+   - Complete file browser implementation
+   - Directory tree with nested files
+   - File type icons (📁 📄 📋 📊 📝)
+   - Size formatting (bytes, KB, MB)
+
+### Next Steps
 
 ### M1e Enhancements (Future)
-- Search functionality in HTML interface
-- Export to PDF capability
-- Comparison view for multiple sessions
-- Performance metrics charts
-- Real-time updates (WebSocket support)
-
-### M2 Integration
-- Link to compiled manifests viewer
-- Connection topology visualization
-- Error analysis dashboard
-- Pipeline lineage tracking
+- Export capabilities (CSV, JSON, logs)
+- Session comparison view
+- Performance trends over time
+- Data lineage tracking
 
 ## Verification
 
