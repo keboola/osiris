@@ -3,6 +3,7 @@
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -133,6 +134,29 @@ def read_session_logs(logs_dir: str, session_id: str) -> Dict[str, Any]:
             )
 
     result["artifacts"] = artifacts
+
+    # Read log files for Technical Logs tab
+    logs = {}
+
+    # Read osiris.log if it exists
+    osiris_log = session_path / "osiris.log"
+    if osiris_log.exists():
+        try:
+            with open(osiris_log) as f:
+                logs["osiris.log"] = f.read()
+        except Exception:
+            logs["osiris.log"] = "Error reading osiris.log"
+
+    # Read debug.log if it exists
+    debug_log = session_path / "debug.log"
+    if debug_log.exists():
+        try:
+            with open(debug_log) as f:
+                logs["debug.log"] = f.read()
+        except Exception:
+            logs["debug.log"] = "Error reading debug.log"
+
+    result["logs"] = logs
     return result
 
 
@@ -332,6 +356,29 @@ def generate_overview_page(sessions, logs_dir: str) -> str:
         .clickable-row {{
             cursor: pointer;
         }}
+        th.sortable {{
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            padding-right: 1.5rem;
+        }}
+        th.sortable:hover {{
+            background: #e9ecef;
+        }}
+        th.sortable::after {{
+            content: '⇅';
+            position: absolute;
+            right: 0.5rem;
+            opacity: 0.3;
+        }}
+        th.sortable.sort-asc::after {{
+            content: '↑';
+            opacity: 1;
+        }}
+        th.sortable.sort-desc::after {{
+            content: '↓';
+            opacity: 1;
+        }}
         .session-status {{
             padding: 0.25rem 0.5rem;
             border-radius: 3px;
@@ -390,14 +437,14 @@ def generate_overview_page(sessions, logs_dir: str) -> str:
     <div class="section">
         <div class="section-header">{session_type.title()} Sessions ({len(type_sessions)})</div>
         <div class="table-wrapper">
-            <table>
+            <table class="sortable-table" id="table-{session_type}">
                 <thead>
                     <tr>
-                        <th>Session ID</th>
-                        <th>Started</th>
-                        <th class="align-right">Duration</th>
-                        <th class="align-right">Rows</th>
-                        <th>Status</th>
+                        <th class="sortable" data-column="0" onclick="sortTable('table-{session_type}', 0)">Session ID</th>
+                        <th class="sortable" data-column="1" onclick="sortTable('table-{session_type}', 1)">Started</th>
+                        <th class="sortable align-right" data-column="2" onclick="sortTable('table-{session_type}', 2)">Duration</th>
+                        <th class="sortable align-right" data-column="3" onclick="sortTable('table-{session_type}', 3)">Rows</th>
+                        <th class="sortable" data-column="4" onclick="sortTable('table-{session_type}', 4)">Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -433,8 +480,11 @@ def generate_overview_page(sessions, logs_dir: str) -> str:
             rows = session.rows_out if session.rows_out else 0
             rows_display = f"{rows:,}" if rows > 0 else "-"
 
+            # Add data attributes for sorting
+            duration_ms = session.duration_ms if session.duration_ms else 0
+
             html += f"""
-                    <tr class="clickable-row" onclick="window.location.href='{session.session_id}/index.html'">
+                    <tr class="clickable-row" onclick="window.location.href='{session.session_id}/index.html'" data-duration="{duration_ms}" data-rows="{rows}">
                         <td class="session-id">{session.session_id}{e2b_badge}</td>
                         <td class="session-time">{started_time}</td>
                         <td class="session-duration">{duration or '-'}</td>
@@ -451,6 +501,78 @@ def generate_overview_page(sessions, logs_dir: str) -> str:
 """
 
     html += """
+    <script>
+        const sortStates = {};
+
+        function sortTable(tableId, columnIndex) {
+            const table = document.getElementById(tableId);
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            const th = table.querySelectorAll('th')[columnIndex];
+
+            // Get current sort state
+            const key = tableId + '-' + columnIndex;
+            const currentState = sortStates[key] || 'none';
+            let newState = currentState === 'none' ? 'asc' :
+                           currentState === 'asc' ? 'desc' : 'asc';
+
+            // Clear all sort indicators for this table
+            table.querySelectorAll('th').forEach(header => {
+                header.classList.remove('sort-asc', 'sort-desc');
+            });
+
+            // Sort rows
+            rows.sort((a, b) => {
+                const cellA = a.cells[columnIndex];
+                const cellB = b.cells[columnIndex];
+                let valA = cellA.textContent.trim();
+                let valB = cellB.textContent.trim();
+
+                // Handle different data types
+                if (columnIndex === 2) { // Duration column
+                    // Convert to milliseconds for comparison
+                    valA = parseDuration(valA);
+                    valB = parseDuration(valB);
+                } else if (columnIndex === 3) { // Rows column
+                    valA = valA === '-' ? -1 : parseInt(valA.replace(/,/g, ''));
+                    valB = valB === '-' ? -1 : parseInt(valB.replace(/,/g, ''));
+                } else if (columnIndex === 1) { // Date column
+                    valA = new Date(valA).getTime() || 0;
+                    valB = new Date(valB).getTime() || 0;
+                }
+
+                // Compare
+                let comparison = 0;
+                if (typeof valA === 'number' && typeof valB === 'number') {
+                    comparison = valA - valB;
+                } else {
+                    comparison = valA.toString().localeCompare(valB.toString());
+                }
+
+                return newState === 'asc' ? comparison : -comparison;
+            });
+
+            // Update DOM
+            tbody.innerHTML = '';
+            rows.forEach(row => tbody.appendChild(row));
+
+            // Update sort indicator
+            th.classList.add('sort-' + newState);
+            sortStates[key] = newState;
+        }
+
+        function parseDuration(duration) {
+            if (duration === '-') return -1;
+            if (duration.endsWith('ms')) {
+                return parseFloat(duration);
+            } else if (duration.endsWith('s')) {
+                return parseFloat(duration) * 1000;
+            } else if (duration.endsWith('m')) {
+                return parseFloat(duration) * 60000;
+            }
+            return 0;
+        }
+    </script>
 </body>
 </html>
 """
@@ -463,6 +585,7 @@ def generate_session_detail_page(session, session_logs) -> str:
     events = session_logs.get("events", [])
     metrics = session_logs.get("metrics", [])
     artifacts = session_logs.get("artifacts", [])
+    logs = session_logs.get("logs", {})
 
     # Parse events and metrics for display
     events_html = ""
@@ -641,6 +764,61 @@ def generate_session_detail_page(session, session_logs) -> str:
         artifacts_html += "</div>"
     else:
         artifacts_html = '<div class="empty-state">No artifacts found for this session</div>'
+
+    # Generate Technical Logs HTML
+    logs_html = ""
+    if logs:
+        # Create sub-tabs for different log files
+        log_tabs = []
+        log_panels = []
+
+        for idx, (log_name, log_content) in enumerate(logs.items()):
+            active_class = "active" if idx == 0 else ""
+            log_tabs.append(
+                f'<div class="log-tab {active_class}" onclick="showLogTab(\'{log_name}\')">{log_name}</div>'
+            )
+
+            # Format log content with syntax highlighting for common patterns
+            formatted_content = log_content.replace("<", "&lt;").replace(">", "&gt;")
+
+            # Simple syntax highlighting
+            # Highlight timestamps
+            formatted_content = re.sub(
+                r"(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[\.\d]*)",
+                r'<span class="log-timestamp">\1</span>',
+                formatted_content,
+            )
+            # Highlight log levels
+            formatted_content = re.sub(
+                r"\b(ERROR|WARN|WARNING|INFO|DEBUG|CRITICAL)\b",
+                lambda m: f'<span class="log-{m.group(1).lower()}">{m.group(1)}</span>',
+                formatted_content,
+            )
+            # Highlight file paths
+            formatted_content = re.sub(
+                r"([/\w\-\.]+\.(py|yaml|json|log))",
+                r'<span class="log-path">\1</span>',
+                formatted_content,
+            )
+
+            log_panels.append(
+                f"""
+                <div id="log-{log_name}" class="log-panel {active_class}">
+                    <pre class="log-content">{formatted_content}</pre>
+                </div>
+            """
+            )
+
+        logs_html = f"""
+            <div class="log-tabs">
+                {''.join(log_tabs)}
+            </div>
+            <div class="log-panels">
+                {''.join(log_panels)}
+            </div>
+        """
+    else:
+        logs_html = '<div class="empty-state">No log files found for this session</div>'
 
     # Format session duration
     duration = ""
@@ -824,6 +1002,65 @@ def generate_session_detail_page(session, session_logs) -> str:
             color: #666;
             text-align: right;
         }}
+        /* Technical Logs styles */
+        .log-tabs {{
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            border-bottom: 2px solid #dee2e6;
+        }}
+        .log-tab {{
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            background: #f8f9fa;
+            border-radius: 4px 4px 0 0;
+            font-weight: 600;
+            font-size: 0.875rem;
+        }}
+        .log-tab.active {{
+            background: white;
+            border-bottom: 2px solid white;
+            margin-bottom: -2px;
+        }}
+        .log-panel {{
+            display: none;
+        }}
+        .log-panel.active {{
+            display: block;
+        }}
+        .log-content {{
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.8rem;
+            line-height: 1.4;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 1rem;
+            border-radius: 4px;
+            overflow-x: auto;
+            max-height: 600px;
+            overflow-y: auto;
+        }}
+        .log-timestamp {{
+            color: #9cdcfe;
+        }}
+        .log-error, .log-critical {{
+            color: #f48771;
+            font-weight: bold;
+        }}
+        .log-warn, .log-warning {{
+            color: #dcdcaa;
+            font-weight: bold;
+        }}
+        .log-info {{
+            color: #4ec9b0;
+        }}
+        .log-debug {{
+            color: #808080;
+        }}
+        .log-path {{
+            color: #ce9178;
+            text-decoration: underline;
+        }}
     </style>
 </head>
 <body>
@@ -865,6 +1102,7 @@ def generate_session_detail_page(session, session_logs) -> str:
         <div class="tab active" onclick="showTab('events')">Events ({len(events)})</div>
         <div class="tab" onclick="showTab('metrics')">Metrics ({len(metrics)})</div>
         <div class="tab" onclick="showTab('artifacts')">Artifacts ({len(artifacts)})</div>
+        <div class="tab" onclick="showTab('logs')">Technical Logs</div>
         <div class="tab" onclick="showTab('overview')">Overview</div>
     </div>
 
@@ -877,6 +1115,9 @@ def generate_session_detail_page(session, session_logs) -> str:
         </div>
         <div id="artifacts" class="tab-panel">
             {artifacts_html}
+        </div>
+        <div id="logs" class="tab-panel">
+            {logs_html}
         </div>
         <div id="overview" class="tab-panel">
             <div class="empty-state">Session overview coming soon</div>
@@ -899,6 +1140,24 @@ def generate_session_detail_page(session, session_logs) -> str:
             document.getElementById(tabName).classList.add('active');
 
             // Add active class to clicked tab
+            event.target.classList.add('active');
+        }}
+
+        function showLogTab(logName) {{
+            // Hide all log panels
+            document.querySelectorAll('.log-panel').forEach(panel => {{
+                panel.classList.remove('active');
+            }});
+
+            // Remove active class from all log tabs
+            document.querySelectorAll('.log-tab').forEach(tab => {{
+                tab.classList.remove('active');
+            }});
+
+            // Show selected log panel
+            document.getElementById('log-' + logName).classList.add('active');
+
+            // Add active class to clicked log tab
             event.target.classList.add('active');
         }}
     </script>
