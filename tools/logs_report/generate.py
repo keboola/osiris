@@ -1090,9 +1090,9 @@ def generate_session_detail_page(session, session_logs) -> str:
 
         pipeline_steps_html = f"""<div class='pipeline-visualization'>
             <h3>Pipeline Flow</h3>
-            <div class='mermaid'>
-                {mermaid_diagram}
-            </div>
+            <pre class='mermaid'>
+{mermaid_diagram}
+            </pre>
             <h3>Step Details</h3>
             <div class='steps-list'>"""
 
@@ -1137,7 +1137,7 @@ def generate_session_detail_page(session, session_logs) -> str:
     # Duration metrics
     if duration_metrics:
         performance_html += """<div class='perf-section'>
-            <h3>⏱️ Timing Metrics</h3>
+            <h3>Timing Metrics</h3>
             <div class='perf-grid'>"""
 
         for metric in duration_metrics:
@@ -1159,7 +1159,7 @@ def generate_session_detail_page(session, session_logs) -> str:
     # Size metrics
     if size_metrics:
         performance_html += """<div class='perf-section'>
-            <h3>💾 Data Size Metrics</h3>
+            <h3>Data Size Metrics</h3>
             <div class='perf-grid'>"""
 
         for metric in size_metrics:
@@ -1185,7 +1185,7 @@ def generate_session_detail_page(session, session_logs) -> str:
     # E2B metrics
     if e2b_metrics:
         performance_html += """<div class='perf-section'>
-            <h3>🚀 E2B Remote Execution</h3>
+            <h3>E2B Remote Execution</h3>
             <div class='perf-grid'>"""
 
         for metric in e2b_metrics:
@@ -1500,11 +1500,13 @@ def generate_session_detail_page(session, session_logs) -> str:
             font-size: 1rem;
         }}
         .mermaid {{
-            text-align: center;
+            text-align: left;
             background: #f8f9fa;
             padding: 2rem;
-            border-radius: 4px;
+            border-radius: 8px;
             margin-bottom: 2rem;
+            border: 1px solid #e5e7eb;
+            overflow-x: auto;
         }}
         .steps-list {{
             display: grid;
@@ -1545,21 +1547,23 @@ def generate_session_detail_page(session, session_logs) -> str:
             gap: 1rem;
         }}
         .perf-card {{
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: #f8f9fa;
+            border: 1px solid #e5e7eb;
             padding: 1rem;
-            border-radius: 4px;
-            text-align: center;
+            border-radius: 8px;
+            text-align: left;
         }}
         .perf-value {{
-            font-size: 1.5rem;
-            font-weight: bold;
+            font-size: 1.75rem;
+            font-weight: 600;
+            color: #111827;
             margin-bottom: 0.25rem;
+            font-family: 'Monaco', 'Menlo', monospace;
         }}
         .perf-label {{
-            font-size: 0.75rem;
-            opacity: 0.9;
-            text-transform: uppercase;
+            font-size: 0.875rem;
+            color: #6b7280;
+            font-weight: 400;
         }}
     </style>
 </head>
