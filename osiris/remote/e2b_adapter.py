@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 
 import yaml
 
+from ..core.error_taxonomy import ErrorContext
 from ..core.execution_adapter import (
     CollectedArtifacts,
     CollectError,
@@ -47,6 +48,7 @@ class E2BAdapter(ExecutionAdapter):
         self.e2b_config = e2b_config or {}
         self.client = None
         self.sandbox_handle = None
+        self.error_context = ErrorContext(source="remote")
 
     def prepare(self, plan: Dict[str, Any], context: ExecutionContext) -> PreparedRun:
         """Prepare E2B execution package.
@@ -86,6 +88,10 @@ class E2BAdapter(ExecutionAdapter):
             # For E2B, resolved_connections will contain secret placeholders
             # that get resolved via environment injection
             resolved_connections = self._extract_connection_descriptors(plan)
+
+            # If no connections in manifest metadata, extract from step configs
+            if not resolved_connections:
+                resolved_connections = self._extract_connections_from_steps(plan)
 
             # E2B runtime parameters
             run_params = {
@@ -196,6 +202,13 @@ class E2BAdapter(ExecutionAdapter):
             success = final_status.status.value == "success"
             exit_code = final_status.exit_code or (0 if success else 1)
 
+            # If failed, map error with taxonomy
+            if not success and final_status.stderr:
+                error_event = self.error_context.handle_error(
+                    final_status.stderr, step_id="e2b_execution"
+                )
+                log_event("e2b_error_mapped", **error_event)
+
             log_event(
                 "e2b_execute_complete" if success else "e2b_execute_error",
                 session_id=context.session_id,
@@ -223,11 +236,17 @@ class E2BAdapter(ExecutionAdapter):
             duration = time.time() - start_time if "start_time" in locals() else 0
             error_msg = f"E2B execution failed: {e}"
 
+            # Map error with taxonomy
+            error_event = self.error_context.handle_error(
+                error_msg, exception=e, step_id="e2b_execution"
+            )
+
             log_event(
                 "e2b_execute_error",
                 session_id=context.session_id,
                 error=error_msg,
                 duration=duration,
+                **error_event,
             )
 
             raise ExecuteError(error_msg) from e
@@ -318,16 +337,42 @@ class E2BAdapter(ExecutionAdapter):
     def _extract_connection_descriptors(
         self, plan: Dict[str, Any]  # noqa: ARG002
     ) -> Dict[str, Dict[str, Any]]:
-        """Extract connection descriptors with secret placeholders."""
-        # For now, return empty dict - connection resolution will be handled
-        # by existing mechanisms during execution
-        return {}
+        """Extract connection descriptors with secret placeholders.
+
+        This extracts connection references from the manifest and prepares them
+        for injection into the PreparedRun. The actual resolution happens at
+        compile time and the resolved connections (with placeholders) are
+        stored in the manifest.
+        """
+        # Extract resolved connections from the manifest metadata
+        # These are prepared during compilation with secret placeholders
+        resolved_connections = {}
+
+        # Check if manifest has resolved_connections in metadata
+        metadata = plan.get("metadata", {})
+        if "resolved_connections" in metadata:
+            resolved_connections = metadata["resolved_connections"]
+
+        # Also check for connections in pipeline metadata (older format)
+        pipeline_meta = plan.get("pipeline", {}).get("metadata", {})
+        if "connections" in pipeline_meta:
+            resolved_connections.update(pipeline_meta["connections"])
+
+        return resolved_connections
 
     def _build_payload(self, prepared: PreparedRun, context: ExecutionContext) -> Path:
         """Build E2B execution payload using existing infrastructure."""
-        # Create temporary manifest file
+        # Create temporary manifest file with resolved connections in metadata
+        manifest_with_connections = prepared.plan.copy()
+        if prepared.resolved_connections:
+            if "metadata" not in manifest_with_connections:
+                manifest_with_connections["metadata"] = {}
+            manifest_with_connections["metadata"][
+                "resolved_connections"
+            ] = prepared.resolved_connections
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            yaml.safe_dump(prepared.plan, f, default_flow_style=False)
+            yaml.safe_dump(manifest_with_connections, f, default_flow_style=False)
             temp_manifest = Path(f.name)
 
         try:
@@ -384,3 +429,60 @@ class E2BAdapter(ExecutionAdapter):
         except Exception:
             # Best effort - don't fail collection if tagging fails
             pass  # nosec B110
+
+    def _extract_connections_from_steps(self, plan: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        """Extract connection references from step configurations.
+
+        This is a fallback when connections aren't in manifest metadata.
+        It builds connection descriptors from step configs that reference connections.
+        """
+        from ..core.config import resolve_connection
+
+        connections = {}
+        steps = plan.get("steps", [])
+
+        for step in steps:
+            # Check step config for connection reference
+            cfg_path = step.get("cfg_path")
+            if cfg_path and cfg_path in self.cfg_index:
+                step_config = self.cfg_index[cfg_path]
+                connection_ref = step_config.get("connection")
+
+                if connection_ref and connection_ref.startswith("@"):
+                    # Parse connection reference
+                    if "." in connection_ref[1:]:
+                        family, alias = connection_ref[1:].split(".", 1)
+                    else:
+                        # Infer family from component name
+                        component = step.get("component", "")
+                        family = component.split(".")[0] if "." in component else "unknown"
+                        alias = connection_ref[1:]
+
+                    # Resolve connection to get descriptor with placeholders
+                    # Note: This will have actual values, we need to convert to placeholders
+                    try:
+                        resolved = resolve_connection(family, alias)
+                        # Replace actual secrets with placeholders
+                        placeholder_conn = {}
+                        for key, value in resolved.items():
+                            if key in ["password", "key", "token", "secret", "service_role_key"]:
+                                # Convert to placeholder based on common patterns
+                                if family == "mysql" and key == "password":
+                                    placeholder_conn[key] = "${MYSQL_PASSWORD}"
+                                elif family == "supabase" and key == "service_role_key":
+                                    placeholder_conn[key] = "${SUPABASE_SERVICE_ROLE_KEY}"
+                                else:
+                                    # Generic placeholder
+                                    placeholder_conn[key] = f"${{{family.upper()}_{key.upper()}}}"
+                            else:
+                                placeholder_conn[key] = value
+
+                        connections[connection_ref] = placeholder_conn
+                    except Exception as e:
+                        log_event(
+                            "connection_resolution_skipped",
+                            connection=connection_ref,
+                            reason=str(e),
+                        )
+
+        return connections

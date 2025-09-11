@@ -186,7 +186,11 @@ class PayloadBuilder:
     def _create_mini_runner(self, path: Path) -> None:
         """Create real runner script with driver implementations."""
         runner_code = '''#!/usr/bin/env python3
-"""Real runner for executing Osiris manifests in E2B sandbox."""
+"""Real runner for executing Osiris manifests in E2B sandbox.
+
+This runner uses resolved connection descriptors from the PreparedRun,
+rather than building connections directly from environment variables.
+"""
 
 import json
 import logging
@@ -199,6 +203,17 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import sqlalchemy as sa
+
+# Error taxonomy for unified error reporting
+class ErrorCode:
+    """Standard error codes."""
+    CONNECTION_FAILED = "connection.failed"
+    CONNECTION_AUTH_FAILED = "connection.auth_failed"
+    EXTRACT_QUERY_FAILED = "extract.query_failed"
+    WRITE_FAILED = "write.failed"
+    CONFIG_MISSING_REQUIRED = "config.missing_required"
+    RUNTIME_DEPENDENCY_FAILED = "runtime.dependency_failed"
+    SYSTEM_ERROR = "system.error"
 
 # Configure logging
 logging.basicConfig(
@@ -219,12 +234,14 @@ class EventLogger:
     def __init__(self):
         self.events_file = open("events.jsonl", "w")
         self.metrics_file = open("metrics.jsonl", "w")
+        self.source = "remote"  # Tag all events as remote
 
     def log_event(self, event: str, **kwargs):
         """Log a structured event."""
         event_data = {
             "ts": datetime.utcnow().isoformat() + "Z",
             "event": event,
+            "source": self.source,  # Add source tag
             **kwargs
         }
         self.events_file.write(json.dumps(event_data, default=str) + "\\n")
@@ -237,6 +254,7 @@ class EventLogger:
             "metric": metric,
             "value": value,
             "unit": unit,
+            "source": self.source,  # Add source tag
             **kwargs
         }
         self.metrics_file.write(json.dumps(metric_data, default=str) + "\\n")
@@ -252,43 +270,84 @@ class MySQLExtractorDriver:
     """MySQL extractor driver for E2B execution."""
 
     def run(self, step_id: str, config: dict, inputs: Optional[dict] = None, ctx: Any = None) -> dict:
-        """Extract data from MySQL."""
+        """Extract data from MySQL using resolved connections."""
         # Get query
         query = config.get("query")
         if not query:
             raise ValueError(f"Step {step_id}: 'query' is required in config")
 
-        # Load connection from environment variables
-        env_vars = {
-            "host": os.getenv("MYSQL_HOST", "localhost"),
-            "port": int(os.getenv("MYSQL_PORT", "3306")),
-            "database": os.getenv("MYSQL_DB") or os.getenv("MYSQL_DATABASE"),
-            "user": os.getenv("MYSQL_USER", "root"),
-            "password": os.getenv("MYSQL_PASSWORD", "")
-        }
+        # Get resolved connection from config
+        conn_info = config.get("resolved_connection", {})
+        if not conn_info:
+            raise ValueError(f"Step {step_id}: 'resolved_connection' is required")
 
-        # Validate required environment variables
-        if not env_vars["database"]:
-            raise ValueError(f"Step {step_id}: MYSQL_DB or MYSQL_DATABASE environment variable required")
-        if not env_vars["password"]:
-            logger.warning(f"Step {step_id}: MYSQL_PASSWORD not set, using empty password")
+        # Extract connection details with environment variable substitution
+        host = conn_info.get("host", "localhost")
+        port = conn_info.get("port", 3306)
+        database = conn_info.get("database")
+        user = conn_info.get("user", "root")
+        password_ref = conn_info.get("password", "")
+
+        # Resolve password from environment if it's a placeholder
+        if password_ref.startswith("${") and password_ref.endswith("}"):
+            env_var = password_ref[2:-1]  # Extract var name from ${VAR}
+            password = os.getenv(env_var, "")
+            if not password:
+                logger.warning(f"Step {step_id}: Environment variable {env_var} not set")
+        else:
+            password = password_ref
+
+        # Validate required fields
+        if not database:
+            error_msg = f"Step {step_id}: 'database' is required in connection"
+            if ctx:
+                ctx.log_event(
+                    "error",
+                    error_code=ErrorCode.CONFIG_MISSING_REQUIRED,
+                    message=error_msg,
+                    step_id=step_id
+                )
+            raise ValueError(error_msg)
 
         # Redact password for logging
-        safe_env = env_vars.copy()
-        safe_env["password"] = "***" if env_vars["password"] else "(empty)"
-        logger.info(f"Connecting to MySQL: {safe_env}")
+        safe_conn = conn_info.copy()
+        safe_conn["password"] = "***" if password else "(empty)"
+        logger.info(f"Connecting to MySQL: {safe_conn}")
 
         # Build connection URL
         connection_url = (
-            f"mysql+pymysql://{env_vars['user']}:{env_vars['password']}@"
-            f"{env_vars['host']}:{env_vars['port']}/{env_vars['database']}"
+            f"mysql+pymysql://{user}:{password}@"
+            f"{host}:{port}/{database}"
         )
 
-        # Create engine and execute query
-        engine = sa.create_engine(connection_url)
+        try:
+            # Create engine and execute query
+            engine = sa.create_engine(connection_url)
 
-        logger.info(f"Executing query: {query}")
-        df = pd.read_sql(query, engine)
+            logger.info(f"Executing query: {query}")
+            df = pd.read_sql(query, engine)
+        except sa.exc.OperationalError as e:
+            error_msg = f"Database connection failed: {str(e)}"
+            if ctx:
+                ctx.log_event(
+                    "error",
+                    error_code=ErrorCode.CONNECTION_FAILED,
+                    message=error_msg,
+                    step_id=step_id,
+                    exception_type=e.__class__.__name__
+                )
+            raise
+        except Exception as e:
+            error_msg = f"Query execution failed: {str(e)}"
+            if ctx:
+                ctx.log_event(
+                    "error",
+                    error_code=ErrorCode.EXTRACT_QUERY_FAILED,
+                    message=error_msg,
+                    step_id=step_id,
+                    exception_type=e.__class__.__name__
+                )
+            raise
 
         # Log metrics
         if ctx:
@@ -331,15 +390,38 @@ class FilesystemCsvWriterDriver:
         # Sort columns for deterministic output
         df_sorted = df.reindex(sorted(df.columns), axis=1)
 
-        # Write CSV
-        df_sorted.to_csv(
-            output_path,
-            sep=delimiter,
-            encoding=encoding,
-            header=header,
-            index=False,
-            line_terminator=line_terminator
-        )
+        try:
+            # Write CSV
+            df_sorted.to_csv(
+                output_path,
+                sep=delimiter,
+                encoding=encoding,
+                header=header,
+                index=False,
+                line_terminator=line_terminator
+            )
+        except PermissionError as e:
+            error_msg = f"Permission denied writing to {output_path}: {str(e)}"
+            if ctx:
+                ctx.log_event(
+                    "error",
+                    error_code=ErrorCode.WRITE_FAILED,
+                    message=error_msg,
+                    step_id=step_id,
+                    exception_type="PermissionError"
+                )
+            raise
+        except Exception as e:
+            error_msg = f"Failed to write CSV: {str(e)}"
+            if ctx:
+                ctx.log_event(
+                    "error",
+                    error_code=ErrorCode.WRITE_FAILED,
+                    message=error_msg,
+                    step_id=step_id,
+                    exception_type=e.__class__.__name__
+                )
+            raise
 
         # Log metrics
         if ctx:
@@ -352,13 +434,14 @@ class FilesystemCsvWriterDriver:
 class PipelineRunner:
     """Executes pipeline manifests with topological ordering."""
 
-    def __init__(self, event_logger: EventLogger):
+    def __init__(self, event_logger: EventLogger, resolved_connections: Optional[Dict] = None):
         self.event_logger = event_logger
         self.drivers = {
             "mysql.extractor": MySQLExtractorDriver(),
             "filesystem.csv_writer": FilesystemCsvWriterDriver(),
         }
         self.step_cache = {}  # Store outputs from completed steps
+        self.resolved_connections = resolved_connections or {}  # Store global resolved connections
 
     def topological_sort(self, steps: List[dict]) -> List[dict]:
         """Sort steps in topological order based on dependencies."""
@@ -394,23 +477,46 @@ class PipelineRunner:
 
         return result
 
-    def load_step_config(self, cfg_path: str) -> dict:
-        """Load configuration for a step."""
+    def load_step_config(self, step: dict, cfg_path: str) -> dict:
+        """Load configuration for a step and inject resolved connection.
+
+        Args:
+            step: Step definition from manifest
+            cfg_path: Path to configuration file
+
+        Returns:
+            Configuration dict with resolved_connection injected
+        """
         config_file = Path(cfg_path)
         if not config_file.exists():
             raise ValueError(f"Configuration file not found: {cfg_path}")
 
         with open(config_file) as f:
-            return json.load(f)
+            config = json.load(f)
+
+        # Inject resolved connection if step has connection reference
+        connection_ref = config.get("connection")
+        if connection_ref and connection_ref.startswith("@"):
+            # Look up in global resolved connections
+            if connection_ref in self.resolved_connections:
+                resolved_conn = self.resolved_connections[connection_ref].copy()
+                # Resolve any environment placeholders
+                for key, value in resolved_conn.items():
+                    resolved_conn[key] = resolve_env_placeholder(value)
+                config["resolved_connection"] = resolved_conn
+            else:
+                logger.warning(f"Connection {connection_ref} not found in resolved connections")
+
+        return config
 
     def execute_step(self, step: dict) -> None:
         """Execute a single pipeline step."""
         step_id = step["id"]
-        driver_name = step["driver"]
+        driver_name = step.get("driver") or step.get("component", "unknown")
         cfg_path = step["cfg_path"]
 
-        # Load step configuration
-        config = self.load_step_config(cfg_path)
+        # Load step configuration with resolved connection
+        config = self.load_step_config(step, cfg_path)
 
         # Get driver
         if driver_name not in self.drivers:
@@ -454,12 +560,29 @@ class PipelineRunner:
 
         except Exception as e:
             duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+
+            # Map to standard error code
+            error_msg = str(e)
+            error_code = ErrorCode.SYSTEM_ERROR
+
+            # Try to determine error category
+            if "connection" in error_msg.lower():
+                error_code = ErrorCode.CONNECTION_FAILED
+            elif "query" in error_msg.lower() or "sql" in error_msg.lower():
+                error_code = ErrorCode.EXTRACT_QUERY_FAILED
+            elif "write" in error_msg.lower() or "permission" in error_msg.lower():
+                error_code = ErrorCode.WRITE_FAILED
+            elif "config" in error_msg.lower() or "required" in error_msg.lower():
+                error_code = ErrorCode.CONFIG_MISSING_REQUIRED
+
             self.event_logger.log_event(
                 "step_error",
                 step_id=step_id,
                 driver=driver_name,
-                error=str(e),
-                duration_ms=duration_ms
+                error=error_msg,
+                error_code=error_code,
+                duration_ms=duration_ms,
+                exception_type=e.__class__.__name__
             )
             raise
 
@@ -507,6 +630,7 @@ class PipelineRunner:
                 total_steps=len(sorted_steps),
                 executed_steps=executed_steps,
                 error=str(e),
+                error_code=ErrorCode.RUNTIME_DEPENDENCY_FAILED if executed_steps > 0 else ErrorCode.SYSTEM_ERROR,
                 status="error"
             )
 
@@ -515,33 +639,53 @@ class PipelineRunner:
             return 1
 
 
-def validate_mysql_env() -> None:
-    """Validate required MySQL environment variables."""
-    required_vars = ["MYSQL_DB", "MYSQL_PASSWORD"]
-    missing_vars = []
+def resolve_env_placeholder(value: str) -> str:
+    """Resolve environment variable placeholders in connection values.
 
-    for var in required_vars:
-        if not os.getenv(var):
-            # Also check alternative names
-            if var == "MYSQL_DB" and not os.getenv("MYSQL_DATABASE"):
-                missing_vars.append(f"{var} (or MYSQL_DATABASE)")
-            elif var != "MYSQL_DB":
-                missing_vars.append(var)
+    Args:
+        value: Value that may contain ${ENV_VAR} placeholder
 
-    if missing_vars:
-        logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
-        logger.error("Please set these variables for MySQL connectivity:")
-        for var in missing_vars:
-            logger.error(f"  export {var}=<value>")
-        sys.exit(1)
+    Returns:
+        Resolved value with environment variable substituted
+    """
+    if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+        env_var = value[2:-1]
+        return os.getenv(env_var, "")
+    return value
+
+
+def validate_required_env() -> None:
+    """Validate that required environment variables are present.
+
+    Since we use resolved connections with placeholders, we need to ensure
+    the referenced environment variables exist.
+    """
+    # Check for common secret env vars that might be referenced
+    # Note: The actual requirements depend on the manifest's resolved_connections
+    common_vars = [
+        "MYSQL_PASSWORD",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "POSTGRES_PASSWORD"
+    ]
+
+    missing_critical = []
+    for var in common_vars:
+        if var in os.environ:
+            # Variable exists, log that it's available (without value)
+            logger.info(f"Environment variable {var} is set")
+        else:
+            # Not necessarily critical - depends on the pipeline
+            logger.debug(f"Environment variable {var} not found")
+
+    # Don't fail here - let the actual connection usage fail with proper error
 
 
 def main():
     """Execute manifest using real drivers."""
-    logger.info("Starting E2B mini runner v2.0")
+    logger.info("Starting E2B mini runner v3.0 (with resolved connections)")
 
     # Validate environment
-    validate_mysql_env()
+    validate_required_env()
 
     # Load manifest
     manifest_path = Path("manifest.json")
@@ -562,9 +706,14 @@ def main():
     # Initialize logging
     event_logger = EventLogger()
 
+    # Extract resolved connections from manifest if available
+    resolved_connections = {}
+    if "metadata" in manifest and "resolved_connections" in manifest["metadata"]:
+        resolved_connections = manifest["metadata"]["resolved_connections"]
+
     try:
-        # Create and run pipeline
-        runner = PipelineRunner(event_logger)
+        # Create and run pipeline with resolved connections
+        runner = PipelineRunner(event_logger, resolved_connections)
         exit_code = runner.run(manifest)
 
         return exit_code

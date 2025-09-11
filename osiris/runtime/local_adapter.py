@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict
 
+from ..core.error_taxonomy import ErrorContext
 from ..core.execution_adapter import (
     CollectedArtifacts,
     CollectError,
@@ -29,6 +30,10 @@ class LocalAdapter(ExecutionAdapter):
     This adapter maintains identical behavior to the existing local execution
     while conforming to the ExecutionAdapter contract.
     """
+
+    def __init__(self):
+        """Initialize LocalAdapter."""
+        self.error_context = ErrorContext(source="local")
 
     def prepare(self, plan: Dict[str, Any], context: ExecutionContext) -> PreparedRun:
         """Prepare local execution package.
@@ -161,6 +166,12 @@ class LocalAdapter(ExecutionAdapter):
                         break
                 if not error_message:
                     error_message = "Pipeline execution failed"
+
+                # Log error with taxonomy
+                error_event = self.error_context.handle_error(
+                    error_message, step_id=getattr(runner, "last_step_id", None)
+                )
+                log_event("execution_error_mapped", **error_event)
 
             log_event(
                 "execute_complete" if success else "execute_error",
