@@ -1,6 +1,7 @@
 # Milestone M1e – E2B Remote Runner
 
 **Status:** Planned  
+**Implementation Status:** Adapter contract and LocalAdapter merged; E2BAdapter skeleton wired; parity harness planned next.  
 **Owner:** Osiris Core Team  
 **Depends on:** M1d (Logs & CLI Unification), ADR-0010 (E2B Integration), ADR-0020 (Connection Resolution)  
 **Deliverable:** Functional E2B remote runner with unified logging and secrets management
