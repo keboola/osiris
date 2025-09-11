@@ -1117,97 +1117,91 @@ def generate_session_detail_page(session, session_logs) -> str:
     # Generate Performance Dashboard HTML
     performance_html = "<div class='performance-dashboard'>"
 
-    # Group metrics by category
-    duration_metrics = []
-    size_metrics = []
-    count_metrics = []
-    e2b_metrics = []
+    # Get key metrics
+    total_duration = None
+    e2b_duration = None
+    payload_size = None
 
     for metric in metrics:
         metric_name = metric.get("metric", "")
-        if "duration" in metric_name or "time" in metric_name:
-            duration_metrics.append(metric)
-        elif "size" in metric_name or "bytes" in metric_name:
-            size_metrics.append(metric)
-        elif "count" in metric_name or "rows" in metric_name:
-            count_metrics.append(metric)
-        elif "e2b" in metric_name:
-            e2b_metrics.append(metric)
+        if metric_name == "total_duration":
+            total_duration = metric
+        elif metric_name == "e2b.exec.duration":
+            e2b_duration = metric
+        elif metric_name == "e2b.payload.size":
+            payload_size = metric
 
-    # Duration metrics
-    if duration_metrics:
-        performance_html += """<div class='perf-section'>
-            <h3>Timing Metrics</h3>
-            <div class='perf-grid'>"""
+    # Total Execution Time card
+    if total_duration:
+        value = total_duration.get("value", 0)
+        unit = total_duration.get("unit", "")
+        if unit == "seconds":
+            primary_value = f"{value:.2f}"
+            unit_display = "seconds total"
+        else:
+            primary_value = str(value)
+            unit_display = unit
 
-        for metric in duration_metrics:
-            value = metric.get("value", 0)
-            unit = metric.get("unit", "")
-            formatted_value = (
-                f"{value*1000:.1f}ms"
-                if unit == "seconds" and value < 1
-                else f"{value:.2f}s" if unit == "seconds" else f"{value} {unit}"
-            )
+        performance_html += f"""<div class='perf-card'>
+            <div class='perf-card-title'>Total Execution Time</div>
+            <div class='perf-card-subtitle'>Complete pipeline execution duration</div>
+            <div class='perf-primary-value'>{primary_value}</div>
+            <div class='perf-secondary-value'>{unit_display}</div>
+        </div>"""
 
-            performance_html += f"""<div class='perf-card'>
-                <div class='perf-value'>{formatted_value}</div>
-                <div class='perf-label'>{metric.get('metric', 'unknown')}</div>
-            </div>"""
+    # E2B Execution Time card
+    if e2b_duration:
+        value = e2b_duration.get("value", 0)
+        unit = e2b_duration.get("unit", "")
+        if unit == "seconds":
+            primary_value = f"{value:.2f}"
+            unit_display = "seconds in sandbox"
+        else:
+            primary_value = str(value)
+            unit_display = unit
 
-        performance_html += """</div></div>"""
+        performance_html += f"""<div class='perf-card'>
+            <div class='perf-card-title'>E2B Sandbox Duration</div>
+            <div class='perf-card-subtitle'>Time spent executing in remote environment</div>
+            <div class='perf-primary-value'>{primary_value}</div>
+            <div class='perf-secondary-value'>{unit_display}</div>
+        </div>"""
 
-    # Size metrics
-    if size_metrics:
-        performance_html += """<div class='perf-section'>
-            <h3>Data Size Metrics</h3>
-            <div class='perf-grid'>"""
-
-        for metric in size_metrics:
-            value = metric.get("value", 0)
-            unit = metric.get("unit", "")
-            if unit == "bytes":
-                if value >= 1024 * 1024:
-                    formatted_value = f"{value/(1024*1024):.1f}MB"
-                elif value >= 1024:
-                    formatted_value = f"{value/1024:.1f}KB"
-                else:
-                    formatted_value = f"{value} bytes"
+    # Payload Size card
+    if payload_size:
+        value = payload_size.get("value", 0)
+        unit = payload_size.get("unit", "")
+        if unit == "bytes":
+            if value >= 1024 * 1024:
+                primary_value = f"{value/(1024*1024):.1f}"
+                unit_display = "MB uploaded"
+            elif value >= 1024:
+                primary_value = f"{value/1024:.1f}"
+                unit_display = "KB uploaded"
             else:
-                formatted_value = f"{value} {unit}"
+                primary_value = str(value)
+                unit_display = "bytes uploaded"
+        else:
+            primary_value = str(value)
+            unit_display = unit
 
-            performance_html += f"""<div class='perf-card'>
-                <div class='perf-value'>{formatted_value}</div>
-                <div class='perf-label'>{metric.get('metric', 'unknown')}</div>
-            </div>"""
+        performance_html += f"""<div class='perf-card'>
+            <div class='perf-card-title'>Payload Size</div>
+            <div class='perf-card-subtitle'>Total data uploaded to E2B sandbox</div>
+            <div class='perf-primary-value'>{primary_value}</div>
+            <div class='perf-secondary-value'>{unit_display}</div>
+        </div>"""
 
-        performance_html += """</div></div>"""
+    # Add row count if available
+    if session.rows_out and session.rows_out > 0:
+        performance_html += f"""<div class='perf-card'>
+            <div class='perf-card-title'>Rows Processed</div>
+            <div class='perf-card-subtitle'>Total data records processed in this session</div>
+            <div class='perf-primary-value'>{session.rows_out:,}</div>
+            <div class='perf-secondary-value'>records</div>
+        </div>"""
 
-    # E2B metrics
-    if e2b_metrics:
-        performance_html += """<div class='perf-section'>
-            <h3>E2B Remote Execution</h3>
-            <div class='perf-grid'>"""
-
-        for metric in e2b_metrics:
-            value = metric.get("value", 0)
-            unit = metric.get("unit", "")
-            formatted_value = str(value)
-
-            if unit == "seconds":
-                formatted_value = f"{value*1000:.1f}ms" if value < 1 else f"{value:.2f}s"
-            elif unit == "bytes":
-                formatted_value = f"{value / 1024:.1f}KB" if value >= 1024 else f"{value} bytes"
-            elif unit:
-                formatted_value = f"{value} {unit}"
-
-            performance_html += f"""<div class='perf-card'>
-                <div class='perf-value'>{formatted_value}</div>
-                <div class='perf-label'>{metric.get('metric', 'unknown')}</div>
-            </div>"""
-
-        performance_html += """</div></div>"""
-
-    if not (duration_metrics or size_metrics or e2b_metrics):
+    if not metrics:
         performance_html += '<div class="empty-state">No performance metrics available</div>'
 
     performance_html += "</div>"
@@ -1531,39 +1525,47 @@ def generate_session_detail_page(session, session_logs) -> str:
         /* Performance Dashboard styles */
         .performance-dashboard {{
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        }}
-        .perf-section {{
-            margin-bottom: 2rem;
-        }}
-        .perf-section h3 {{
-            color: #333;
-            margin-bottom: 1rem;
-            font-size: 1rem;
-            font-weight: 600;
-        }}
-        .perf-grid {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 1rem;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
         }}
         .perf-card {{
-            background: #f8f9fa;
-            border: 1px solid #e5e7eb;
-            padding: 1rem;
-            border-radius: 8px;
-            text-align: left;
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1);
         }}
-        .perf-value {{
-            font-size: 1.75rem;
-            font-weight: 600;
+        .perf-card-title {{
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
             color: #111827;
             margin-bottom: 0.25rem;
-            font-family: 'Monaco', 'Menlo', monospace;
         }}
-        .perf-label {{
+        .perf-card-subtitle {{
+            font-size: 0.875rem;
+            color: #6b7280;
+            margin-bottom: 1.5rem;
+            line-height: 1.4;
+        }}
+        .perf-primary-value {{
+            font-size: 3rem;
+            font-weight: 600;
+            color: #ff6b00;
+            margin-bottom: 0.5rem;
+            line-height: 1;
+        }}
+        .perf-secondary-value {{
+            font-size: 1.25rem;
+            color: #111827;
+            font-weight: 400;
+        }}
+        .perf-unit {{
             font-size: 0.875rem;
             color: #6b7280;
             font-weight: 400;
+            margin-left: 0.25rem;
         }}
     </style>
 </head>
