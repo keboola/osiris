@@ -273,36 +273,64 @@ def generate_overview_page(sessions, logs_dir: str) -> str:
             border-bottom: 1px solid #e5e5e5;
             font-weight: 600;
         }}
-        .session-list {{
-            padding: 0;
+        .table-wrapper {{
+            max-height: 600px;
+            overflow-y: auto;
+            position: relative;
         }}
-        .session-item {{
-            display: grid;
-            grid-template-columns: 2fr 1.5fr 0.75fr auto;
-            gap: 1rem;
-            align-items: center;
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+        }}
+        thead {{
+            position: sticky;
+            top: 0;
+            background: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+            z-index: 10;
+        }}
+        th {{
             padding: 0.75rem 1rem;
-            border-bottom: 1px solid #f0f0f0;
-            text-decoration: none;
-            color: inherit;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: #495057;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }}
-        .session-item:hover {{
+        th.align-right {{
+            text-align: right;
+        }}
+        tbody tr {{
+            border-bottom: 1px solid #f0f0f0;
+            transition: background-color 0.15s ease;
+        }}
+        tbody tr:hover {{
             background: #f8f9fa;
         }}
-        .session-item:last-child {{
+        tbody tr:last-child {{
             border-bottom: none;
         }}
-        .session-id {{
+        td {{
+            padding: 0.75rem 1rem;
+            font-size: 0.875rem;
+        }}
+        td.session-id {{
             font-family: monospace;
         }}
-        .session-time {{
+        td.session-time {{
             color: #666;
-            font-size: 0.875rem;
         }}
-        .session-duration {{
+        td.session-duration {{
             color: #666;
-            font-size: 0.875rem;
             text-align: right;
+        }}
+        td.session-rows {{
+            text-align: right;
+            color: #666;
+        }}
+        .clickable-row {{
+            cursor: pointer;
         }}
         .session-status {{
             padding: 0.25rem 0.5rem;
@@ -361,7 +389,18 @@ def generate_overview_page(sessions, logs_dir: str) -> str:
         html += f"""
     <div class="section">
         <div class="section-header">{session_type.title()} Sessions ({len(type_sessions)})</div>
-        <div class="session-list">
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Session ID</th>
+                        <th>Started</th>
+                        <th class="align-right">Duration</th>
+                        <th class="align-right">Rows</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
 """
 
         for session in type_sessions:
@@ -390,16 +429,23 @@ def generate_overview_page(sessions, logs_dir: str) -> str:
             if is_e2b_session(logs_dir, session.session_id):
                 e2b_badge = '<span class="e2b-badge">E2B</span>'
 
+            # Get row count
+            rows = session.rows_out if session.rows_out else 0
+            rows_display = f"{rows:,}" if rows > 0 else "-"
+
             html += f"""
-            <a href="{session.session_id}/index.html" class="session-item">
-                <div class="session-id">{session.session_id}{e2b_badge}</div>
-                <div class="session-time">{started_time}</div>
-                <div class="session-duration">{duration or '-'}</div>
-                <div class="session-status status-{session.status}">{session.status}</div>
-            </a>
+                    <tr class="clickable-row" onclick="window.location.href='{session.session_id}/index.html'">
+                        <td class="session-id">{session.session_id}{e2b_badge}</td>
+                        <td class="session-time">{started_time}</td>
+                        <td class="session-duration">{duration or '-'}</td>
+                        <td class="session-rows">{rows_display}</td>
+                        <td><span class="session-status status-{session.status}">{session.status}</span></td>
+                    </tr>
 """
 
         html += """
+                </tbody>
+            </table>
         </div>
     </div>
 """

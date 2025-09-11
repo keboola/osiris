@@ -171,8 +171,10 @@ After examining the current implementation against actual session data (`run_175
 #### Overview Page Improvements
 - [x] **E2B execution badges** - Orange "E2B" indicator for remote runs
 - [x] **Duration column** - Show execution times (5.8s, 1.3s)
+- [x] **Column headers** - Clear headers with sticky positioning when scrolling
+- [x] **Row counts per session** - Data throughput visibility
+- [x] **Table structure** - Proper HTML table with clickable rows
 - [ ] **Pipeline names** - Extract from session metadata
-- [ ] **Row counts per session** - Data throughput visibility
 - [ ] **Sortable table** - By date, duration, status, rows
 - [ ] **Search/filter bar** - Quick session lookup
 
@@ -225,6 +227,17 @@ Keep "raw" data engineer tool aesthetic:
    - Directory tree with nested files
    - File type icons (📁 📄 📋 📊 📝)
    - Size formatting (bytes, KB, MB)
+
+6. **Table Structure with Headers**
+   - Proper HTML table layout
+   - Column headers (Session ID, Started, Duration, Rows, Status)
+   - Sticky headers when scrolling
+   - Clickable rows for navigation
+
+7. **Row Counts Display**
+   - Data throughput visibility
+   - Formatted with thousands separator
+   - Shows "-" when no data processed
 
 ### Next Steps
 
