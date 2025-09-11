@@ -64,7 +64,6 @@ steps:
         )
 
         # Mock discovery to complete successfully
-        original_discovery = agent._run_discovery
 
         async def mock_discovery(params, context):
             # Set discovery data
@@ -83,8 +82,7 @@ steps:
                 with patch(
                     "osiris.core.validation_retry.ValidationRetryManager.validate_with_retry",
                     return_value=(True, good_pipeline.params["pipeline_yaml"], None),
-                ):
-
+                ):  # noqa: SIM117
                     result = await agent.chat(user_request, "test_session")
 
                     # Should NOT contain open questions
@@ -148,8 +146,7 @@ steps:
                 with patch(
                     "osiris.core.validation_retry.ValidationRetryManager.validate_with_retry",
                     return_value=(True, mock_template.return_value, None),
-                ):
-
+                ):  # noqa: SIM117
                     # Mock discovery
                     async def mock_discovery(params, context):
                         context.discovery_data = {"tables": {"table1": {}, "table2": {}}}

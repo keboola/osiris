@@ -15,6 +15,8 @@ from ..core.compiler_v0 import CompilerV0
 from ..core.env_loader import load_env
 from ..core.runner_v0 import RunnerV0
 from ..core.session_logging import SessionContext, log_event, log_metric, set_current_session
+from ..remote.e2b_integration import add_e2b_help_text, execute_remote, parse_e2b_args
+from ..remote.e2b_pack import RunConfig
 
 console = Console()
 
@@ -38,6 +40,14 @@ def show_run_help(json_output: bool = False):
                 "--verbose": "Show detailed execution logs",
                 "--json": "Output in JSON format",
                 "--help": "Show this help message",
+                "--e2b": "Execute in E2B sandbox (requires E2B_API_KEY)",
+                "--e2b-timeout": "Timeout in seconds (default: 900)",
+                "--e2b-cpu": "CPU cores (default: 2)",
+                "--e2b-mem": "Memory in GB (default: 4)",
+                "--e2b-env": "Set env var (KEY=VALUE, repeatable)",
+                "--e2b-env-from": "Load env vars from file",
+                "--e2b-pass-env": "Pass env var from current shell (repeatable)",
+                "--dry-run": "Show what would be sent without executing",
             },
             "examples": [
                 "osiris run pipeline.yaml",
@@ -85,6 +95,13 @@ def show_run_help(json_output: bool = False):
     console.print("  [cyan]--verbose[/cyan]         Show single-line event summaries on stdout")
     console.print("  [cyan]--json[/cyan]            Output in JSON format")
     console.print("  [cyan]--help[/cyan]            Show this help message")
+    console.print()
+
+    # Add E2B help section
+    help_lines = []
+    add_e2b_help_text(help_lines)
+    for line in help_lines:
+        console.print(line)
     console.print()
 
     console.print("[bold blue]💡 Examples[/bold blue]")
@@ -191,24 +208,27 @@ def run_command(args: List[str]):
         show_run_help(json_output=json_mode)
         return
 
-    # Parse arguments manually
+    # Parse E2B arguments first
+    e2b_config, remaining_args = parse_e2b_args(args)
+
+    # Parse remaining arguments manually
     pipeline_file = None
     profile = None
     params = {}
     output_dir = None  # None means use session directory
     verbose = False
-    use_json = "--json" in args
+    use_json = "--json" in remaining_args
     last_compile = False
     last_compile_in = None
 
     i = 0
-    while i < len(args):
-        arg = args[i]
+    while i < len(remaining_args):
+        arg = remaining_args[i]
 
         if arg.startswith("--"):
             if arg == "--out":
-                if i + 1 < len(args) and not args[i + 1].startswith("--"):
-                    output_dir = args[i + 1]
+                if i + 1 < len(remaining_args) and not remaining_args[i + 1].startswith("--"):
+                    output_dir = remaining_args[i + 1]
                     i += 1
                 else:
                     error_msg = "Option --out requires a value"
@@ -219,8 +239,8 @@ def run_command(args: List[str]):
                     sys.exit(2)
 
             elif arg in ("--profile", "-p"):
-                if i + 1 < len(args) and not args[i + 1].startswith("--"):
-                    profile = args[i + 1]
+                if i + 1 < len(remaining_args) and not remaining_args[i + 1].startswith("--"):
+                    profile = remaining_args[i + 1]
                     i += 1
                 else:
                     error_msg = "Option --profile requires a value"
@@ -231,8 +251,8 @@ def run_command(args: List[str]):
                     sys.exit(2)
 
             elif arg == "--param":
-                if i + 1 < len(args) and not args[i + 1].startswith("--"):
-                    param_str = args[i + 1]
+                if i + 1 < len(remaining_args) and not remaining_args[i + 1].startswith("--"):
+                    param_str = remaining_args[i + 1]
                     if "=" in param_str:
                         key, value = param_str.split("=", 1)
                         params[key] = value
@@ -256,8 +276,8 @@ def run_command(args: List[str]):
                 last_compile = True
 
             elif arg == "--last-compile-in":
-                if i + 1 < len(args) and not args[i + 1].startswith("--"):
-                    last_compile_in = args[i + 1]
+                if i + 1 < len(remaining_args) and not remaining_args[i + 1].startswith("--"):
+                    last_compile_in = remaining_args[i + 1]
                     i += 1
                 else:
                     # Check environment variable
@@ -445,7 +465,69 @@ def run_command(args: List[str]):
             # Direct manifest execution
             manifest_path = Path(pipeline_file)
 
-        # Phase 2: Execute
+        # Phase 2: Check for E2B execution
+        if e2b_config.enabled:
+            # Execute remotely in E2B
+            run_config = RunConfig()
+            success = execute_remote(
+                manifest_path=manifest_path,
+                session_dir=session.session_dir,
+                e2b_config=e2b_config,
+                run_config=run_config,
+                use_json=use_json,
+            )
+
+            total_duration = time.time() - start_time
+            log_metric("total_duration", total_duration, unit="seconds")
+
+            if success:
+                log_event("run_complete", total_duration=total_duration, remote_execution=True)
+
+                if use_json:
+                    result = {
+                        "status": "success",
+                        "message": "Pipeline executed successfully in E2B",
+                        "session_id": session_id,
+                        "session_dir": f"logs/{session_id}",
+                        "remote_execution": True,
+                        "duration": {"total": round(total_duration, 2)},
+                    }
+                    if file_type == "oml":
+                        result["duration"]["compile"] = round(compile_duration, 2)
+                        result["compiled_dir"] = f"logs/{session_id}/compiled"
+                    print(json.dumps(result))
+                else:
+                    console.print("[green]✅ Remote execution completed successfully[/green]")
+                    console.print(f"Session: logs/{session_id}/")
+
+                sys.exit(0)
+            else:
+                log_event(
+                    "run_error",
+                    phase="e2b",
+                    error="Remote execution failed",
+                    duration=total_duration,
+                )
+
+                if use_json:
+                    print(
+                        json.dumps(
+                            {
+                                "status": "error",
+                                "phase": "e2b",
+                                "message": "Remote execution failed",
+                                "session_id": session_id,
+                                "session_dir": f"logs/{session_id}",
+                            }
+                        )
+                    )
+                else:
+                    console.print("[red]❌ Remote execution failed[/red]")
+                    console.print(f"Session: logs/{session_id}/")
+
+                sys.exit(1)
+
+        # Phase 2: Execute locally
         log_event("execute_start", manifest=str(manifest_path))
         execute_start = time.time()
 

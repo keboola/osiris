@@ -140,20 +140,153 @@ osiris runs list  # Should show warning
 - **ADR-0021**: Session-scoped logging - Provides the data model we visualize
 - **ADR-0023**: Log commands - Original specification for log management
 
-## Next Steps
+## Data Engineer Assessment & Enhancements
+
+### Investigation Results (Sep 2025)
+After examining the current implementation against actual session data (`run_1757461848561`), identified critical gaps for data engineering workflows:
+
+**Current State:**
+- ✅ Basic overview with session grouping
+- ✅ Clickable links to session details
+- ❌ **Broken event display** - only shows "INFO" levels without timestamps/messages
+- ❌ **Useless metrics** - raw numbers (2138, 1.31) without context/units
+- ❌ **Missing execution context** - no indication of E2B remote vs local runs
+- ❌ **Missing critical data** - no artifacts, logs, pipeline steps
+
+**Rich Data Available:**
+```json
+// Events with structured data
+{"event":"e2b.prepare.start", "ts":"2025-09-09T23:50:48.562968+00:00"}
+{"event":"e2b.upload.finish", "duration":2.916, "sandbox_id":"unknown"}
+
+// Metrics with proper units
+{"metric":"e2b.payload.size", "value":2138, "unit":"bytes"}
+{"metric":"e2b.exec.duration", "value":1.31, "unit":"seconds"}
+
+// Files: artifacts/, osiris.log, metadata.json, build/
+```
+
+### M1d+ Priority Enhancements (Data Engineer Tool)
+
+#### Overview Page Improvements
+- [x] **E2B execution badges** - Orange "E2B" indicator for remote runs
+- [x] **Duration column** - Show execution times (5.8s, 1.3s)
+- [x] **Column headers** - Clear headers with sticky positioning when scrolling
+- [x] **Row counts per session** - Data throughput visibility
+- [x] **Table structure** - Proper HTML table with clickable rows
+- [x] **Sortable table** - Click headers to sort by date, duration, status, rows
+- [x] **Pipeline names** - Extract from session metadata and display in dedicated column
+- [x] **Search/filter bar** - Quick session lookup by ID, pipeline name, or status
+
+#### Detail Page New Tabs
+- [x] **Pipeline Steps** - Mermaid flow diagram showing pipeline DAG with step details
+- [x] **Artifacts** - File browser for artifacts/, build/, remote/
+- [x] **Technical Logs** - osiris.log and debug.log viewer with syntax highlighting  
+- [x] **Metadata** - Execution context, environment details, E2B remote execution info
+- [x] **Performance** - Metrics dashboard with proper units, categorized by type
+
+#### Fixed Core Issues
+- [x] **Fix Events tab** - Show timestamps, messages, structured data
+- [x] **Fix Metrics tab** - Display with units, formatted values
+- [x] **Add log viewing** - Direct access to debug.log and osiris.log content with syntax highlighting
+
+### Implementation Approach
+Keep "raw" data engineer tool aesthetic:
+- **No fancy UI** - Focus on data visibility
+- **Mermaid diagrams** - For pipeline visualization
+- **Monospace fonts** - For technical content
+- **Fast implementation** - Minimal CSS, direct HTML generation
+- **Tabular data** - Sortable tables for analysis
+
+### Implementation Progress (January 2025)
+
+#### Completed Enhancements
+1. **Fixed Events Tab**
+   - Proper timestamp formatting (HH:MM:SS.mmm)
+   - Event names displayed correctly
+   - Structured data shown with key=value pairs
+   - Color coding for E2B events
+
+2. **Fixed Metrics Tab**
+   - Unit-aware formatting (2.1KB instead of 2138)
+   - Duration formatting (1.31s instead of 1.31)
+   - Color coding by metric type
+
+3. **E2B Execution Badges**
+   - Orange badges on overview page
+   - Automatic detection via metadata.json or e2b.* events
+   - Visual distinction for remote executions
+
+4. **Duration Column**
+   - Added to overview page
+   - Smart formatting (ms, s, m based on value)
+   - Grid layout for better alignment
+
+5. **Artifacts Tab**
+   - Complete file browser implementation
+   - Directory tree with nested files
+   - File type icons (📁 📄 📋 📊 📝)
+   - Size formatting (bytes, KB, MB)
+
+6. **Table Structure with Headers**
+   - Proper HTML table layout
+   - Column headers (Session ID, Started, Duration, Rows, Status)
+   - Sticky headers when scrolling
+   - Clickable rows for navigation
+
+7. **Row Counts Display**
+   - Data throughput visibility
+   - Formatted with thousands separator
+   - Shows "-" when no data processed
+
+8. **Technical Logs Tab**
+   - Direct viewing of osiris.log and debug.log
+   - Syntax highlighting for timestamps, log levels, file paths
+   - Dark theme for better readability
+   - Sub-tabs for switching between log files
+
+9. **Sortable Tables**
+   - Click column headers to sort ascending/descending
+   - Smart sorting for durations (ms, s, m)
+   - Visual indicators (↑/↓) show current sort order
+   - Maintains sorting state per column
+
+10. **Pipeline Names Column**
+   - Extracts pipeline names from manifest.json files
+   - Displays in dedicated column on overview page
+   - Falls back to "-" when no pipeline name available
+   - Searchable via the filter bar
+
+11. **Search/Filter Bar**
+   - Real-time filtering as you type
+   - Searches across session ID, pipeline name, and status
+   - Hides entire sections when no matches
+   - Shows "No results" message when nothing matches
+
+12. **Metadata Tab**
+   - Shows remote execution details for E2B runs
+   - Displays payload information and file lists
+   - Structured key-value display with proper formatting
+
+13. **Pipeline Steps Tab**
+   - Mermaid diagram visualization of pipeline DAG
+   - Shows step dependencies and execution order
+   - Detailed step information including driver and config paths
+   - Automatic diagram generation from manifest.json
+
+14. **Performance Dashboard**
+   - Categorized metrics display (Timing, Data Size, E2B)
+   - Smart unit formatting (ms/s for time, KB/MB for data)
+   - Gradient background cards for visual appeal
+   - Grouped by metric type for easy analysis
+
+### Next Steps
 
 ### M1e Enhancements (Future)
-- Search functionality in HTML interface
-- Export to PDF capability
-- Comparison view for multiple sessions
-- Performance metrics charts
-- Real-time updates (WebSocket support)
-
-### M2 Integration
-- Link to compiled manifests viewer
-- Connection topology visualization
-- Error analysis dashboard
-- Pipeline lineage tracking
+- Export capabilities (CSV, JSON, logs)
+- Session comparison view
+- Performance trends over time
+- Data lineage tracking
 
 ## Verification
 

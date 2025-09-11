@@ -2,11 +2,11 @@
 """Enhanced HTML generator with comprehensive session details for developers."""
 
 import json
-from datetime import datetime
+import os
+import re
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from osiris.core.logs_serialize import to_index_json, to_session_json
 from osiris.core.session_reader import SessionReader
 
 
@@ -26,6 +26,226 @@ def classify_session_type(session_id: str) -> str:
         return "test"
     else:
         return "other"
+
+
+def is_e2b_session(logs_dir: str, session_id: str) -> bool:
+    """Check if session was run with E2B remote execution."""
+    session_path = Path(logs_dir) / session_id
+
+    # Check metadata for remote execution
+    metadata_file = session_path / "metadata.json"
+    if metadata_file.exists():
+        try:
+            with open(metadata_file) as f:
+                metadata = json.load(f)
+                if "remote" in metadata:
+                    return True
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    # Check events for E2B-specific events
+    events_file = session_path / "events.jsonl"
+    if events_file.exists():
+        try:
+            with open(events_file) as f:
+                for line in f:
+                    try:
+                        event = json.loads(line.strip())
+                        event_name = event.get("event", "")
+                        if event_name.startswith("e2b."):
+                            return True
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            pass
+
+    return False
+
+
+def get_pipeline_name(logs_dir: str, session_id: str) -> Optional[str]:
+    """Extract pipeline name from session manifest or OML."""
+    session_path = Path(logs_dir) / session_id
+
+    # Try manifest.json in build/e2b or build directories
+    for manifest_path in [
+        session_path / "build" / "e2b" / "manifest.json",
+        session_path / "build" / "manifest.json",
+        session_path / "artifacts" / "manifest.json",
+    ]:
+        if manifest_path.exists():
+            try:
+                with open(manifest_path) as f:
+                    manifest = json.load(f)
+                    # Look for pipeline.id in manifest
+                    if "pipeline" in manifest and "id" in manifest["pipeline"]:
+                        return manifest["pipeline"]["id"]
+            except (OSError, json.JSONDecodeError):
+                continue
+
+    # Try OML file if exists
+    oml_file = session_path / "artifacts" / "generated_pipeline.yaml"
+    if oml_file.exists():
+        try:
+            import yaml
+
+            with open(oml_file) as f:
+                oml = yaml.safe_load(f)
+                if oml and "name" in oml:
+                    return oml["name"]
+        except Exception:  # nosec B110
+            pass  # Safe to ignore YAML errors for non-critical display
+
+    return None
+
+
+def get_session_metadata(logs_dir: str, session_id: str) -> Dict[str, Any]:
+    """Get session metadata including remote execution details."""
+    session_path = Path(logs_dir) / session_id
+    metadata_file = session_path / "metadata.json"
+
+    # First try metadata.json
+    if metadata_file.exists():
+        try:
+            with open(metadata_file) as f:
+                return json.load(f)
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    # Fall back to extracting from events.jsonl
+    metadata = {}
+    events_file = session_path / "events.jsonl"
+    if events_file.exists():
+        try:
+            with open(events_file) as f:
+                for line in f:
+                    try:
+                        event = json.loads(line.strip())
+                        event_name = event.get("event", "")
+
+                        # Extract pipeline info from run_start event
+                        if event_name == "run_start" and "pipeline_id" in event:
+                            if "pipeline" not in metadata:
+                                metadata["pipeline"] = {}
+                            metadata["pipeline"]["id"] = event.get("pipeline_id")
+                            metadata["pipeline"]["profile"] = event.get("profile", "default")
+                            metadata["pipeline"]["manifest_path"] = event.get("manifest_path", "")
+
+                        # Extract environment info
+                        elif event_name == "env_loaded" and "files" in event:
+                            if "environment" not in metadata:
+                                metadata["environment"] = {}
+                            metadata["environment"]["env_files"] = event.get("files", [])
+
+                        # Check for E2B events
+                        elif event_name.startswith("e2b."):
+                            if "remote" not in metadata:
+                                metadata["remote"] = {"detected": True}
+                            # Extract E2B specific info
+                            if event_name == "e2b.prepare.finish":
+                                if "payload" not in metadata["remote"]:
+                                    metadata["remote"]["payload"] = {}
+                                metadata["remote"]["payload"]["total_size_bytes"] = event.get(
+                                    "size_bytes", 0
+                                )
+                                metadata["remote"]["payload"]["sha256"] = event.get("sha256", "")
+
+                        # Extract connections used
+                        elif event_name == "connection_resolve_complete" and event.get("ok"):
+                            if "connections" not in metadata:
+                                metadata["connections"] = []
+                            conn_info = (
+                                f"{event.get('family', 'unknown')}/{event.get('alias', 'unknown')}"
+                            )
+                            if conn_info not in metadata["connections"]:
+                                metadata["connections"].append(conn_info)
+
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            pass
+
+    return metadata
+
+
+def get_pipeline_steps(logs_dir: str, session_id: str) -> list:
+    """Extract pipeline steps from manifest for visualization."""
+    session_path = Path(logs_dir) / session_id
+
+    # Try manifest.json in build/e2b or build directories
+    for manifest_path in [
+        session_path / "build" / "e2b" / "manifest.json",
+        session_path / "build" / "manifest.json",
+    ]:
+        if manifest_path.exists():
+            try:
+                with open(manifest_path) as f:
+                    manifest = json.load(f)
+                    if "steps" in manifest:
+                        return manifest["steps"]
+            except (OSError, json.JSONDecodeError):
+                continue
+
+    # Fall back to extracting from events.jsonl
+    step_info = {}
+    events_file = session_path / "events.jsonl"
+    if events_file.exists():
+        try:
+            with open(events_file) as f:
+                for line in f:
+                    try:
+                        event = json.loads(line.strip())
+                        event_name = event.get("event", "")
+
+                        # Collect step information
+                        if event_name == "step_start":
+                            step_id = event.get("step_id", "unknown")
+                            if step_id not in step_info:
+                                step_info[step_id] = {
+                                    "id": step_id,
+                                    "driver": event.get("driver", "unknown"),
+                                    "needs": [],  # Will infer from order
+                                    "start_time": event.get("ts", ""),
+                                    "status": "started",
+                                }
+
+                        elif event_name == "step_complete":
+                            step_id = event.get("step_id", "unknown")
+                            if step_id in step_info:
+                                step_info[step_id]["status"] = "completed"
+                                step_info[step_id]["duration"] = event.get("duration", "")
+                                step_info[step_id]["output_dir"] = event.get("output_dir", "")
+
+                        # Try to get config path from artifacts
+                        elif event_name == "config_meta_stripped":
+                            step_id = event.get("step_id", "unknown")
+                            if step_id in step_info:
+                                # Infer config path from step_id
+                                step_info[step_id]["cfg_path"] = f"cfg/{step_id}.json"
+
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            pass
+
+    # Build dependency chain based on order (simplified)
+    # In real pipelines, extract->write pattern is common
+    step_list = list(step_info.values())
+    for i, step in enumerate(step_list):
+        # Simple heuristic: write steps depend on their corresponding extract
+        if "write" in step["id"] and i > 0:
+            # Find the most recent extract step
+            for j in range(i - 1, -1, -1):
+                if "extract" in step_list[j]["id"]:
+                    # Match by entity name (e.g., actors, directors)
+                    entity = step["id"].replace("write-", "").replace("-supabase", "")
+                    if entity in step_list[j]["id"]:
+                        step["needs"] = [step_list[j]["id"]]
+                        break
+        # Sequential dependency for same operation type
+        elif i > 0 and step["driver"] == step_list[i - 1]["driver"]:
+            step["needs"] = [step_list[i - 1]["id"]]
+
+    return step_list if step_list else []
 
 
 def read_session_logs(logs_dir: str, session_id: str) -> Dict[str, Any]:
@@ -65,6 +285,64 @@ def read_session_logs(logs_dir: str, session_id: str) -> Dict[str, Any]:
                 }
             )
 
+    # List artifacts and files in the session directory
+    artifacts = []
+    for item in session_path.iterdir():
+        if item.is_file():
+            size = item.stat().st_size
+            artifacts.append(
+                {
+                    "name": item.name,
+                    "type": "file",
+                    "size": size,
+                    "path": str(item.relative_to(session_path)),
+                }
+            )
+        elif item.is_dir():
+            # Recursively list directory contents
+            dir_artifacts = []
+            for root, _dirs, files in os.walk(item):
+                root_path = Path(root)
+                for file in files:
+                    file_path = root_path / file
+                    size = file_path.stat().st_size
+                    rel_path = file_path.relative_to(session_path)
+                    dir_artifacts.append(
+                        {"name": str(rel_path), "type": "file", "size": size, "path": str(rel_path)}
+                    )
+            artifacts.append(
+                {
+                    "name": item.name,
+                    "type": "directory",
+                    "children": dir_artifacts,
+                    "path": str(item.relative_to(session_path)),
+                }
+            )
+
+    result["artifacts"] = artifacts
+
+    # Read log files for Technical Logs tab
+    logs = {}
+
+    # Read osiris.log if it exists
+    osiris_log = session_path / "osiris.log"
+    if osiris_log.exists():
+        try:
+            with open(osiris_log) as f:
+                logs["osiris.log"] = f.read()
+        except Exception:
+            logs["osiris.log"] = "Error reading osiris.log"
+
+    # Read debug.log if it exists
+    debug_log = session_path / "debug.log"
+    if debug_log.exists():
+        try:
+            with open(debug_log) as f:
+                logs["debug.log"] = f.read()
+        except Exception:
+            logs["debug.log"] = "Error reading debug.log"
+
+    result["logs"] = logs
     return result
 
 
@@ -76,7 +354,7 @@ def generate_html_report(
     since_filter: Optional[str] = None,
     limit: Optional[int] = None,
 ) -> None:
-    """Generate static HTML report from session logs with enhanced developer features."""
+    """Generate static HTML report with overview page and individual session pages."""
     # Create output directory
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -114,1645 +392,1837 @@ def generate_html_report(
     if limit:
         filtered_sessions = filtered_sessions[:limit]
 
-    # Generate JSON data
-    index_json = to_index_json(filtered_sessions)
-    (output_path / "data.json").write_text(index_json)
+    # Generate main overview HTML page
+    overview_html = generate_overview_page(filtered_sessions, logs_dir)
+    (output_path / "index.html").write_text(overview_html)
 
-    # Generate detailed session JSON with full logs
-    session_details = {}
+    # Generate individual session detail pages
     for session in filtered_sessions:
-        session_json = to_session_json(session, logs_dir)
-        session_data = json.loads(session_json)
-        # Add full logs to session data
+        # Create session directory
+        session_dir = output_path / session.session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+
+        # Read session logs and generate detail page
         session_logs = read_session_logs(logs_dir, session.session_id)
-        session_data["logs"] = session_logs
-        session_details[session.session_id] = session_data
+        session_html = generate_session_detail_page(session, session_logs)
 
-    # Generate HTML with embedded data
-    html_content = generate_index_html(index_json, session_details)
-    (output_path / "index.html").write_text(html_content)
+        # Write session HTML file
+        (session_dir / "index.html").write_text(session_html)
 
 
-def generate_index_html(data_json: str, session_details: dict) -> str:
-    """Generate the single-page HTML application with enhanced developer features."""
+def generate_overview_page(sessions, logs_dir: str) -> str:
+    """Generate the overview HTML page that lists all sessions."""
+    # Group sessions by type
+    session_groups = {"run": [], "compile": [], "connections": [], "ephemeral": [], "other": []}
 
-    # Parse and minify JSON - use double escaping for safe embedding
-    data_obj = json.loads(data_json)
-    minified_data = json.dumps(data_obj, separators=(",", ":"))
-    minified_details = json.dumps(session_details, separators=(",", ":"))
+    for session in sessions:
+        session_type = classify_session_type(session.session_id)
+        if session_type in session_groups:
+            session_groups[session_type].append(session)
+        else:
+            session_groups["other"].append(session)
 
-    # Double escape for embedding in JavaScript string literal
-    # This ensures the JSON can be safely embedded in HTML/JavaScript
-    escaped_data = json.dumps(minified_data)
-    escaped_details = json.dumps(minified_details)
-
-    # Build HTML in parts to avoid escaping issues
-    html_parts = []
-
-    # Start of HTML with modern, clean design
-    html_parts.append(
-        """<!DOCTYPE html>
+    # Generate simple HTML overview
+    html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Osiris Session Logs Browser</title>
+    <title>Osiris Session Logs</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        :root {
-            --bg-primary: #fafafa;
-            --bg-secondary: #ffffff;
-            --text-primary: #1a1a1a;
-            --text-secondary: #666666;
-            --text-muted: #999999;
-            --border-color: #e5e5e5;
-            --border-light: #f0f0f0;
-            --accent-blue: #0066ff;
-            --accent-green: #00cc88;
-            --accent-yellow: #ffcc00;
-            --accent-red: #ff3333;
-            --accent-purple: #9333ea;
-            --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
-            --shadow-md: 0 4px 6px rgba(0,0,0,0.07);
-            --font-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace;
-        }
-
-        body {
+        body {{
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            line-height: 1.6;
-        }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
+            margin: 0;
             padding: 2rem;
-        }
-
-        /* Header styles */
-        .header {
+            background: #fafafa;
+        }}
+        .header {{
             margin-bottom: 2rem;
-            padding-bottom: 1.5rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        h1 {
-            font-size: 2rem;
-            font-weight: 700;
-            letter-spacing: -0.02em;
-            margin-bottom: 0.25rem;
-        }
-
-        .subtitle {
-            color: var(--text-secondary);
-            font-size: 1rem;
-        }
-
-        /* Stats cards */
-        .stats-grid {
+            border-bottom: 1px solid #e5e5e5;
+            padding-bottom: 1rem;
+        }}
+        h1 {{
+            margin: 0 0 0.5rem 0;
+            color: #1a1a1a;
+        }}
+        .subtitle {{
+            color: #666;
+            margin: 0;
+        }}
+        .stats {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .stat-card {
-            background: var(--bg-secondary);
-            padding: 1.25rem;
-            border: 1px solid var(--border-light);
-            border-radius: 4px;
-            transition: all 0.2s ease;
-        }
-
-        .stat-card:hover {
-            box-shadow: var(--shadow-md);
-            border-color: var(--border-color);
-        }
-
-        .stat-value {
-            font-size: 1.75rem;
-            font-weight: 700;
-            letter-spacing: -0.02em;
-            color: var(--text-primary);
-        }
-
-        .stat-label {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-top: 0.25rem;
-        }
-
-        /* Filters section - more subtle */
-        .filters-section {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-light);
-            border-radius: 4px;
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .filters-header {
-            font-size: 0.7rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            color: var(--text-muted);
-            margin-bottom: 0.75rem;
-        }
-
-        .filters-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 0.75rem;
-            margin-bottom: 0.75rem;
-        }
-
-        .filter-group {
-            display: flex;
-            flex-direction: column;
-            gap: 0.25rem;
-        }
-
-        .filter-label {
-            font-size: 0.75rem;
-            font-weight: 500;
-            color: var(--text-secondary);
-        }
-
-        input[type="text"], select {
-            padding: 0.375rem 0.5rem;
-            border: 1px solid var(--border-light);
-            background: var(--bg-primary);
-            font-size: 0.8rem;
-            border-radius: 3px;
-            transition: all 0.2s ease;
-        }
-
-        input[type="text"]:focus, select:focus {
-            outline: none;
-            border-color: var(--accent-blue);
-            background: var(--bg-secondary);
-        }
-
-        /* Session type filters - more compact */
-        .type-filters {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.75rem;
-            padding: 0.75rem 0;
-            border-top: 1px solid var(--border-light);
-            border-bottom: 1px solid var(--border-light);
-            margin: 0.75rem 0;
-        }
-
-        .type-filter {
-            display: flex;
-            align-items: center;
-            gap: 0.375rem;
-            cursor: pointer;
-            user-select: none;
-        }
-
-        .type-filter input[type="checkbox"] {
-            width: 1rem;
-            height: 1rem;
-            cursor: pointer;
-        }
-
-        .type-filter label {
-            font-size: 0.8rem;
-            font-weight: 500;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 0.25rem;
-        }
-
-        .type-badge {
-            display: inline-block;
-            padding: 0.125rem 0.375rem;
-            font-size: 0.7rem;
-            font-weight: 600;
-            border-radius: 3px;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        .type-chat { background: #e3f2fd; color: #1565c0; }
-        .type-compile { background: #f3e5f5; color: #7b1fa2; }
-        .type-connections { background: #e8f5e9; color: #2e7d32; }
-        .type-ephemeral { background: #fff3e0; color: #ef6c00; }
-        .type-run { background: #e0f2f1; color: #00695c; }
-        .type-test { background: #fce4ec; color: #c2185b; }
-        .type-other { background: #f5f5f5; color: #616161; }
-
-        /* Buttons */
-        .btn {
-            padding: 0.375rem 0.75rem;
-            border: 1px solid var(--text-primary);
-            background: var(--text-primary);
-            color: var(--bg-secondary);
-            font-size: 0.8rem;
-            font-weight: 500;
-            cursor: pointer;
-            border-radius: 3px;
-            transition: all 0.2s ease;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        .btn:hover {
-            background: transparent;
-            color: var(--text-primary);
-        }
-
-        .btn-secondary {
-            background: transparent;
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-        }
-
-        .btn-secondary:hover {
-            border-color: var(--text-primary);
-            background: var(--text-primary);
-            color: var(--bg-secondary);
-        }
-
-        /* Timeline section */
-        .timeline-section {
-            margin-bottom: 1.5rem;
-            padding: 1rem;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-light);
-            border-radius: 4px;
-        }
-
-        .timeline-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 0.75rem;
-        }
-
-        .timeline-title {
-            font-size: 0.875rem;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-
-        .timeline-help {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-        }
-
-        #timeline {
-            width: 100%;
-            height: 100px;
-            border: 1px solid var(--border-light);
-            background: var(--bg-primary);
-            border-radius: 3px;
-            cursor: crosshair;
-        }
-
-        .timeline-tooltip {
-            position: absolute;
-            background: var(--text-primary);
-            color: var(--bg-secondary);
-            padding: 0.5rem;
-            border-radius: 3px;
-            font-size: 0.75rem;
-            pointer-events: none;
-            display: none;
-            z-index: 1000;
-            box-shadow: var(--shadow-md);
-        }
-
-        /* Table styles */
-        .table-container {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-light);
-            border-radius: 4px;
-            overflow: hidden;
             margin-bottom: 2rem;
-        }
-
-        table {
+        }}
+        .stat-card {{
+            background: white;
+            padding: 1rem;
+            border-radius: 4px;
+            border: 1px solid #e5e5e5;
+        }}
+        .stat-value {{
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+        }}
+        .stat-label {{
+            color: #666;
+            font-size: 0.875rem;
+        }}
+        .section {{
+            background: white;
+            margin-bottom: 1.5rem;
+            border-radius: 4px;
+            border: 1px solid #e5e5e5;
+            overflow: hidden;
+        }}
+        .section-header {{
+            background: #f8f9fa;
+            padding: 1rem;
+            border-bottom: 1px solid #e5e5e5;
+            font-weight: 600;
+        }}
+        .table-wrapper {{
+            max-height: 600px;
+            overflow-y: auto;
+            position: relative;
+        }}
+        table {{
             width: 100%;
             border-collapse: collapse;
-        }
-
-        th {
-            background: var(--bg-primary);
-            padding: 0.75rem;
+        }}
+        thead {{
+            position: sticky;
+            top: 0;
+            background: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+            z-index: 10;
+        }}
+        th {{
+            padding: 0.75rem 1rem;
             text-align: left;
-            font-size: 0.7rem;
             font-weight: 600;
+            font-size: 0.875rem;
+            color: #495057;
             text-transform: uppercase;
-            letter-spacing: 0.1em;
-            color: var(--text-muted);
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        td {
-            padding: 0.75rem;
-            border-bottom: 1px solid var(--border-light);
-            font-size: 0.875rem;
-        }
-
-        tr:hover {
-            background: var(--bg-primary);
-        }
-
-        /* Status badges */
-        .status {
-            display: inline-block;
-            padding: 0.25rem 0.5rem;
-            font-size: 0.7rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            border-radius: 3px;
-        }
-
-        .status-success {
-            background: var(--accent-green);
-            color: white;
-        }
-
-        .status-failed {
-            background: var(--accent-red);
-            color: white;
-        }
-
-        .status-running {
-            background: var(--accent-yellow);
-            color: black;
-        }
-
-        .status-unknown {
-            background: var(--text-muted);
-            color: white;
-        }
-
-        /* Clickable elements */
-        .clickable {
-            color: var(--accent-blue);
-            cursor: pointer;
-            text-decoration: none;
-            font-weight: 500;
-            transition: all 0.2s ease;
-        }
-
-        .clickable:hover {
-            text-decoration: underline;
-        }
-
-        /* Detail view */
-        #detail-view {
-            display: none;
-        }
-
-        #detail-view.active {
-            display: block;
-        }
-
-        .detail-header {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .detail-header h2 {
-            font-size: 1.25rem;
-            font-weight: 600;
-            letter-spacing: -0.02em;
-            flex: 1;
-        }
-
-        /* Tabbed interface for detail view */
-        .tabs {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 1.5rem;
-            border-bottom: 2px solid var(--border-light);
-        }
-
-        .tab {
-            padding: 0.5rem 1rem;
-            background: transparent;
-            border: none;
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-            font-weight: 500;
-            cursor: pointer;
-            border-bottom: 2px solid transparent;
-            margin-bottom: -2px;
-            transition: all 0.2s ease;
-        }
-
-        .tab:hover {
-            color: var(--text-primary);
-        }
-
-        .tab.active {
-            color: var(--accent-blue);
-            border-bottom-color: var(--accent-blue);
-        }
-
-        .tab-content {
-            display: none;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-
-        /* Metrics grid */
-        .metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .metric-card {
-            background: var(--bg-secondary);
-            padding: 1rem;
-            border: 1px solid var(--border-light);
-            border-radius: 4px;
-        }
-
-        .metric-label {
-            font-size: 0.7rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            color: var(--text-muted);
-            margin-bottom: 0.5rem;
-        }
-
-        .metric-value {
-            font-size: 1.25rem;
-            font-weight: 700;
-            letter-spacing: -0.02em;
-            color: var(--text-primary);
-        }
-
-        /* Events timeline */
-        .events-timeline {
-            max-height: 400px;
-            overflow-y: auto;
-            background: var(--bg-primary);
-            border: 1px solid var(--border-light);
-            border-radius: 4px;
-            padding: 1rem;
-        }
-
-        .event-item {
-            display: flex;
-            gap: 1rem;
-            padding: 0.5rem;
-            border-bottom: 1px solid var(--border-light);
-            font-size: 0.875rem;
-        }
-
-        .event-item:hover {
-            background: var(--bg-secondary);
-        }
-
-        .event-time {
-            color: var(--text-muted);
-            font-family: var(--font-mono);
-            font-size: 0.75rem;
-            width: 80px;
-        }
-
-        .event-type {
-            font-weight: 500;
-            color: var(--text-primary);
-            width: 150px;
-        }
-
-        .event-details {
-            flex: 1;
-            color: var(--text-secondary);
-            font-family: var(--font-mono);
-            font-size: 0.75rem;
-        }
-
-        /* Steps visualization */
-        .steps-flow {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-            margin: 1rem 0;
-        }
-
-        .step-item {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            padding: 0.75rem;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-light);
-            border-radius: 4px;
-        }
-
-        .step-icon {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            color: white;
-        }
-
-        .step-icon.success { background: var(--accent-green); }
-        .step-icon.failed { background: var(--accent-red); }
-        .step-icon.running { background: var(--accent-yellow); }
-
-        .step-info {
-            flex: 1;
-        }
-
-        .step-name {
-            font-weight: 500;
-            color: var(--text-primary);
-            margin-bottom: 0.25rem;
-        }
-
-        .step-meta {
-            display: flex;
-            gap: 1rem;
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-        }
-
-        /* Artifacts list */
-        .artifacts-list {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-
-        .artifact-item {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.5rem;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-light);
-            border-radius: 3px;
-            font-size: 0.875rem;
-        }
-
-        .artifact-icon {
-            color: var(--text-muted);
-        }
-
-        .artifact-name {
-            flex: 1;
-            font-family: var(--font-mono);
-            color: var(--text-primary);
-        }
-
-        .artifact-size {
-            color: var(--text-muted);
-            font-size: 0.75rem;
-        }
-
-        /* Raw logs viewer */
-        .logs-viewer {
-            background: #1a1a1a;
-            color: #e0e0e0;
-            padding: 1rem;
-            border-radius: 4px;
-            font-family: var(--font-mono);
-            font-size: 0.8rem;
-            line-height: 1.4;
-            max-height: 500px;
-            overflow-y: auto;
-        }
-
-        .log-line {
-            display: flex;
-            gap: 1rem;
-            padding: 0.25rem 0;
-        }
-
-        .log-line:hover {
-            background: rgba(255,255,255,0.05);
-        }
-
-        .log-number {
-            color: #666;
-            width: 40px;
+            letter-spacing: 0.5px;
+        }}
+        th.align-right {{
             text-align: right;
+        }}
+        tbody tr {{
+            border-bottom: 1px solid #f0f0f0;
+            transition: background-color 0.15s ease;
+        }}
+        tbody tr:hover {{
+            background: #f8f9fa;
+        }}
+        tbody tr:last-child {{
+            border-bottom: none;
+        }}
+        td {{
+            padding: 0.75rem 1rem;
+            font-size: 0.875rem;
+        }}
+        td.session-id {{
+            font-family: monospace;
+        }}
+        td.session-time {{
+            color: #666;
+        }}
+        td.session-duration {{
+            color: #666;
+            text-align: right;
+        }}
+        td.session-rows {{
+            text-align: right;
+            color: #666;
+        }}
+        .clickable-row {{
+            cursor: pointer;
+        }}
+        th.sortable {{
+            cursor: pointer;
             user-select: none;
-        }
-
-        .log-content {
-            flex: 1;
-            word-break: break-all;
-        }
-
-        /* Loading and error states */
-        .loading {
+            position: relative;
+            padding-right: 1.5rem;
+        }}
+        th.sortable:hover {{
+            background: #e9ecef;
+        }}
+        th.sortable::after {{
+            content: '⇅';
+            position: absolute;
+            right: 0.5rem;
+            opacity: 0.3;
+        }}
+        th.sortable.sort-asc::after {{
+            content: '↑';
+            opacity: 1;
+        }}
+        th.sortable.sort-desc::after {{
+            content: '↓';
+            opacity: 1;
+        }}
+        .session-status {{
+            padding: 0.25rem 0.5rem;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }}
+        .status-success {{ background: #d4edda; color: #155724; }}
+        .status-failed {{ background: #f8d7da; color: #721c24; }}
+        .status-running {{ background: #fff3cd; color: #856404; }}
+        .status-unknown {{ background: #e2e3e5; color: #383d41; }}
+        .e2b-badge {{
+            display: inline-block;
+            background: #ff8c00;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: bold;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            margin-left: 0.5rem;
+        }}
+        .search-bar {{
+            background: white;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            border-radius: 4px;
+            border: 1px solid #e5e5e5;
+        }}
+        .search-input {{
+            width: 100%;
+            padding: 0.5rem;
+            font-size: 1rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: inherit;
+        }}
+        .search-input:focus {{
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+        }}
+        .hidden {{
+            display: none !important;
+        }}
+        .no-results {{
             text-align: center;
             padding: 2rem;
-            color: var(--text-muted);
+            color: #666;
+        }}
+        .pipeline-name {{
+            color: #666;
             font-size: 0.875rem;
-        }
-
-        .error {
-            background: #ffebee;
-            color: #c62828;
-            padding: 1rem;
-            border: 1px solid #ffcdd2;
-            border-radius: 4px;
-            margin: 1rem 0;
-        }
-
-        /* Monospace elements */
-        .mono {
-            font-family: var(--font-mono);
-            font-size: 0.875rem;
-        }
-
-        /* Scrollbar styling */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: var(--bg-primary);
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: var(--border-color);
-            border-radius: 4px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--text-muted);
-        }
+        }}
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Osiris Session Logs</h1>
-            <p class="subtitle">Real-time monitoring and analysis of pipeline executions</p>
-        </div>
-
-        <!-- Stats Overview -->
-        <div class="stats-grid" id="stats-grid">
-            <div class="stat-card">
-                <div class="stat-value" id="total-sessions">0</div>
-                <div class="stat-label">Total Sessions</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value" id="success-rate">0%</div>
-                <div class="stat-label">Success Rate</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value" id="active-sessions">0</div>
-                <div class="stat-label">Active Sessions</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value" id="total-rows">0</div>
-                <div class="stat-label">Total Rows Processed</div>
-            </div>
-        </div>
-
-        <!-- Overview View -->
-        <div id="overview-view">
-            <div class="filters-section">
-                <div class="filters-header">Filters</div>
-
-                <!-- Session Type Filters -->
-                <div class="type-filters">
-                    <div class="type-filter">
-                        <input type="checkbox" id="type-chat" checked>
-                        <label for="type-chat">
-                            <span class="type-badge type-chat">Chat</span>
-                            <span class="type-count" id="count-chat">(0)</span>
-                        </label>
-                    </div>
-                    <div class="type-filter">
-                        <input type="checkbox" id="type-compile" checked>
-                        <label for="type-compile">
-                            <span class="type-badge type-compile">Compile</span>
-                            <span class="type-count" id="count-compile">(0)</span>
-                        </label>
-                    </div>
-                    <div class="type-filter">
-                        <input type="checkbox" id="type-connections" checked>
-                        <label for="type-connections">
-                            <span class="type-badge type-connections">Connections</span>
-                            <span class="type-count" id="count-connections">(0)</span>
-                        </label>
-                    </div>
-                    <div class="type-filter">
-                        <input type="checkbox" id="type-ephemeral" checked>
-                        <label for="type-ephemeral">
-                            <span class="type-badge type-ephemeral">Ephemeral</span>
-                            <span class="type-count" id="count-ephemeral">(0)</span>
-                        </label>
-                    </div>
-                    <div class="type-filter">
-                        <input type="checkbox" id="type-run" checked>
-                        <label for="type-run">
-                            <span class="type-badge type-run">Run</span>
-                            <span class="type-count" id="count-run">(0)</span>
-                        </label>
-                    </div>
-                    <div class="type-filter">
-                        <input type="checkbox" id="type-test" checked>
-                        <label for="type-test">
-                            <span class="type-badge type-test">Test</span>
-                            <span class="type-count" id="count-test">(0)</span>
-                        </label>
-                    </div>
-                    <div class="type-filter">
-                        <input type="checkbox" id="type-other" checked>
-                        <label for="type-other">
-                            <span class="type-badge type-other">Other</span>
-                            <span class="type-count" id="count-other">(0)</span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="filters-grid">
-                    <div class="filter-group">
-                        <label class="filter-label">Status</label>
-                        <select id="status-filter">
-                            <option value="">All Status</option>
-                            <option value="success">Success</option>
-                            <option value="failed">Failed</option>
-                            <option value="running">Running</option>
-                            <option value="unknown">Unknown</option>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <label class="filter-label">Label</label>
-                        <input type="text" id="label-filter" placeholder="Filter by label">
-                    </div>
-                    <div class="filter-group">
-                        <label class="filter-label">Session ID</label>
-                        <input type="text" id="search-filter" placeholder="Search session ID">
-                    </div>
-                </div>
-
-                <div style="display: flex; gap: 0.75rem; margin-top: 0.75rem;">
-                    <button class="btn" onclick="applyFilters()">Apply</button>
-                    <button class="btn-secondary" onclick="clearFilters()">Clear</button>
-                </div>
-            </div>
-
-            <!-- Timeline with description -->
-            <div class="timeline-section">
-                <div class="timeline-header">
-                    <div class="timeline-title">Session Timeline</div>
-                    <div class="timeline-help">Hover over points to see details • Click to view session</div>
-                </div>
-                <canvas id="timeline"></canvas>
-                <div class="timeline-tooltip" id="timeline-tooltip"></div>
-            </div>
-
-            <div class="table-container">
-                <div id="sessions-table-container">
-                    <div class="loading">Loading sessions...</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Detail View -->
-        <div id="detail-view">
-            <div id="detail-content"></div>
-        </div>
+    <div class="header">
+        <h1>Osiris Session Logs</h1>
+        <p class="subtitle">Pipeline execution logs and session details</p>
     </div>
 
+    <div class="search-bar">
+        <input type="text"
+               class="search-input"
+               id="searchInput"
+               placeholder="Search sessions by ID, pipeline name, or status..."
+               onkeyup="filterSessions()"
+               autocomplete="off">
+    </div>
+
+    <div class="stats">
+        <div class="stat-card">
+            <div class="stat-value">{len(sessions)}</div>
+            <div class="stat-label">Total Sessions</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{len([s for s in sessions if s.status == 'success'])}</div>
+            <div class="stat-label">Successful</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{len([s for s in sessions if s.status == 'failed'])}</div>
+            <div class="stat-label">Failed</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{sum(s.rows_out or 0 for s in sessions):,}</div>
+            <div class="stat-label">Total Rows Processed</div>
+        </div>
+    </div>
+"""
+
+    # Add sections for each session type
+    for session_type, type_sessions in session_groups.items():
+        if not type_sessions:
+            continue
+
+        html += f"""
+    <div class="section">
+        <div class="section-header">{session_type.title()} Sessions ({len(type_sessions)})</div>
+        <div class="table-wrapper">
+            <table class="sortable-table" id="table-{session_type}">
+                <thead>
+                    <tr>
+                        <th class="sortable" data-column="0" onclick="sortTable('table-{session_type}', 0)">Session ID</th>
+                        <th class="sortable" data-column="1" onclick="sortTable('table-{session_type}', 1)">Pipeline</th>
+                        <th class="sortable" data-column="2" onclick="sortTable('table-{session_type}', 2)">Started</th>
+                        <th class="sortable align-right" data-column="3" onclick="sortTable('table-{session_type}', 3)">Duration</th>
+                        <th class="sortable align-right" data-column="4" onclick="sortTable('table-{session_type}', 4)">Rows</th>
+                        <th class="sortable" data-column="5" onclick="sortTable('table-{session_type}', 5)">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+"""
+
+        for session in type_sessions:
+            started_time = ""
+            if session.started_at:
+                try:
+                    from datetime import datetime
+
+                    dt = datetime.fromisoformat(session.started_at.replace("Z", "+00:00"))
+                    started_time = dt.strftime("%Y-%m-%d %H:%M:%S")
+                except (ValueError, AttributeError):
+                    started_time = session.started_at[:19].replace("T", " ")
+
+            # Format duration
+            duration = ""
+            if session.duration_ms:
+                if session.duration_ms < 1000:
+                    duration = f"{session.duration_ms}ms"
+                elif session.duration_ms < 60000:
+                    duration = f"{session.duration_ms / 1000:.1f}s"
+                else:
+                    duration = f"{session.duration_ms / 60000:.1f}m"
+
+            # Check if this session used E2B remote execution
+            e2b_badge = ""
+            if is_e2b_session(logs_dir, session.session_id):
+                e2b_badge = '<span class="e2b-badge">E2B</span>'
+
+            # Get pipeline name
+            pipeline_name = get_pipeline_name(logs_dir, session.session_id) or ""
+
+            # Get row count
+            rows = session.rows_out if session.rows_out else 0
+            rows_display = f"{rows:,}" if rows > 0 else "-"
+
+            # Add data attributes for sorting
+            duration_ms = session.duration_ms if session.duration_ms else 0
+
+            html += f"""
+                    <tr class="clickable-row" onclick="window.location.href='{session.session_id}/index.html'" data-duration="{duration_ms}" data-rows="{rows}" data-pipeline="{pipeline_name.lower()}">
+                        <td class="session-id">{session.session_id}{e2b_badge}</td>
+                        <td class="pipeline-name">{pipeline_name[:40] if pipeline_name else '-'}</td>
+                        <td class="session-time">{started_time}</td>
+                        <td class="session-duration">{duration or '-'}</td>
+                        <td class="session-rows">{rows_display}</td>
+                        <td><span class="session-status status-{session.status}">{session.status}</span></td>
+                    </tr>
+"""
+
+        html += """
+                </tbody>
+            </table>
+        </div>
+    </div>
+"""
+
+    html += """
     <script>
-        // Parse the embedded JSON data
-        const embeddedData = JSON.parse("""
-    )
+        const sortStates = {};
 
-    # Add the escaped data
-    html_parts.append(escaped_data)
+        function sortTable(tableId, columnIndex) {
+            const table = document.getElementById(tableId);
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            const th = table.querySelectorAll('th')[columnIndex];
 
-    # Add session details
-    html_parts.append(
-        """);
-        const sessionDetails = JSON.parse("""
-    )
+            // Get current sort state
+            const key = tableId + '-' + columnIndex;
+            const currentState = sortStates[key] || 'none';
+            let newState = currentState === 'none' ? 'asc' :
+                           currentState === 'asc' ? 'desc' : 'asc';
 
-    # Add the escaped session details
-    html_parts.append(escaped_details)
-
-    html_parts.append(""");""")
-
-    # Add the rest of the JavaScript
-    html_parts.append(
-        """
-
-        let allSessions = [];
-        let currentSession = null;
-        let sessionTypeCounts = {
-            chat: 0,
-            compile: 0,
-            connections: 0,
-            ephemeral: 0,
-            run: 0,
-            test: 0,
-            other: 0
-        };
-
-        // Helper function to classify session type
-        function getSessionType(sessionId) {
-            if (sessionId.includes('chat')) return 'chat';
-            if (sessionId.includes('compile')) return 'compile';
-            if (sessionId.includes('connection')) return 'connections';
-            if (sessionId.includes('ephemeral')) return 'ephemeral';
-            if (sessionId.includes('run')) return 'run';
-            if (sessionId.includes('test') || sessionId.includes('validation')) return 'test';
-            return 'other';
-        }
-
-        // Load sessions on page load
-        window.addEventListener('load', async () => {
-            await loadSessions();
-
-            // Handle hash navigation
-            if (window.location.hash) {
-                const sessionId = window.location.hash.substring(1).replace('session=', '');
-                if (sessionId) {
-                    showDetail(sessionId);
-                }
-            }
-        });
-
-        async function loadSessions() {
-            try {
-                // Use embedded data instead of fetching
-                const data = embeddedData;
-                allSessions = data.sessions || [];
-
-                // Ensure all sessions have required fields
-                allSessions = allSessions.map(session => ({
-                    ...session,
-                    status: session.status || 'unknown',
-                    started_at: session.started_at || new Date().toISOString(),
-                    duration_ms: session.duration_ms || 0,
-                    session_type: getSessionType(session.session_id)
-                }));
-
-                // Count session types
-                sessionTypeCounts = {
-                    chat: 0,
-                    compile: 0,
-                    connections: 0,
-                    ephemeral: 0,
-                    run: 0,
-                    test: 0,
-                    other: 0
-                };
-
-                allSessions.forEach(session => {
-                    const type = session.session_type;
-                    sessionTypeCounts[type] = (sessionTypeCounts[type] || 0) + 1;
-                });
-
-                // Update type counts in UI
-                Object.keys(sessionTypeCounts).forEach(type => {
-                    const countEl = document.getElementById(`count-${type}`);
-                    if (countEl) {
-                        countEl.textContent = `(${sessionTypeCounts[type]})`;
-                    }
-                });
-
-                updateStats();
-                renderTable(allSessions);
-                drawTimeline(allSessions);
-            } catch (error) {
-                document.getElementById('sessions-table-container').innerHTML =
-                    '<div class="error">Failed to load sessions: ' + error.message + '</div>';
-            }
-        }
-
-        function updateStats() {
-            // Total sessions
-            document.getElementById('total-sessions').textContent = allSessions.length;
-
-            // Success rate
-            const successCount = allSessions.filter(s => s.status === 'success').length;
-            const successRate = allSessions.length > 0 ?
-                Math.round((successCount / allSessions.length) * 100) : 0;
-            document.getElementById('success-rate').textContent = successRate + '%';
-
-            // Active sessions
-            const activeCount = allSessions.filter(s => s.status === 'running').length;
-            document.getElementById('active-sessions').textContent = activeCount;
-
-            // Total rows processed
-            const totalRows = allSessions.reduce((sum, s) => sum + (s.rows_out || 0), 0);
-            document.getElementById('total-rows').textContent = formatNumber(totalRows);
-        }
-
-        function renderTable(sessions) {
-            if (sessions.length === 0) {
-                document.getElementById('sessions-table-container').innerHTML =
-                    '<div class="loading">No sessions found</div>';
-                return;
-            }
-
-            let html = '<table><thead><tr>';
-            html += '<th>Type</th><th>Started At</th><th>Session ID</th><th>Pipeline</th>';
-            html += '<th>Status</th><th>Duration</th><th>Steps</th><th>Rows In/Out</th><th>Errors</th>';
-            html += '</tr></thead><tbody>';
-
-            for (const session of sessions) {
-                const type = session.session_type;
-                const startTime = session.started_at ?
-                    new Date(session.started_at).toLocaleString() : 'N/A';
-                const duration = formatDuration(session.duration_ms);
-
-                html += '<tr>';
-                html += '<td><span class="type-badge type-' + type + '">' + type + '</span></td>';
-                html += '<td>' + startTime + '</td>';
-                html += '<td class="clickable mono" onclick="showDetail(\'' + escapeHtml(session.session_id) + '\')">';
-                html += escapeHtml(session.session_id) + '</td>';
-                html += '<td>' + escapeHtml(session.pipeline_name || 'N/A') + '</td>';
-                html += '<td><span class="status status-' + session.status + '">' + session.status + '</span></td>';
-                html += '<td>' + duration + '</td>';
-                html += '<td>' + (session.steps_ok || 0) + '/' + (session.steps_total || 0) + '</td>';
-                html += '<td>' + formatNumber(session.rows_in || 0) + ' / ' + formatNumber(session.rows_out || 0) + '</td>';
-                html += '<td>' + (session.errors || 0) + '</td>';
-                html += '</tr>';
-            }
-
-            html += '</tbody></table>';
-            document.getElementById('sessions-table-container').innerHTML = html;
-        }
-
-        async function showDetail(sessionId) {
-            document.getElementById('overview-view').style.display = 'none';
-            document.getElementById('detail-view').classList.add('active');
-            window.location.hash = 'session=' + sessionId;
-
-            try {
-                // Use embedded session details instead of fetching
-                const session = sessionDetails[sessionId] || allSessions.find(s => s.session_id === sessionId);
-                if (!session) {
-                    throw new Error('Session not found');
-                }
-                currentSession = session;
-                renderDetail(session);
-            } catch (error) {
-                document.getElementById('detail-content').innerHTML =
-                    '<div class="error">Failed to load session details: ' + error.message + '</div>';
-            }
-        }
-
-        function renderDetail(session) {
-            const type = getSessionType(session.session_id);
-            const logs = session.logs || {};
-            const events = logs.events || [];
-            const metrics = logs.metrics || [];
-            const artifacts = logs.artifacts || [];
-
-            let html = '<div class="detail-header">';
-            html += '<button onclick="showOverview()" class="btn-secondary">← Back</button>';
-            html += '<h2><span class="mono">' + escapeHtml(session.session_id) + '</span></h2>';
-            html += '<span class="type-badge type-' + type + '">' + type + '</span>';
-            html += '<span class="status status-' + (session.status || 'unknown') + '">' + (session.status || 'unknown') + '</span>';
-            html += '</div>';
-
-            // Tabs
-            html += '<div class="tabs">';
-            html += '<button class="tab active" onclick="showTab(\'overview\')">Overview</button>';
-            html += '<button class="tab" onclick="showTab(\'events\')">Events (' + events.length + ')</button>';
-            html += '<button class="tab" onclick="showTab(\'metrics\')">Metrics (' + metrics.length + ')</button>';
-            html += '<button class="tab" onclick="showTab(\'steps\')">Steps</button>';
-            html += '<button class="tab" onclick="showTab(\'artifacts\')">Artifacts (' + artifacts.length + ')</button>';
-            html += '<button class="tab" onclick="showTab(\'raw\')">Raw Logs</button>';
-            html += '</div>';
-
-            // Tab contents
-            html += '<div class="tab-content active" id="tab-overview">';
-            html += renderOverviewTab(session);
-            html += '</div>';
-
-            html += '<div class="tab-content" id="tab-events">';
-            html += renderEventsTab(events);
-            html += '</div>';
-
-            html += '<div class="tab-content" id="tab-metrics">';
-            html += renderMetricsTab(metrics);
-            html += '</div>';
-
-            html += '<div class="tab-content" id="tab-steps">';
-            html += renderStepsTab(events);
-            html += '</div>';
-
-            html += '<div class="tab-content" id="tab-artifacts">';
-            html += renderArtifactsTab(artifacts);
-            html += '</div>';
-
-            html += '<div class="tab-content" id="tab-raw">';
-            html += renderRawTab(events, metrics);
-            html += '</div>';
-
-            document.getElementById('detail-content').innerHTML = html;
-        }
-
-        function renderOverviewTab(session) {
-            let html = '';
-
-            if (session.pipeline_name) {
-                html += '<p style="margin-bottom: 1rem;">Pipeline: <strong>' + escapeHtml(session.pipeline_name) + '</strong></p>';
-            }
-
-            html += '<div class="metrics-grid">';
-
-            html += '<div class="metric-card">';
-            html += '<div class="metric-label">Started At</div>';
-            html += '<div class="metric-value" style="font-size: 1rem;">' +
-                (session.started_at ? new Date(session.started_at).toLocaleString() : 'N/A') + '</div>';
-            html += '</div>';
-
-            html += '<div class="metric-card">';
-            html += '<div class="metric-label">Duration</div>';
-            html += '<div class="metric-value">' + formatDuration(session.duration_ms || 0) + '</div>';
-            html += '</div>';
-
-            if (session.steps) {
-                html += '<div class="metric-card">';
-                html += '<div class="metric-label">Steps Completed</div>';
-                html += '<div class="metric-value">' + (session.steps.completed || 0) + '/' + (session.steps.total || 0) + '</div>';
-                html += '</div>';
-
-                html += '<div class="metric-card">';
-                html += '<div class="metric-label">Success Rate</div>';
-                html += '<div class="metric-value">' + ((session.steps.success_rate || 0) * 100).toFixed(1) + '%</div>';
-                html += '</div>';
-            }
-
-            if (session.data_flow) {
-                html += '<div class="metric-card">';
-                html += '<div class="metric-label">Rows In</div>';
-                html += '<div class="metric-value">' + formatNumber(session.data_flow.rows_in || 0) + '</div>';
-                html += '</div>';
-
-                html += '<div class="metric-card">';
-                html += '<div class="metric-label">Rows Out</div>';
-                html += '<div class="metric-value">' + formatNumber(session.data_flow.rows_out || 0) + '</div>';
-                html += '</div>';
-            }
-
-            if (session.diagnostics) {
-                html += '<div class="metric-card">';
-                html += '<div class="metric-label">Errors</div>';
-                html += '<div class="metric-value">' + (session.diagnostics.errors || 0) + '</div>';
-                html += '</div>';
-
-                html += '<div class="metric-card">';
-                html += '<div class="metric-label">Warnings</div>';
-                html += '<div class="metric-value">' + (session.diagnostics.warnings || 0) + '</div>';
-                html += '</div>';
-            }
-
-            html += '</div>';
-
-            if (session.data_flow && session.data_flow.tables && session.data_flow.tables.length > 0) {
-                html += '<div style="margin-top: 1.5rem;">';
-                html += '<h3 style="margin-bottom: 0.75rem; font-size: 1rem;">Tables Accessed</h3>';
-                html += '<p>';
-                session.data_flow.tables.forEach(table => {
-                    html += '<span class="type-badge type-other" style="margin-right: 0.5rem;">' + escapeHtml(table) + '</span>';
-                });
-                html += '</p></div>';
-            }
-
-            return html;
-        }
-
-        function renderEventsTab(events) {
-            if (!events || events.length === 0) {
-                return '<div class="loading">No events recorded</div>';
-            }
-
-            let html = '<div class="events-timeline">';
-
-            events.forEach((event, index) => {
-                const time = event.ts ? new Date(event.ts).toLocaleTimeString() : '';
-                const eventType = event.event || 'unknown';
-
-                html += '<div class="event-item">';
-                html += '<div class="event-time">' + time + '</div>';
-                html += '<div class="event-type">' + escapeHtml(eventType) + '</div>';
-                html += '<div class="event-details">';
-
-                // Show relevant details based on event type
-                if (event.step_id) html += 'step: ' + event.step_id + ' ';
-                if (event.duration) html += 'duration: ' + (event.duration * 1000).toFixed(0) + 'ms ';
-                if (event.rows_read) html += 'rows_read: ' + event.rows_read + ' ';
-                if (event.rows_written) html += 'rows_written: ' + event.rows_written + ' ';
-                if (event.table) html += 'table: ' + event.table + ' ';
-                if (event.error) html += 'error: ' + event.error + ' ';
-
-                html += '</div>';
-                html += '</div>';
+            // Clear all sort indicators for this table
+            table.querySelectorAll('th').forEach(header => {
+                header.classList.remove('sort-asc', 'sort-desc');
             });
 
-            html += '</div>';
-            return html;
-        }
+            // Sort rows
+            rows.sort((a, b) => {
+                const cellA = a.cells[columnIndex];
+                const cellB = b.cells[columnIndex];
+                let valA = cellA.textContent.trim();
+                let valB = cellB.textContent.trim();
 
-        function renderMetricsTab(metrics) {
-            if (!metrics || metrics.length === 0) {
-                return '<div class="loading">No metrics recorded</div>';
-            }
-
-            // Group metrics by type
-            const groupedMetrics = {};
-            metrics.forEach(metric => {
-                const key = metric.metric || 'unknown';
-                if (!groupedMetrics[key]) {
-                    groupedMetrics[key] = [];
+                // Handle different data types
+                if (columnIndex === 2) { // Duration column
+                    // Convert to milliseconds for comparison
+                    valA = parseDuration(valA);
+                    valB = parseDuration(valB);
+                } else if (columnIndex === 3) { // Rows column
+                    valA = valA === '-' ? -1 : parseInt(valA.replace(/,/g, ''));
+                    valB = valB === '-' ? -1 : parseInt(valB.replace(/,/g, ''));
+                } else if (columnIndex === 1) { // Date column
+                    valA = new Date(valA).getTime() || 0;
+                    valB = new Date(valB).getTime() || 0;
                 }
-                groupedMetrics[key].push(metric);
-            });
 
-            let html = '<div class="metrics-grid">';
-
-            for (const [key, values] of Object.entries(groupedMetrics)) {
-                html += '<div class="metric-card">';
-                html += '<div class="metric-label">' + escapeHtml(key) + '</div>';
-
-                if (values.length === 1) {
-                    const value = values[0].value;
-                    const unit = values[0].unit || '';
-                    html += '<div class="metric-value">' + formatMetricValue(value) + ' ' + unit + '</div>';
+                // Compare
+                let comparison = 0;
+                if (typeof valA === 'number' && typeof valB === 'number') {
+                    comparison = valA - valB;
                 } else {
-                    // Show aggregated values
-                    const total = values.reduce((sum, m) => sum + (m.value || 0), 0);
-                    html += '<div class="metric-value">' + formatMetricValue(total) + '</div>';
-                    html += '<div style="font-size: 0.75rem; color: var(--text-muted);">' + values.length + ' measurements</div>';
+                    comparison = valA.toString().localeCompare(valB.toString());
                 }
 
-                html += '</div>';
-            }
+                return newState === 'asc' ? comparison : -comparison;
+            });
 
-            html += '</div>';
-            return html;
+            // Update DOM
+            tbody.innerHTML = '';
+            rows.forEach(row => tbody.appendChild(row));
+
+            // Update sort indicator
+            th.classList.add('sort-' + newState);
+            sortStates[key] = newState;
         }
 
-        function renderStepsTab(events) {
-            // Extract step information from events
-            const steps = {};
+        function parseDuration(duration) {
+            if (duration === '-') return -1;
+            if (duration.endsWith('ms')) {
+                return parseFloat(duration);
+            } else if (duration.endsWith('s')) {
+                return parseFloat(duration) * 1000;
+            } else if (duration.endsWith('m')) {
+                return parseFloat(duration) * 60000;
+            }
+            return 0;
+        }
 
-            events.forEach(event => {
-                if (event.step_id) {
-                    if (!steps[event.step_id]) {
-                        steps[event.step_id] = {
-                            id: event.step_id,
-                            driver: event.driver,
-                            start: null,
-                            end: null,
-                            duration: 0,
-                            status: 'unknown',
-                            metrics: {}
-                        };
+        function filterSessions() {
+            const searchText = document.getElementById('searchInput').value.toLowerCase();
+            const allSections = document.querySelectorAll('.section');
+            let anyVisible = false;
+
+            allSections.forEach(section => {
+                const tbody = section.querySelector('tbody');
+                if (!tbody) return;
+
+                const rows = tbody.querySelectorAll('tr');
+                let sectionHasVisibleRows = false;
+
+                rows.forEach(row => {
+                    const sessionId = row.querySelector('.session-id')?.textContent.toLowerCase() || '';
+                    const pipelineName = row.querySelector('.pipeline-name')?.textContent.toLowerCase() || '';
+                    const status = row.querySelector('.session-status')?.textContent.toLowerCase() || '';
+                    const searchableText = sessionId + ' ' + pipelineName + ' ' + status;
+
+                    if (searchableText.includes(searchText)) {
+                        row.classList.remove('hidden');
+                        sectionHasVisibleRows = true;
+                        anyVisible = true;
+                    } else {
+                        row.classList.add('hidden');
                     }
-
-                    const step = steps[event.step_id];
-
-                    if (event.event === 'step_start') {
-                        step.start = event.ts;
-                        step.driver = event.driver;
-                        step.status = 'running';
-                    } else if (event.event === 'step_complete') {
-                        step.end = event.ts;
-                        step.duration = event.duration || 0;
-                        step.status = 'success';
-                    } else if (event.event === 'step_error') {
-                        step.status = 'failed';
-                        step.error = event.error;
-                    }
-
-                    // Collect metrics
-                    if (event.rows_read) step.metrics.rows_read = event.rows_read;
-                    if (event.rows_written) step.metrics.rows_written = event.rows_written;
-                }
-            });
-
-            if (Object.keys(steps).length === 0) {
-                return '<div class="loading">No steps recorded</div>';
-            }
-
-            let html = '<div class="steps-flow">';
-
-            Object.values(steps).forEach(step => {
-                html += '<div class="step-item">';
-                html += '<div class="step-icon ' + step.status + '">';
-                html += step.status === 'success' ? '✓' : (step.status === 'failed' ? '✗' : '○');
-                html += '</div>';
-
-                html += '<div class="step-info">';
-                html += '<div class="step-name">' + escapeHtml(step.id) + '</div>';
-                html += '<div class="step-meta">';
-
-                if (step.driver) html += '<span>Driver: ' + step.driver + '</span>';
-                if (step.duration) html += '<span>Duration: ' + (step.duration * 1000).toFixed(0) + 'ms</span>';
-                if (step.metrics.rows_read) html += '<span>Rows read: ' + step.metrics.rows_read + '</span>';
-                if (step.metrics.rows_written) html += '<span>Rows written: ' + step.metrics.rows_written + '</span>';
-
-                html += '</div>';
-                if (step.error) {
-                    html += '<div style="color: var(--accent-red); font-size: 0.75rem; margin-top: 0.25rem;">' +
-                        escapeHtml(step.error) + '</div>';
-                }
-                html += '</div>';
-
-                html += '</div>';
-            });
-
-            html += '</div>';
-            return html;
-        }
-
-        function renderArtifactsTab(artifacts) {
-            if (!artifacts || artifacts.length === 0) {
-                return '<div class="loading">No artifacts recorded</div>';
-            }
-
-            let html = '<div class="artifacts-list">';
-
-            artifacts.forEach(artifact => {
-                html += '<div class="artifact-item">';
-                html += '<div class="artifact-icon">' + (artifact.type === 'directory' ? '📁' : '📄') + '</div>';
-                html += '<div class="artifact-name">' + escapeHtml(artifact.name) + '</div>';
-                if (artifact.size !== null) {
-                    html += '<div class="artifact-size">' + formatFileSize(artifact.size) + '</div>';
-                }
-                html += '</div>';
-            });
-
-            html += '</div>';
-            return html;
-        }
-
-        function renderRawTab(events, metrics) {
-            let html = '<div class="logs-viewer">';
-
-            let lineNumber = 1;
-
-            // Show events
-            if (events && events.length > 0) {
-                html += '<div style="color: #4ade80; margin-bottom: 1rem;">// Events</div>';
-                events.forEach(event => {
-                    html += '<div class="log-line">';
-                    html += '<div class="log-number">' + lineNumber++ + '</div>';
-                    html += '<div class="log-content">' + escapeHtml(JSON.stringify(event)) + '</div>';
-                    html += '</div>';
-                });
-            }
-
-            // Show metrics
-            if (metrics && metrics.length > 0) {
-                html += '<div style="color: #4ade80; margin: 1rem 0;">// Metrics</div>';
-                metrics.forEach(metric => {
-                    html += '<div class="log-line">';
-                    html += '<div class="log-number">' + lineNumber++ + '</div>';
-                    html += '<div class="log-content">' + escapeHtml(JSON.stringify(metric)) + '</div>';
-                    html += '</div>';
-                });
-            }
-
-            html += '</div>';
-            return html;
-        }
-
-        function showTab(tabName) {
-            // Update tab buttons
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            event.target.classList.add('active');
-
-            // Update tab content
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.remove('active');
-            });
-            document.getElementById('tab-' + tabName).classList.add('active');
-        }
-
-        function showOverview() {
-            document.getElementById('detail-view').classList.remove('active');
-            document.getElementById('overview-view').style.display = 'block';
-            window.location.hash = '';
-        }
-
-        function applyFilters() {
-            const statusFilter = document.getElementById('status-filter').value;
-            const labelFilter = document.getElementById('label-filter').value.toLowerCase();
-            const searchFilter = document.getElementById('search-filter').value.toLowerCase();
-
-            // Get checked session types
-            const checkedTypes = [];
-            ['chat', 'compile', 'connections', 'ephemeral', 'run', 'test', 'other'].forEach(type => {
-                if (document.getElementById(`type-${type}`).checked) {
-                    checkedTypes.push(type);
-                }
-            });
-
-            const filtered = allSessions.filter(session => {
-                // Type filter
-                if (!checkedTypes.includes(session.session_type)) return false;
-
-                // Status filter
-                if (statusFilter && session.status !== statusFilter) return false;
-
-                // Label filter
-                if (labelFilter && !session.labels?.some(l => l.toLowerCase().includes(labelFilter))) return false;
-
-                // Search filter
-                if (searchFilter && !session.session_id.toLowerCase().includes(searchFilter)) return false;
-
-                return true;
-            });
-
-            renderTable(filtered);
-        }
-
-        function clearFilters() {
-            document.getElementById('status-filter').value = '';
-            document.getElementById('label-filter').value = '';
-            document.getElementById('search-filter').value = '';
-
-            // Check all type filters
-            ['chat', 'compile', 'connections', 'ephemeral', 'run', 'test', 'other'].forEach(type => {
-                document.getElementById(`type-${type}`).checked = true;
-            });
-
-            renderTable(allSessions);
-        }
-
-        function drawTimeline(sessions) {
-            const canvas = document.getElementById('timeline');
-            if (!canvas) return;
-
-            const ctx = canvas.getContext('2d');
-            const rect = canvas.getBoundingClientRect();
-            canvas.width = rect.width;
-            canvas.height = 100;
-
-            if (sessions.length === 0) return;
-
-            // Clear canvas
-            ctx.fillStyle = '#fafafa';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Find time range
-            let minTime = Infinity, maxTime = -Infinity;
-            sessions.forEach(s => {
-                if (s.started_at) {
-                    const t = new Date(s.started_at).getTime();
-                    minTime = Math.min(minTime, t);
-                    maxTime = Math.max(maxTime, t);
-                }
-            });
-
-            if (minTime === Infinity) return;
-
-            const timeRange = maxTime - minTime || 1;
-            const padding = 20;
-            const width = canvas.width - 2 * padding;
-            const height = canvas.height - 2 * padding;
-
-            // Draw grid lines
-            ctx.strokeStyle = '#e5e5e5';
-            ctx.lineWidth = 1;
-            for (let i = 0; i <= 4; i++) {
-                const y = padding + (i * height / 4);
-                ctx.beginPath();
-                ctx.moveTo(padding, y);
-                ctx.lineTo(canvas.width - padding, y);
-                ctx.stroke();
-            }
-
-            // Store session positions for hover
-            const sessionPositions = [];
-
-            // Draw sessions
-            sessions.forEach((session, index) => {
-                if (!session.started_at) return;
-
-                const startTime = new Date(session.started_at).getTime();
-                const x = padding + ((startTime - minTime) / timeRange) * width;
-                const y = padding + (index % 4) * 20 + 10;
-
-                // Store position for hover detection
-                sessionPositions.push({
-                    x, y,
-                    session,
-                    radius: 4
                 });
 
-                // Color by status
-                if (session.status === 'success') ctx.fillStyle = '#00cc88';
-                else if (session.status === 'failed') ctx.fillStyle = '#ff3333';
-                else if (session.status === 'running') ctx.fillStyle = '#ffcc00';
-                else ctx.fillStyle = '#999999';
-
-                // Draw session marker
-                ctx.beginPath();
-                ctx.arc(x, y, 4, 0, 2 * Math.PI);
-                ctx.fill();
-
-                // Draw connection line
-                if (index > 0) {
-                    const prevSession = sessions[index - 1];
-                    if (prevSession.started_at) {
-                        const prevTime = new Date(prevSession.started_at).getTime();
-                        const prevX = padding + ((prevTime - minTime) / timeRange) * width;
-                        const prevY = padding + ((index - 1) % 4) * 20 + 10;
-
-                        ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
-                        ctx.lineWidth = 1;
-                        ctx.beginPath();
-                        ctx.moveTo(prevX, prevY);
-                        ctx.lineTo(x, y);
-                        ctx.stroke();
-                    }
-                }
-            });
-
-            // Add hover handler
-            const tooltip = document.getElementById('timeline-tooltip');
-            canvas.addEventListener('mousemove', (e) => {
-                const rect = canvas.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-
-                let hovered = null;
-                for (const pos of sessionPositions) {
-                    const dist = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
-                    if (dist <= pos.radius + 2) {
-                        hovered = pos.session;
-                        break;
-                    }
-                }
-
-                if (hovered) {
-                    tooltip.style.display = 'block';
-                    tooltip.style.left = e.clientX + 10 + 'px';
-                    tooltip.style.top = e.clientY - 30 + 'px';
-                    tooltip.innerHTML =
-                        '<strong>' + hovered.session_id + '</strong><br>' +
-                        'Status: ' + hovered.status + '<br>' +
-                        'Duration: ' + formatDuration(hovered.duration_ms);
-                    canvas.style.cursor = 'pointer';
+                // Hide/show entire section based on visible rows
+                if (sectionHasVisibleRows) {
+                    section.classList.remove('hidden');
                 } else {
-                    tooltip.style.display = 'none';
-                    canvas.style.cursor = 'crosshair';
+                    section.classList.add('hidden');
                 }
             });
 
-            canvas.addEventListener('mouseleave', () => {
-                tooltip.style.display = 'none';
-            });
-
-            canvas.addEventListener('click', (e) => {
-                const rect = canvas.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-
-                for (const pos of sessionPositions) {
-                    const dist = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
-                    if (dist <= pos.radius + 2) {
-                        showDetail(pos.session.session_id);
-                        break;
-                    }
+            // Show no results message if needed
+            let noResultsDiv = document.getElementById('noResults');
+            if (!anyVisible && searchText) {
+                if (!noResultsDiv) {
+                    noResultsDiv = document.createElement('div');
+                    noResultsDiv.id = 'noResults';
+                    noResultsDiv.className = 'section no-results';
+                    noResultsDiv.innerHTML = '<p>No sessions found matching "' + searchText + '"</p>';
+                    document.querySelector('.stats').insertAdjacentElement('afterend', noResultsDiv);
+                } else {
+                    noResultsDiv.innerHTML = '<p>No sessions found matching "' + searchText + '"</p>';
+                    noResultsDiv.classList.remove('hidden');
                 }
-            });
-        }
-
-        function formatDuration(ms) {
-            if (!ms || ms === 0) return '0s';
-            const seconds = Math.floor(ms / 1000);
-            const minutes = Math.floor(seconds / 60);
-            const hours = Math.floor(minutes / 60);
-
-            if (hours > 0) return hours + 'h ' + (minutes % 60) + 'm';
-            if (minutes > 0) return minutes + 'm ' + (seconds % 60) + 's';
-            if (ms < 1000) return ms + 'ms';
-            return seconds + 's';
-        }
-
-        function formatNumber(num) {
-            return num.toString().replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",");
-        }
-
-        function formatMetricValue(value) {
-            if (typeof value === 'number') {
-                if (value >= 1000000) return (value / 1000000).toFixed(1) + 'M';
-                if (value >= 1000) return (value / 1000).toFixed(1) + 'K';
-                if (value < 1) return value.toFixed(3);
-                return value.toFixed(0);
+            } else if (noResultsDiv) {
+                noResultsDiv.classList.add('hidden');
             }
-            return value;
         }
-
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 B';
-            const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // Add event listeners for type filters
-        document.addEventListener('DOMContentLoaded', () => {
-            ['chat', 'compile', 'connections', 'ephemeral', 'run', 'test', 'other'].forEach(type => {
-                const checkbox = document.getElementById(`type-${type}`);
-                if (checkbox) {
-                    checkbox.addEventListener('change', applyFilters);
-                }
-            });
-        });
     </script>
 </body>
-</html>"""
-    )
-
-    # Join all parts
-    html = "".join(html_parts)
+</html>
+"""
 
     return html
 
 
-def generate_single_session_html(
-    session_id: str, logs_dir: str = "./logs", output_dir: str = "dist/logs"
-) -> str:
-    """Generate HTML report for a single session."""
-    reader = SessionReader(logs_dir)
+def generate_session_detail_page(session, session_logs) -> str:
+    """Generate detailed session page with events, metrics, and artifacts."""
+    events = session_logs.get("events", [])
+    metrics = session_logs.get("metrics", [])
+    artifacts = session_logs.get("artifacts", [])
+    logs = session_logs.get("logs", {})
 
-    # Handle special cases
-    if session_id == "last":
-        session = reader.get_last_session()
-        if not session:
-            raise ValueError("No sessions found")
-        session_id = session.session_id
+    # Get additional data from session directory
+    from pathlib import Path
+
+    # The logs_dir should be where the session directories actually are
+    # Since we're in generate_session_detail_page, we know the session exists
+    # Let's use the absolute path to the logs directory
+    # We can check a few common locations
+    possible_paths = [
+        Path("/Users/padak/github/osiris_pipeline/testing_env/logs"),
+        Path("./testing_env/logs"),
+        Path("./logs"),
+        Path("logs"),
+    ]
+
+    logs_dir = None
+    for path in possible_paths:
+        if path.exists() and (path / session.session_id).exists():
+            logs_dir = str(path.absolute())
+            break
+
+    if not logs_dir:
+        # Fallback - try to extract from artifact paths if available
+        if artifacts and len(artifacts) > 0:
+            first_artifact = artifacts[0]
+            artifact_path = Path(first_artifact.get("path", ""))
+            if artifact_path.parts and "artifacts" in artifact_path.parts:
+                idx = artifact_path.parts.index("artifacts")
+                if idx >= 2:
+                    logs_dir = str(Path(*artifact_path.parts[: idx - 1]))
+
+        if not logs_dir:
+            logs_dir = "./testing_env/logs"
+
+    metadata = get_session_metadata(logs_dir, session.session_id)
+    pipeline_steps = get_pipeline_steps(logs_dir, session.session_id)
+
+    # Parse events and metrics for display
+    events_html = ""
+    for event in events[:50]:  # Limit to first 50 events
+        # Extract event data - events.jsonl has different structure
+        timestamp = event.get("ts", event.get("timestamp", ""))
+        event_name = event.get("event", "unknown")
+        # session_id = event.get("session", event.get("session_id", ""))  # Not used
+
+        # Format timestamp for display
+        display_time = ""
+        if timestamp:
+            try:
+                from datetime import datetime
+
+                if "T" in timestamp:
+                    dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                    display_time = dt.strftime("%H:%M:%S.%f")[:-3]  # HH:MM:SS.mmm
+                else:
+                    display_time = timestamp
+            except (ValueError, AttributeError):
+                display_time = timestamp[:19] if len(timestamp) > 19 else timestamp
+
+        # Create event message with details
+        event_details = []
+        for key, value in event.items():
+            if key not in ["ts", "timestamp", "event", "session", "session_id"]:
+                if isinstance(value, (int, float)) and key.endswith(("_ms", "duration")):
+                    # Format durations nicely
+                    if value < 1:
+                        event_details.append(f"{key}={value*1000:.1f}ms")
+                    else:
+                        event_details.append(f"{key}={value:.2f}s")
+                else:
+                    event_details.append(f"{key}={value}")
+
+        detail_str = " | " + " | ".join(event_details) if event_details else ""
+
+        # Determine event type for styling
+        event_class = "info"
+        if "error" in event_name.lower() or "fail" in event_name.lower():
+            event_class = "error"
+        elif "warn" in event_name.lower():
+            event_class = "warning"
+        elif event_name.startswith("e2b."):
+            event_class = "e2b"
+
+        events_html += f"""
+        <div class="log-entry log-{event_class}">
+            <span class="timestamp">{display_time}</span>
+            <span class="level event-{event_class}">{event_name}</span>
+            <span class="message">{detail_str}</span>
+        </div>
+        """
+
+    metrics_html = ""
+    for metric in metrics[:20]:  # Limit to first 20 metrics
+        # Extract metric data - metrics.jsonl has ts, metric, value, unit structure
+        timestamp = metric.get("ts", metric.get("timestamp", ""))
+        metric_name = metric.get("metric", metric.get("name", "unknown"))
+        value = metric.get("value", "")
+        unit = metric.get("unit", "")
+
+        # Format timestamp for display
+        display_time = ""
+        if timestamp:
+            try:
+                from datetime import datetime
+
+                if "T" in timestamp:
+                    dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                    display_time = dt.strftime("%H:%M:%S.%f")[:-3]  # HH:MM:SS.mmm
+                else:
+                    display_time = timestamp
+            except (ValueError, AttributeError):
+                display_time = timestamp[:19] if len(timestamp) > 19 else timestamp
+
+        # Format value with unit
+        formatted_value = str(value)
+        if isinstance(value, (int, float)):
+            if unit == "bytes":
+                # Format bytes nicely
+                if value >= 1024 * 1024:
+                    formatted_value = f"{value/(1024*1024):.1f}MB"
+                elif value >= 1024:
+                    formatted_value = f"{value/1024:.1f}KB"
+                else:
+                    formatted_value = f"{value} bytes"
+            elif unit == "seconds":
+                # Format durations nicely
+                formatted_value = f"{value*1000:.1f}ms" if value < 1 else f"{value:.2f}s"
+            else:
+                # Regular number with unit
+                if isinstance(value, float):
+                    formatted_value = f"{value:.3f}"
+                formatted_value += f" {unit}" if unit else ""
+
+        # Color code metrics by type
+        metric_class = "default"
+        if "duration" in metric_name or "time" in metric_name:
+            metric_class = "duration"
+        elif "size" in metric_name or "bytes" in metric_name:
+            metric_class = "size"
+        elif "error" in metric_name:
+            metric_class = "error"
+        elif "e2b" in metric_name:
+            metric_class = "e2b"
+
+        metrics_html += f"""
+        <div class="metric-entry metric-{metric_class}">
+            <span class="timestamp">{display_time}</span>
+            <span class="name">{metric_name}</span>
+            <span class="value">{formatted_value}</span>
+        </div>
+        """
+
+    # Generate artifacts HTML
+    artifacts_html = ""
+    if artifacts:
+        artifacts_html = '<div class="artifact-tree">'
+        for artifact in sorted(artifacts, key=lambda x: (x["type"] != "directory", x["name"])):
+            if artifact["type"] == "file":
+                # Format file size
+                size = artifact.get("size", 0)
+                if size >= 1024 * 1024:
+                    size_str = f"{size/(1024*1024):.1f} MB"
+                elif size >= 1024:
+                    size_str = f"{size/1024:.1f} KB"
+                else:
+                    size_str = f"{size} bytes"
+
+                # Special handling for certain file types
+                icon = "📄"
+                if artifact["name"].endswith(".log"):
+                    icon = "📋"
+                elif artifact["name"].endswith(".json") or artifact["name"].endswith(".jsonl"):
+                    icon = "📊"
+                elif artifact["name"].endswith(".yaml") or artifact["name"].endswith(".yml"):
+                    icon = "📝"
+                elif artifact["name"].endswith(".csv"):
+                    icon = "📈"
+
+                artifacts_html += f"""
+                <div class="artifact-item artifact-file">
+                    <span class="artifact-icon">{icon}</span>
+                    <span class="artifact-name">{artifact['name']}</span>
+                    <span class="artifact-size">{size_str}</span>
+                </div>
+                """
+            elif artifact["type"] == "directory":
+                # Directory with children
+                artifacts_html += f"""
+                <div class="artifact-item artifact-directory">
+                    <span class="artifact-icon">📁</span>
+                    <span class="artifact-name">{artifact['name']}/</span>
+                    <span class="artifact-size">{len(artifact.get('children', []))} items</span>
+                </div>
+                """
+                # Show children indented
+                for child in sorted(artifact.get("children", []), key=lambda x: x["name"]):
+                    size = child.get("size", 0)
+                    if size >= 1024 * 1024:
+                        size_str = f"{size/(1024*1024):.1f} MB"
+                    elif size >= 1024:
+                        size_str = f"{size/1024:.1f} KB"
+                    else:
+                        size_str = f"{size} bytes"
+
+                    artifacts_html += f"""
+                    <div class="artifact-item artifact-file artifact-child">
+                        <span class="artifact-icon">📄</span>
+                        <span class="artifact-name">{child['name']}</span>
+                        <span class="artifact-size">{size_str}</span>
+                    </div>
+                    """
+        artifacts_html += "</div>"
     else:
-        session = reader.read_session(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
+        artifacts_html = '<div class="empty-state">No artifacts found for this session</div>'
 
-    # Create output directory for this session
-    session_output_dir = Path(output_dir) / session_id
-    session_output_dir.mkdir(parents=True, exist_ok=True)
+    # Generate Technical Logs HTML
+    logs_html = ""
+    if logs:
+        # Create sub-tabs for different log files
+        log_tabs = []
+        log_panels = []
 
-    # Generate session JSON
-    session_json = to_session_json(session, logs_dir)
-    session_data = json.loads(session_json)
+        for idx, (log_name, log_content) in enumerate(logs.items()):
+            active_class = "active" if idx == 0 else ""
+            log_tabs.append(
+                f'<div class="log-tab {active_class}" onclick="showLogTab(\'{log_name}\')">{log_name}</div>'
+            )
 
-    # Add full logs to session data
-    session_logs = read_session_logs(logs_dir, session_id)
-    session_data["logs"] = session_logs
+            # Format log content with syntax highlighting for common patterns
+            formatted_content = log_content.replace("<", "&lt;").replace(">", "&gt;")
 
-    # Generate single-session HTML with just this session
-    data = {
-        "sessions": [session.__dict__],
-        "generated_at": session.started_at or datetime.now().isoformat(),
-    }
-    session_details = {session_id: session_data}
+            # Simple syntax highlighting
+            # Highlight timestamps
+            formatted_content = re.sub(
+                r"(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[\.\d]*)",
+                r'<span class="log-timestamp">\1</span>',
+                formatted_content,
+            )
+            # Highlight log levels
+            formatted_content = re.sub(
+                r"\b(ERROR|WARN|WARNING|INFO|DEBUG|CRITICAL)\b",
+                lambda m: f'<span class="log-{m.group(1).lower()}">{m.group(1)}</span>',
+                formatted_content,
+            )
+            # Highlight file paths
+            formatted_content = re.sub(
+                r"([/\w\-\.]+\.(py|yaml|json|log))",
+                r'<span class="log-path">\1</span>',
+                formatted_content,
+            )
 
-    html_content = generate_index_html(json.dumps(data), session_details)
-    html_path = session_output_dir / "index.html"
-    html_path.write_text(html_content)
+            log_panels.append(
+                f"""
+                <div id="log-{log_name}" class="log-panel {active_class}">
+                    <pre class="log-content">{formatted_content}</pre>
+                </div>
+            """
+            )
 
-    return str(html_path.absolute())
+        logs_html = f"""
+            <div class="log-tabs">
+                {''.join(log_tabs)}
+            </div>
+            <div class="log-panels">
+                {''.join(log_panels)}
+            </div>
+        """
+    else:
+        logs_html = '<div class="empty-state">No log files found for this session</div>'
+
+    # Generate Metadata HTML
+    metadata_html = "<div class='metadata-grid'>"
+    if metadata:
+        # Pipeline information
+        if "pipeline" in metadata:
+            pipeline = metadata["pipeline"]
+            metadata_html += """<div class='metadata-section'>
+                <h3>Pipeline Information</h3>
+                <div class='metadata-entries'>"""
+
+            metadata_html += f"""<div class='metadata-entry'>
+                <span class='metadata-key'>Pipeline ID:</span>
+                <span class='metadata-value'>{pipeline.get('id', 'N/A')}</span>
+            </div>"""
+            metadata_html += f"""<div class='metadata-entry'>
+                <span class='metadata-key'>Profile:</span>
+                <span class='metadata-value'>{pipeline.get('profile', 'default')}</span>
+            </div>"""
+            if pipeline.get("manifest_path"):
+                metadata_html += f"""<div class='metadata-entry'>
+                    <span class='metadata-key'>Manifest Path:</span>
+                    <span class='metadata-value'>{pipeline.get('manifest_path', '')}</span>
+                </div>"""
+
+            metadata_html += """</div></div>"""
+
+        # Environment information
+        if "environment" in metadata:
+            env = metadata["environment"]
+            metadata_html += """<div class='metadata-section'>
+                <h3>Environment</h3>
+                <div class='metadata-entries'>"""
+
+            if env.get("env_files"):
+                metadata_html += f"""<div class='metadata-entry'>
+                    <span class='metadata-key'>Env Files:</span>
+                    <span class='metadata-value'>{', '.join(env.get('env_files', []))}</span>
+                </div>"""
+
+            metadata_html += """</div></div>"""
+
+        # Connections used
+        if "connections" in metadata:
+            metadata_html += """<div class='metadata-section'>
+                <h3>Connections Used</h3>
+                <div class='metadata-entries'>"""
+
+            for conn in metadata["connections"]:
+                metadata_html += f"""<div class='metadata-entry'>
+                    <span class='metadata-key'>Connection:</span>
+                    <span class='metadata-value'>{conn}</span>
+                </div>"""
+
+            metadata_html += """</div></div>"""
+
+        # Remote execution metadata
+        if "remote" in metadata:
+            remote = metadata["remote"]
+            metadata_html += """<div class='metadata-section'>
+                <h3>Remote Execution (E2B)</h3>
+                <div class='metadata-entries'>"""
+
+            if "payload" in remote:
+                payload = remote["payload"]
+                metadata_html += f"""<div class='metadata-entry'>
+                    <span class='metadata-key'>Payload Size:</span>
+                    <span class='metadata-value'>{payload.get('total_size_bytes', 0):,} bytes</span>
+                </div>"""
+                if payload.get("sha256"):
+                    metadata_html += f"""<div class='metadata-entry'>
+                        <span class='metadata-key'>SHA256:</span>
+                        <span class='metadata-value'>{payload.get('sha256', 'N/A')[:12]}...</span>
+                    </div>"""
+
+                if "files" in payload:
+                    metadata_html += (
+                        """<div class='metadata-entry'>
+                        <span class='metadata-key'>Files:</span>
+                        <span class='metadata-value'>"""
+                        + ", ".join([f["name"] for f in payload["files"]])
+                        + """</span>
+                    </div>"""
+                    )
+            else:
+                metadata_html += """<div class='metadata-entry'>
+                    <span class='metadata-key'>Status:</span>
+                    <span class='metadata-value'>E2B execution detected</span>
+                </div>"""
+
+            metadata_html += """</div></div>"""
+
+        # Add any other metadata sections
+        for key, value in metadata.items():
+            if key not in ["remote", "pipeline", "environment", "connections"] and isinstance(
+                value, dict
+            ):
+                metadata_html += f"""<div class='metadata-section'>
+                    <h3>{key.replace('_', ' ').title()}</h3>
+                    <div class='metadata-entries'>"""
+
+                for sub_key, sub_value in value.items():
+                    metadata_html += f"""<div class='metadata-entry'>
+                        <span class='metadata-key'>{sub_key.replace('_', ' ').title()}:</span>
+                        <span class='metadata-value'>{sub_value}</span>
+                    </div>"""
+
+                metadata_html += """</div></div>"""
+    else:
+        metadata_html += '<div class="empty-state">No metadata available for this session</div>'
+    metadata_html += "</div>"
+
+    # Generate Pipeline Steps HTML with Mermaid diagram
+    pipeline_steps_html = ""
+    if pipeline_steps:
+        # Create Mermaid diagram
+        mermaid_nodes = []
+        mermaid_edges = []
+
+        for step in pipeline_steps:
+            step_id = step.get("id", "unknown")
+            driver = step.get("driver", "unknown")
+            needs = step.get("needs", [])
+
+            # Escape step_id for Mermaid (replace hyphens with underscores for node IDs)
+            node_id = step_id.replace("-", "_")
+
+            # Create node with original step_id as label
+            # Use simple format without HTML entities
+            node_label = f"{step_id} | {driver}"
+            mermaid_nodes.append(f'    {node_id}["{node_label}"]')
+
+            # Create edges using escaped IDs
+            for dep in needs:
+                dep_id = dep.replace("-", "_")
+                mermaid_edges.append(f"    {dep_id} --> {node_id}")
+
+        # Build Mermaid diagram
+        mermaid_diagram = "graph TD\n"
+        if not mermaid_edges:
+            # No dependencies, show all nodes linearly
+            for i, node in enumerate(mermaid_nodes):
+                mermaid_diagram += node + "\n"
+                if i < len(mermaid_nodes) - 1:
+                    step_id = pipeline_steps[i]["id"].replace("-", "_")
+                    next_id = pipeline_steps[i + 1]["id"].replace("-", "_")
+                    mermaid_diagram += f"    {step_id} --> {next_id}\n"
+        else:
+            mermaid_diagram += "\n".join(mermaid_nodes) + "\n"
+            mermaid_diagram += "\n".join(mermaid_edges)
+
+        pipeline_steps_html = f"""<div class='pipeline-visualization'>
+            <h3>Pipeline Flow</h3>
+            <div id='mermaid-diagram' class='mermaid'>
+{mermaid_diagram}
+            </div>
+            <h3>Step Details</h3>
+            <div class='steps-list'>"""
+
+        for step in pipeline_steps:
+            pipeline_steps_html += f"""<div class='step-detail'>
+                <div class='step-header'>{step.get('id', 'unknown')}</div>
+                <div class='step-info'>
+                    <div>Driver: {step.get('driver', 'unknown')}</div>
+                    <div>Config: {step.get('cfg_path', 'N/A')}</div>
+                    <div>Dependencies: {', '.join(step.get('needs', [])) or 'None'}</div>
+                </div>
+            </div>"""
+
+        pipeline_steps_html += """</div></div>"""
+    else:
+        pipeline_steps_html = (
+            '<div class="empty-state">No pipeline steps information available</div>'
+        )
+
+    # Generate Performance Dashboard HTML
+    performance_html = "<div class='performance-dashboard'>"
+
+    # Get key metrics
+    total_duration = None
+    e2b_duration = None
+    payload_size = None
+
+    for metric in metrics:
+        metric_name = metric.get("metric", "")
+        if metric_name == "total_duration":
+            total_duration = metric
+        elif metric_name == "e2b.exec.duration":
+            e2b_duration = metric
+        elif metric_name == "e2b.payload.size":
+            payload_size = metric
+
+    # Total Execution Time card
+    if total_duration:
+        value = total_duration.get("value", 0)
+        unit = total_duration.get("unit", "")
+        if unit == "seconds":
+            primary_value = f"{value:.2f}"
+            unit_display = "seconds total"
+        else:
+            primary_value = str(value)
+            unit_display = unit
+
+        performance_html += f"""<div class='perf-card'>
+            <div class='perf-card-title'>Total Execution Time</div>
+            <div class='perf-card-subtitle'>Complete pipeline execution duration</div>
+            <div class='perf-primary-value'>{primary_value}</div>
+            <div class='perf-secondary-value'>{unit_display}</div>
+        </div>"""
+
+    # E2B Execution Time card
+    if e2b_duration:
+        value = e2b_duration.get("value", 0)
+        unit = e2b_duration.get("unit", "")
+        if unit == "seconds":
+            primary_value = f"{value:.2f}"
+            unit_display = "seconds in sandbox"
+        else:
+            primary_value = str(value)
+            unit_display = unit
+
+        performance_html += f"""<div class='perf-card'>
+            <div class='perf-card-title'>E2B Sandbox Duration</div>
+            <div class='perf-card-subtitle'>Time spent executing in remote environment</div>
+            <div class='perf-primary-value'>{primary_value}</div>
+            <div class='perf-secondary-value'>{unit_display}</div>
+        </div>"""
+
+    # Payload Size card
+    if payload_size:
+        value = payload_size.get("value", 0)
+        unit = payload_size.get("unit", "")
+        if unit == "bytes":
+            if value >= 1024 * 1024:
+                primary_value = f"{value/(1024*1024):.1f}"
+                unit_display = "MB uploaded"
+            elif value >= 1024:
+                primary_value = f"{value/1024:.1f}"
+                unit_display = "KB uploaded"
+            else:
+                primary_value = str(value)
+                unit_display = "bytes uploaded"
+        else:
+            primary_value = str(value)
+            unit_display = unit
+
+        performance_html += f"""<div class='perf-card'>
+            <div class='perf-card-title'>Payload Size</div>
+            <div class='perf-card-subtitle'>Total data uploaded to E2B sandbox</div>
+            <div class='perf-primary-value'>{primary_value}</div>
+            <div class='perf-secondary-value'>{unit_display}</div>
+        </div>"""
+
+    # Add row count if available
+    if session.rows_out and session.rows_out > 0:
+        performance_html += f"""<div class='perf-card'>
+            <div class='perf-card-title'>Rows Processed</div>
+            <div class='perf-card-subtitle'>Total data records processed in this session</div>
+            <div class='perf-primary-value'>{session.rows_out:,}</div>
+            <div class='perf-secondary-value'>records</div>
+        </div>"""
+
+    if not metrics:
+        performance_html += '<div class="empty-state">No performance metrics available</div>'
+
+    performance_html += "</div>"
+
+    # Format session duration first (needed for overview)
+    duration = ""
+    if session.duration_ms:
+        if session.duration_ms < 1000:
+            duration = f"{session.duration_ms}ms"
+        elif session.duration_ms < 60000:
+            duration = f"{session.duration_ms / 1000:.1f}s"
+        else:
+            duration = f"{session.duration_ms / 60000:.1f}m"
+
+    # Generate Overview HTML
+    overview_html = "<div class='overview-dashboard'>"
+
+    # Session summary section
+    overview_html += """<div class='overview-section'>
+        <h3>Session Summary</h3>
+        <div class='overview-grid'>"""
+
+    # Basic info
+    overview_html += f"""<div class='overview-item'>
+        <span class='overview-label'>Session ID:</span>
+        <span class='overview-value'>{session.session_id}</span>
+    </div>"""
+    overview_html += f"""<div class='overview-item'>
+        <span class='overview-label'>Status:</span>
+        <span class='overview-value status-{session.status}'>{session.status}</span>
+    </div>"""
+    overview_html += f"""<div class='overview-item'>
+        <span class='overview-label'>Total Duration:</span>
+        <span class='overview-value'>{duration if session.duration_ms else 'N/A'}</span>
+    </div>"""
+    overview_html += f"""<div class='overview-item'>
+        <span class='overview-label'>Total Rows Processed:</span>
+        <span class='overview-value'>{session.rows_out or 0:,}</span>
+    </div>"""
+
+    # Pipeline info from metadata
+    if metadata.get("pipeline"):
+        overview_html += f"""<div class='overview-item'>
+            <span class='overview-label'>Pipeline:</span>
+            <span class='overview-value'>{metadata['pipeline'].get('id', 'Unknown')}</span>
+        </div>"""
+
+    overview_html += """</div></div>"""
+
+    # Step execution summary
+    if pipeline_steps:
+        overview_html += """<div class='overview-section'>
+            <h3>Step Execution Summary</h3>
+            <div class='step-summary'>"""
+
+        completed_steps = [s for s in pipeline_steps if s.get("status") == "completed"]
+        overview_html += f"""<div class='summary-stat'>
+            <div class='stat-number'>{len(completed_steps)}/{len(pipeline_steps)}</div>
+            <div class='stat-label'>Steps Completed</div>
+        </div>"""
+
+        # Calculate total step time
+        total_step_time = 0
+        for step in pipeline_steps:
+            if step.get("duration"):
+                # Parse duration string (e.g., "2.25s", "347.2ms")
+                dur_str = step["duration"]
+                if isinstance(dur_str, str):
+                    if "ms" in dur_str:
+                        total_step_time += float(dur_str.replace("ms", "")) / 1000
+                    elif "s" in dur_str:
+                        total_step_time += float(dur_str.replace("s", ""))
+
+        overview_html += f"""<div class='summary-stat'>
+            <div class='stat-number'>{total_step_time:.2f}s</div>
+            <div class='stat-label'>Total Step Time</div>
+        </div>"""
+
+        overview_html += """</div>"""
+
+        # Step details table
+        overview_html += """<table class='step-summary-table'>
+            <thead>
+                <tr>
+                    <th>Step</th>
+                    <th>Driver</th>
+                    <th>Duration</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>"""
+
+        for step in pipeline_steps:
+            status_class = "success" if step.get("status") == "completed" else "pending"
+            overview_html += f"""<tr>
+                <td>{step.get('id', 'unknown')}</td>
+                <td>{step.get('driver', 'unknown')}</td>
+                <td>{step.get('duration', '-')}</td>
+                <td><span class='status-{status_class}'>{step.get('status', 'unknown')}</span></td>
+            </tr>"""
+
+        overview_html += """</tbody></table></div>"""
+
+    # Metrics summary
+    if metrics:
+        overview_html += """<div class='overview-section'>
+            <h3>Key Metrics</h3>
+            <div class='metrics-summary'>"""
+
+        # Group metrics by type
+        rows_metrics = [m for m in metrics if "rows" in m.get("metric", "")]
+        duration_metrics = [m for m in metrics if "duration" in m.get("metric", "")]
+
+        if rows_metrics:
+            total_rows = sum(
+                m.get("value", 0) for m in rows_metrics if isinstance(m.get("value"), (int, float))
+            )
+            overview_html += f"""<div class='metric-card'>
+                <div class='metric-title'>Data Volume</div>
+                <div class='metric-value'>{total_rows:,} rows</div>
+            </div>"""
+
+        if duration_metrics:
+            overview_html += """<div class='metric-card'>
+                <div class='metric-title'>Performance</div>
+                <div class='metric-list'>"""
+            for metric in duration_metrics[:5]:  # Show top 5
+                name = metric.get("metric", "").replace("_", " ").title()
+                value = metric.get("value", 0)
+                unit = metric.get("unit", "")
+                formatted = f"{value:.2f}s" if unit == "seconds" else f"{value} {unit}"
+                overview_html += f"<div>{name}: {formatted}</div>"
+            overview_html += """</div></div>"""
+
+        overview_html += """</div></div>"""
+
+    # Data flow visualization (simple text-based)
+    if metadata.get("connections"):
+        overview_html += """<div class='overview-section'>
+            <h3>Data Flow</h3>
+            <div class='data-flow'>"""
+
+        connections = metadata.get("connections", [])
+        sources = [c for c in connections if "mysql" in c.lower()]
+        targets = [c for c in connections if "supabase" in c.lower() or "csv" in c.lower()]
+
+        if sources:
+            overview_html += f"<div class='flow-source'>Source: {', '.join(sources)}</div>"
+        overview_html += "<div class='flow-arrow'>↓</div>"
+        overview_html += f"<div class='flow-pipeline'>Pipeline: {metadata.get('pipeline', {}).get('id', 'Processing')}</div>"
+        overview_html += "<div class='flow-arrow'>↓</div>"
+        if targets:
+            overview_html += f"<div class='flow-target'>Target: {', '.join(targets)}</div>"
+
+        overview_html += """</div></div>"""
+
+    overview_html += "</div>"
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{session.session_id} - Osiris Session Detail</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 2rem;
+            background: #fafafa;
+        }}
+        .header {{
+            margin-bottom: 2rem;
+            border-bottom: 1px solid #e5e5e5;
+            padding-bottom: 1rem;
+        }}
+        h1 {{
+            margin: 0 0 0.5rem 0;
+            color: #1a1a1a;
+            font-family: monospace;
+        }}
+        .subtitle {{
+            color: #666;
+            margin: 0;
+        }}
+        .back-link {{
+            color: #0066cc;
+            text-decoration: none;
+            margin-bottom: 1rem;
+            display: inline-block;
+        }}
+        .back-link:hover {{
+            text-decoration: underline;
+        }}
+        .info-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }}
+        .info-card {{
+            background: white;
+            padding: 1rem;
+            border-radius: 4px;
+            border: 1px solid #e5e5e5;
+        }}
+        .info-label {{
+            color: #666;
+            font-size: 0.875rem;
+            margin-bottom: 0.25rem;
+        }}
+        .info-value {{
+            font-weight: 600;
+        }}
+        .tabs {{
+            display: flex;
+            background: white;
+            border: 1px solid #e5e5e5;
+            border-radius: 4px 4px 0 0;
+            margin-bottom: 0;
+        }}
+        .tab {{
+            padding: 1rem 1.5rem;
+            cursor: pointer;
+            border-right: 1px solid #e5e5e5;
+            background: #f8f9fa;
+        }}
+        .tab.active {{
+            background: white;
+            border-bottom: 1px solid white;
+            position: relative;
+            z-index: 1;
+        }}
+        .tab:last-child {{
+            border-right: none;
+        }}
+        .tab-content {{
+            background: white;
+            border: 1px solid #e5e5e5;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            padding: 1rem;
+            max-height: 600px;
+            overflow-y: auto;
+        }}
+        .tab-panel {{
+            display: none;
+        }}
+        .tab-panel.active {{
+            display: block;
+        }}
+        .log-entry {{
+            display: grid;
+            grid-template-columns: auto auto 1fr;
+            gap: 1rem;
+            padding: 0.5rem;
+            border-bottom: 1px solid #f0f0f0;
+            font-family: monospace;
+            font-size: 0.875rem;
+        }}
+        .log-entry:hover {{
+            background: #f8f9fa;
+        }}
+        .timestamp {{
+            color: #666;
+        }}
+        .level {{
+            font-weight: 600;
+            text-transform: uppercase;
+        }}
+        .log-info .level {{
+            color: #0066cc;
+        }}
+        .log-warning .level {{
+            color: #ff8800;
+        }}
+        .log-error .level {{
+            color: #cc0000;
+        }}
+        .message {{
+            word-break: break-word;
+        }}
+        .metric-entry {{
+            display: grid;
+            grid-template-columns: auto auto 1fr;
+            gap: 1rem;
+            padding: 0.5rem;
+            border-bottom: 1px solid #f0f0f0;
+            font-family: monospace;
+            font-size: 0.875rem;
+        }}
+        .metric-entry:hover {{
+            background: #f8f9fa;
+        }}
+        .empty-state {{
+            text-align: center;
+            color: #666;
+            padding: 2rem;
+        }}
+        .artifact-tree {{
+            font-family: monospace;
+            font-size: 0.875rem;
+        }}
+        .artifact-item {{
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 0.5rem;
+            padding: 0.4rem;
+            border-bottom: 1px solid #f0f0f0;
+        }}
+        .artifact-item:hover {{
+            background: #f8f9fa;
+        }}
+        .artifact-directory {{
+            font-weight: 600;
+            background: #f8f9fa;
+        }}
+        .artifact-child {{
+            padding-left: 2rem;
+        }}
+        .artifact-icon {{
+            width: 1.5rem;
+        }}
+        .artifact-name {{
+            color: #333;
+        }}
+        .artifact-size {{
+            color: #666;
+            text-align: right;
+        }}
+        /* Technical Logs styles */
+        .log-tabs {{
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            border-bottom: 2px solid #dee2e6;
+        }}
+        .log-tab {{
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            background: #f8f9fa;
+            border-radius: 4px 4px 0 0;
+            font-weight: 600;
+            font-size: 0.875rem;
+        }}
+        .log-tab.active {{
+            background: white;
+            border-bottom: 2px solid white;
+            margin-bottom: -2px;
+        }}
+        .log-panel {{
+            display: none;
+        }}
+        .log-panel.active {{
+            display: block;
+        }}
+        .log-content {{
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.8rem;
+            line-height: 1.4;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 1rem;
+            border-radius: 4px;
+            overflow-x: auto;
+            max-height: 600px;
+            overflow-y: auto;
+        }}
+        .log-timestamp {{
+            color: #9cdcfe;
+        }}
+        .log-error, .log-critical {{
+            color: #f48771;
+            font-weight: bold;
+        }}
+        .log-warn, .log-warning {{
+            color: #dcdcaa;
+            font-weight: bold;
+        }}
+        .log-info {{
+            color: #4ec9b0;
+        }}
+        .log-debug {{
+            color: #808080;
+        }}
+        .log-path {{
+            color: #ce9178;
+            text-decoration: underline;
+        }}
+        /* Metadata tab styles */
+        .metadata-grid {{
+            font-family: monospace;
+            font-size: 0.875rem;
+        }}
+        .metadata-section {{
+            margin-bottom: 1.5rem;
+        }}
+        .metadata-section h3 {{
+            color: #333;
+            margin-bottom: 0.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+        }}
+        .metadata-entries {{
+            background: #f8f9fa;
+            padding: 0.75rem;
+            border-radius: 4px;
+        }}
+        .metadata-entry {{
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 1rem;
+            padding: 0.4rem 0;
+            border-bottom: 1px solid #e9ecef;
+        }}
+        .metadata-entry:last-child {{
+            border-bottom: none;
+        }}
+        .metadata-key {{
+            font-weight: 600;
+            color: #495057;
+        }}
+        .metadata-value {{
+            color: #212529;
+            word-break: break-all;
+        }}
+        /* Pipeline Steps styles */
+        .pipeline-visualization {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }}
+        .pipeline-visualization h3 {{
+            color: #333;
+            margin: 1rem 0;
+            font-size: 1rem;
+        }}
+        .mermaid, #mermaid-diagram {{
+            text-align: center;
+            background: #f8f9fa;
+            padding: 2rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            border: 1px solid #e5e7eb;
+            min-height: 200px;
+            overflow-x: auto;
+        }}
+        .steps-list {{
+            display: grid;
+            gap: 0.75rem;
+        }}
+        .step-detail {{
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 0.75rem;
+            font-family: monospace;
+            font-size: 0.875rem;
+        }}
+        .step-header {{
+            font-weight: 600;
+            color: #0066cc;
+            margin-bottom: 0.5rem;
+        }}
+        .step-info {{
+            color: #666;
+            line-height: 1.5;
+        }}
+        /* Performance Dashboard styles */
+        .performance-dashboard {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }}
+        .perf-card {{
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1);
+        }}
+        .perf-card-title {{
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #111827;
+            margin-bottom: 0.25rem;
+        }}
+        .perf-card-subtitle {{
+            font-size: 0.875rem;
+            color: #6b7280;
+            margin-bottom: 1.5rem;
+            line-height: 1.4;
+        }}
+        .perf-primary-value {{
+            font-size: 3rem;
+            font-weight: 600;
+            color: #ff6b00;
+            margin-bottom: 0.5rem;
+            line-height: 1;
+        }}
+        .perf-secondary-value {{
+            font-size: 1.25rem;
+            color: #111827;
+            font-weight: 400;
+        }}
+        .perf-unit {{
+            font-size: 0.875rem;
+            color: #6b7280;
+            font-weight: 400;
+            margin-left: 0.25rem;
+        }}
+        /* Overview tab styles */
+        .overview-dashboard {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }}
+        .overview-section {{
+            margin-bottom: 2rem;
+        }}
+        .overview-section h3 {{
+            color: #333;
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }}
+        .overview-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }}
+        .overview-item {{
+            display: flex;
+            justify-content: space-between;
+            padding: 0.75rem;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }}
+        .overview-label {{
+            color: #666;
+            font-weight: 500;
+        }}
+        .overview-value {{
+            font-weight: 600;
+            color: #333;
+        }}
+        .step-summary {{
+            display: flex;
+            gap: 2rem;
+            margin-bottom: 1.5rem;
+        }}
+        .summary-stat {{
+            text-align: center;
+        }}
+        .stat-number {{
+            font-size: 2rem;
+            font-weight: 600;
+            color: #ff6b00;
+        }}
+        .stat-label {{
+            color: #666;
+            font-size: 0.875rem;
+            margin-top: 0.25rem;
+        }}
+        .step-summary-table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }}
+        .step-summary-table th {{
+            text-align: left;
+            padding: 0.5rem;
+            background: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+        }}
+        .step-summary-table td {{
+            padding: 0.5rem;
+            border-bottom: 1px solid #e9ecef;
+        }}
+        .metrics-summary {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }}
+        .metric-card {{
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 4px;
+        }}
+        .metric-title {{
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #495057;
+        }}
+        .metric-value {{
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #333;
+        }}
+        .metric-list {{
+            font-size: 0.875rem;
+            line-height: 1.6;
+        }}
+        .data-flow {{
+            text-align: center;
+            padding: 2rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }}
+        .flow-source, .flow-target, .flow-pipeline {{
+            padding: 0.75rem;
+            margin: 0.5rem auto;
+            max-width: 400px;
+            background: white;
+            border: 2px solid #dee2e6;
+            border-radius: 4px;
+            font-weight: 500;
+        }}
+        .flow-arrow {{
+            font-size: 1.5rem;
+            color: #ff6b00;
+            margin: 0.5rem 0;
+        }}
+        .status-success {{ color: #28a745; }}
+        .status-pending {{ color: #ffc107; }}
+        .status-failed {{ color: #dc3545; }}
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+        // Initialize Mermaid configuration
+        mermaid.initialize({{
+            startOnLoad: false,  // We'll manually trigger rendering
+            theme: 'default',
+            flowchart: {{
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis'
+            }}
+        }});
+
+        // Render Mermaid diagrams after page loads
+        window.addEventListener('load', function() {{
+            // Find and render Mermaid diagrams
+            const element = document.getElementById('mermaid-diagram');
+            if (element && element.textContent.trim()) {{
+                // Create a unique ID for this render
+                const graphId = 'mermaid-graph-' + Date.now();
+                const graphDefinition = element.textContent;
+
+                // Clear the element and render the diagram
+                element.innerHTML = '';
+                element.removeAttribute('data-processed');
+
+                mermaid.render(graphId, graphDefinition).then(function(result) {{
+                    element.innerHTML = result.svg;
+                }}).catch(function(err) {{
+                    console.error('Mermaid rendering error:', err);
+                    element.innerHTML = '<div style="color: red;">Error rendering diagram</div>';
+                }});
+            }}
+        }});
+    </script>
+</head>
+<body>
+    <a href="../index.html" class="back-link">← Back to Sessions</a>
+
+    <div class="header">
+        <h1>{session.session_id}</h1>
+        <p class="subtitle">Session details and execution logs</p>
+    </div>
+
+    <div class="info-grid">
+        <div class="info-card">
+            <div class="info-label">Status</div>
+            <div class="info-value">{session.status}</div>
+        </div>
+        <div class="info-card">
+            <div class="info-label">Started</div>
+            <div class="info-value">{session.started_at[:19].replace('T', ' ') if session.started_at else 'N/A'}</div>
+        </div>
+        <div class="info-card">
+            <div class="info-label">Duration</div>
+            <div class="info-value">{duration or 'N/A'}</div>
+        </div>
+        <div class="info-card">
+            <div class="info-label">Rows Processed</div>
+            <div class="info-value">{session.rows_out or 0:,}</div>
+        </div>
+        <div class="info-card">
+            <div class="info-label">Steps</div>
+            <div class="info-value">{session.steps_ok or 0} / {session.steps_total or 0}</div>
+        </div>
+        <div class="info-card">
+            <div class="info-label">Errors</div>
+            <div class="info-value">{session.errors or 0}</div>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <div class="tab active" onclick="showTab('events')">Events ({len(events)})</div>
+        <div class="tab" onclick="showTab('metrics')">Metrics ({len(metrics)})</div>
+        <div class="tab" onclick="showTab('artifacts')">Artifacts ({len(artifacts)})</div>
+        <div class="tab" onclick="showTab('logs')">Technical Logs</div>
+        <div class="tab" onclick="showTab('metadata')">Metadata</div>
+        <div class="tab" onclick="showTab('pipeline')">Pipeline Steps</div>
+        <div class="tab" onclick="showTab('performance')">Performance</div>
+        <div class="tab" onclick="showTab('overview')">Overview</div>
+    </div>
+
+    <div class="tab-content">
+        <div id="events" class="tab-panel active">
+            {events_html if events_html.strip() else '<div class="empty-state">No events recorded for this session</div>'}
+        </div>
+        <div id="metrics" class="tab-panel">
+            {metrics_html if metrics_html.strip() else '<div class="empty-state">No metrics recorded for this session</div>'}
+        </div>
+        <div id="artifacts" class="tab-panel">
+            {artifacts_html}
+        </div>
+        <div id="logs" class="tab-panel">
+            {logs_html}
+        </div>
+        <div id="metadata" class="tab-panel">
+            {metadata_html}
+        </div>
+        <div id="pipeline" class="tab-panel">
+            {pipeline_steps_html}
+        </div>
+        <div id="performance" class="tab-panel">
+            {performance_html}
+        </div>
+        <div id="overview" class="tab-panel">
+            {overview_html}
+        </div>
+    </div>
+
+    <script>
+        function showTab(tabName) {{
+            // Hide all tab panels
+            document.querySelectorAll('.tab-panel').forEach(panel => {{
+                panel.classList.remove('active');
+            }});
+
+            // Remove active class from all tabs
+            document.querySelectorAll('.tab').forEach(tab => {{
+                tab.classList.remove('active');
+            }});
+
+            // Show selected tab panel
+            document.getElementById(tabName).classList.add('active');
+
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+        }}
+
+        function showLogTab(logName) {{
+            // Hide all log panels
+            document.querySelectorAll('.log-panel').forEach(panel => {{
+                panel.classList.remove('active');
+            }});
+
+            // Remove active class from all log tabs
+            document.querySelectorAll('.log-tab').forEach(tab => {{
+                tab.classList.remove('active');
+            }});
+
+            // Show selected log panel
+            document.getElementById('log-' + logName).classList.add('active');
+
+            // Add active class to clicked log tab
+            event.target.classList.add('active');
+        }}
+    </script>
+</body>
+</html>
+"""
+
+    return html
 
 
 if __name__ == "__main__":
-    # Example usage
-    generate_html_report(limit=50)
-    print("Enhanced HTML report generated in dist/logs/")
+    import sys
+
+    if len(sys.argv) != 3:
+        print("Usage: python generate.py <logs_dir> <output_dir>")
+        sys.exit(1)
+
+    logs_dir = sys.argv[1]
+    output_dir = sys.argv[2]
+
+    # Ensure output directory exists
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    # Read all sessions
+    reader = SessionReader(logs_dir)
+    sessions = reader.list_sessions()
+
+    print(f"Found {len(sessions)} sessions in {logs_dir}")
+
+    # Generate index page
+    index_html = generate_overview_page(sessions, logs_dir)
+    index_path = Path(output_dir) / "index.html"
+    with open(index_path, "w") as f:
+        f.write(index_html)
+    print(f"Generated index page: {index_path}")
+
+    # Generate detail pages for each session
+    for session in sessions:
+        # Read full session logs
+        session_logs = read_session_logs(logs_dir, session.session_id)
+
+        # Generate detail page
+        detail_html = generate_session_detail_page(session, session_logs)
+
+        # Create session directory
+        session_dir = Path(output_dir) / session.session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write detail page
+        detail_path = session_dir / "index.html"
+        with open(detail_path, "w") as f:
+            f.write(detail_html)
+        print(f"Generated detail page: {detail_path}")
+
+    print(f"\nHTML reports generated in {output_dir}")

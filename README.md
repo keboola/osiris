@@ -78,6 +78,102 @@ python osiris.py chat --pro-mode
 - **Supabase**: Cloud PostgreSQL with real-time capabilities
 - **CSV Files**: Local file processing
 
+## 🚀 Running in E2B (Remote Execution)
+
+Osiris supports remote pipeline execution in E2B sandboxes for secure, isolated runtime environments.
+
+### Setup
+
+1. **Get E2B API Key**: Sign up at [e2b.dev](https://e2b.dev) and get your API key
+2. **Set Environment Variable**: 
+   ```bash
+   export E2B_API_KEY="your-api-key-here"
+   ```
+
+### Basic Usage
+
+```bash
+# Execute pipeline remotely in E2B sandbox
+osiris run pipeline.yaml --e2b
+
+# With custom resources
+osiris run pipeline.yaml --e2b --e2b-cpu 4 --e2b-mem 8 --e2b-timeout 1800
+
+# Pass environment variables to sandbox
+osiris run pipeline.yaml --e2b \
+  --e2b-pass-env SUPABASE_URL \
+  --e2b-pass-env SUPABASE_SERVICE_ROLE_KEY
+
+# Load env vars from file
+osiris run pipeline.yaml --e2b --e2b-env-from production.env
+
+# Dry run to see what would be sent
+osiris run pipeline.yaml --e2b --dry-run
+```
+
+### Environment Requirements
+
+For MySQL-based pipelines, these environment variables are required:
+
+- **`MYSQL_DB`** (or `MYSQL_DATABASE`): Database name
+- **`MYSQL_PASSWORD`**: Database password
+
+Optional variables:
+- `MYSQL_HOST`: Server host (default: localhost)
+- `MYSQL_PORT`: Server port (default: 3306)
+- `MYSQL_USER`: Username (default: root)
+
+Example with MySQL credentials:
+```bash
+osiris run pipeline.yaml --e2b \
+  --e2b-env-from testing_env/.env \
+  --e2b-pass-env MYSQL_PASSWORD
+```
+
+### E2B Options
+
+- `--e2b`: Enable remote execution in E2B sandbox
+- `--e2b-timeout SECONDS`: Execution timeout (default: 900)
+- `--e2b-cpu N`: Number of CPU cores (default: 2)
+- `--e2b-mem GB`: Memory in GB (default: 4)
+- `--e2b-env KEY=VALUE`: Set environment variable (repeatable)
+- `--e2b-env-from FILE`: Load environment variables from file
+- `--e2b-pass-env NAME`: Pass environment variable from current shell (repeatable)
+- `--dry-run`: Show payload details without executing
+
+### Security Notes
+
+- **Secrets are never written to artifacts**: Environment variables are passed securely to the sandbox at creation time
+- **Allowlist-only payload**: Only essential files (manifest, runner, requirements) are uploaded
+- **Isolated execution**: Each run gets a fresh sandbox with no access to local filesystem
+- **Automatic cleanup**: Sandboxes are closed after execution or timeout
+
+### Remote Artifacts
+
+After remote execution, artifacts are downloaded to:
+```
+logs/<session>/remote/
+├── events.jsonl      # Execution events from sandbox
+├── metrics.jsonl     # Performance metrics
+├── osiris.log        # Full execution log
+└── artifacts/        # Output files from pipeline
+```
+
+The HTML Logs Browser automatically integrates remote execution data, showing a unified timeline of local preparation and remote execution phases.
+
+### Testing E2B Integration
+
+```bash
+# Run unit tests (no network required)
+pytest tests/e2b/
+
+# Run live integration tests (requires E2B_API_KEY)
+cd testing_env
+source .env  # Contains E2B_API_KEY
+export E2B_LIVE_TESTS=1
+pytest tests/e2b/test_e2b_live.py
+```
+
 ## Documentation
 
 ### Core Documentation

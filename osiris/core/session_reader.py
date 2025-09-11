@@ -158,6 +158,11 @@ class SessionReader:
         if artifacts_path.exists():
             self._read_artifacts(artifacts_path, summary)
 
+        # Check for remote execution data
+        remote_path = session_path / "remote"
+        if remote_path.exists():
+            self._merge_remote_data(remote_path, summary)
+
         return summary
 
     def get_last_session(self) -> Optional[SessionSummary]:
@@ -334,6 +339,60 @@ class SessionReader:
         for pattern, replacement in self.SENSITIVE_PATTERNS:
             text = pattern.sub(replacement, text)
         return text
+
+    def _merge_remote_data(self, remote_path: Path, summary: SessionSummary) -> None:
+        """Merge remote execution data into session summary.
+
+        Args:
+            remote_path: Path to remote/ directory
+            summary: SessionSummary to update
+        """
+        # Read remote events if available
+        remote_events = remote_path / "events.jsonl"
+        if remote_events.exists():
+            try:
+                with open(remote_events) as f:
+                    for line in f:
+                        try:
+                            event = json.loads(line.strip())
+                            event_type = event.get("event")
+
+                            # Update step counts from remote execution
+                            if event_type == "step_complete":
+                                summary.steps_ok += 1
+                            elif event_type == "step_error":
+                                summary.steps_failed += 1
+                                summary.errors += 1
+
+                            # Track remote data flow
+                            if "rows_read" in event:
+                                summary.rows_in += event["rows_read"]
+                            if "rows_written" in event:
+                                summary.rows_out += event["rows_written"]
+
+                        except (json.JSONDecodeError, KeyError):
+                            continue
+            except OSError:
+                pass
+
+        # Read remote metrics if available
+        remote_metrics = remote_path / "metrics.jsonl"
+        if remote_metrics.exists():
+            try:
+                with open(remote_metrics) as f:
+                    for line in f:
+                        try:
+                            metric = json.loads(line.strip())
+                            if "total_rows" in metric:
+                                summary.rows_out = max(summary.rows_out, metric["total_rows"])
+                        except (json.JSONDecodeError, KeyError):
+                            continue
+            except OSError:
+                pass
+
+        # Mark that this was a remote execution
+        if not hasattr(summary, "execution_mode"):
+            summary.execution_mode = "remote"
 
     def filter_safe_fields(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Filter dictionary to only include whitelisted fields.

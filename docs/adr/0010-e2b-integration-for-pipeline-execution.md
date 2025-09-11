@@ -82,4 +82,7 @@ Adopt **E2B** as the primary remote execution backend for `osiris run`, with a p
 ## Open Questions
 - Should we support persistent volumes across `run`s for caching heavy downloads? (default: no; prefer ephemeral)
 - Standard image vs. per-component images? (default: single curated image; revisit after M3)
-- Do we need a “warm sandbox pool” for faster startup in CI?
+- Do we need a "warm sandbox pool" for faster startup in CI?
+
+## Implementation Status
+Implementation tracked in **Milestone**: [docs/milestones/m1e-e2b-runner.md](../milestones/m1e-e2b-runner.md)

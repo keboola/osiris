@@ -55,8 +55,8 @@ def test_compile_writes_pointer_files(tmp_path):
                     compile_command([str(oml_file)])
 
                 # Check that pointer files were created
-                session_pointer = mock_session_instance.session_dir / ".last.json"
-                global_pointer = tmp_path / "logs" / ".last_compile.json"
+                _session_pointer = mock_session_instance.session_dir / ".last.json"
+                _global_pointer = tmp_path / "logs" / ".last_compile.json"
 
                 # We need to actually create these in the test since our mock doesn't
                 # In real code these would be created
@@ -112,7 +112,7 @@ def test_run_with_last_compile_in():
         logs_dir.mkdir()
 
         # Create two compile sessions
-        for i, timestamp in enumerate([100, 200]):
+        for _i, timestamp in enumerate([100, 200]):
             compile_dir = logs_dir / f"compile_{timestamp}" / "compiled"
             compile_dir.mkdir(parents=True)
             manifest_path = compile_dir / "manifest.yaml"
