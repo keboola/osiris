@@ -174,21 +174,21 @@ After examining the current implementation against actual session data (`run_175
 - [x] **Column headers** - Clear headers with sticky positioning when scrolling
 - [x] **Row counts per session** - Data throughput visibility
 - [x] **Table structure** - Proper HTML table with clickable rows
+- [x] **Sortable table** - Click headers to sort by date, duration, status, rows
 - [ ] **Pipeline names** - Extract from session metadata
-- [ ] **Sortable table** - By date, duration, status, rows
 - [ ] **Search/filter bar** - Quick session lookup
 
 #### Detail Page New Tabs
 - [ ] **Pipeline Steps** - Mermaid flow diagram with timings
 - [x] **Artifacts** - File browser for artifacts/, build/, remote/
-- [ ] **Technical Logs** - osiris.log viewer with syntax highlighting  
+- [x] **Technical Logs** - osiris.log and debug.log viewer with syntax highlighting  
 - [ ] **Metadata** - Execution context, environment details
 - [ ] **Performance** - Metrics dashboard with proper units
 
 #### Fixed Core Issues
 - [x] **Fix Events tab** - Show timestamps, messages, structured data
 - [x] **Fix Metrics tab** - Display with units, formatted values
-- [ ] **Add log streaming** - Access to debug.log, osiris.log content
+- [x] **Add log viewing** - Direct access to debug.log and osiris.log content with syntax highlighting
 
 ### Implementation Approach
 Keep "raw" data engineer tool aesthetic:
@@ -238,6 +238,18 @@ Keep "raw" data engineer tool aesthetic:
    - Data throughput visibility
    - Formatted with thousands separator
    - Shows "-" when no data processed
+
+8. **Technical Logs Tab**
+   - Direct viewing of osiris.log and debug.log
+   - Syntax highlighting for timestamps, log levels, file paths
+   - Dark theme for better readability
+   - Sub-tabs for switching between log files
+
+9. **Sortable Tables**
+   - Click column headers to sort ascending/descending
+   - Smart sorting for durations (ms, s, m)
+   - Visual indicators (↑/↓) show current sort order
+   - Maintains sorting state per column
 
 ### Next Steps
 
