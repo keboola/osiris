@@ -179,7 +179,7 @@ class TestPayloadBuilderCfgInclusion:
         builder = PayloadBuilder(session_dir, build_dir)
         run_config = RunConfig()
 
-        payload_path = builder.build(manifest_path, run_config)
+        _payload_path = builder.build(manifest_path, run_config)
 
         # Read metadata
         metadata_path = session_dir / "metadata.json"

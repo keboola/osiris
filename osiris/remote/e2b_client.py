@@ -107,7 +107,7 @@ class E2BLiveTransport:
                 ) from e
 
     def create_sandbox(
-        self, cpu: int, mem_gb: int, env: Dict[str, str], timeout: int
+        self, cpu: int, mem_gb: int, env: Dict[str, str], timeout: int  # noqa: ARG002
     ) -> SandboxHandle:
         """Create a new E2B sandbox."""
         self._ensure_e2b()
@@ -200,7 +200,7 @@ class E2BLiveTransport:
             else:
                 with open(local_path, "wb") as f:
                     f.write(content)
-        except Exception:
+        except Exception:  # nosec B110
             # File might not exist, which is OK for artifact downloads
             pass
 

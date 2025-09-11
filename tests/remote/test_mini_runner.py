@@ -39,7 +39,7 @@ validate_mysql_env()
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(
                 SystemExit, match="Missing required environment variables.*MYSQL_DB"
-            ):
+            ):  # noqa: SIM117
                 exec(runner_code)
 
     def test_mysql_env_validation_missing_password(self):
@@ -70,7 +70,7 @@ validate_mysql_env()
         with patch.dict(os.environ, {"MYSQL_DB": "test"}, clear=True):
             with pytest.raises(
                 SystemExit, match="Missing required environment variables.*MYSQL_PASSWORD"
-            ):
+            ):  # noqa: SIM117
                 exec(runner_code)
 
     def test_mysql_env_validation_success(self):
@@ -133,8 +133,8 @@ success = True
         # Use alternative name
         env_vars = {
             "MYSQL_DATABASE": "test",
-            "MYSQL_PASSWORD": "secret",
-        }  # pragma: allowlist secret
+            "MYSQL_PASSWORD": "secret",  # pragma: allowlist secret
+        }
         with patch.dict(os.environ, env_vars, clear=True):
             local_vars = {}
             exec(runner_code, {}, local_vars)

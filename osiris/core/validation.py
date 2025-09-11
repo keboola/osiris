@@ -268,7 +268,6 @@ class ConnectionValidator:
             ValidationResult with errors and warnings
         """
         try:
-            import jsonschema
             from jsonschema import Draft7Validator
 
             validator = Draft7Validator(schema)
