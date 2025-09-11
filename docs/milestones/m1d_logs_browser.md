@@ -175,15 +175,15 @@ After examining the current implementation against actual session data (`run_175
 - [x] **Row counts per session** - Data throughput visibility
 - [x] **Table structure** - Proper HTML table with clickable rows
 - [x] **Sortable table** - Click headers to sort by date, duration, status, rows
-- [ ] **Pipeline names** - Extract from session metadata
-- [ ] **Search/filter bar** - Quick session lookup
+- [x] **Pipeline names** - Extract from session metadata and display in dedicated column
+- [x] **Search/filter bar** - Quick session lookup by ID, pipeline name, or status
 
 #### Detail Page New Tabs
-- [ ] **Pipeline Steps** - Mermaid flow diagram with timings
+- [x] **Pipeline Steps** - Mermaid flow diagram showing pipeline DAG with step details
 - [x] **Artifacts** - File browser for artifacts/, build/, remote/
 - [x] **Technical Logs** - osiris.log and debug.log viewer with syntax highlighting  
-- [ ] **Metadata** - Execution context, environment details
-- [ ] **Performance** - Metrics dashboard with proper units
+- [x] **Metadata** - Execution context, environment details, E2B remote execution info
+- [x] **Performance** - Metrics dashboard with proper units, categorized by type
 
 #### Fixed Core Issues
 - [x] **Fix Events tab** - Show timestamps, messages, structured data
@@ -250,6 +250,35 @@ Keep "raw" data engineer tool aesthetic:
    - Smart sorting for durations (ms, s, m)
    - Visual indicators (↑/↓) show current sort order
    - Maintains sorting state per column
+
+10. **Pipeline Names Column**
+   - Extracts pipeline names from manifest.json files
+   - Displays in dedicated column on overview page
+   - Falls back to "-" when no pipeline name available
+   - Searchable via the filter bar
+
+11. **Search/Filter Bar**
+   - Real-time filtering as you type
+   - Searches across session ID, pipeline name, and status
+   - Hides entire sections when no matches
+   - Shows "No results" message when nothing matches
+
+12. **Metadata Tab**
+   - Shows remote execution details for E2B runs
+   - Displays payload information and file lists
+   - Structured key-value display with proper formatting
+
+13. **Pipeline Steps Tab**
+   - Mermaid diagram visualization of pipeline DAG
+   - Shows step dependencies and execution order
+   - Detailed step information including driver and config paths
+   - Automatic diagram generation from manifest.json
+
+14. **Performance Dashboard**
+   - Categorized metrics display (Timing, Data Size, E2B)
+   - Smart unit formatting (ms/s for time, KB/MB for data)
+   - Gradient background cards for visual appeal
+   - Grouped by metric type for easy analysis
 
 ### Next Steps
 
