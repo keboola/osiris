@@ -111,6 +111,25 @@ osiris run pipeline.yaml --e2b --e2b-env-from production.env
 osiris run pipeline.yaml --e2b --dry-run
 ```
 
+### Environment Requirements
+
+For MySQL-based pipelines, these environment variables are required:
+
+- **`MYSQL_DB`** (or `MYSQL_DATABASE`): Database name
+- **`MYSQL_PASSWORD`**: Database password
+
+Optional variables:
+- `MYSQL_HOST`: Server host (default: localhost)
+- `MYSQL_PORT`: Server port (default: 3306)
+- `MYSQL_USER`: Username (default: root)
+
+Example with MySQL credentials:
+```bash
+osiris run pipeline.yaml --e2b \
+  --e2b-env-from testing_env/.env \
+  --e2b-pass-env MYSQL_PASSWORD
+```
+
 ### E2B Options
 
 - `--e2b`: Enable remote execution in E2B sandbox

@@ -102,10 +102,14 @@ def add_e2b_help_text(help_lines: List[str]) -> None:
         "  [cyan]--e2b-pass-env[/cyan]    Pass env var from current shell (repeatable)",
         "  [cyan]--dry-run[/cyan]         Show what would be sent without executing",
         "",
-        "  [dim]# Example: Run in E2B with Supabase credentials[/dim]",
+        "  [dim]# Required MySQL environment variables:[/dim]",
+        "  [dim]# MYSQL_DB (or MYSQL_DATABASE), MYSQL_PASSWORD[/dim]",
+        "  [dim]# Optional: MYSQL_HOST, MYSQL_PORT, MYSQL_USER[/dim]",
+        "",
+        "  [dim]# Example: Run with MySQL credentials[/dim]",
         "  [green]osiris run pipeline.yaml --e2b \\[/green]",
-        "  [green]  --e2b-pass-env SUPABASE_URL \\[/green]",
-        "  [green]  --e2b-pass-env SUPABASE_SERVICE_ROLE_KEY[/green]",
+        "  [green]  --e2b-env-from testing_env/.env \\[/green]",
+        "  [green]  --e2b-pass-env MYSQL_PASSWORD[/green]",
     ]
     help_lines.extend(e2b_help)
 

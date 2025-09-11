@@ -476,13 +476,13 @@ def run_command(args: List[str]):
                 run_config=run_config,
                 use_json=use_json,
             )
-            
+
             total_duration = time.time() - start_time
             log_metric("total_duration", total_duration, unit="seconds")
-            
+
             if success:
                 log_event("run_complete", total_duration=total_duration, remote_execution=True)
-                
+
                 if use_json:
                     result = {
                         "status": "success",
@@ -499,23 +499,32 @@ def run_command(args: List[str]):
                 else:
                     console.print("[green]✅ Remote execution completed successfully[/green]")
                     console.print(f"Session: logs/{session_id}/")
-                
+
                 sys.exit(0)
             else:
-                log_event("run_error", phase="e2b", error="Remote execution failed", duration=total_duration)
-                
+                log_event(
+                    "run_error",
+                    phase="e2b",
+                    error="Remote execution failed",
+                    duration=total_duration,
+                )
+
                 if use_json:
-                    print(json.dumps({
-                        "status": "error",
-                        "phase": "e2b", 
-                        "message": "Remote execution failed",
-                        "session_id": session_id,
-                        "session_dir": f"logs/{session_id}",
-                    }))
+                    print(
+                        json.dumps(
+                            {
+                                "status": "error",
+                                "phase": "e2b",
+                                "message": "Remote execution failed",
+                                "session_id": session_id,
+                                "session_dir": f"logs/{session_id}",
+                            }
+                        )
+                    )
                 else:
                     console.print("[red]❌ Remote execution failed[/red]")
                     console.print(f"Session: logs/{session_id}/")
-                
+
                 sys.exit(1)
 
         # Phase 2: Execute locally

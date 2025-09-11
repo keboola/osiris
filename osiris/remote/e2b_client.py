@@ -113,20 +113,12 @@ class E2BLiveTransport:
         self._ensure_e2b()
 
         # Create sandbox with new API using create() class method
-        sandbox = self._e2b.create(
-            timeout=timeout,
-            envs=env
-        )
+        sandbox = self._e2b.create(timeout=timeout, envs=env)
 
         return SandboxHandle(
-            sandbox_id=getattr(sandbox, 'id', 'unknown'),
+            sandbox_id=getattr(sandbox, "id", "unknown"),
             status=SandboxStatus.RUNNING,
-            metadata={
-                "sandbox": sandbox, 
-                "processes": {},
-                "env": env,
-                "timeout": timeout
-            },
+            metadata={"sandbox": sandbox, "processes": {}, "env": env, "timeout": timeout},
         )
 
     def upload_file(self, handle: SandboxHandle, local_path: Path, remote_path: str) -> None:
@@ -142,15 +134,15 @@ class E2BLiveTransport:
         sandbox = handle.metadata["sandbox"]
         env = handle.metadata.get("env", {})
         timeout = handle.metadata.get("timeout", 300)
-        
+
         # Use run_code to execute shell commands in new API
         cmd_str = " ".join(command)
         execution = sandbox.run_code(
             f"import subprocess; subprocess.run('{cmd_str}', shell=True, check=True)",
             envs=env,
-            timeout=timeout
+            timeout=timeout,
         )
-        
+
         # Store execution for later retrieval
         process_id = f"exec_{len(handle.metadata['processes'])}"
         handle.metadata["processes"][process_id] = execution
@@ -163,7 +155,7 @@ class E2BLiveTransport:
             return SandboxStatus.FAILED
 
         # In new API, execution is synchronous, so it's always complete
-        if hasattr(execution, 'error') and execution.error:
+        if hasattr(execution, "error") and execution.error:
             return SandboxStatus.FAILED
         return SandboxStatus.SUCCESS
 
@@ -178,19 +170,19 @@ class E2BLiveTransport:
         # Extract output from execution results
         stdout = ""
         stderr = ""
-        exit_code = 1 if (hasattr(execution, 'error') and execution.error) else 0
-        
+        exit_code = 1 if (hasattr(execution, "error") and execution.error) else 0
+
         # Concatenate output messages from logs
-        if hasattr(execution, 'logs'):
+        if hasattr(execution, "logs"):
             logs = execution.logs
-            if hasattr(logs, 'stdout') and logs.stdout:
+            if hasattr(logs, "stdout") and logs.stdout:
                 stdout = "\n".join(logs.stdout)
-            if hasattr(logs, 'stderr') and logs.stderr:
+            if hasattr(logs, "stderr") and logs.stderr:
                 stderr = "\n".join(logs.stderr)
-        
-        if hasattr(execution, 'error') and execution.error:
+
+        if hasattr(execution, "error") and execution.error:
             stderr = str(execution.error)
-            
+
         return stdout or None, stderr or None, exit_code
 
     def download_file(self, handle: SandboxHandle, remote_path: str, local_path: Path) -> None:
@@ -200,7 +192,7 @@ class E2BLiveTransport:
         try:
             content = sandbox.files.read(remote_path)
             local_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             # Handle both bytes and string content
             if isinstance(content, str):
                 with open(local_path, "w") as f:
