@@ -103,6 +103,7 @@ def get_session_metadata(logs_dir: str, session_id: str) -> Dict[str, Any]:
     session_path = Path(logs_dir) / session_id
     metadata_file = session_path / "metadata.json"
 
+    # First try metadata.json
     if metadata_file.exists():
         try:
             with open(metadata_file) as f:
@@ -110,7 +111,60 @@ def get_session_metadata(logs_dir: str, session_id: str) -> Dict[str, Any]:
         except (OSError, json.JSONDecodeError):
             pass
 
-    return {}
+    # Fall back to extracting from events.jsonl
+    metadata = {}
+    events_file = session_path / "events.jsonl"
+    if events_file.exists():
+        try:
+            with open(events_file) as f:
+                for line in f:
+                    try:
+                        event = json.loads(line.strip())
+                        event_name = event.get("event", "")
+
+                        # Extract pipeline info from run_start event
+                        if event_name == "run_start" and "pipeline_id" in event:
+                            if "pipeline" not in metadata:
+                                metadata["pipeline"] = {}
+                            metadata["pipeline"]["id"] = event.get("pipeline_id")
+                            metadata["pipeline"]["profile"] = event.get("profile", "default")
+                            metadata["pipeline"]["manifest_path"] = event.get("manifest_path", "")
+
+                        # Extract environment info
+                        elif event_name == "env_loaded" and "files" in event:
+                            if "environment" not in metadata:
+                                metadata["environment"] = {}
+                            metadata["environment"]["env_files"] = event.get("files", [])
+
+                        # Check for E2B events
+                        elif event_name.startswith("e2b."):
+                            if "remote" not in metadata:
+                                metadata["remote"] = {"detected": True}
+                            # Extract E2B specific info
+                            if event_name == "e2b.prepare.finish":
+                                if "payload" not in metadata["remote"]:
+                                    metadata["remote"]["payload"] = {}
+                                metadata["remote"]["payload"]["total_size_bytes"] = event.get(
+                                    "size_bytes", 0
+                                )
+                                metadata["remote"]["payload"]["sha256"] = event.get("sha256", "")
+
+                        # Extract connections used
+                        elif event_name == "connection_resolve_complete" and event.get("ok"):
+                            if "connections" not in metadata:
+                                metadata["connections"] = []
+                            conn_info = (
+                                f"{event.get('family', 'unknown')}/{event.get('alias', 'unknown')}"
+                            )
+                            if conn_info not in metadata["connections"]:
+                                metadata["connections"].append(conn_info)
+
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            pass
+
+    return metadata
 
 
 def get_pipeline_steps(logs_dir: str, session_id: str) -> list:
@@ -131,7 +185,67 @@ def get_pipeline_steps(logs_dir: str, session_id: str) -> list:
             except (OSError, json.JSONDecodeError):
                 continue
 
-    return []
+    # Fall back to extracting from events.jsonl
+    step_info = {}
+    events_file = session_path / "events.jsonl"
+    if events_file.exists():
+        try:
+            with open(events_file) as f:
+                for line in f:
+                    try:
+                        event = json.loads(line.strip())
+                        event_name = event.get("event", "")
+
+                        # Collect step information
+                        if event_name == "step_start":
+                            step_id = event.get("step_id", "unknown")
+                            if step_id not in step_info:
+                                step_info[step_id] = {
+                                    "id": step_id,
+                                    "driver": event.get("driver", "unknown"),
+                                    "needs": [],  # Will infer from order
+                                    "start_time": event.get("ts", ""),
+                                    "status": "started",
+                                }
+
+                        elif event_name == "step_complete":
+                            step_id = event.get("step_id", "unknown")
+                            if step_id in step_info:
+                                step_info[step_id]["status"] = "completed"
+                                step_info[step_id]["duration"] = event.get("duration", "")
+                                step_info[step_id]["output_dir"] = event.get("output_dir", "")
+
+                        # Try to get config path from artifacts
+                        elif event_name == "config_meta_stripped":
+                            step_id = event.get("step_id", "unknown")
+                            if step_id in step_info:
+                                # Infer config path from step_id
+                                step_info[step_id]["cfg_path"] = f"cfg/{step_id}.json"
+
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            pass
+
+    # Build dependency chain based on order (simplified)
+    # In real pipelines, extract->write pattern is common
+    step_list = list(step_info.values())
+    for i, step in enumerate(step_list):
+        # Simple heuristic: write steps depend on their corresponding extract
+        if "write" in step["id"] and i > 0:
+            # Find the most recent extract step
+            for j in range(i - 1, -1, -1):
+                if "extract" in step_list[j]["id"]:
+                    # Match by entity name (e.g., actors, directors)
+                    entity = step["id"].replace("write-", "").replace("-supabase", "")
+                    if entity in step_list[j]["id"]:
+                        step["needs"] = [step_list[j]["id"]]
+                        break
+        # Sequential dependency for same operation type
+        elif i > 0 and step["driver"] == step_list[i - 1]["driver"]:
+            step["needs"] = [step_list[i - 1]["id"]]
+
+    return step_list if step_list else []
 
 
 def read_session_logs(logs_dir: str, session_id: str) -> Dict[str, Any]:
@@ -759,13 +873,37 @@ def generate_session_detail_page(session, session_logs) -> str:
     logs = session_logs.get("logs", {})
 
     # Get additional data from session directory
-    import os
+    from pathlib import Path
 
-    logs_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if "testing_env" in logs_dir:
-        logs_dir = os.path.join(logs_dir, "testing_env", "logs")
-    else:
-        logs_dir = "./logs"
+    # The logs_dir should be where the session directories actually are
+    # Since we're in generate_session_detail_page, we know the session exists
+    # Let's use the absolute path to the logs directory
+    # We can check a few common locations
+    possible_paths = [
+        Path("/Users/padak/github/osiris_pipeline/testing_env/logs"),
+        Path("./testing_env/logs"),
+        Path("./logs"),
+        Path("logs"),
+    ]
+
+    logs_dir = None
+    for path in possible_paths:
+        if path.exists() and (path / session.session_id).exists():
+            logs_dir = str(path.absolute())
+            break
+
+    if not logs_dir:
+        # Fallback - try to extract from artifact paths if available
+        if artifacts and len(artifacts) > 0:
+            first_artifact = artifacts[0]
+            artifact_path = Path(first_artifact.get("path", ""))
+            if artifact_path.parts and "artifacts" in artifact_path.parts:
+                idx = artifact_path.parts.index("artifacts")
+                if idx >= 2:
+                    logs_dir = str(Path(*artifact_path.parts[: idx - 1]))
+
+        if not logs_dir:
+            logs_dir = "./testing_env/logs"
 
     metadata = get_session_metadata(logs_dir, session.session_id)
     pipeline_steps = get_pipeline_steps(logs_dir, session.session_id)
@@ -1006,6 +1144,58 @@ def generate_session_detail_page(session, session_logs) -> str:
     # Generate Metadata HTML
     metadata_html = "<div class='metadata-grid'>"
     if metadata:
+        # Pipeline information
+        if "pipeline" in metadata:
+            pipeline = metadata["pipeline"]
+            metadata_html += """<div class='metadata-section'>
+                <h3>Pipeline Information</h3>
+                <div class='metadata-entries'>"""
+
+            metadata_html += f"""<div class='metadata-entry'>
+                <span class='metadata-key'>Pipeline ID:</span>
+                <span class='metadata-value'>{pipeline.get('id', 'N/A')}</span>
+            </div>"""
+            metadata_html += f"""<div class='metadata-entry'>
+                <span class='metadata-key'>Profile:</span>
+                <span class='metadata-value'>{pipeline.get('profile', 'default')}</span>
+            </div>"""
+            if pipeline.get("manifest_path"):
+                metadata_html += f"""<div class='metadata-entry'>
+                    <span class='metadata-key'>Manifest Path:</span>
+                    <span class='metadata-value'>{pipeline.get('manifest_path', '')}</span>
+                </div>"""
+
+            metadata_html += """</div></div>"""
+
+        # Environment information
+        if "environment" in metadata:
+            env = metadata["environment"]
+            metadata_html += """<div class='metadata-section'>
+                <h3>Environment</h3>
+                <div class='metadata-entries'>"""
+
+            if env.get("env_files"):
+                metadata_html += f"""<div class='metadata-entry'>
+                    <span class='metadata-key'>Env Files:</span>
+                    <span class='metadata-value'>{', '.join(env.get('env_files', []))}</span>
+                </div>"""
+
+            metadata_html += """</div></div>"""
+
+        # Connections used
+        if "connections" in metadata:
+            metadata_html += """<div class='metadata-section'>
+                <h3>Connections Used</h3>
+                <div class='metadata-entries'>"""
+
+            for conn in metadata["connections"]:
+                metadata_html += f"""<div class='metadata-entry'>
+                    <span class='metadata-key'>Connection:</span>
+                    <span class='metadata-value'>{conn}</span>
+                </div>"""
+
+            metadata_html += """</div></div>"""
+
         # Remote execution metadata
         if "remote" in metadata:
             remote = metadata["remote"]
@@ -1019,10 +1209,11 @@ def generate_session_detail_page(session, session_logs) -> str:
                     <span class='metadata-key'>Payload Size:</span>
                     <span class='metadata-value'>{payload.get('total_size_bytes', 0):,} bytes</span>
                 </div>"""
-                metadata_html += f"""<div class='metadata-entry'>
-                    <span class='metadata-key'>SHA256:</span>
-                    <span class='metadata-value'>{payload.get('sha256', 'N/A')[:12]}...</span>
-                </div>"""
+                if payload.get("sha256"):
+                    metadata_html += f"""<div class='metadata-entry'>
+                        <span class='metadata-key'>SHA256:</span>
+                        <span class='metadata-value'>{payload.get('sha256', 'N/A')[:12]}...</span>
+                    </div>"""
 
                 if "files" in payload:
                     metadata_html += (
@@ -1033,12 +1224,19 @@ def generate_session_detail_page(session, session_logs) -> str:
                         + """</span>
                     </div>"""
                     )
+            else:
+                metadata_html += """<div class='metadata-entry'>
+                    <span class='metadata-key'>Status:</span>
+                    <span class='metadata-value'>E2B execution detected</span>
+                </div>"""
 
             metadata_html += """</div></div>"""
 
         # Add any other metadata sections
         for key, value in metadata.items():
-            if key != "remote" and isinstance(value, dict):
+            if key not in ["remote", "pipeline", "environment", "connections"] and isinstance(
+                value, dict
+            ):
                 metadata_html += f"""<div class='metadata-section'>
                     <h3>{key.replace('_', ' ').title()}</h3>
                     <div class='metadata-entries'>"""
@@ -1066,13 +1264,18 @@ def generate_session_detail_page(session, session_logs) -> str:
             driver = step.get("driver", "unknown")
             needs = step.get("needs", [])
 
-            # Create node
-            node_label = f"{step_id}\n[{driver}]"
-            mermaid_nodes.append(f'    {step_id}["{node_label}"]')
+            # Escape step_id for Mermaid (replace hyphens with underscores for node IDs)
+            node_id = step_id.replace("-", "_")
 
-            # Create edges
+            # Create node with original step_id as label
+            # Use simple format without HTML entities
+            node_label = f"{step_id} | {driver}"
+            mermaid_nodes.append(f'    {node_id}["{node_label}"]')
+
+            # Create edges using escaped IDs
             for dep in needs:
-                mermaid_edges.append(f"    {dep} --> {step_id}")
+                dep_id = dep.replace("-", "_")
+                mermaid_edges.append(f"    {dep_id} --> {node_id}")
 
         # Build Mermaid diagram
         mermaid_diagram = "graph TD\n"
@@ -1081,8 +1284,8 @@ def generate_session_detail_page(session, session_logs) -> str:
             for i, node in enumerate(mermaid_nodes):
                 mermaid_diagram += node + "\n"
                 if i < len(mermaid_nodes) - 1:
-                    step_id = pipeline_steps[i]["id"]
-                    next_id = pipeline_steps[i + 1]["id"]
+                    step_id = pipeline_steps[i]["id"].replace("-", "_")
+                    next_id = pipeline_steps[i + 1]["id"].replace("-", "_")
                     mermaid_diagram += f"    {step_id} --> {next_id}\n"
         else:
             mermaid_diagram += "\n".join(mermaid_nodes) + "\n"
@@ -1090,9 +1293,9 @@ def generate_session_detail_page(session, session_logs) -> str:
 
         pipeline_steps_html = f"""<div class='pipeline-visualization'>
             <h3>Pipeline Flow</h3>
-            <pre class='mermaid'>
+            <div id='mermaid-diagram' class='mermaid'>
 {mermaid_diagram}
-            </pre>
+            </div>
             <h3>Step Details</h3>
             <div class='steps-list'>"""
 
@@ -1106,9 +1309,7 @@ def generate_session_detail_page(session, session_logs) -> str:
                 </div>
             </div>"""
 
-        pipeline_steps_html += """</div></div>
-        <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
-        <script>mermaid.initialize({startOnLoad:true});</script>"""
+        pipeline_steps_html += """</div></div>"""
     else:
         pipeline_steps_html = (
             '<div class="empty-state">No pipeline steps information available</div>'
@@ -1206,7 +1407,7 @@ def generate_session_detail_page(session, session_logs) -> str:
 
     performance_html += "</div>"
 
-    # Format session duration
+    # Format session duration first (needed for overview)
     duration = ""
     if session.duration_ms:
         if session.duration_ms < 1000:
@@ -1215,6 +1416,150 @@ def generate_session_detail_page(session, session_logs) -> str:
             duration = f"{session.duration_ms / 1000:.1f}s"
         else:
             duration = f"{session.duration_ms / 60000:.1f}m"
+
+    # Generate Overview HTML
+    overview_html = "<div class='overview-dashboard'>"
+
+    # Session summary section
+    overview_html += """<div class='overview-section'>
+        <h3>Session Summary</h3>
+        <div class='overview-grid'>"""
+
+    # Basic info
+    overview_html += f"""<div class='overview-item'>
+        <span class='overview-label'>Session ID:</span>
+        <span class='overview-value'>{session.session_id}</span>
+    </div>"""
+    overview_html += f"""<div class='overview-item'>
+        <span class='overview-label'>Status:</span>
+        <span class='overview-value status-{session.status}'>{session.status}</span>
+    </div>"""
+    overview_html += f"""<div class='overview-item'>
+        <span class='overview-label'>Total Duration:</span>
+        <span class='overview-value'>{duration if session.duration_ms else 'N/A'}</span>
+    </div>"""
+    overview_html += f"""<div class='overview-item'>
+        <span class='overview-label'>Total Rows Processed:</span>
+        <span class='overview-value'>{session.rows_out or 0:,}</span>
+    </div>"""
+
+    # Pipeline info from metadata
+    if metadata.get("pipeline"):
+        overview_html += f"""<div class='overview-item'>
+            <span class='overview-label'>Pipeline:</span>
+            <span class='overview-value'>{metadata['pipeline'].get('id', 'Unknown')}</span>
+        </div>"""
+
+    overview_html += """</div></div>"""
+
+    # Step execution summary
+    if pipeline_steps:
+        overview_html += """<div class='overview-section'>
+            <h3>Step Execution Summary</h3>
+            <div class='step-summary'>"""
+
+        completed_steps = [s for s in pipeline_steps if s.get("status") == "completed"]
+        overview_html += f"""<div class='summary-stat'>
+            <div class='stat-number'>{len(completed_steps)}/{len(pipeline_steps)}</div>
+            <div class='stat-label'>Steps Completed</div>
+        </div>"""
+
+        # Calculate total step time
+        total_step_time = 0
+        for step in pipeline_steps:
+            if step.get("duration"):
+                # Parse duration string (e.g., "2.25s", "347.2ms")
+                dur_str = step["duration"]
+                if isinstance(dur_str, str):
+                    if "ms" in dur_str:
+                        total_step_time += float(dur_str.replace("ms", "")) / 1000
+                    elif "s" in dur_str:
+                        total_step_time += float(dur_str.replace("s", ""))
+
+        overview_html += f"""<div class='summary-stat'>
+            <div class='stat-number'>{total_step_time:.2f}s</div>
+            <div class='stat-label'>Total Step Time</div>
+        </div>"""
+
+        overview_html += """</div>"""
+
+        # Step details table
+        overview_html += """<table class='step-summary-table'>
+            <thead>
+                <tr>
+                    <th>Step</th>
+                    <th>Driver</th>
+                    <th>Duration</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>"""
+
+        for step in pipeline_steps:
+            status_class = "success" if step.get("status") == "completed" else "pending"
+            overview_html += f"""<tr>
+                <td>{step.get('id', 'unknown')}</td>
+                <td>{step.get('driver', 'unknown')}</td>
+                <td>{step.get('duration', '-')}</td>
+                <td><span class='status-{status_class}'>{step.get('status', 'unknown')}</span></td>
+            </tr>"""
+
+        overview_html += """</tbody></table></div>"""
+
+    # Metrics summary
+    if metrics:
+        overview_html += """<div class='overview-section'>
+            <h3>Key Metrics</h3>
+            <div class='metrics-summary'>"""
+
+        # Group metrics by type
+        rows_metrics = [m for m in metrics if "rows" in m.get("metric", "")]
+        duration_metrics = [m for m in metrics if "duration" in m.get("metric", "")]
+
+        if rows_metrics:
+            total_rows = sum(
+                m.get("value", 0) for m in rows_metrics if isinstance(m.get("value"), (int, float))
+            )
+            overview_html += f"""<div class='metric-card'>
+                <div class='metric-title'>Data Volume</div>
+                <div class='metric-value'>{total_rows:,} rows</div>
+            </div>"""
+
+        if duration_metrics:
+            overview_html += """<div class='metric-card'>
+                <div class='metric-title'>Performance</div>
+                <div class='metric-list'>"""
+            for metric in duration_metrics[:5]:  # Show top 5
+                name = metric.get("metric", "").replace("_", " ").title()
+                value = metric.get("value", 0)
+                unit = metric.get("unit", "")
+                formatted = f"{value:.2f}s" if unit == "seconds" else f"{value} {unit}"
+                overview_html += f"<div>{name}: {formatted}</div>"
+            overview_html += """</div></div>"""
+
+        overview_html += """</div></div>"""
+
+    # Data flow visualization (simple text-based)
+    if metadata.get("connections"):
+        overview_html += """<div class='overview-section'>
+            <h3>Data Flow</h3>
+            <div class='data-flow'>"""
+
+        connections = metadata.get("connections", [])
+        sources = [c for c in connections if "mysql" in c.lower()]
+        targets = [c for c in connections if "supabase" in c.lower() or "csv" in c.lower()]
+
+        if sources:
+            overview_html += f"<div class='flow-source'>Source: {', '.join(sources)}</div>"
+        overview_html += "<div class='flow-arrow'>↓</div>"
+        overview_html += f"<div class='flow-pipeline'>Pipeline: {metadata.get('pipeline', {}).get('id', 'Processing')}</div>"
+        overview_html += "<div class='flow-arrow'>↓</div>"
+        if targets:
+            overview_html += f"<div class='flow-target'>Target: {', '.join(targets)}</div>"
+
+        overview_html += """</div></div>"""
+
+    overview_html += "</div>"
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -1493,13 +1838,14 @@ def generate_session_detail_page(session, session_logs) -> str:
             margin: 1rem 0;
             font-size: 1rem;
         }}
-        .mermaid {{
-            text-align: left;
+        .mermaid, #mermaid-diagram {{
+            text-align: center;
             background: #f8f9fa;
             padding: 2rem;
             border-radius: 8px;
             margin-bottom: 2rem;
             border: 1px solid #e5e7eb;
+            min-height: 200px;
             overflow-x: auto;
         }}
         .steps-list {{
@@ -1567,7 +1913,156 @@ def generate_session_detail_page(session, session_logs) -> str:
             font-weight: 400;
             margin-left: 0.25rem;
         }}
+        /* Overview tab styles */
+        .overview-dashboard {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }}
+        .overview-section {{
+            margin-bottom: 2rem;
+        }}
+        .overview-section h3 {{
+            color: #333;
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }}
+        .overview-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }}
+        .overview-item {{
+            display: flex;
+            justify-content: space-between;
+            padding: 0.75rem;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }}
+        .overview-label {{
+            color: #666;
+            font-weight: 500;
+        }}
+        .overview-value {{
+            font-weight: 600;
+            color: #333;
+        }}
+        .step-summary {{
+            display: flex;
+            gap: 2rem;
+            margin-bottom: 1.5rem;
+        }}
+        .summary-stat {{
+            text-align: center;
+        }}
+        .stat-number {{
+            font-size: 2rem;
+            font-weight: 600;
+            color: #ff6b00;
+        }}
+        .stat-label {{
+            color: #666;
+            font-size: 0.875rem;
+            margin-top: 0.25rem;
+        }}
+        .step-summary-table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }}
+        .step-summary-table th {{
+            text-align: left;
+            padding: 0.5rem;
+            background: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+        }}
+        .step-summary-table td {{
+            padding: 0.5rem;
+            border-bottom: 1px solid #e9ecef;
+        }}
+        .metrics-summary {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }}
+        .metric-card {{
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 4px;
+        }}
+        .metric-title {{
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #495057;
+        }}
+        .metric-value {{
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #333;
+        }}
+        .metric-list {{
+            font-size: 0.875rem;
+            line-height: 1.6;
+        }}
+        .data-flow {{
+            text-align: center;
+            padding: 2rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }}
+        .flow-source, .flow-target, .flow-pipeline {{
+            padding: 0.75rem;
+            margin: 0.5rem auto;
+            max-width: 400px;
+            background: white;
+            border: 2px solid #dee2e6;
+            border-radius: 4px;
+            font-weight: 500;
+        }}
+        .flow-arrow {{
+            font-size: 1.5rem;
+            color: #ff6b00;
+            margin: 0.5rem 0;
+        }}
+        .status-success {{ color: #28a745; }}
+        .status-pending {{ color: #ffc107; }}
+        .status-failed {{ color: #dc3545; }}
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+        // Initialize Mermaid configuration
+        mermaid.initialize({{
+            startOnLoad: false,  // We'll manually trigger rendering
+            theme: 'default',
+            flowchart: {{
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis'
+            }}
+        }});
+
+        // Render Mermaid diagrams after page loads
+        window.addEventListener('load', function() {{
+            // Find and render Mermaid diagrams
+            const element = document.getElementById('mermaid-diagram');
+            if (element && element.textContent.trim()) {{
+                // Create a unique ID for this render
+                const graphId = 'mermaid-graph-' + Date.now();
+                const graphDefinition = element.textContent;
+
+                // Clear the element and render the diagram
+                element.innerHTML = '';
+                element.removeAttribute('data-processed');
+
+                mermaid.render(graphId, graphDefinition).then(function(result) {{
+                    element.innerHTML = result.svg;
+                }}).catch(function(err) {{
+                    console.error('Mermaid rendering error:', err);
+                    element.innerHTML = '<div style="color: red;">Error rendering diagram</div>';
+                }});
+            }}
+        }});
+    </script>
 </head>
 <body>
     <a href="../index.html" class="back-link">← Back to Sessions</a>
@@ -1638,7 +2133,7 @@ def generate_session_detail_page(session, session_logs) -> str:
             {performance_html}
         </div>
         <div id="overview" class="tab-panel">
-            <div class="empty-state">Session overview coming soon</div>
+            {overview_html}
         </div>
     </div>
 
@@ -1684,3 +2179,50 @@ def generate_session_detail_page(session, session_logs) -> str:
 """
 
     return html
+
+
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) != 3:
+        print("Usage: python generate.py <logs_dir> <output_dir>")
+        sys.exit(1)
+
+    logs_dir = sys.argv[1]
+    output_dir = sys.argv[2]
+
+    # Ensure output directory exists
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    # Read all sessions
+    reader = SessionReader(logs_dir)
+    sessions = reader.list_sessions()
+
+    print(f"Found {len(sessions)} sessions in {logs_dir}")
+
+    # Generate index page
+    index_html = generate_overview_page(sessions, logs_dir)
+    index_path = Path(output_dir) / "index.html"
+    with open(index_path, "w") as f:
+        f.write(index_html)
+    print(f"Generated index page: {index_path}")
+
+    # Generate detail pages for each session
+    for session in sessions:
+        # Read full session logs
+        session_logs = read_session_logs(logs_dir, session.session_id)
+
+        # Generate detail page
+        detail_html = generate_session_detail_page(session, session_logs)
+
+        # Create session directory
+        session_dir = Path(output_dir) / session.session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write detail page
+        detail_path = session_dir / "index.html"
+        with open(detail_path, "w") as f:
+            f.write(detail_html)
+        print(f"Generated detail page: {detail_path}")
+
+    print(f"\nHTML reports generated in {output_dir}")
