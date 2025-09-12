@@ -159,6 +159,23 @@ class E2BAdapter(ExecutionAdapter):
             log_event("e2b_execute_start", session_id=context.session_id)
             start_time = time.time()
 
+            # Build and upload payload using existing infrastructure
+            if prepared.run_params.get("verbose"):
+                print("🔨 Building E2B payload...")
+
+            log_event("e2b_payload_build", session_id=context.session_id)
+            payload_path = self._build_payload(prepared, context)
+
+            log_event(
+                "e2b_payload_built",
+                session_id=context.session_id,
+                payload_path=str(payload_path),
+                manifest_steps=len(prepared.plan.get("steps", [])),
+            )
+
+            if prepared.run_params.get("verbose"):
+                print(f"✓ Payload built ({len(prepared.plan.get('steps', []))} steps)")
+
             # Create E2B client
             api_key = os.environ.get("E2B_API_KEY")
             if not api_key:
@@ -167,6 +184,9 @@ class E2BAdapter(ExecutionAdapter):
             self.client = E2BClient()
 
             # Create sandbox
+            if prepared.run_params.get("verbose"):
+                print("🚀 Creating E2B sandbox...")
+
             log_event("e2b_sandbox_create", session_id=context.session_id)
             self.sandbox_handle = self.client.create_sandbox(
                 cpu=prepared.run_params["cpu"],
@@ -175,25 +195,45 @@ class E2BAdapter(ExecutionAdapter):
                 timeout=prepared.run_params["timeout"],
             )
 
-            # Build and upload payload using existing infrastructure
-            log_event("e2b_payload_build", session_id=context.session_id)
-            payload_path = self._build_payload(prepared, context)
+            if prepared.run_params.get("verbose"):
+                print(
+                    f"✓ Sandbox created (CPU: {prepared.run_params['cpu']}, Memory: {prepared.run_params['memory_gb']}GB)"
+                )
 
             log_event("e2b_payload_upload", session_id=context.session_id)
+            if prepared.run_params.get("verbose"):
+                print("📤 Uploading payload to sandbox...")
             self.client.upload_payload(self.sandbox_handle, payload_path)
+            if prepared.run_params.get("verbose"):
+                print("✓ Payload uploaded")
 
             # Start execution in sandbox
             log_event("e2b_execution_start", session_id=context.session_id)
+            if prepared.run_params.get("verbose"):
+                print("🏃 Starting pipeline execution in sandbox...")
+
             command = ["python", "mini_runner.py"]
             process_id = self.client.start(self.sandbox_handle, command)
 
             # Poll for completion
             log_event("e2b_execution_poll", session_id=context.session_id, process_id=process_id)
+
+            if prepared.run_params.get("verbose"):
+                print("⏳ Waiting for remote execution to complete...")
+                # For now, we show a simple waiting message
+                # In the future, we could poll for intermediate results
+
             final_status = self.client.poll_until_complete(
                 self.sandbox_handle,
                 process_id,
                 timeout_s=prepared.run_params["timeout"],
             )
+
+            if prepared.run_params.get("verbose"):
+                if final_status.status.value == "success":
+                    print("✓ Remote execution completed successfully")
+                else:
+                    print("✗ Remote execution failed")
 
             duration = time.time() - start_time
             log_metric("e2b_execution_duration", duration, unit="seconds")
@@ -377,6 +417,26 @@ class E2BAdapter(ExecutionAdapter):
             temp_manifest = Path(f.name)
 
         try:
+            # Find the source cfg directory from the original manifest
+            source_cfg_dir = None
+            if "metadata" in prepared.plan and "source_manifest_path" in prepared.plan["metadata"]:
+                source_manifest = Path(prepared.plan["metadata"]["source_manifest_path"])
+                if source_manifest.exists():
+                    # cfg files are in compiled/cfg relative to manifest
+                    source_cfg_dir = source_manifest.parent / "cfg"
+
+            # If we couldn't find it from metadata, try to find the latest compile dir
+            if not source_cfg_dir or not source_cfg_dir.exists():
+                base_logs = context.base_path / "logs"
+                if base_logs.exists():
+                    compile_dirs = sorted(
+                        [d for d in base_logs.iterdir() if d.name.startswith("compile_")],
+                        key=lambda x: x.name,
+                        reverse=True,
+                    )
+                    if compile_dirs:
+                        source_cfg_dir = compile_dirs[0] / "compiled" / "cfg"
+
             # Create payload builder using existing infrastructure
             build_dir = context.logs_dir / "e2b_build"
             build_dir.mkdir(parents=True, exist_ok=True)
@@ -384,8 +444,14 @@ class E2BAdapter(ExecutionAdapter):
             builder = PayloadBuilder(context.logs_dir, build_dir)
             run_config = RunConfig()
 
-            # Build payload
-            payload_path = builder.build(temp_manifest, run_config)
+            # Build payload with source cfg directory
+            payload_path = builder.build(
+                temp_manifest,
+                run_config,
+                source_cfg_dir=(
+                    source_cfg_dir if source_cfg_dir and source_cfg_dir.exists() else None
+                ),
+            )
 
             log_event(
                 "e2b_payload_built",

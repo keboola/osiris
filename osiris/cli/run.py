@@ -205,6 +205,7 @@ def execute_with_adapter(
     context: ExecutionContext,
     use_json: bool = False,  # noqa: ARG001
     source_manifest_path: Optional[str] = None,
+    verbose: bool = False,
 ) -> tuple[bool, Optional[str]]:
     """Execute pipeline using execution adapters.
 
@@ -214,6 +215,8 @@ def execute_with_adapter(
         e2b_config: E2B configuration dict
         context: Execution context
         use_json: Whether to use JSON output
+        source_manifest_path: Path to original manifest
+        verbose: Whether to show step progress on stdout
 
     Returns:
         Tuple of (success, error_message)
@@ -224,7 +227,7 @@ def execute_with_adapter(
             adapter = E2BAdapter(e2b_config)
             log_event("adapter_selected", adapter="e2b", session_id=context.session_id)
         else:
-            adapter = LocalAdapter()
+            adapter = LocalAdapter(verbose=verbose)
             log_event("adapter_selected", adapter="local", session_id=context.session_id)
 
         # Phase 1: Prepare execution
@@ -557,6 +560,7 @@ def run_command(args: List[str]):
             e2b_config=adapter_e2b_config,
             context=exec_context,
             use_json=use_json,
+            verbose=verbose,
         )
 
         total_duration = time.time() - start_time

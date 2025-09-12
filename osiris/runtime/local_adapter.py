@@ -32,9 +32,14 @@ class LocalAdapter(ExecutionAdapter):
     while conforming to the ExecutionAdapter contract.
     """
 
-    def __init__(self):
-        """Initialize LocalAdapter."""
+    def __init__(self, verbose: bool = False):
+        """Initialize LocalAdapter.
+
+        Args:
+            verbose: If True, print step progress to stdout
+        """
         self.error_context = ErrorContext(source="local")
+        self.verbose = verbose
 
     def prepare(self, plan: Dict[str, Any], context: ExecutionContext) -> PreparedRun:
         """Prepare local execution package.
@@ -149,10 +154,44 @@ class LocalAdapter(ExecutionAdapter):
                 manifest_path=str(manifest_path), output_dir=str(context.artifacts_dir)
             )
 
+            # If verbose, print starting message
+            if self.verbose:
+                print(f"🚀 Executing pipeline with {len(prepared.plan.get('steps', []))} steps")
+
             # Execute pipeline
             success = runner.run()
 
             duration = time.time() - start_time
+
+            # If verbose, print step results summary
+            if self.verbose:
+                # Extract step events from runner
+                step_events = [
+                    e
+                    for e in runner.events
+                    if e.get("type") in ["step_start", "step_complete", "step_error"]
+                ]
+                for event in step_events:
+                    event_type = event.get("type")
+                    event_data = event.get("data", {})
+                    step_id = event_data.get("step_id", "unknown")
+
+                    if event_type == "step_start":
+                        print(f"  ▶ {step_id}: Starting...")
+                    elif event_type == "step_complete":
+                        rows_read = event_data.get("rows_read", 0)
+                        rows_written = event_data.get("rows_written", 0)
+                        if rows_read > 0:
+                            print(f"  ✓ {step_id}: Complete (read {rows_read} rows)")
+                        elif rows_written > 0:
+                            print(f"  ✓ {step_id}: Complete (wrote {rows_written} rows)")
+                        else:
+                            print(f"  ✓ {step_id}: Complete")
+                    elif event_type == "step_error":
+                        error = event_data.get("error", "Unknown error")
+                        print(f"  ✗ {step_id}: Failed - {error}")
+
+                print(f"Pipeline {'completed' if success else 'failed'} in {duration:.2f}s")
             log_metric("execution_duration", duration, unit="seconds")
 
             # Determine exit code

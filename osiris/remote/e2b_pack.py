@@ -72,7 +72,12 @@ class PayloadBuilder:
         self.payload_dir.mkdir(parents=True, exist_ok=True)
 
     def build(
-        self, manifest_path: Path, run_config: RunConfig, mini_runner_path: Optional[Path] = None
+        self,
+        manifest_path: Path,
+        run_config: RunConfig,
+        mini_runner_path: Optional[Path] = None,
+        cfg_index: Optional[Dict[str, Any]] = None,
+        source_cfg_dir: Optional[Path] = None,
     ) -> Path:
         """Build payload tarball.
 
@@ -80,6 +85,8 @@ class PayloadBuilder:
             manifest_path: Path to compiled manifest.json
             run_config: Runtime configuration
             mini_runner_path: Optional path to custom mini_runner.py
+            cfg_index: PreparedRun.cfg_index mapping cfg paths to their content/location
+            source_cfg_dir: Directory containing actual cfg files (e.g., compile_*/compiled/cfg)
 
         Returns:
             Path to generated payload.tgz
@@ -106,7 +113,15 @@ class PayloadBuilder:
         cfg_paths = self._extract_cfg_paths(manifest_data)
 
         # Include cfg files in payload
-        self._include_cfg_files(manifest_path, cfg_paths)
+        # Use provided source_cfg_dir if available, otherwise try to find from manifest path
+        if source_cfg_dir and source_cfg_dir.exists():
+            self._include_cfg_files_from_source(source_cfg_dir, cfg_paths)
+        elif cfg_index:
+            # If we have cfg_index but no source dir, we need the source dir
+            # This shouldn't happen in practice, but let's be defensive
+            self._include_cfg_files(manifest_path, cfg_paths)
+        else:
+            self._include_cfg_files(manifest_path, cfg_paths)
 
         # Create or copy mini_runner.py
         runner_dest = self.payload_dir / "mini_runner.py"
@@ -134,6 +149,7 @@ class PayloadBuilder:
 
         # Create tarball
         tarball_path = self.build_dir / "payload.tgz"
+
         with tarfile.open(tarball_path, "w:gz") as tar:
             for item_path in self.payload_dir.iterdir():
                 if item_path.is_file():
@@ -774,6 +790,53 @@ if __name__ == "__main__":
                 cfg_paths.append(cfg_path)
         return cfg_paths
 
+    def _include_cfg_files_from_source(self, source_cfg_dir: Path, cfg_paths: List[str]) -> None:
+        """Include cfg files from a known source directory.
+
+        Args:
+            source_cfg_dir: Directory containing cfg files (e.g., compile_*/compiled/cfg)
+            cfg_paths: List of cfg file paths to include (e.g., ["cfg/extract.json"])
+
+        Raises:
+            ValueError: If any referenced cfg file is missing
+        """
+        if not cfg_paths:
+            return
+
+        # Create cfg directory in payload
+        cfg_payload_dir = self.payload_dir / "cfg"
+        cfg_payload_dir.mkdir(exist_ok=True)
+
+        missing_files = []
+
+        for cfg_path in cfg_paths:
+            # cfg_path is like "cfg/extract-actors.json"
+            # source_cfg_dir is like "logs/compile_123/compiled/cfg"
+            # We need just the filename
+            if cfg_path.startswith("cfg/"):
+                cfg_filename = cfg_path[4:]  # Remove "cfg/" prefix
+                source_path = source_cfg_dir / cfg_filename
+            else:
+                cfg_filename = cfg_path
+                source_path = source_cfg_dir / cfg_filename
+
+            if not source_path.exists():
+                missing_files.append(cfg_path)
+                continue
+
+            # Copy to payload cfg directory
+            dest_path = cfg_payload_dir / cfg_filename
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+            with open(source_path) as src, open(dest_path, "w") as dst:
+                dst.write(src.read())
+
+        if missing_files:
+            raise ValueError(
+                f"Missing cfg files in {source_cfg_dir}: {', '.join(missing_files)}. "
+                f"E2B payload must include cfg/* at the payload root; see M1e PreparedRun cfg_index."
+            )
+
     def _include_cfg_files(self, manifest_path: Path, cfg_paths: List[str]) -> None:
         """Include cfg files in payload, validating they exist.
 
@@ -817,9 +880,15 @@ if __name__ == "__main__":
                     dst.write(src.read())
 
         if missing_files:
+            # Improved error message showing exact paths searched
+            searched_paths = [str(compiled_dir / cfg) for cfg in missing_files[:3]]
             raise ValueError(
-                f"Missing cfg files referenced by manifest: {', '.join(missing_files)}. "
-                f"Expected files in {compiled_dir}"
+                f"Missing cfg files referenced by manifest:\n"
+                f"  Files: {', '.join(missing_files)}\n"
+                f"  Searched in: {compiled_dir}\n"
+                f"  Example paths checked: {', '.join(searched_paths)}\n"
+                f"  Hint: E2B payload must include cfg/* at the payload root; "
+                f"ensure compilation created cfg files before running with --e2b"
             )
 
     def validate_payload(self, tarball_path: Path) -> PayloadManifest:
