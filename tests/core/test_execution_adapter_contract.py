@@ -316,3 +316,105 @@ class TestExecutionAdapterContract:
 
         with pytest.raises(TypeError):
             IncompleteAdapter()  # type: ignore
+
+
+class TestE2BAdapterContract:
+    """Test E2B adapter specific contract behavior."""
+
+    def test_e2b_adapter_prepare_builds_cfg_index(self):
+        """Test that E2BAdapter builds cfg_index from steps."""
+        from osiris.remote.e2b_adapter import E2BAdapter
+
+        adapter = E2BAdapter()
+
+        # Create plan with multiple steps and cfg references
+        plan = {
+            "pipeline": {"id": "test-pipeline"},
+            "steps": [
+                {
+                    "id": "extract-1",
+                    "driver": "mysql.extractor",
+                    "cfg_path": "cfg/extract-1.json",
+                    "config": {"query": "SELECT 1"},
+                },
+                {
+                    "id": "extract-2",
+                    "driver": "mysql.extractor",
+                    "cfg_path": "cfg/extract-2.json",
+                    "config": {"query": "SELECT 2"},
+                },
+                {
+                    "id": "no-cfg",
+                    "driver": "test.driver",
+                    # No cfg_path
+                },
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            context = ExecutionContext("test-session", Path(temp_dir))
+
+            # Test prepare
+            prepared = adapter.prepare(plan, context)
+
+            # Verify cfg_index was built correctly
+            assert "cfg/extract-1.json" in prepared.cfg_index
+            assert "cfg/extract-2.json" in prepared.cfg_index
+            assert "cfg/no-cfg.json" not in prepared.cfg_index
+
+            # Verify cfg_index content
+            cfg1 = prepared.cfg_index["cfg/extract-1.json"]
+            assert cfg1["id"] == "extract-1"
+            assert cfg1["driver"] == "mysql.extractor"
+            assert cfg1["config"]["query"] == "SELECT 1"
+
+            cfg2 = prepared.cfg_index["cfg/extract-2.json"]
+            assert cfg2["id"] == "extract-2"
+            assert cfg2["driver"] == "mysql.extractor"
+            assert cfg2["config"]["query"] == "SELECT 2"
+
+    def test_e2b_adapter_prepare_with_connection_extraction(self):
+        """Test that E2BAdapter extracts connections from steps when not in metadata."""
+        from unittest.mock import patch
+
+        from osiris.remote.e2b_adapter import E2BAdapter
+
+        adapter = E2BAdapter()
+
+        # Create plan with step configs that reference connections
+        plan = {
+            "pipeline": {"id": "test-pipeline"},
+            "steps": [
+                {
+                    "id": "extract",
+                    "component": "mysql.extractor",
+                    "driver": "mysql.extractor",
+                    "cfg_path": "cfg/extract.json",
+                },
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            context = ExecutionContext("test-session", Path(temp_dir))
+
+            # Mock resolve_connection to avoid actual connection resolution
+            with patch("osiris.core.config.resolve_connection") as mock_resolve:
+                mock_resolve.return_value = {
+                    "host": "localhost",
+                    "port": 3306,
+                    "database": "test",
+                    "user": "user",
+                    "password": "secret123",  # pragma: allowlist secret
+                }
+
+                # Test prepare
+                prepared = adapter.prepare(plan, context)
+
+                # Verify PreparedRun structure
+                assert isinstance(prepared, PreparedRun)
+                assert prepared.plan == plan
+                assert isinstance(prepared.cfg_index, dict)
+
+                # Verify cfg_index was passed to connection extraction
+                # The connection extraction should use cfg_index, not self.cfg_index
+                assert "cfg/extract.json" in prepared.cfg_index

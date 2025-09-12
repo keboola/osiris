@@ -56,12 +56,12 @@ class TestLocalCfgMaterialization:
                 "metadata": {"source_manifest_path": str(compiled_dir / "manifest.yaml")},
             }
 
-            # Create run session
-            run_dir = base_dir / "run_456"
-            run_dir.mkdir(parents=True)
-
             # Create execution context
-            context = ExecutionContext("run_456", run_dir)
+            context = ExecutionContext("run_456", base_dir)
+
+            # The actual run_dir is created by ExecutionContext
+            run_dir = context.logs_dir  # This will be base_dir / "logs" / "run_456"
+            run_dir.mkdir(parents=True, exist_ok=True)
 
             # Execute prepare phase
             adapter = LocalAdapter()
@@ -73,12 +73,12 @@ class TestLocalCfgMaterialization:
                 mock_runner.run.return_value = True
                 MockRunner.return_value = mock_runner
 
-                import contextlib
-
-                with contextlib.suppress(Exception):
-                    adapter.execute(
-                        prepared, context
-                    )  # May fail after materialization due to mocking
+                try:
+                    adapter.execute(prepared, context)
+                except Exception as e:
+                    # Cfg materialization should happen before runner execution
+                    # So we can ignore runner-related errors
+                    print(f"Expected error after materialization: {e}")
 
             # Verify cfg files were materialized
             run_cfg_dir = run_dir / "cfg"
@@ -114,12 +114,10 @@ class TestLocalCfgMaterialization:
                 "metadata": {"source_manifest_path": str(compiled_dir / "manifest.yaml")},
             }
 
-            # Create run session
-            run_dir = base_dir / "run_456"
-            run_dir.mkdir(parents=True)
-
             # Create execution context
-            context = ExecutionContext("run_456", run_dir)
+            context = ExecutionContext("run_456", base_dir)
+            run_dir = context.logs_dir
+            run_dir.mkdir(parents=True, exist_ok=True)
 
             # Execute prepare phase
             adapter = LocalAdapter()
@@ -151,12 +149,10 @@ class TestLocalCfgMaterialization:
                 # No metadata with source path
             }
 
-            # Create run session
-            run_dir = base_dir / "run_456"
-            run_dir.mkdir(parents=True)
-
             # Create execution context
-            context = ExecutionContext("run_456", run_dir)
+            context = ExecutionContext("run_456", base_dir)
+            run_dir = context.logs_dir
+            run_dir.mkdir(parents=True, exist_ok=True)
 
             # Execute prepare phase
             adapter = LocalAdapter()

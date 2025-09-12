@@ -1,0 +1,11 @@
+{
+  "mode": "extract",
+  "query": "SELECT * FROM reviews",
+  "resolved_connection": {
+    "host": "test-api-to-mysql.cjtmwuzxk8bh.us-east-1.rds.amazonaws.com",
+    "port": 3306,
+    "database": "padak",
+    "user": "admin",
+    "password": "***MASKED***"
+  }
+}

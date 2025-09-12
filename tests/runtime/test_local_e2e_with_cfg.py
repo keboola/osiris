@@ -62,7 +62,7 @@ class TestLocalE2EWithCfg:
             with patch.object(sys, "argv", test_args):
                 # Capture exit to prevent test from exiting
                 with pytest.raises(SystemExit) as exc_info:
-                    run_command()
+                    run_command(test_args)
 
                 # Check exit code - may be non-zero due to missing connections
                 # but cfg materialization should have happened
@@ -139,7 +139,7 @@ class TestNegativeCfgScenarios:
 
             with patch.object(sys, "argv", test_args):
                 with pytest.raises(SystemExit) as exc_info:
-                    run_command()
+                    run_command(test_args)
 
                 # Should exit with error
                 assert exc_info.value.code != 0

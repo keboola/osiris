@@ -91,7 +91,7 @@ class E2BAdapter(ExecutionAdapter):
 
             # If no connections in manifest metadata, extract from step configs
             if not resolved_connections:
-                resolved_connections = self._extract_connections_from_steps(plan)
+                resolved_connections = self._extract_connections_from_steps(plan, cfg_index)
 
             # E2B runtime parameters
             run_params = {
@@ -431,11 +431,17 @@ class E2BAdapter(ExecutionAdapter):
             # Best effort - don't fail collection if tagging fails
             pass  # nosec B110
 
-    def _extract_connections_from_steps(self, plan: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    def _extract_connections_from_steps(
+        self, plan: Dict[str, Any], cfg_index: Dict[str, Any]
+    ) -> Dict[str, Dict[str, Any]]:
         """Extract connection references from step configurations.
 
         This is a fallback when connections aren't in manifest metadata.
         It builds connection descriptors from step configs that reference connections.
+
+        Args:
+            plan: The manifest plan
+            cfg_index: Map of cfg_path to step config
         """
         from ..core.config import resolve_connection
 
@@ -445,8 +451,8 @@ class E2BAdapter(ExecutionAdapter):
         for step in steps:
             # Check step config for connection reference
             cfg_path = step.get("cfg_path")
-            if cfg_path and cfg_path in self.cfg_index:
-                step_config = self.cfg_index[cfg_path]
+            if cfg_path and cfg_path in cfg_index:
+                step_config = cfg_index[cfg_path]
                 connection_ref = step_config.get("connection")
 
                 if connection_ref and connection_ref.startswith("@"):

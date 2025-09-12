@@ -27,8 +27,23 @@ class TestLocalAdapterE2E:
         )
 
     @pytest.fixture
-    def compiled_manifest(self):
-        """Mock compiled manifest for testing."""
+    def compiled_manifest(self, tmp_path):
+        """Mock compiled manifest for testing with source path."""
+        # Create a fake compile directory structure
+        compile_dir = tmp_path / "compile_test"
+        compiled_dir = compile_dir / "compiled"
+        cfg_dir = compiled_dir / "cfg"
+        cfg_dir.mkdir(parents=True)
+
+        # Create cfg files
+        cfg1 = cfg_dir / "extract-actors.json"
+        cfg1.write_text(json.dumps({"query": "SELECT * FROM actors"}))
+
+        cfg2 = cfg_dir / "write-actors-csv.json"
+        cfg2.write_text(json.dumps({"path": "./output/actors.csv"}))
+
+        # Create manifest with source path
+        manifest_path = compiled_dir / "manifest.yaml"
         return {
             "pipeline": {
                 "id": "test-pipeline",
@@ -53,6 +68,7 @@ class TestLocalAdapterE2E:
             "metadata": {
                 "fingerprint": "test-123",
                 "compiled_at": "2025-01-01T00:00:00Z",
+                "source_manifest_path": str(manifest_path),
             },
         }
 

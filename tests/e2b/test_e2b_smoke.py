@@ -115,6 +115,20 @@ class TestE2BSmoke:
             assert prepared.constraints["max_duration_seconds"] == 300
             assert prepared.constraints["max_memory_mb"] == 4096
 
+            # Verify cfg_index was built from steps
+            assert isinstance(prepared.cfg_index, dict)
+            assert "cfg/extract-actors.json" in prepared.cfg_index
+            assert "cfg/write-actors-csv.json" in prepared.cfg_index
+
+            # Verify cfg_index content
+            extract_cfg = prepared.cfg_index["cfg/extract-actors.json"]
+            assert extract_cfg["id"] == "extract-actors"
+            assert extract_cfg["component"] == "mysql.extractor"
+
+            write_cfg = prepared.cfg_index["cfg/write-actors-csv.json"]
+            assert write_cfg["id"] == "write-actors-csv"
+            assert write_cfg["component"] == "filesystem.csv_writer"
+
     @pytest.mark.skipif(not os.getenv("E2B_API_KEY"), reason="E2B_API_KEY not set")
     @pytest.mark.skipif(not os.getenv("E2B_LIVE_TESTS"), reason="E2B_LIVE_TESTS not enabled")
     @patch("osiris.remote.e2b_adapter.E2BClient")
