@@ -5,9 +5,10 @@ ExecutionAdapter contract, ensuring identical behavior while providing
 a stable execution boundary.
 """
 
+import shutil
 import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Set
 
 from ..core.error_taxonomy import ErrorContext
 from ..core.execution_adapter import (
@@ -50,14 +51,20 @@ class LocalAdapter(ExecutionAdapter):
             pipeline_info = plan.get("pipeline", {})
             steps = plan.get("steps", [])
 
-            # Build cfg_index from steps
+            # Build cfg_index from steps and collect cfg paths
             cfg_index = {}
+            cfg_paths: Set[str] = set()
             for step in steps:
                 cfg_path = step.get("cfg_path")
                 if cfg_path:
+                    cfg_paths.add(cfg_path)
                     # Extract step config (without cfg_path itself)
                     step_config = {k: v for k, v in step.items() if k != "cfg_path"}
                     cfg_index[cfg_path] = step_config
+
+            # Store cfg paths for materialization during execute
+            self._cfg_paths_to_materialize = cfg_paths
+            self._source_manifest_path = plan.get("metadata", {}).get("source_manifest_path")
 
             # Setup I/O layout for local execution
             io_layout = {
@@ -133,6 +140,9 @@ class LocalAdapter(ExecutionAdapter):
                 import yaml
 
                 yaml.safe_dump(prepared.plan, f, default_flow_style=False)
+
+            # Materialize cfg files from source to run session
+            self._materialize_cfg_files(prepared, context, manifest_path)
 
             # Create runner with existing implementation
             runner = RunnerV0(
@@ -272,3 +282,83 @@ class LocalAdapter(ExecutionAdapter):
             error_msg = f"Failed to collect local artifacts: {e}"
             log_event("collect_error", adapter="local", error=error_msg)
             raise CollectError(error_msg) from e
+
+    def _materialize_cfg_files(
+        self, prepared: PreparedRun, context: ExecutionContext, manifest_path: Path
+    ) -> None:
+        """Materialize cfg files from source to run session.
+
+        Args:
+            prepared: Prepared execution details
+            context: Execution context
+            manifest_path: Path where manifest was written
+        """
+        # Get cfg paths from prepared run
+        cfg_paths = getattr(self, "_cfg_paths_to_materialize", set())
+        if not cfg_paths:
+            return
+
+        # Determine source location
+        # Try to find compiled cfg location from context or environment
+        source_base = None
+
+        # Option 1: Check if we have source_manifest_path in metadata
+        if self._source_manifest_path:
+            source_base = Path(self._source_manifest_path).parent
+        # Option 2: Check for --last-compile pattern
+        elif "last_compile_dir" in prepared.metadata:
+            source_base = Path(prepared.metadata["last_compile_dir"]) / "compiled"
+        # Option 3: Look for most recent compile session
+        else:
+            # Find most recent compile session
+            logs_parent = context.logs_dir.parent
+            compile_dirs = sorted(
+                [d for d in logs_parent.glob("compile_*") if d.is_dir()],
+                key=lambda x: x.stat().st_mtime,
+                reverse=True,
+            )
+            if compile_dirs:
+                source_base = compile_dirs[0] / "compiled"
+
+        if not source_base or not source_base.exists():
+            raise PrepareError(
+                "Cannot find source location for cfg files. "
+                "Expected compiled manifest directory but found none. "
+                "Ensure compilation was successful before running."
+            )
+
+        # Create cfg directory in run session
+        run_cfg_dir = manifest_path.parent / "cfg"
+        run_cfg_dir.mkdir(parents=True, exist_ok=True)
+
+        # Copy each cfg file
+        missing_cfgs = []
+        for cfg_path in sorted(cfg_paths):
+            source_cfg = source_base / cfg_path
+            if not source_cfg.exists():
+                missing_cfgs.append(str(cfg_path))
+                continue
+
+            # Preserve relative structure
+            dest_cfg = run_cfg_dir / Path(cfg_path).name
+
+            # Read, potentially transform, and write
+            # For now, just copy as-is (no secrets should be in cfg files per ADR-0020)
+            shutil.copy2(source_cfg, dest_cfg)
+
+            log_event(
+                "cfg_materialized",
+                cfg_path=cfg_path,
+                source=str(source_cfg),
+                destination=str(dest_cfg),
+            )
+
+        if missing_cfgs:
+            raise PrepareError(
+                f"Missing configuration files required by manifest:\n"
+                f"{chr(10).join('  - ' + cfg for cfg in missing_cfgs)}\n\n"
+                f"The adapter's prepare() phase materializes cfg files into the run session. "
+                f"Ensure the source cfg exists at compile location or fix the manifest. "
+                f"Searched in: {source_base}/cfg/\n"
+                f"See docs/milestones/m1e-e2b-runner.md (PreparedRun cfg_index)."
+            )

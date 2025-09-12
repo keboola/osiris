@@ -204,6 +204,7 @@ def execute_with_adapter(
     e2b_config: Dict[str, Any],
     context: ExecutionContext,
     use_json: bool = False,  # noqa: ARG001
+    source_manifest_path: Optional[str] = None,
 ) -> tuple[bool, Optional[str]]:
     """Execute pipeline using execution adapters.
 
@@ -228,6 +229,13 @@ def execute_with_adapter(
 
         # Phase 1: Prepare execution
         log_event("adapter_prepare_start", session_id=context.session_id)
+
+        # Pass source manifest location for cfg resolution
+        if source_manifest_path:
+            prepared_metadata = manifest_data.get("metadata", {})
+            prepared_metadata["source_manifest_path"] = source_manifest_path
+            manifest_data["metadata"] = prepared_metadata
+
         prepared = adapter.prepare(manifest_data, context)
         log_event("adapter_prepare_complete", session_id=context.session_id)
 
