@@ -217,21 +217,21 @@ class SessionContext:
             handler.close()
         self._handlers.clear()
 
-    def log_event(self, event: str, **kwargs) -> None:
+    def log_event(self, event_name: str, **kwargs) -> None:
         """Log a structured event to events.jsonl.
 
         Args:
-            event: Event type (cache_hit, cache_miss, run_start, etc.)
+            event_name: Event type (cache_hit, cache_miss, run_start, etc.)
             **kwargs: Additional event data
         """
         # Event filtering: skip if not in allowed events (unless wildcard "*" is used)
-        if "*" not in self.allowed_events and event not in self.allowed_events:
+        if "*" not in self.allowed_events and event_name not in self.allowed_events:
             return
         try:
             event_data = {
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "session": self.session_id,
-                "event": event,
+                "event": event_name,
                 **kwargs,
             }
 
@@ -258,10 +258,10 @@ class SessionContext:
 
         except (OSError, PermissionError) as e:
             # Fallback to stderr if we can't write events
-            print(f"WARNING: Could not write event {event}: {e}", file=sys.stderr)
+            print(f"WARNING: Could not write event {event_name}: {e}", file=sys.stderr)
         except (TypeError, ValueError) as e:
             # JSON serialization error
-            print(f"WARNING: Could not serialize event {event}: {e}", file=sys.stderr)
+            print(f"WARNING: Could not serialize event {event_name}: {e}", file=sys.stderr)
 
     def log_metric(self, metric: str, value: Any, **kwargs) -> None:
         """Log a metric to metrics.jsonl.
@@ -425,10 +425,10 @@ def clear_current_session() -> None:
     _current_session = None
 
 
-def log_event(event: str, **kwargs) -> None:
+def log_event(event_name: str, **kwargs) -> None:
     """Log an event to the current session (if active)."""
     if _current_session:
-        _current_session.log_event(event, **kwargs)
+        _current_session.log_event(event_name, **kwargs)
 
 
 def log_metric(metric: str, value: Any, **kwargs) -> None:

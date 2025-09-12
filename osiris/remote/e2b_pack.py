@@ -236,11 +236,11 @@ class EventLogger:
         self.metrics_file = open("metrics.jsonl", "w")
         self.source = "remote"  # Tag all events as remote
 
-    def log_event(self, event: str, **kwargs):
+    def log_event(self, event_name: str, **kwargs):
         """Log a structured event."""
         event_data = {
             "ts": datetime.utcnow().isoformat() + "Z",
-            "event": event,
+            "event": event_name,
             "source": self.source,  # Add source tag
             **kwargs
         }

@@ -207,7 +207,8 @@ class E2BAdapter(ExecutionAdapter):
                 error_event = self.error_context.handle_error(
                     final_status.stderr, step_id="e2b_execution"
                 )
-                log_event("e2b_error_mapped", **error_event)
+                # Don't unpack error_event as it contains an 'event' key
+                log_event("e2b_error_mapped", error_details=error_event)
 
             log_event(
                 "e2b_execute_complete" if success else "e2b_execute_error",
@@ -246,7 +247,7 @@ class E2BAdapter(ExecutionAdapter):
                 session_id=context.session_id,
                 error=error_msg,
                 duration=duration,
-                **error_event,
+                error_details=error_event,
             )
 
             raise ExecuteError(error_msg) from e

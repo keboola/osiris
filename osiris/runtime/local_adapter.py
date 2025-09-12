@@ -171,7 +171,8 @@ class LocalAdapter(ExecutionAdapter):
                 error_event = self.error_context.handle_error(
                     error_message, step_id=getattr(runner, "last_step_id", None)
                 )
-                log_event("execution_error_mapped", **error_event)
+                # Don't unpack error_event as it contains an 'event' key
+                log_event("execution_error_mapped", error_details=error_event)
 
             log_event(
                 "execute_complete" if success else "execute_error",
