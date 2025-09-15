@@ -71,6 +71,13 @@ class LocalAdapter(ExecutionAdapter):
             self._cfg_paths_to_materialize = cfg_paths
             self._source_manifest_path = plan.get("metadata", {}).get("source_manifest_path")
 
+            # Determine compiled_root for manifest-relative cfg resolution
+            compiled_root = None
+            if self._source_manifest_path:
+                # For --manifest execution, compiled_root is the manifest's parent directory
+                manifest_path = Path(self._source_manifest_path).resolve()
+                compiled_root = str(manifest_path.parent)
+
             # Setup I/O layout for local execution
             io_layout = {
                 "logs_dir": str(context.logs_dir),
@@ -78,9 +85,8 @@ class LocalAdapter(ExecutionAdapter):
                 "manifest_path": str(context.logs_dir / "manifest.yaml"),
             }
 
-            # Local execution uses environment resolution - no secret placeholders needed
-            # Connection resolution will happen at runtime via existing mechanisms
-            resolved_connections = {}
+            # Extract connection descriptors from cfg files for env var detection
+            resolved_connections = self._extract_connection_descriptors(cfg_index)
 
             # Runtime parameters
             run_params = {
@@ -114,6 +120,7 @@ class LocalAdapter(ExecutionAdapter):
                 run_params=run_params,
                 constraints=constraints,
                 metadata=metadata,
+                compiled_root=compiled_root,
             )
 
         except Exception as e:
@@ -146,6 +153,9 @@ class LocalAdapter(ExecutionAdapter):
 
                 yaml.safe_dump(prepared.plan, f, default_flow_style=False)
 
+            # Run preflight validation for cfg files
+            self._preflight_validate_cfg_files(prepared, context)
+
             # Materialize cfg files from source to run session
             self._materialize_cfg_files(prepared, context, manifest_path)
 
@@ -154,9 +164,10 @@ class LocalAdapter(ExecutionAdapter):
                 manifest_path=str(manifest_path), output_dir=str(context.artifacts_dir)
             )
 
-            # If verbose, print starting message
+            # If verbose, print starting message and artifacts base
             if self.verbose:
                 print(f"🚀 Executing pipeline with {len(prepared.plan.get('steps', []))} steps")
+                print(f"📁 Artifacts base: {context.artifacts_dir}")
 
             # Execute pipeline
             success = runner.run()
@@ -223,14 +234,75 @@ class LocalAdapter(ExecutionAdapter):
                 # Don't unpack error_event as it contains an 'event' key
                 log_event("execution_error_mapped", error_details=error_event)
 
+            # Generate status.json for parity with E2B execution
+            steps_total = len(prepared.plan.get("steps", []))
+            steps_completed = len(
+                [e for e in getattr(runner, "events", []) if e.get("type") == "step_complete"]
+            )
+
+            # Check if events.jsonl exists in session logs
+            events_jsonl_exists = False
+            try:
+                import glob
+
+                session_patterns = [
+                    str(context.logs_dir / "run_*" / "events.jsonl"),
+                    str(Path(".") / "logs" / "run_*" / "events.jsonl"),
+                ]
+                for pattern in session_patterns:
+                    if glob.glob(pattern):
+                        events_jsonl_exists = True
+                        break
+            except Exception:
+                pass
+
+            # Generate status.json with four-proof rule
+            status_ok = (
+                success
+                and exit_code == 0
+                and steps_completed == steps_total
+                and events_jsonl_exists
+            )
+
+            status_reason = ""
+            if not status_ok:
+                if not success or exit_code != 0:
+                    status_reason = "execution_failed"
+                elif steps_completed != steps_total:
+                    status_reason = "incomplete_steps"
+                elif not events_jsonl_exists:
+                    status_reason = "missing_events_jsonl"
+                else:
+                    status_reason = "unknown"
+
+            status_data = {
+                "sandbox_id": "local",
+                "exit_code": exit_code,
+                "steps_completed": steps_completed,
+                "steps_total": steps_total,
+                "ok": status_ok,
+                "session_path": "local",
+                "session_copied": True,
+                "events_jsonl_exists": events_jsonl_exists,
+                "reason": status_reason,
+            }
+
+            # Write status.json to logs directory for consistency
+            status_file = context.logs_dir / "status.json"
+            try:
+                import json
+
+                with open(status_file, "w") as f:
+                    json.dump(status_data, f, indent=2)
+            except Exception:
+                pass
+
             log_event(
                 "execute_complete" if success else "execute_error",
                 adapter="local",
                 success=success,
                 duration=duration,
-                steps_executed=len(
-                    [e for e in getattr(runner, "events", []) if e.get("type") == "step_complete"]
-                ),
+                steps_executed=steps_completed,
                 error=error_message if not success else None,
             )
 
@@ -322,6 +394,195 @@ class LocalAdapter(ExecutionAdapter):
             log_event("collect_error", adapter="local", error=error_msg)
             raise CollectError(error_msg) from e
 
+    def _preflight_validate_cfg_files(
+        self, prepared: PreparedRun, context: ExecutionContext
+    ) -> None:
+        """Validate that all required cfg files exist before execution.
+
+        Args:
+            prepared: Prepared execution details
+            context: Execution context
+
+        Raises:
+            ExecuteError: If any required cfg files are missing
+        """
+        import logging
+        import os
+
+        # Get cfg paths from prepared run
+        cfg_paths = getattr(self, "_cfg_paths_to_materialize", set())
+        if not cfg_paths:
+            return
+
+        # Determine source location using same logic as _materialize_cfg_files
+        source_base = None
+
+        # For --manifest execution: use cleaner resolution without legacy session hunting
+        if prepared.compiled_root:
+            # Option 1: Use PreparedRun.compiled_root (set from --manifest)
+            source_base = Path(prepared.compiled_root)
+        else:
+            # Option 2: OSIRIS_COMPILED_ROOT environment variable
+            compiled_root_env = os.environ.get("OSIRIS_COMPILED_ROOT")
+            if compiled_root_env:
+                potential_base = Path(compiled_root_env)
+                if potential_base.exists():
+                    source_base = potential_base
+
+        # Option 3: Fallback to legacy session hunting (for --last-compile compatibility)
+        if not source_base:
+            # Check if we have source_manifest_path in metadata
+            if self._source_manifest_path:
+                source_base = Path(self._source_manifest_path).parent
+            # Check for --last-compile pattern
+            elif "last_compile_dir" in prepared.metadata:
+                source_base = Path(prepared.metadata["last_compile_dir"]) / "compiled"
+            # Look for most recent compile session
+            else:
+                # Find most recent compile session
+                logs_parent = context.logs_dir.parent
+                compile_dirs = sorted(
+                    [d for d in logs_parent.glob("compile_*") if d.is_dir()],
+                    key=lambda x: x.stat().st_mtime,
+                    reverse=True,
+                )
+                if compile_dirs:
+                    source_base = compile_dirs[0] / "compiled"
+
+        if not source_base or not source_base.exists():
+            error_msg = "Cannot find source location for cfg files during preflight validation"
+
+            # Log to both osiris.log and events.jsonl
+            logger = logging.getLogger("osiris.runtime.local_adapter")
+            logger.error(error_msg)
+            log_event(
+                "preflight_validation_error",
+                adapter="local",
+                error=error_msg,
+                session_id=context.session_id,
+            )
+
+            raise ExecuteError(error_msg)
+
+        # Check each cfg file exists
+        missing_cfgs = []
+        for cfg_path in sorted(cfg_paths):
+            source_cfg_found = False
+
+            # Try same resolution order as _materialize_cfg_files
+            if (
+                (source_base / cfg_path).exists()
+                or (source_base / "compiled" / cfg_path).exists()
+                or (source_base / "cfg" / Path(cfg_path).name).exists()
+            ):
+                source_cfg_found = True
+
+            if not source_cfg_found:
+                missing_cfgs.append(str(cfg_path))
+
+        if missing_cfgs:
+            error_msg = (
+                f"Preflight validation failed: Missing required cfg files:\\n"
+                f"{chr(10).join('  - ' + cfg for cfg in missing_cfgs)}\\n\\n"
+                f"Source directory: {source_base}"
+            )
+
+            # Log to both osiris.log and events.jsonl
+            logger = logging.getLogger("osiris.runtime.local_adapter")
+            logger.error(error_msg)
+            log_event(
+                "preflight_validation_error",
+                adapter="local",
+                error=error_msg,
+                missing_cfgs=missing_cfgs,
+                source_base=str(source_base),
+                session_id=context.session_id,
+            )
+
+            raise ExecuteError(error_msg)
+
+        # Log successful validation
+        log_event(
+            "preflight_validation_success",
+            adapter="local",
+            cfg_files_count=len(cfg_paths),
+            source_base=str(source_base),
+            session_id=context.session_id,
+        )
+
+    def _extract_connection_descriptors(
+        self, cfg_index: Dict[str, Dict[str, Any]]
+    ) -> Dict[str, Dict[str, Any]]:
+        """Extract connection descriptors from cfg files.
+
+        Args:
+            cfg_index: Map of cfg paths to configurations
+
+        Returns:
+            Map of connection IDs to connection configurations with env var placeholders
+        """
+        import yaml
+
+        connection_refs = set()
+
+        # Find all connection references in cfg files
+        for _cfg_path, config in cfg_index.items():
+            connection = config.get("connection")
+            if connection and connection.startswith("@"):
+                connection_refs.add(connection)
+
+        if not connection_refs:
+            return {}
+
+        # Load connection configurations
+        try:
+            connections_file = Path("osiris_connections.yaml")
+            if not connections_file.exists():
+                # Try in current directory or parent directories
+                for parent in [Path("."), Path("..")]:
+                    candidate = parent / "osiris_connections.yaml"
+                    if candidate.exists():
+                        connections_file = candidate
+                        break
+
+            if not connections_file.exists():
+                log_event(
+                    "connection_config_not_found",
+                    adapter="local",
+                    message="osiris_connections.yaml not found, env var detection may be incomplete",
+                )
+                return {}
+
+            with open(connections_file) as f:
+                connections_config = yaml.safe_load(f)
+
+            resolved_connections = {}
+
+            # Resolve each connection reference
+            for connection_ref in connection_refs:
+                # Parse @family.alias format
+                if not connection_ref.startswith("@"):
+                    continue
+
+                parts = connection_ref[1:].split(".", 1)  # Remove @ prefix and split
+                if len(parts) != 2:
+                    continue
+
+                family, alias = parts
+                connection_config = (
+                    connections_config.get("connections", {}).get(family, {}).get(alias)
+                )
+
+                if connection_config:
+                    # Store with the full reference as key
+                    resolved_connections[connection_ref] = connection_config.copy()
+
+            return resolved_connections
+
+        except Exception as e:
+            log_event("connection_resolution_error", adapter="local", error=str(e))
+            return {}
+
     def _materialize_cfg_files(
         self, prepared: PreparedRun, context: ExecutionContext, manifest_path: Path
     ) -> None:
@@ -332,32 +593,47 @@ class LocalAdapter(ExecutionAdapter):
             context: Execution context
             manifest_path: Path where manifest was written
         """
+        import os
+
         # Get cfg paths from prepared run
         cfg_paths = getattr(self, "_cfg_paths_to_materialize", set())
         if not cfg_paths:
             return
 
-        # Determine source location
-        # Try to find compiled cfg location from context or environment
+        # Determine source location with clean manifest-relative resolution
         source_base = None
 
-        # Option 1: Check if we have source_manifest_path in metadata
-        if self._source_manifest_path:
-            source_base = Path(self._source_manifest_path).parent
-        # Option 2: Check for --last-compile pattern
-        elif "last_compile_dir" in prepared.metadata:
-            source_base = Path(prepared.metadata["last_compile_dir"]) / "compiled"
-        # Option 3: Look for most recent compile session
+        # For --manifest execution: use cleaner resolution without legacy session hunting
+        if prepared.compiled_root:
+            # Option 1: Use PreparedRun.compiled_root (set from --manifest)
+            source_base = Path(prepared.compiled_root)
         else:
-            # Find most recent compile session
-            logs_parent = context.logs_dir.parent
-            compile_dirs = sorted(
-                [d for d in logs_parent.glob("compile_*") if d.is_dir()],
-                key=lambda x: x.stat().st_mtime,
-                reverse=True,
-            )
-            if compile_dirs:
-                source_base = compile_dirs[0] / "compiled"
+            # Option 2: OSIRIS_COMPILED_ROOT environment variable
+            compiled_root_env = os.environ.get("OSIRIS_COMPILED_ROOT")
+            if compiled_root_env:
+                potential_base = Path(compiled_root_env)
+                if potential_base.exists():
+                    source_base = potential_base
+
+        # Option 3: Fallback to legacy session hunting (for --last-compile compatibility)
+        if not source_base:
+            # Check if we have source_manifest_path in metadata
+            if self._source_manifest_path:
+                source_base = Path(self._source_manifest_path).parent
+            # Check for --last-compile pattern
+            elif "last_compile_dir" in prepared.metadata:
+                source_base = Path(prepared.metadata["last_compile_dir"]) / "compiled"
+            # Look for most recent compile session
+            else:
+                # Find most recent compile session
+                logs_parent = context.logs_dir.parent
+                compile_dirs = sorted(
+                    [d for d in logs_parent.glob("compile_*") if d.is_dir()],
+                    key=lambda x: x.stat().st_mtime,
+                    reverse=True,
+                )
+                if compile_dirs:
+                    source_base = compile_dirs[0] / "compiled"
 
         if not source_base or not source_base.exists():
             raise PrepareError(
@@ -370,11 +646,23 @@ class LocalAdapter(ExecutionAdapter):
         run_cfg_dir = manifest_path.parent / "cfg"
         run_cfg_dir.mkdir(parents=True, exist_ok=True)
 
-        # Copy each cfg file
+        # Copy each cfg file using clean resolution order
         missing_cfgs = []
         for cfg_path in sorted(cfg_paths):
-            source_cfg = source_base / cfg_path
-            if not source_cfg.exists():
+            source_cfg = None
+
+            # Try resolution order as specified:
+            # 1. compiled_root / rel_path
+            if (source_base / cfg_path).exists():
+                source_cfg = source_base / cfg_path
+            # 2. Legacy fallback patterns for compatibility
+            elif (source_base / "compiled" / cfg_path).exists():
+                source_cfg = source_base / "compiled" / cfg_path
+            # 3. Direct cfg directory (for some legacy structures)
+            elif (source_base / "cfg" / Path(cfg_path).name).exists():
+                source_cfg = source_base / "cfg" / Path(cfg_path).name
+
+            if not source_cfg:
                 missing_cfgs.append(str(cfg_path))
                 continue
 

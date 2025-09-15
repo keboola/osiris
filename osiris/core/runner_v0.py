@@ -21,14 +21,28 @@ logger = logging.getLogger(__name__)
 class RunnerV0:
     """Minimal sequential runner for linear pipelines."""
 
-    def __init__(self, manifest_path: str, output_dir: str = "_artifacts"):
+    def __init__(self, manifest_path: str, output_dir: str):
+        """Initialize runner with required session-scoped output directory.
+
+        Args:
+            manifest_path: Path to the manifest file
+            output_dir: Required session-scoped artifacts directory (e.g., logs/run_<id>/artifacts)
+        """
         self.manifest_path = Path(manifest_path)
         self.output_dir = Path(output_dir)
+
+        # Ensure output_dir is absolute to avoid CWD issues
+        if not self.output_dir.is_absolute():
+            self.output_dir = Path.cwd() / self.output_dir
+
         self.manifest = None
         self.components = {}
         self.events = []
         self.results = {}  # Step results cache
         self.driver_registry = self._build_driver_registry()
+
+        # Log artifact base for debugging
+        logger.debug(f"Artifacts base directory: {self.output_dir}")
 
     def _build_driver_registry(self) -> DriverRegistry:
         """Build and populate the driver registry from component specs."""
@@ -228,6 +242,14 @@ class RunnerV0:
             step_output_dir = self.output_dir / step_id
             step_output_dir.mkdir(parents=True, exist_ok=True)
 
+            # Log artifact directory creation (verbose)
+            logger.debug(f"Created artifacts directory for step {step_id}: {step_output_dir}")
+            log_event(
+                "artifacts_dir_created",
+                step_id=step_id,
+                path=str(step_output_dir),
+            )
+
             # Resolve config path relative to manifest
             if not Path(cfg_path).is_absolute():
                 cfg_full_path = self.manifest_path.parent / cfg_path
@@ -278,8 +300,17 @@ class RunnerV0:
                     artifact_config["resolved_connection"] = conn
                 json.dump(artifact_config, f, indent=2)
 
+            # Log artifact creation
+            logger.debug(f"Created artifact: {cleaned_config_path}")
+            log_event(
+                "artifact_created",
+                step_id=step_id,
+                artifact_type="cleaned_config",
+                path=str(cleaned_config_path),
+            )
+
             # Execute using driver registry with cleaned config
-            success = self._run_with_driver(step, clean_config, step_output_dir)
+            success, error_message = self._run_with_driver(step, clean_config, step_output_dir)
 
             # Calculate step duration
             duration = time.time() - start_time
@@ -297,7 +328,13 @@ class RunnerV0:
                 )
             else:
                 self._log_event(
-                    "step_error", {"step_id": step_id, "driver": driver, "duration": duration}
+                    "step_error",
+                    {
+                        "step_id": step_id,
+                        "driver": driver,
+                        "duration": duration,
+                        "error": error_message or "Driver execution failed",
+                    },
                 )
 
             return success
@@ -310,13 +347,18 @@ class RunnerV0:
             self._log_event("step_error", {"step_id": step_id, "error": str(e)})
             return False
 
-    def _run_with_driver(self, step: Dict[str, Any], config: Dict, output_dir: Path) -> bool:
+    def _run_with_driver(
+        self, step: Dict[str, Any], config: Dict, output_dir: Path
+    ) -> tuple[bool, Optional[str]]:
         """Run a step using the driver registry.
 
         Args:
             step: Step definition from manifest
             config: Step configuration (with resolved_connection if applicable)
             output_dir: Output directory for step
+
+        Returns:
+            Tuple of (success, error_message)
         """
         step_id = step["id"]
         driver_name = step.get("driver") or step.get("component", "unknown")
@@ -354,15 +396,18 @@ class RunnerV0:
             if result and "df" in result:
                 self.results[step_id] = result
 
-            return True
+            return True, None
 
         except ValueError as e:
             # Driver not found or other value errors
-            logger.error(f"Step {step_id} failed: {str(e)}")
-            return False
+            error_msg = f"Driver error: {str(e)}"
+            logger.error(f"Step {step_id} failed: {error_msg}")
+            return False, error_msg
         except Exception as e:
-            logger.error(f"Step {step_id} execution failed: {str(e)}")
-            return False
+            # Runtime execution errors (including MySQL connection failures)
+            error_msg = f"Execution failed: {str(e)}"
+            logger.error(f"Step {step_id} execution failed: {error_msg}")
+            return False, error_msg
 
     def _run_component(
         self, driver: str, config: Dict, output_dir: Path, connection: Optional[Dict] = None

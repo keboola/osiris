@@ -1,8 +1,0 @@
-{
-  "delimiter": ",",
-  "encoding": "utf-8",
-  "header": true,
-  "mode": "write",
-  "newline": "lf",
-  "path": "./output/directors.csv"
-}

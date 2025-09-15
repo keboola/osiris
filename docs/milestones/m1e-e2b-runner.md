@@ -1,7 +1,7 @@
 # Milestone M1e – E2B Remote Runner
 
-**Status:** Planned  
-**Implementation Status:** Adapter contract and LocalAdapter merged; E2BAdapter skeleton wired; parity harness planned next.  
+**Status:** In Progress  
+**Implementation Status:** Adapter contract and LocalAdapter merged; E2BAdapter pivoted to full CLI execution (removed mini_runner).  
 **Owner:** Osiris Core Team  
 **Depends on:** M1d (Logs & CLI Unification), ADR-0010 (E2B Integration), ADR-0020 (Connection Resolution)  
 **Deliverable:** Functional E2B remote runner with unified logging and secrets management
@@ -33,7 +33,8 @@ To guarantee that E2B behaves **identically** to local runs and to prevent drift
 - **LocalAdapter** – current local runner implementation (reference backend)
 - **E2BAdapter** – sandbox backend using the same plan/driver contracts
   - Packager reuses `PreparedRun` from the adapter boundary (no bespoke manifest mutation)
-  - Mini runner deserializes the **resolved connections** produced by the compiler/runtime (do not rebuild DSNs from env); secrets are injected via env only where required by the driver and **never serialized**
+  - **Full CLI execution**: Runs complete Osiris CLI inside sandbox (no mini_runner) ensuring identical execution paths
+  - Secrets are injected via env vars at sandbox startup and **never serialized** in payloads
   - Event names, fields, and error mapping mirror LocalAdapter one-to-one
 
 ### PreparedRun Data Structure
@@ -55,9 +56,9 @@ The `PreparedRun` represents all inputs required for deterministic execution, wi
 - Adapters differ only in transport/execution mechanics, never in semantics.
 
 **Driver & Connection rules**
-- Drivers are always loaded through the existing **DriverRegistry**.
-- Connections are resolved **before** hand-off to the adapter; E2B receives a payload with **resolved_connection descriptors** (minus secret values).
-- Secret values are supplied to the sandbox exclusively via env vars at startup; runner reads them and binds into the resolved descriptors at runtime.
+- Drivers are always loaded through the existing **DriverRegistry** (both local and E2B use same code).
+- Full CLI in sandbox uses standard osiris_connections.yaml with env var substitution.
+- Secret values are supplied to the sandbox exclusively via env vars at startup; CLI resolves them normally at runtime.
 
 **Artifact & Logging parity**
 - Artifacts layout inside `logs/<session>/remote/` mirrors local: `events.jsonl`, `metrics.jsonl`, `osiris.log`, `artifacts/…`
@@ -66,17 +67,18 @@ The `PreparedRun` represents all inputs required for deterministic execution, wi
 **Error model**
 - Map remote failures to the same error codes/reasons used locally (e.g., `extract.connection_error`, `write.schema_mismatch`); add a `source: "remote"` tag.
 
-### 1. E2B Payload Packer
-- **E2B payload assembly**: Include manifest + all referenced `cfg/*.json` files
-- **Validation**: Fail fast if any `cfg/*.json` referenced in manifest is missing
-- **Compression**: Create optimized payload for E2B upload (tar.gz or similar)
-- **Metadata**: Include session metadata and execution context
+### 1. Full Source Payload Packer
+- **Full Osiris source**: Include complete Osiris package, pyproject.toml, and all dependencies
+- **Compiled artifacts**: Include manifest.yaml and all referenced `cfg/*.json` files  
+- **Run script**: Shell script entrypoint that installs deps and runs `osiris run manifest.yaml`
+- **Compression**: Create optimized payload.tgz for E2B upload
+- **Validation**: Fail fast if any required files are missing
 
-### 2. Functional mini_runner.py
-- **Architecture compliance**: Use resolved connections + drivers from registry (not ad-hoc env parsing). Mini runner must deserialize the resolved-connection descriptors produced by Osiris and bind in secret values from env at runtime; it must not reconstruct DSNs ad-hoc.
-- **Driver integration**: Load drivers from `DriverRegistry` same as local runner
-- **Connection resolution**: Respect `osiris_connections.yaml` format and environment variable substitution
-- **Error handling**: Proper error propagation back to local Osiris instance
+### 2. Full CLI Execution in Sandbox
+- **Architecture**: Run exact same `osiris.cli.main` as local execution (no code duplication)
+- **Dependencies**: Install via pip in sandbox before execution
+- **Connection resolution**: Standard osiris_connections.yaml with env var substitution
+- **Error handling**: Normal CLI error propagation, captured by E2B adapter
 
 ### 3. Golden Path Pipeline Execution
 - **Target pipeline**: MySQL extractor → CSV writer (filesystem.csv_writer)
@@ -106,9 +108,9 @@ The `PreparedRun` represents all inputs required for deterministic execution, wi
 
 ### Core Components
 - **Execution Adapter** (`osiris/core/execution_adapter.py`) – shared contract and two backends: LocalAdapter and E2BAdapter
-- **E2B Payload Packer** (`osiris/remote/e2b_pack.py`) - Assembles complete execution payload
-- **Mini Runner** (`osiris/remote/mini_runner.py`) - Lightweight runner for E2B sandbox
-- **E2B Integration** (`osiris/remote/e2b_integration.py`) - API client and orchestration
+- **Full Source Packer** (`osiris/remote/e2b_full_pack.py`) - Builds complete Osiris source payload for sandbox
+- **E2B Client** (`osiris/remote/e2b_client.py`) - E2B Code Interpreter SDK wrapper
+- **E2B Adapter** (`osiris/remote/e2b_adapter.py`) - ExecutionAdapter implementation for E2B
 - **CLI Support** (`osiris/cli/run.py`) - Add `--e2b` flag and remote execution logic
 
 ### Logging & Session Management
@@ -184,8 +186,37 @@ The `PreparedRun` represents all inputs required for deterministic execution, wi
 ## Notes
 
 - This milestone formally closes the gap after M1d and establishes E2B as a first-class execution environment
-- The current prototype branch `feature/e2b-run-v1` will be closed as experimental after M1e implementation
+- **Architectural Pivot**: Removed mini_runner approach in favor of full CLI execution in sandbox for true parity
 - E2B integration builds on the solid foundation established in M1c (driver registry) and M1d (unified logging)
 - Focus is on getting the "happy path" working reliably rather than handling edge cases
 - Success criteria emphasize end-to-end functionality over performance optimization
 - See README.md section "Running in E2B" for user instructions
+
+## Implementation History
+
+### Initial Approach (Abandoned)
+- Originally implemented mini_runner.py as lightweight execution engine
+- Discovered connection resolution mismatches between mini_runner and main CLI
+- Mini_runner introduced maintenance burden and semantic drift risk
+
+### Current Approach (Full CLI)
+- Execute complete Osiris CLI inside E2B sandbox
+- Guarantees identical execution paths between local and remote
+- Eliminates code duplication and maintenance burden
+- Simplifies connection resolution by using standard mechanisms
+
+### Session Log Transfer (Completed)
+- **Deterministic session paths**: Set `OSIRIS_LOGS_DIR="$PWD/logs"` in run.sh for predictable location
+- **Full session copy**: Use `cp -a` to preserve timestamps when copying to `remote/session/`
+- **Comprehensive status.json**: Include file sizes, counts, and existence checks for validation
+- **Four-proof validation**: Exit code, steps completion, session copy, and events.jsonl existence
+- **Recursive download**: E2B adapter downloads entire `remote/` directory including nested session logs
+- **EntryInfo parsing**: Handle E2B SDK's EntryInfo objects by parsing name from string representation
+- **Zero data loss**: Complete session artifacts transferred back to host for analysis
+
+### Benign Warning Classification (Completed)
+- **Stderr classification**: Categorize output into ERROR/WARNING/INFO severities using regex patterns
+- **Smart display logic**: Show "Warnings from sandbox" for benign warnings, reserve "Errors detected" for real failures
+- **Enhanced status.json**: Add `warnings_count` and `errors_count` fields for better observability
+- **Common patterns**: Handle RuntimeWarning, DeprecationWarning, UserWarning, and other Python warnings
+- **Traceback detection**: Properly identify Python exceptions and stack traces as errors

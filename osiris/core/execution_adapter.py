@@ -44,6 +44,10 @@ class PreparedRun:
     # Execution metadata
     metadata: Dict[str, Any]
 
+    # Source directory for compiled assets (manifest, cfg files)
+    # Used for manifest-relative cfg resolution
+    compiled_root: Optional[str] = None
+
 
 @dataclass
 class ExecResult:
@@ -90,12 +94,16 @@ class ExecutionContext:
     @property
     def logs_dir(self) -> Path:
         """Directory for execution logs."""
+        # If base_path is already a session directory, use it directly
+        if self.base_path.name.startswith("run_") or self.base_path.name.startswith("compile_"):
+            return self.base_path
+        # Otherwise, create session subdirectory (legacy compatibility)
         return self.base_path / "logs" / self.session_id
 
     @property
     def artifacts_dir(self) -> Path:
         """Directory for execution artifacts."""
-        return self.base_path / "artifacts"
+        return self.logs_dir / "artifacts"
 
 
 class ExecutionAdapter(ABC):

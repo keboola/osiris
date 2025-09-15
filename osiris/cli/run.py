@@ -539,8 +539,8 @@ def run_command(args: List[str]):
         with open(manifest_path) as f:
             manifest_data = yaml.safe_load(f)
 
-        # Create execution context
-        exec_context = ExecutionContext(session_id=session_id, base_path=Path("."))
+        # Create execution context with session directory as base
+        exec_context = ExecutionContext(session_id=session_id, base_path=session.session_dir)
 
         # Prepare E2B config for adapter
         adapter_e2b_config = {}

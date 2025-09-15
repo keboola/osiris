@@ -263,10 +263,32 @@ def read_session_logs(logs_dir: str, session_id: str) -> Dict[str, Any]:
                 except json.JSONDecodeError:
                     continue
 
+    # For E2B runs, merge remote session events
+    remote_events_file = session_path / "remote" / "session" / "events.jsonl"
+    if remote_events_file.exists():
+        with open(remote_events_file) as f:
+            for line in f:
+                try:
+                    event = json.loads(line.strip())
+                    # Add remote events (they contain the actual step execution)
+                    result["events"].append(event)
+                except json.JSONDecodeError:
+                    continue
+
     # Read metrics
     metrics_file = session_path / "metrics.jsonl"
     if metrics_file.exists():
         with open(metrics_file) as f:
+            for line in f:
+                try:
+                    result["metrics"].append(json.loads(line.strip()))
+                except json.JSONDecodeError:
+                    continue
+
+    # For E2B runs, merge remote session metrics
+    remote_metrics_file = session_path / "remote" / "session" / "metrics.jsonl"
+    if remote_metrics_file.exists():
+        with open(remote_metrics_file) as f:
             for line in f:
                 try:
                     result["metrics"].append(json.loads(line.strip()))
@@ -410,7 +432,7 @@ def generate_html_report(
         (session_dir / "index.html").write_text(session_html)
 
 
-def generate_overview_page(sessions, logs_dir: str) -> str:
+def generate_overview_page(sessions, logs_dir: str) -> str:  # noqa: ARG001
     """Generate the overview HTML page that lists all sessions."""
     # Group sessions by type
     session_groups = {"run": [], "compile": [], "connections": [], "ephemeral": [], "other": []}
@@ -701,11 +723,11 @@ def generate_overview_page(sessions, logs_dir: str) -> str:
 
             # Check if this session used E2B remote execution
             e2b_badge = ""
-            if is_e2b_session(logs_dir, session.session_id):
+            if hasattr(session, "adapter_type") and session.adapter_type == "E2B":
                 e2b_badge = '<span class="e2b-badge">E2B</span>'
 
-            # Get pipeline name
-            pipeline_name = get_pipeline_name(logs_dir, session.session_id) or ""
+            # Get pipeline name from SessionReader (already extracted)
+            pipeline_name = session.pipeline_name or ""
 
             # Get row count
             rows = session.rows_out if session.rows_out else 0
@@ -2102,7 +2124,7 @@ def generate_session_detail_page(session, session_logs) -> str:
     <div class="tabs">
         <div class="tab active" onclick="showTab('events')">Events ({len(events)})</div>
         <div class="tab" onclick="showTab('metrics')">Metrics ({len(metrics)})</div>
-        <div class="tab" onclick="showTab('artifacts')">Artifacts ({len(artifacts)})</div>
+        <div class="tab" onclick="showTab('artifacts')">Artifacts ({session.artifacts_count if hasattr(session, 'artifacts_count') and session.artifacts_count else len(artifacts)})</div>
         <div class="tab" onclick="showTab('logs')">Technical Logs</div>
         <div class="tab" onclick="showTab('metadata')">Metadata</div>
         <div class="tab" onclick="showTab('pipeline')">Pipeline Steps</div>
