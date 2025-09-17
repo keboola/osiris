@@ -1,0 +1,6 @@
+charge_id,customer_email,amount,currency,created_at,status
+ch_1001,john.doe@example.com,99.99,USD,2024-01-15,succeeded
+ch_1002,jane.smith@example.com,149.99,USD,2024-01-20,succeeded
+ch_1003,bob.wilson@example.com,79.99,USD,2024-02-10,succeeded
+ch_1004,alice.johnson@example.com,199.99,USD,2024-02-15,succeeded
+ch_1005,charlie.brown@example.com,59.99,USD,2024-03-01,failed

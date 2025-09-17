@@ -1,0 +1,22 @@
+{"ts": "2025-09-17T15:46:42.800744", "run_id": "29b1e5bb1f87", "step": "intro", "level": "info", "code": "init_complete", "message": "System initialization complete"}
+{"ts": "2025-09-17T15:46:45.537782", "run_id": "29b1e5bb1f87", "step": "clarify", "level": "info", "code": "goals_captured", "message": "Requirements captured successfully"}
+{"ts": "2025-09-17T15:46:57.859084", "run_id": "29b1e5bb1f87", "step": "propose_plan", "level": "info", "code": "plan_approved", "message": "Execution plan approved"}
+{"ts": "2025-09-17T15:46:59.277663", "run_id": "29b1e5bb1f87", "step": "connection_check", "level": "warn", "code": "missing_connector", "message": "Missing connector: shopify.extractor"}
+{"ts": "2025-09-17T15:47:03.903974", "run_id": "29b1e5bb1f87", "step": "build_connector", "level": "info", "code": "registration_complete", "message": "Shopify connector built and registered"}
+{"ts": "2025-09-17T15:47:06.932778", "run_id": "29b1e5bb1f87", "step": "discovery", "level": "info", "code": "sample_preview", "message": "Discovery complete", "metrics": {"total_rows": 2807000}}
+{"ts": "2025-09-17T15:47:09.443602", "run_id": "29b1e5bb1f87", "step": "ir", "level": "info", "code": "merge", "message": "Identity resolution complete", "metrics": {"total_records": 2807000, "unique_identities": 185000, "merged_nodes": 156000, "orphans": 29000, "merge_rate": 0.84}}
+{"ts": "2025-09-17T15:47:14.463885", "run_id": "29b1e5bb1f87", "step": "feature", "level": "info", "code": "lab", "message": "Feature engineering complete", "metrics": {"features_created": 12, "rows_processed": 185000}}
+{"ts": "2025-09-17T15:47:18.210928", "run_id": "29b1e5bb1f87", "step": "intro", "level": "info", "code": "init_complete", "message": "System initialization complete"}
+{"ts": "2025-09-17T15:47:20.934458", "run_id": "29b1e5bb1f87", "step": "clarify", "level": "info", "code": "goals_captured", "message": "Requirements captured successfully"}
+{"ts": "2025-09-17T15:50:49.527774", "run_id": "29b1e5bb1f87", "step": "intro", "level": "info", "code": "init_complete", "message": "System initialization complete"}
+{"ts": "2025-09-17T15:50:52.263635", "run_id": "29b1e5bb1f87", "step": "clarify", "level": "info", "code": "goals_captured", "message": "Requirements captured successfully"}
+{"ts": "2025-09-17T15:50:54.771618", "run_id": "29b1e5bb1f87", "step": "propose_plan", "level": "info", "code": "plan_approved", "message": "Execution plan approved"}
+{"ts": "2025-09-17T15:51:00.813323", "run_id": "29b1e5bb1f87", "step": "build_connector", "level": "info", "code": "registration_complete", "message": "Shopify connector built and registered"}
+{"ts": "2025-09-17T15:51:03.844087", "run_id": "29b1e5bb1f87", "step": "discovery", "level": "info", "code": "sample_preview", "message": "Discovery complete", "metrics": {"total_rows": 2807000}}
+{"ts": "2025-09-17T15:51:06.354191", "run_id": "29b1e5bb1f87", "step": "ir", "level": "info", "code": "merge", "message": "Identity resolution complete", "metrics": {"total_records": 2807000, "unique_identities": 185000, "merged_nodes": 156000, "orphans": 29000, "merge_rate": 0.84}}
+{"ts": "2025-09-17T15:51:11.376021", "run_id": "29b1e5bb1f87", "step": "feature", "level": "info", "code": "lab", "message": "Feature engineering complete", "metrics": {"features_created": 12, "rows_processed": 185000}}
+{"ts": "2025-09-17T15:51:14.891059", "run_id": "29b1e5bb1f87", "step": "segments", "level": "info", "code": "built", "message": "Segments built successfully", "metrics": {"lapsed90": 42000, "lapsed_vip": 4200, "churnrisk_high": 8500}}
+{"ts": "2025-09-17T15:51:17.411560", "run_id": "29b1e5bb1f87", "step": "dq", "level": "warn", "code": "check", "message": "DQ validation complete with warnings", "metrics": {"passed": 3, "warned": 1, "failed": 0}}
+{"ts": "2025-09-17T15:51:20.923722", "run_id": "29b1e5bb1f87", "step": "activation", "level": "info", "code": "plan", "message": "Activation plan created", "artifacts": ["activation_plan.json"]}
+{"ts": "2025-09-17T15:51:23.935248", "run_id": "29b1e5bb1f87", "step": "publish", "level": "info", "code": "commit", "message": "Published to Iceberg", "metrics": {"commit_id": "6f45720e2101746b", "snapshot_bytes": 8473920}}
+{"ts": "2025-09-17T15:51:24.455555", "run_id": "29b1e5bb1f87", "step": "handover", "level": "info", "code": "complete", "message": "Pipeline handover complete", "artifacts": ["OML.yaml", "RunReport.md", "index.html"]}
