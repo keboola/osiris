@@ -35,6 +35,11 @@ class SessionSummary:
     # Pipeline metadata
     pipeline_name: Optional[str] = None
     oml_version: Optional[str] = None
+    adapter_type: str = "Local"  # Default to Local, set to E2B for remote runs
+
+    # Artifacts metadata
+    artifacts_count: int = 0
+    steps_with_artifacts: List[str] = field(default_factory=list)
 
     # Computed fields
     @property
@@ -209,6 +214,9 @@ class SessionReader:
                         if event_type == "run_start":
                             summary.started_at = event.get("ts")
                             summary.status = "running"
+                            # Extract pipeline name from run_start event
+                            if "pipeline_id" in event:
+                                summary.pipeline_name = event["pipeline_id"]
 
                         elif event_type == "run_end":
                             summary.finished_at = event.get("ts", event.get("end_time"))
@@ -308,7 +316,26 @@ class SessionReader:
 
     def _read_artifacts(self, path: Path, summary: SessionSummary) -> None:
         """Read artifacts directory for additional metadata."""
-        # Check for generated OML file
+        # Count artifacts and track which steps have them
+        if not hasattr(summary, "artifacts_count"):
+            summary.artifacts_count = 0
+        if not hasattr(summary, "steps_with_artifacts"):
+            summary.steps_with_artifacts = []
+
+        # Count artifacts per step
+        try:
+            for step_dir in path.iterdir():
+                if step_dir.is_dir():
+                    # Count files in this step's directory
+                    artifact_files = list(step_dir.glob("*"))
+                    if artifact_files:
+                        summary.artifacts_count += len([f for f in artifact_files if f.is_file()])
+                        if step_dir.name not in summary.steps_with_artifacts:
+                            summary.steps_with_artifacts.append(step_dir.name)
+        except OSError:
+            pass
+
+        # Check for generated OML file (legacy, at artifacts root)
         oml_files = list(path.glob("*.yaml")) + list(path.glob("*.yml"))
         if oml_files:
             # Try to extract pipeline name from OML
@@ -347,52 +374,98 @@ class SessionReader:
             remote_path: Path to remote/ directory
             summary: SessionSummary to update
         """
-        # Read remote events if available
-        remote_events = remote_path / "events.jsonl"
-        if remote_events.exists():
-            try:
-                with open(remote_events) as f:
-                    for line in f:
-                        try:
-                            event = json.loads(line.strip())
-                            event_type = event.get("event")
-
-                            # Update step counts from remote execution
-                            if event_type == "step_complete":
-                                summary.steps_ok += 1
-                            elif event_type == "step_error":
-                                summary.steps_failed += 1
-                                summary.errors += 1
-
-                            # Track remote data flow
-                            if "rows_read" in event:
-                                summary.rows_in += event["rows_read"]
-                            if "rows_written" in event:
-                                summary.rows_out += event["rows_written"]
-
-                        except (json.JSONDecodeError, KeyError):
-                            continue
-            except OSError:
-                pass
-
-        # Read remote metrics if available
-        remote_metrics = remote_path / "metrics.jsonl"
-        if remote_metrics.exists():
-            try:
-                with open(remote_metrics) as f:
-                    for line in f:
-                        try:
-                            metric = json.loads(line.strip())
-                            if "total_rows" in metric:
-                                summary.rows_out = max(summary.rows_out, metric["total_rows"])
-                        except (json.JSONDecodeError, KeyError):
-                            continue
-            except OSError:
-                pass
-
-        # Mark that this was a remote execution
+        # Mark that this was a remote execution (E2B)
+        summary.adapter_type = "E2B"
         if not hasattr(summary, "execution_mode"):
             summary.execution_mode = "remote"
+
+        # Look for remote session data (new location: remote/session/)
+        session_path = remote_path / "session"
+        if session_path.exists():
+            # Read remote session events
+            remote_events = session_path / "events.jsonl"
+            if remote_events.exists():
+                try:
+                    with open(remote_events) as f:
+                        for line in f:
+                            try:
+                                event = json.loads(line.strip())
+                                event_type = event.get("event")
+
+                                # Extract pipeline info from run_start
+                                if event_type == "run_start" and "pipeline_id" in event:
+                                    summary.pipeline_name = event["pipeline_id"]
+
+                                # Update step counts from remote execution
+                                if event_type == "step_complete":
+                                    summary.steps_ok += 1
+                                elif event_type == "step_error":
+                                    summary.steps_failed += 1
+                                    summary.errors += 1
+
+                                # Track remote data flow
+                                if "rows_read" in event:
+                                    summary.rows_in += event["rows_read"]
+                                if "rows_written" in event:
+                                    summary.rows_out += event["rows_written"]
+
+                            except (json.JSONDecodeError, KeyError):
+                                continue
+                except OSError:
+                    pass
+
+            # Read remote session metrics
+            remote_metrics = session_path / "metrics.jsonl"
+            if remote_metrics.exists():
+                try:
+                    with open(remote_metrics) as f:
+                        for line in f:
+                            try:
+                                metric = json.loads(line.strip())
+                                if metric.get("metric") == "rows_written":
+                                    summary.rows_out += metric.get("value", 0)
+                                elif metric.get("metric") == "rows_read":
+                                    summary.rows_in += metric.get("value", 0)
+                                elif "total_rows" in metric:
+                                    summary.rows_out = max(summary.rows_out, metric["total_rows"])
+                            except (json.JSONDecodeError, KeyError):
+                                continue
+                except OSError:
+                    pass
+
+            # Read remote session artifacts
+            remote_artifacts = session_path / "artifacts"
+            if remote_artifacts.exists():
+                self._read_artifacts(remote_artifacts, summary)
+
+        # Also check legacy location (remote/events.jsonl) for backward compatibility
+        else:
+            remote_events = remote_path / "events.jsonl"
+            if remote_events.exists():
+                try:
+                    with open(remote_events) as f:
+                        for line in f:
+                            try:
+                                event = json.loads(line.strip())
+                                event_type = event.get("event")
+
+                                # Update step counts from remote execution
+                                if event_type == "step_complete":
+                                    summary.steps_ok += 1
+                                elif event_type == "step_error":
+                                    summary.steps_failed += 1
+                                    summary.errors += 1
+
+                                # Track remote data flow
+                                if "rows_read" in event:
+                                    summary.rows_in += event["rows_read"]
+                                if "rows_written" in event:
+                                    summary.rows_out += event["rows_written"]
+
+                            except (json.JSONDecodeError, KeyError):
+                                continue
+                except OSError:
+                    pass
 
     def filter_safe_fields(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Filter dictionary to only include whitelisted fields.

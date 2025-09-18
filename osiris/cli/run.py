@@ -6,17 +6,40 @@ import shutil
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import yaml
 from rich.console import Console
 
+from ..core.adapter_factory import get_execution_adapter
 from ..core.compiler_v0 import CompilerV0
 from ..core.env_loader import load_env
-from ..core.runner_v0 import RunnerV0
+from ..core.execution_adapter import ExecutionContext
 from ..core.session_logging import SessionContext, log_event, log_metric, set_current_session
-from ..remote.e2b_integration import add_e2b_help_text, execute_remote, parse_e2b_args
-from ..remote.e2b_pack import RunConfig
+
+# Defensive imports for E2B components
+try:
+    from ..remote.e2b_integration import add_e2b_help_text, parse_e2b_args
+
+    E2B_AVAILABLE = True
+except ImportError:
+    E2B_AVAILABLE = False
+
+    # Provide fallback implementations
+    def add_e2b_help_text(lines):
+        lines.append("[dim]E2B support not available (missing dependencies)[/dim]")
+
+    def parse_e2b_args(args):
+        # Return minimal config that disables E2B
+        class E2BConfig:
+            enabled = False
+            timeout = 900
+            cpu = 2
+            mem_gb = 4
+            env_vars = {}
+
+        return E2BConfig(), args
+
 
 console = Console()
 
@@ -195,6 +218,71 @@ def detect_file_type(file_path: str) -> str:
     except Exception:
         # Default to OML if we can't parse
         return "oml"
+
+
+def execute_with_adapter(
+    manifest_data: Dict[str, Any],
+    target: str,
+    adapter_config: Dict[str, Any],
+    context: ExecutionContext,
+    use_json: bool = False,  # noqa: ARG001
+    source_manifest_path: Optional[str] = None,
+    verbose: bool = False,
+) -> tuple[bool, Optional[str]]:
+    """Execute pipeline using execution adapters.
+
+    Args:
+        manifest_data: Compiled manifest as dict
+        target: Execution target ("local" or "e2b")
+        adapter_config: Configuration for the adapter
+        context: Execution context
+        use_json: Whether to use JSON output
+        source_manifest_path: Path to original manifest
+        verbose: Whether to show step progress on stdout
+
+    Returns:
+        Tuple of (success, error_message)
+    """
+    try:
+        # Add verbose flag to config
+        adapter_config["verbose"] = verbose
+
+        # Get adapter from factory
+        adapter = get_execution_adapter(target, adapter_config)
+        log_event("adapter_selected", adapter=target, session_id=context.session_id)
+
+        # Phase 1: Prepare execution
+        log_event("adapter_prepare_start", session_id=context.session_id)
+
+        # Pass source manifest location for cfg resolution
+        if source_manifest_path:
+            prepared_metadata = manifest_data.get("metadata", {})
+            prepared_metadata["source_manifest_path"] = source_manifest_path
+            manifest_data["metadata"] = prepared_metadata
+
+        prepared = adapter.prepare(manifest_data, context)
+        log_event("adapter_prepare_complete", session_id=context.session_id)
+
+        # Phase 2: Execute
+        log_event("adapter_execute_start", session_id=context.session_id)
+        result = adapter.execute(prepared, context)
+        log_event("adapter_execute_complete", success=result.success, session_id=context.session_id)
+
+        # Phase 3: Collect artifacts
+        log_event("adapter_collect_start", session_id=context.session_id)
+        _ = adapter.collect(prepared, context)
+        log_event("adapter_collect_complete", session_id=context.session_id)
+
+        # Log final metrics
+        log_metric("adapter_execution_duration", result.duration_seconds, unit="seconds")
+        log_metric("adapter_exit_code", result.exit_code, unit="code")
+
+        return result.success, result.error_message
+
+    except Exception as e:
+        error_msg = f"Adapter execution failed: {e}"
+        log_event("adapter_execution_error", error=error_msg, session_id=context.session_id)
+        return False, error_msg
 
 
 def run_command(args: List[str]):
@@ -465,100 +553,44 @@ def run_command(args: List[str]):
             # Direct manifest execution
             manifest_path = Path(pipeline_file)
 
-        # Phase 2: Check for E2B execution
+        # Phase 2: Execute using adapters
+        log_event("adapter_execution_start", manifest=str(manifest_path))
+
+        # Load manifest data for adapter
+        with open(manifest_path) as f:
+            manifest_data = yaml.safe_load(f)
+
+        # Create execution context with session directory as base
+        exec_context = ExecutionContext(session_id=session_id, base_path=session.session_dir)
+
+        # Prepare E2B config for adapter
+        adapter_e2b_config = {}
         if e2b_config.enabled:
-            # Execute remotely in E2B
-            run_config = RunConfig()
-            success = execute_remote(
-                manifest_path=manifest_path,
-                session_dir=session.session_dir,
-                e2b_config=e2b_config,
-                run_config=run_config,
-                use_json=use_json,
-            )
+            adapter_e2b_config = {
+                "timeout": e2b_config.timeout,
+                "cpu": e2b_config.cpu,
+                "memory": e2b_config.mem_gb,
+                "env": e2b_config.env_vars,
+                "verbose": verbose,
+                "install_deps": e2b_config.install_deps,
+            }
 
-            total_duration = time.time() - start_time
-            log_metric("total_duration", total_duration, unit="seconds")
-
-            if success:
-                log_event("run_complete", total_duration=total_duration, remote_execution=True)
-
-                if use_json:
-                    result = {
-                        "status": "success",
-                        "message": "Pipeline executed successfully in E2B",
-                        "session_id": session_id,
-                        "session_dir": f"logs/{session_id}",
-                        "remote_execution": True,
-                        "duration": {"total": round(total_duration, 2)},
-                    }
-                    if file_type == "oml":
-                        result["duration"]["compile"] = round(compile_duration, 2)
-                        result["compiled_dir"] = f"logs/{session_id}/compiled"
-                    print(json.dumps(result))
-                else:
-                    console.print("[green]✅ Remote execution completed successfully[/green]")
-                    console.print(f"Session: logs/{session_id}/")
-
-                sys.exit(0)
-            else:
-                log_event(
-                    "run_error",
-                    phase="e2b",
-                    error="Remote execution failed",
-                    duration=total_duration,
-                )
-
-                if use_json:
-                    print(
-                        json.dumps(
-                            {
-                                "status": "error",
-                                "phase": "e2b",
-                                "message": "Remote execution failed",
-                                "session_id": session_id,
-                                "session_dir": f"logs/{session_id}",
-                            }
-                        )
-                    )
-                else:
-                    console.print("[red]❌ Remote execution failed[/red]")
-                    console.print(f"Session: logs/{session_id}/")
-
-                sys.exit(1)
-
-        # Phase 2: Execute locally
-        log_event("execute_start", manifest=str(manifest_path))
-        execute_start = time.time()
-
-        runner = RunnerV0(manifest_path=str(manifest_path), output_dir=str(session_artifacts_dir))
-
-        # If verbose, show events as they happen
-        if verbose and not use_json:
-            original_log = runner._log_event
-
-            def verbose_log(event_type, data):
-                result = original_log(event_type, data)
-                if event_type == "step_start":
-                    console.print(f"[dim]  → Step: {data.get('step_id', 'unknown')}[/dim]")
-                elif event_type == "step_complete":
-                    console.print(
-                        f"[dim]  ✓ Step: {data.get('step_id', 'unknown')} completed[/dim]"
-                    )
-                return result
-
-            runner._log_event = verbose_log
-
-        execute_success = runner.run()
-
-        execute_duration = time.time() - execute_start
-        log_metric("execution_duration", execute_duration, unit="seconds")
+        # Execute with selected adapter
+        execute_success, error_message = execute_with_adapter(
+            manifest_data=manifest_data,
+            target=e2b_config.target,
+            adapter_config=adapter_e2b_config,
+            context=exec_context,
+            use_json=use_json,
+            source_manifest_path=str(manifest_path),
+            verbose=verbose,
+        )
 
         total_duration = time.time() - start_time
         log_metric("total_duration", total_duration, unit="seconds")
 
         # Copy artifacts to user-specified location if requested
-        if output_dir:
+        if output_dir and session_artifacts_dir.exists():
             user_output_dir = Path(output_dir)
             user_output_dir.mkdir(parents=True, exist_ok=True)
             for item in session_artifacts_dir.iterdir():
@@ -568,51 +600,36 @@ def run_command(args: List[str]):
                     shutil.copytree(item, user_output_dir / item.name, dirs_exist_ok=True)
 
         if execute_success:
-            log_event(
-                "run_complete",
-                total_duration=total_duration,
-                steps_executed=len([e for e in runner.events if e["type"] == "step_complete"]),
-            )
+            log_event("run_complete", total_duration=total_duration, adapter_execution=True)
 
             if not use_json:
                 console.print("[green]✓[/green]")
 
-            step_count = sum(1 for e in runner.events if e["type"] == "step_complete")
+            execution_type = "E2B" if e2b_config.enabled else "local"
 
             if use_json:
                 result = {
                     "status": "success",
-                    "message": "Pipeline executed successfully",
+                    "message": f"Pipeline executed successfully ({execution_type})",
                     "session_id": session_id,
                     "session_dir": f"logs/{session_id}",
                     "artifacts_dir": output_dir if output_dir else f"logs/{session_id}/artifacts",
-                    "steps_executed": step_count,
+                    "execution_type": execution_type,
                     "duration": {"total": round(total_duration, 2)},
                 }
                 if file_type == "oml":
                     result["duration"]["compile"] = round(compile_duration, 2)
-                    result["duration"]["execute"] = round(execute_duration, 2)
                     result["compiled_dir"] = f"logs/{session_id}/compiled"
                 print(json.dumps(result))
             else:
-                console.print(f"[green]✓ {step_count} steps completed[/green]")
+                console.print(f"[green]✓ Pipeline completed ({execution_type})[/green]")
                 console.print(f"Session: logs/{session_id}/")
                 if output_dir:
                     console.print(f"Artifacts copied to: {output_dir}/")
 
             sys.exit(0)
         else:
-            # Find error details
-            error_events = [e for e in runner.events if e["type"] in ("step_error", "run_error")]
-            error_msg = "Pipeline execution failed"
-            if error_events:
-                last_error = error_events[-1]["data"]
-                if "error" in last_error:
-                    error_msg = last_error["error"]
-                elif "message" in last_error:
-                    error_msg = last_error["message"]
-
-            log_event("run_error", phase="execute", error=error_msg, duration=total_duration)
+            log_event("run_error", phase="execute", error=error_message, duration=total_duration)
 
             if not use_json:
                 console.print("[red]✗[/red]")
@@ -623,14 +640,14 @@ def run_command(args: List[str]):
                         {
                             "status": "error",
                             "phase": "execute",
-                            "message": error_msg,
+                            "message": error_message or "Pipeline execution failed",
                             "session_id": session_id,
                             "session_dir": f"logs/{session_id}",
                         }
                     )
                 )
             else:
-                console.print(f"[red]❌ {error_msg}[/red]")
+                console.print(f"[red]❌ {error_message or 'Pipeline execution failed'}[/red]")
                 console.print(f"Session: logs/{session_id}/")
 
             sys.exit(1)

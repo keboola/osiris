@@ -179,7 +179,7 @@ class TestCompileRunCSVWriter:
                 os.chdir(tmpdir)
 
                 # Run the pipeline with mocked MySQL driver
-                runner = RunnerV0(str(manifest_path))
+                runner = RunnerV0(str(manifest_path), os.path.join(tmpdir, "output"))
                 runner.manifest_dir = Path(tmpdir)
 
                 # Register the CSV writer driver manually
@@ -256,7 +256,7 @@ class TestCompileRunCSVWriter:
                 yaml.dump(manifest, f)
 
             # Run should handle the error gracefully
-            runner = RunnerV0(str(manifest_path))
+            runner = RunnerV0(str(manifest_path), os.path.join(tmpdir, "output"))
             runner.manifest_dir = Path(tmpdir)
 
             # Mock step data to provide input

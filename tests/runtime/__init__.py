@@ -1,0 +1,1 @@
+"""Runtime adapter tests."""

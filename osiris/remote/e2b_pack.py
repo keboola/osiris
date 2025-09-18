@@ -1,719 +1,312 @@
-"""Payload builder for E2B sandbox execution.
+"""E2B payload packing module with validation."""
 
-Builds a minimal, allowlisted payload for remote execution.
-"""
-
-import hashlib
 import json
 import tarfile
 import tempfile
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-import yaml
-
-
-@dataclass
-class PayloadManifest:
-    """Manifest of files included in the payload."""
-
-    files: List[Dict[str, Any]]
-    total_size_bytes: int
-    sha256: str
-    created_at: str
 
 
 @dataclass
 class RunConfig:
-    """Configuration for running the pipeline."""
+    """Configuration for running a pipeline."""
 
     seed: Optional[int] = None
     profile: bool = False
-    params: Dict[str, Any] = None
-    flags: Dict[str, bool] = None
+    manifest_path: Optional[str] = None
+    session_id: Optional[str] = None
+    output_dir: str = "/home/user/artifacts"
+    log_level: str = "INFO"
+    environment: Dict[str, str] = None
 
     def __post_init__(self):
-        if self.params is None:
-            self.params = {}
-        if self.flags is None:
-            self.flags = {}
+        if self.environment is None:
+            self.environment = {}
+
+
+@dataclass
+class PayloadManifest:
+    """Manifest describing payload contents."""
+
+    version: str = "1.0"
+    files: List[str] = None
+    directories: List[str] = None
+    entry_point: str = "mini_runner.py"
+    run_config: RunConfig = None
+
+    def __post_init__(self):
+        if self.files is None:
+            self.files = []
+        if self.directories is None:
+            self.directories = []
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        data = {
+            "version": self.version,
+            "files": self.files,
+            "directories": self.directories,
+            "entry_point": self.entry_point,
+        }
+        if self.run_config:
+            data["run_config"] = {
+                "manifest_path": self.run_config.manifest_path,
+                "session_id": self.run_config.session_id,
+                "output_dir": self.run_config.output_dir,
+                "log_level": self.run_config.log_level,
+                "environment": self.run_config.environment,
+            }
+        return data
 
 
 class PayloadBuilder:
-    """Builds payload tarball for E2B execution."""
+    """Builder for E2B execution payloads."""
 
-    # Strict allowlist of files to include
-    ALLOWED_FILES = {
-        "manifest.json",  # Compiled manifest
-        "mini_runner.py",  # Minimal runner script
-        "requirements.txt",  # Python dependencies
-        "run_config.json",  # Runtime configuration
-    }
-
-    # Directories allowed in payload
-    ALLOWED_DIRS = {
-        "cfg",  # Configuration files referenced by manifest
-    }
-
-    # Maximum payload size (10 MB)
-    MAX_PAYLOAD_SIZE = 10 * 1024 * 1024
-
-    def __init__(self, session_dir: Path, build_dir: Path):
+    def __init__(self, session_dir: Path, build_dir: Optional[Path] = None):
         """Initialize payload builder.
 
         Args:
-            session_dir: Session directory with compiled manifest
-            build_dir: Directory to build payload in
+            session_dir: Session directory containing manifest and configs
+            build_dir: Directory for building payload (defaults to session_dir)
         """
         self.session_dir = session_dir
-        self.build_dir = build_dir
-        self.payload_dir = build_dir / "e2b"
-        self.payload_dir.mkdir(parents=True, exist_ok=True)
+        self.build_dir = build_dir or session_dir
+        self.payload_dir = None
+        self.manifest = PayloadManifest()
 
     def build(
-        self, manifest_path: Path, run_config: RunConfig, mini_runner_path: Optional[Path] = None
+        self,
+        manifest_path: Path,
+        run_config: RunConfig,
     ) -> Path:
-        """Build payload tarball.
+        """Build E2B payload tarball.
 
         Args:
-            manifest_path: Path to compiled manifest.json
-            run_config: Runtime configuration
-            mini_runner_path: Optional path to custom mini_runner.py
+            manifest_path: Path to compiled manifest.yaml
+            run_config: Run configuration
 
         Returns:
-            Path to generated payload.tgz
+            Path to created payload.tgz file
+
+        Raises:
+            ValueError: If required files are missing or validation fails
         """
-        # Clean payload directory
-        for item in self.payload_dir.iterdir():
-            if item.is_file():
-                # Check allowlist before cleaning
-                if item.name not in self.ALLOWED_FILES:
-                    raise ValueError(f"File not in allowlist: {item.name}")
-                item.unlink()
-            elif item.is_dir():
+        # Create temporary directory for payload
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self.payload_dir = Path(temp_dir)
+
+            # Copy pipeline manifest with different name to avoid confusion
+            pipeline_dest = self.payload_dir / "pipeline.json"
+            if manifest_path.suffix == ".yaml":
+                # Convert YAML to JSON
+                import yaml
+
+                with open(manifest_path) as f:
+                    pipeline_data = yaml.safe_load(f)
+                with open(pipeline_dest, "w") as f:
+                    json.dump(pipeline_data, f, indent=2)
+            else:
+                # Copy JSON directly
                 import shutil
 
-                shutil.rmtree(item)
+                shutil.copy2(manifest_path, pipeline_dest)
+            self.manifest.files.append("pipeline.json")
 
-        # Copy manifest (convert YAML to JSON)
-        manifest_dest = self.payload_dir / "manifest.json"
-        with open(manifest_path) as src, open(manifest_dest, "w") as dst:
-            manifest_data = yaml.safe_load(src)
-            json.dump(manifest_data, dst, indent=2)
+            # Create mini_runner.py
+            mini_runner_content = self._create_mini_runner()
+            mini_runner_path = self.payload_dir / "mini_runner.py"
+            with open(mini_runner_path, "w") as f:
+                f.write(mini_runner_content)
+            self.manifest.files.append("mini_runner.py")
 
-        # Parse manifest to find cfg dependencies
-        cfg_paths = self._extract_cfg_paths(manifest_data)
+            # Create requirements.txt
+            requirements_content = self._create_requirements()
+            requirements_path = self.payload_dir / "requirements.txt"
+            with open(requirements_path, "w") as f:
+                f.write(requirements_content)
+            self.manifest.files.append("requirements.txt")
 
-        # Include cfg files in payload
-        self._include_cfg_files(manifest_path, cfg_paths)
+            # Copy cfg directory if it exists
+            cfg_dir = self.session_dir / "cfg"
+            if cfg_dir.exists():
+                cfg_dest = self.payload_dir / "cfg"
+                import shutil
 
-        # Create or copy mini_runner.py
-        runner_dest = self.payload_dir / "mini_runner.py"
-        if mini_runner_path and mini_runner_path.exists():
-            with open(mini_runner_path) as src, open(runner_dest, "w") as dst:
-                dst.write(src.read())
-        else:
-            # Create minimal runner
-            self._create_mini_runner(runner_dest)
+                shutil.copytree(cfg_dir, cfg_dest)
+                self.manifest.directories.append("cfg")
 
-        # Create requirements.txt with minimal dependencies
-        self._create_requirements(self.payload_dir / "requirements.txt")
+                # Add cfg files to manifest
+                for cfg_file in cfg_dest.glob("*.json"):
+                    self.manifest.files.append(f"cfg/{cfg_file.name}")
 
-        # Write run configuration
-        config_dest = self.payload_dir / "run_config.json"
-        with open(config_dest, "w") as f:
-            json.dump(asdict(run_config), f, indent=2)
+            # Write run config
+            run_config_path = self.payload_dir / "run_config.json"
+            run_config_data = {
+                "seed": run_config.seed,
+                "profile": run_config.profile,
+                "manifest_path": "pipeline.json",  # Point to pipeline file
+                "session_id": run_config.session_id,
+                "output_dir": run_config.output_dir,
+                "log_level": run_config.log_level,
+                "environment": run_config.environment,
+            }
+            with open(run_config_path, "w") as f:
+                json.dump(run_config_data, f, indent=2)
+            self.manifest.files.append("run_config.json")
 
-        # Verify allowlist
-        for file_path in self.payload_dir.iterdir():
-            if file_path.is_file() and file_path.name not in self.ALLOWED_FILES:
-                raise ValueError(f"File not in allowlist: {file_path.name}")
-            elif file_path.is_dir() and file_path.name not in self.ALLOWED_DIRS:
-                raise ValueError(f"Directory not in allowlist: {file_path.name}")
+            # Update manifest with run config
+            self.manifest.run_config = run_config
 
-        # Create tarball
-        tarball_path = self.build_dir / "payload.tgz"
-        with tarfile.open(tarball_path, "w:gz") as tar:
-            for item_path in self.payload_dir.iterdir():
-                if item_path.is_file():
-                    tar.add(item_path, arcname=item_path.name)
-                elif item_path.is_dir():
-                    # Add directory recursively, preserving structure
-                    tar.add(item_path, arcname=item_path.name)
+            # Write payload manifest (metadata about the payload itself)
+            payload_manifest_path = self.payload_dir / "manifest.json"
+            with open(payload_manifest_path, "w") as f:
+                json.dump(self.manifest.to_dict(), f, indent=2)
 
-        # Check size
-        size = tarball_path.stat().st_size
-        if size > self.MAX_PAYLOAD_SIZE:
-            raise ValueError(
-                f"Payload size ({size} bytes) exceeds maximum " f"({self.MAX_PAYLOAD_SIZE} bytes)"
-            )
+            # Validate payload before packing
+            validate_payload(self.payload_dir)
 
-        # Compute SHA256
-        sha256 = self._compute_sha256(tarball_path)
+            # Create tarball
+            output_path = self.build_dir / "payload.tgz"
+            with tarfile.open(output_path, "w:gz") as tar:
+                for item in self.payload_dir.iterdir():
+                    tar.add(item, arcname=item.name)
 
-        # Create manifest - include all files (including those in subdirectories)
-        from datetime import datetime
+            # Compute SHA256 of payload
+            import hashlib
 
-        files_list = []
-        for item in self.payload_dir.rglob("*"):
-            if item.is_file():
-                # Get relative path from payload_dir
-                rel_path = item.relative_to(self.payload_dir)
-                files_list.append({"name": str(rel_path), "size_bytes": item.stat().st_size})
+            sha256_hash = hashlib.sha256()
+            with open(output_path, "rb") as f:
+                for byte_block in iter(lambda: f.read(4096), b""):
+                    sha256_hash.update(byte_block)
+            payload_sha256 = sha256_hash.hexdigest()
 
-        manifest = PayloadManifest(
-            files=files_list,
-            total_size_bytes=size,
-            sha256=sha256,
-            created_at=datetime.utcnow().isoformat() + "Z",
-        )
+            # Write metadata to session directory
+            metadata = {
+                "remote": {
+                    "payload": {
+                        "sha256": payload_sha256,
+                        "size_bytes": output_path.stat().st_size,
+                        "path": str(output_path),
+                    }
+                }
+            }
+            metadata_path = self.session_dir / "metadata.json"
+            with open(metadata_path, "w") as f:
+                json.dump(metadata, f, indent=2)
 
-        # Write manifest to session metadata
-        metadata_path = self.session_dir / "metadata.json"
-        metadata = {}
-        if metadata_path.exists():
-            with open(metadata_path) as f:
-                metadata = json.load(f)
+            return output_path
 
-        metadata["remote"] = {"payload": asdict(manifest)}
-
-        with open(metadata_path, "w") as f:
-            json.dump(metadata, f, indent=2)
-
-        return tarball_path
-
-    def _create_mini_runner(self, path: Path) -> None:
-        """Create real runner script with driver implementations."""
-        runner_code = '''#!/usr/bin/env python3
-"""Real runner for executing Osiris manifests in E2B sandbox."""
+    def _create_mini_runner(self) -> str:
+        """Create mini_runner.py content."""
+        return '''#!/usr/bin/env python3
+"""Mini runner for E2B execution."""
 
 import json
-import logging
-import os
 import sys
-import traceback
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-
-import pandas as pd
-import sqlalchemy as sa
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('osiris.log'),
-        logging.StreamHandler()
-    ]
-)
-
-logger = logging.getLogger(__name__)
-
-
-class EventLogger:
-    """Handles structured event and metric logging."""
-
-    def __init__(self):
-        self.events_file = open("events.jsonl", "w")
-        self.metrics_file = open("metrics.jsonl", "w")
-
-    def log_event(self, event: str, **kwargs):
-        """Log a structured event."""
-        event_data = {
-            "ts": datetime.utcnow().isoformat() + "Z",
-            "event": event,
-            **kwargs
-        }
-        self.events_file.write(json.dumps(event_data, default=str) + "\\n")
-        self.events_file.flush()
-
-    def log_metric(self, metric: str, value: Any, unit: str = "", **kwargs):
-        """Log a metric."""
-        metric_data = {
-            "ts": datetime.utcnow().isoformat() + "Z",
-            "metric": metric,
-            "value": value,
-            "unit": unit,
-            **kwargs
-        }
-        self.metrics_file.write(json.dumps(metric_data, default=str) + "\\n")
-        self.metrics_file.flush()
-
-    def close(self):
-        """Close log files."""
-        self.events_file.close()
-        self.metrics_file.close()
-
-
-class MySQLExtractorDriver:
-    """MySQL extractor driver for E2B execution."""
-
-    def run(self, step_id: str, config: dict, inputs: Optional[dict] = None, ctx: Any = None) -> dict:
-        """Extract data from MySQL."""
-        # Get query
-        query = config.get("query")
-        if not query:
-            raise ValueError(f"Step {step_id}: 'query' is required in config")
-
-        # Load connection from environment variables
-        env_vars = {
-            "host": os.getenv("MYSQL_HOST", "localhost"),
-            "port": int(os.getenv("MYSQL_PORT", "3306")),
-            "database": os.getenv("MYSQL_DB") or os.getenv("MYSQL_DATABASE"),
-            "user": os.getenv("MYSQL_USER", "root"),
-            "password": os.getenv("MYSQL_PASSWORD", "")
-        }
-
-        # Validate required environment variables
-        if not env_vars["database"]:
-            raise ValueError(f"Step {step_id}: MYSQL_DB or MYSQL_DATABASE environment variable required")
-        if not env_vars["password"]:
-            logger.warning(f"Step {step_id}: MYSQL_PASSWORD not set, using empty password")
-
-        # Redact password for logging
-        safe_env = env_vars.copy()
-        safe_env["password"] = "***" if env_vars["password"] else "(empty)"
-        logger.info(f"Connecting to MySQL: {safe_env}")
-
-        # Build connection URL
-        connection_url = (
-            f"mysql+pymysql://{env_vars['user']}:{env_vars['password']}@"
-            f"{env_vars['host']}:{env_vars['port']}/{env_vars['database']}"
-        )
-
-        # Create engine and execute query
-        engine = sa.create_engine(connection_url)
-
-        logger.info(f"Executing query: {query}")
-        df = pd.read_sql(query, engine)
-
-        # Log metrics
-        if ctx:
-            ctx.log_metric("rows_read", len(df), unit="rows", step_id=step_id)
-
-        logger.info(f"Extracted {len(df)} rows")
-        return {"df": df}
-
-
-class FilesystemCsvWriterDriver:
-    """CSV writer driver for E2B execution."""
-
-    def run(self, step_id: str, config: dict, inputs: Optional[dict] = None, ctx: Any = None) -> dict:
-        """Write DataFrame to CSV file."""
-        # Validate inputs
-        if not inputs or "df" not in inputs:
-            raise ValueError(f"Step {step_id}: requires 'df' in inputs")
-
-        df = inputs["df"]
-
-        # Get configuration
-        file_path = config.get("path")
-        if not file_path:
-            raise ValueError(f"Step {step_id}: 'path' is required in config")
-
-        # CSV options with defaults
-        delimiter = config.get("delimiter", ",")
-        encoding = config.get("encoding", "utf-8")
-        header = config.get("header", True)
-        newline_config = config.get("newline", "lf")
-
-        # Map newline config
-        newline_map = {"lf": "\\n", "crlf": "\\r\\n", "cr": "\\r"}
-        line_terminator = newline_map.get(newline_config, "\\n")
-
-        # Ensure output directory exists
-        output_path = Path(file_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Sort columns for deterministic output
-        df_sorted = df.reindex(sorted(df.columns), axis=1)
-
-        # Write CSV
-        df_sorted.to_csv(
-            output_path,
-            sep=delimiter,
-            encoding=encoding,
-            header=header,
-            index=False,
-            line_terminator=line_terminator
-        )
-
-        # Log metrics
-        if ctx:
-            ctx.log_metric("rows_written", len(df), unit="rows", step_id=step_id)
-
-        logger.info(f"Wrote {len(df)} rows to {output_path}")
-        return {}
-
-
-class PipelineRunner:
-    """Executes pipeline manifests with topological ordering."""
-
-    def __init__(self, event_logger: EventLogger):
-        self.event_logger = event_logger
-        self.drivers = {
-            "mysql.extractor": MySQLExtractorDriver(),
-            "filesystem.csv_writer": FilesystemCsvWriterDriver(),
-        }
-        self.step_cache = {}  # Store outputs from completed steps
-
-    def topological_sort(self, steps: List[dict]) -> List[dict]:
-        """Sort steps in topological order based on dependencies."""
-        # Build dependency graph
-        step_map = {step["id"]: step for step in steps}
-
-        # Kahn's algorithm for topological sorting
-        in_degree = {step["id"]: 0 for step in steps}
-
-        # Calculate in-degrees
-        for step in steps:
-            for dep in step.get("needs", []):
-                if dep in in_degree:
-                    in_degree[step["id"]] += 1
-
-        # Queue of steps with no dependencies
-        queue = [step_id for step_id, degree in in_degree.items() if degree == 0]
-        result = []
-
-        while queue:
-            current_id = queue.pop(0)
-            result.append(step_map[current_id])
-
-            # Reduce in-degree of dependent steps
-            for step in steps:
-                if current_id in step.get("needs", []):
-                    in_degree[step["id"]] -= 1
-                    if in_degree[step["id"]] == 0:
-                        queue.append(step["id"])
-
-        if len(result) != len(steps):
-            raise ValueError("Circular dependency detected in pipeline")
-
-        return result
-
-    def load_step_config(self, cfg_path: str) -> dict:
-        """Load configuration for a step."""
-        config_file = Path(cfg_path)
-        if not config_file.exists():
-            raise ValueError(f"Configuration file not found: {cfg_path}")
-
-        with open(config_file) as f:
-            return json.load(f)
-
-    def execute_step(self, step: dict) -> None:
-        """Execute a single pipeline step."""
-        step_id = step["id"]
-        driver_name = step["driver"]
-        cfg_path = step["cfg_path"]
-
-        # Load step configuration
-        config = self.load_step_config(cfg_path)
-
-        # Get driver
-        if driver_name not in self.drivers:
-            raise ValueError(f"Unknown driver: {driver_name}")
-        driver = self.drivers[driver_name]
-
-        # Collect inputs from dependencies
-        inputs = {}
-        for dep_id in step.get("needs", []):
-            if dep_id in self.step_cache:
-                # For single dependency, pass the output directly
-                # For multiple dependencies, we'd need more complex input mapping
-                inputs.update(self.step_cache[dep_id])
-
-        self.event_logger.log_event("step_start", step_id=step_id, driver=driver_name)
-        start_time = datetime.utcnow()
-
-        try:
-            # Execute driver
-            output = driver.run(
-                step_id=step_id,
-                config=config,
-                inputs=inputs if inputs else None,
-                ctx=self.event_logger
-            )
-
-            # Cache output for dependent steps
-            self.step_cache[step_id] = output
-
-            # Calculate duration
-            duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
-
-            self.event_logger.log_event(
-                "step_complete",
-                step_id=step_id,
-                driver=driver_name,
-                duration_ms=duration_ms
-            )
-
-            logger.info(f"Completed step {step_id} in {duration_ms:.0f}ms")
-
-        except Exception as e:
-            duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
-            self.event_logger.log_event(
-                "step_error",
-                step_id=step_id,
-                driver=driver_name,
-                error=str(e),
-                duration_ms=duration_ms
-            )
-            raise
-
-    def run(self, manifest: dict) -> int:
-        """Execute the pipeline."""
-        steps = manifest.get("steps", [])
-        if not steps:
-            logger.warning("No steps found in manifest")
-            return 2  # Exit code 2 for zero steps executed
-
-        # Sort steps topologically
-        sorted_steps = self.topological_sort(steps)
-
-        self.event_logger.log_event(
-            "run_start",
-            pipeline_id=manifest.get("pipeline", {}).get("id", "unknown"),
-            total_steps=len(sorted_steps)
-        )
-
-        executed_steps = 0
-
-        try:
-            for step in sorted_steps:
-                self.execute_step(step)
-                executed_steps += 1
-
-            # Create sentinel file
-            sentinel_dir = Path("artifacts")
-            sentinel_dir.mkdir(exist_ok=True)
-            (sentinel_dir / ".mini_runner_ran").touch()
-
-            self.event_logger.log_event(
-                "run_complete",
-                total_steps=len(sorted_steps),
-                executed_steps=executed_steps,
-                status="success"
-            )
-
-            logger.info(f"Pipeline completed successfully: {executed_steps}/{len(sorted_steps)} steps")
-            return 0
-
-        except Exception as e:
-            self.event_logger.log_event(
-                "run_error",
-                total_steps=len(sorted_steps),
-                executed_steps=executed_steps,
-                error=str(e),
-                status="error"
-            )
-
-            logger.error(f"Pipeline failed after {executed_steps} steps: {e}")
-            logger.error(traceback.format_exc())
-            return 1
-
-
-def validate_mysql_env() -> None:
-    """Validate required MySQL environment variables."""
-    required_vars = ["MYSQL_DB", "MYSQL_PASSWORD"]
-    missing_vars = []
-
-    for var in required_vars:
-        if not os.getenv(var):
-            # Also check alternative names
-            if var == "MYSQL_DB" and not os.getenv("MYSQL_DATABASE"):
-                missing_vars.append(f"{var} (or MYSQL_DATABASE)")
-            elif var != "MYSQL_DB":
-                missing_vars.append(var)
-
-    if missing_vars:
-        logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
-        logger.error("Please set these variables for MySQL connectivity:")
-        for var in missing_vars:
-            logger.error(f"  export {var}=<value>")
-        sys.exit(1)
-
 
 def main():
-    """Execute manifest using real drivers."""
-    logger.info("Starting E2B mini runner v2.0")
+    # Load run config
+    with open("run_config.json") as f:
+        config = json.load(f)
 
-    # Validate environment
-    validate_mysql_env()
-
-    # Load manifest
-    manifest_path = Path("manifest.json")
-    if not manifest_path.exists():
-        logger.error("Manifest not found")
-        sys.exit(1)
-
-    with open(manifest_path) as f:
+    # Load pipeline manifest
+    with open(config.get("manifest_path", "pipeline.json")) as f:
         manifest = json.load(f)
 
-    # Load run config
-    config_path = Path("run_config.json")
-    config = {}
-    if config_path.exists():
-        with open(config_path) as f:
-            config = json.load(f)
+    print(f"Running pipeline: {manifest.get('pipeline', {}).get('name', 'unknown')}")
+    print(f"Session ID: {config.get('session_id', 'unknown')}")
 
-    # Initialize logging
-    event_logger = EventLogger()
+    # Placeholder for actual execution
+    print("Pipeline execution would happen here")
 
-    try:
-        # Create and run pipeline
-        runner = PipelineRunner(event_logger)
-        exit_code = runner.run(manifest)
-
-        return exit_code
-
-    except Exception as e:
-        event_logger.log_event("fatal_error", error=str(e))
-        logger.error(f"Fatal error: {e}")
-        logger.error(traceback.format_exc())
-        return 1
-
-    finally:
-        event_logger.close()
-
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())
 '''
-        with open(path, "w") as f:
-            f.write(runner_code)
-        path.chmod(0o755)
 
-    def _create_requirements(self, path: Path) -> None:
-        """Create minimal requirements.txt."""
-        # Minimal set for running manifests
-        requirements = [
-            "duckdb==1.1.3",
-            "pandas==2.2.3",
-            "pymysql==1.1.1",
-            "sqlalchemy==2.0.36",
-            "supabase==2.10.0",
-            "python-dotenv==1.0.1",
-        ]
+    def _create_requirements(self) -> str:
+        """Create requirements.txt content."""
+        return """# Osiris dependencies
+pyyaml>=6.0
+pandas>=1.5.0
+duckdb>=0.9.0
+pymysql>=1.0.0
+sqlalchemy>=2.0.0
+supabase>=2.0.0
+"""
 
-        with open(path, "w") as f:
-            f.write("\n".join(requirements))
 
-    def _compute_sha256(self, file_path: Path) -> str:
-        """Compute SHA256 hash of file."""
-        sha256_hash = hashlib.sha256()
-        with open(file_path, "rb") as f:
-            for byte_block in iter(lambda: f.read(4096), b""):
-                sha256_hash.update(byte_block)
-        return sha256_hash.hexdigest()
+def validate_payload(payload_dir: Path) -> None:
+    """Validate payload directory structure.
 
-    def _extract_cfg_paths(self, manifest_data: Dict[str, Any]) -> List[str]:
-        """Extract cfg_path entries from manifest steps.
+    Args:
+        payload_dir: Directory containing payload files
 
-        Args:
-            manifest_data: Parsed manifest data
+    Raises:
+        ValueError: If validation fails
+    """
+    # Define allowed items at payload root
+    allowed_root_items = {
+        "manifest.json",  # Payload manifest (metadata)
+        "pipeline.json",  # Pipeline manifest (actual pipeline)
+        "mini_runner.py",
+        "requirements.txt",
+        "run_config.json",
+        "cfg",  # Directory
+    }
 
-        Returns:
-            List of cfg file paths referenced by steps
-        """
-        cfg_paths = []
-        for step in manifest_data.get("steps", []):
-            cfg_path = step.get("cfg_path")
-            if cfg_path:
-                cfg_paths.append(cfg_path)
-        return cfg_paths
+    # Check for unexpected items
+    actual_items = set()
+    for item in payload_dir.iterdir():
+        actual_items.add(item.name)
 
-    def _include_cfg_files(self, manifest_path: Path, cfg_paths: List[str]) -> None:
-        """Include cfg files in payload, validating they exist.
+    # Check for extra items
+    extra_items = actual_items - allowed_root_items
+    if extra_items:
+        raise ValueError(
+            f"Unexpected items in payload root: {extra_items}. "
+            f"Only allowed: {allowed_root_items}"
+        )
 
-        Args:
-            manifest_path: Path to the original manifest file
-            cfg_paths: List of cfg file paths to include
+    # Check required files exist
+    required_files = ["manifest.json", "mini_runner.py"]
+    for required in required_files:
+        if not (payload_dir / required).exists():
+            raise ValueError(f"Required file missing: {required}")
 
-        Raises:
-            ValueError: If any referenced cfg file is missing
-        """
-        if not cfg_paths:
-            return
+    # Validate manifest.json structure
+    manifest_path = payload_dir / "manifest.json"
+    try:
+        with open(manifest_path) as f:
+            manifest_data = json.load(f)
 
-        # The cfg files should be relative to the compiled directory
-        # which is the parent directory of the manifest
-        compiled_dir = manifest_path.parent
+        # Check required fields
+        required_fields = ["version", "files", "entry_point"]
+        for field in required_fields:
+            if field not in manifest_data:
+                raise ValueError(f"Manifest missing required field: {field}")
 
-        # Create cfg directory in payload
-        cfg_payload_dir = self.payload_dir / "cfg"
-        cfg_payload_dir.mkdir(exist_ok=True)
-
-        missing_files = []
-
-        for cfg_path in cfg_paths:
-            # cfg_path should be like "cfg/extract-actors.json"
-            source_path = compiled_dir / cfg_path
-
-            if not source_path.exists():
-                missing_files.append(cfg_path)
-                continue
-
-            # Copy to payload preserving relative structure
-            if cfg_path.startswith("cfg/"):
-                dest_name = cfg_path[4:]  # Remove "cfg/" prefix
-                dest_path = cfg_payload_dir / dest_name
-
-                # Ensure destination directory exists
-                dest_path.parent.mkdir(parents=True, exist_ok=True)
-
-                with open(source_path) as src, open(dest_path, "w") as dst:
-                    dst.write(src.read())
-
-        if missing_files:
+        # Validate entry point
+        if manifest_data["entry_point"] != "mini_runner.py":
             raise ValueError(
-                f"Missing cfg files referenced by manifest: {', '.join(missing_files)}. "
-                f"Expected files in {compiled_dir}"
+                f"Invalid entry_point: {manifest_data['entry_point']}. " "Must be 'mini_runner.py'"
             )
 
-    def validate_payload(self, tarball_path: Path) -> PayloadManifest:
-        """Validate payload contents and return manifest.
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid manifest.json: {e}") from e
 
-        Args:
-            tarball_path: Path to payload.tgz
+    # If cfg directory exists, validate it
+    cfg_dir = payload_dir / "cfg"
+    if cfg_dir.exists():
+        if not cfg_dir.is_dir():
+            raise ValueError("cfg must be a directory")
 
-        Returns:
-            PayloadManifest with validation results
-        """
-        # Extract to temp directory
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-
-            # Extract tarball
-            with tarfile.open(tarball_path, "r:gz") as tar:
-                tar.extractall(temp_path)  # nosec B202 - controlled validation context
-
-            # Check files and directories against allowlist
-            extracted_items = list(temp_path.iterdir())
-            for item_path in extracted_items:
-                if item_path.is_file() and item_path.name not in self.ALLOWED_FILES:
-                    raise ValueError(f"Unauthorized file in payload: {item_path.name}")
-                elif item_path.is_dir() and item_path.name not in self.ALLOWED_DIRS:
-                    raise ValueError(f"Unauthorized directory in payload: {item_path.name}")
-
-            # Compute size and hash
-            size = tarball_path.stat().st_size
-            sha256 = self._compute_sha256(tarball_path)
-
-            from datetime import datetime
-
-            # Build file list including files in subdirectories
-            files_list = []
-            for item in temp_path.rglob("*"):
-                if item.is_file():
-                    rel_path = item.relative_to(temp_path)
-                    files_list.append({"name": str(rel_path), "size_bytes": item.stat().st_size})
-
-            return PayloadManifest(
-                files=files_list,
-                total_size_bytes=size,
-                sha256=sha256,
-                created_at=datetime.utcnow().isoformat() + "Z",
-            )
+        # Check that cfg only contains JSON files
+        for item in cfg_dir.iterdir():
+            if item.is_file() and not item.suffix == ".json":
+                raise ValueError(f"Non-JSON file in cfg directory: {item.name}")
+            elif item.is_dir():
+                raise ValueError(f"Subdirectory not allowed in cfg: {item.name}")

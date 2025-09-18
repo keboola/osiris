@@ -56,6 +56,15 @@ class MySQLExtractorDriver:
         engine = sa.create_engine(connection_url)
 
         try:
+            # Test connection first
+            logger.info(
+                f"Testing MySQL connection for step {step_id}: {user}@{host}:{port}/{database}"
+            )
+            with engine.connect() as conn:
+                # Test basic connection
+                result = conn.execute(sa.text("SELECT 1 as test"))
+                result.fetchone()
+
             # Execute query
             logger.info(f"Executing MySQL query for step {step_id}")
             df = pd.read_sql_query(query, engine)
@@ -68,6 +77,24 @@ class MySQLExtractorDriver:
                 ctx.log_metric("rows_read", rows_read)
 
             return {"df": df}
+
+        except sa.exc.OperationalError as e:
+            # Connection/network issues
+            error_msg = f"MySQL connection failed for {user}@{host}:{port}/{database}: {str(e)}"
+            logger.error(f"Step {step_id}: {error_msg}")
+            raise RuntimeError(error_msg) from e
+
+        except sa.exc.ProgrammingError as e:
+            # SQL syntax or permission issues
+            error_msg = f"MySQL query failed: {str(e)}"
+            logger.error(f"Step {step_id}: {error_msg}")
+            raise RuntimeError(error_msg) from e
+
+        except Exception as e:
+            # Any other database errors
+            error_msg = f"MySQL execution failed: {type(e).__name__}: {str(e)}"
+            logger.error(f"Step {step_id}: {error_msg}")
+            raise RuntimeError(error_msg) from e
 
         finally:
             engine.dispose()

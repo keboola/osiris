@@ -19,6 +19,10 @@ mempack.txt
 .osiris_prompts/
 output/
 
+# Test artifacts that shouldn't be in repo root
+*MagicMock*
+*mock.*
+
 # Compilation and execution artifacts (should only be in testing_env/tmp/)
 compiled/
 _artifacts/
@@ -26,6 +30,7 @@ test_*/
 *_test/
 final_test/
 tools/mempack/gen/*
+tests/*
 
 # Internal tools
 .claude/
