@@ -103,7 +103,8 @@ class ExecutionContext:
     @property
     def artifacts_dir(self) -> Path:
         """Directory for execution artifacts."""
-        return self.logs_dir / "artifacts"
+        # Artifacts go in base_path/artifacts (no session segment)
+        return self.base_path / "artifacts"
 
 
 class ExecutionAdapter(ABC):

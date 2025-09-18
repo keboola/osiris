@@ -45,7 +45,7 @@ def test_driver_registry_registers_from_specs(tmp_path):
         MockRegistry.return_value = mock_registry
 
         # Create runner which should auto-register drivers
-        runner = RunnerV0(str(manifest_path))
+        runner = RunnerV0(str(manifest_path), str(tmp_path / "output"))
 
         # Verify registry was called
         mock_registry.load_specs.assert_called_once()
@@ -93,7 +93,7 @@ def test_driver_registration_handles_import_errors(tmp_path, caplog):
 
         # Create runner - should log error but not crash
         with caplog.at_level(logging.DEBUG):
-            runner = RunnerV0(str(manifest_path))
+            runner = RunnerV0(str(manifest_path), str(tmp_path / "output"))
 
         # Driver should be registered (factory function created)
         drivers = runner.driver_registry.list_drivers()
@@ -139,14 +139,14 @@ def test_components_without_driver_are_skipped(tmp_path):
         MockRegistry.return_value = mock_registry
 
         # Create runner
-        runner = RunnerV0(str(manifest_path))
+        runner = RunnerV0(str(manifest_path), str(tmp_path / "output"))
 
         # Component should not be registered
         drivers = runner.driver_registry.list_drivers()
         assert "no_driver.component" not in drivers
 
 
-def test_actual_drivers_are_registered():
+def test_actual_drivers_are_registered(tmp_path):
     """Test that actual drivers (mysql, csv, supabase) are registered."""
     # Create a dummy manifest
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
@@ -160,7 +160,7 @@ def test_actual_drivers_are_registered():
 
     try:
         # Create runner with actual component registry
-        runner = RunnerV0(manifest_path)
+        runner = RunnerV0(manifest_path, str(tmp_path / "output"))
 
         # Check that expected drivers are registered
         drivers = runner.driver_registry.list_drivers()
@@ -175,7 +175,7 @@ def test_actual_drivers_are_registered():
         Path(manifest_path).unlink()
 
 
-def test_driver_factory_creates_instances():
+def test_driver_factory_creates_instances(tmp_path):
     """Test that driver factories create proper instances."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         manifest = {
@@ -188,7 +188,7 @@ def test_driver_factory_creates_instances():
 
     try:
         # Create runner
-        runner = RunnerV0(manifest_path)
+        runner = RunnerV0(manifest_path, str(tmp_path / "output"))
 
         # Get a driver instance
         if "mysql.extractor" in runner.driver_registry.list_drivers():

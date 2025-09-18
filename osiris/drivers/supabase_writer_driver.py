@@ -1,6 +1,8 @@
 """Supabase writer driver for runtime execution."""
 
 import logging
+import random
+import time
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -14,6 +16,45 @@ from ..core.driver import Driver
 from ..core.session_logging import log_event, log_metric
 
 logger = logging.getLogger(__name__)
+
+
+def retry_with_backoff(func, max_attempts=3, initial_delay=1.0, max_delay=10.0):
+    """Execute function with exponential backoff and jitter.
+
+    Args:
+        func: Function to execute
+        max_attempts: Maximum retry attempts
+        initial_delay: Initial delay in seconds
+        max_delay: Maximum delay in seconds
+
+    Returns:
+        Function result
+
+    Raises:
+        Last exception if all retries fail
+    """
+    last_exception = None
+    delay = initial_delay
+
+    for attempt in range(max_attempts):
+        try:
+            return func()
+        except Exception as e:
+            last_exception = e
+            if attempt < max_attempts - 1:
+                # Add jitter: 0.5x to 1.5x the base delay
+                jittered_delay = delay * (0.5 + random.random())
+                logger.warning(
+                    f"Attempt {attempt + 1} failed: {str(e)[:100]}. "
+                    f"Retrying in {jittered_delay:.2f}s..."
+                )
+                time.sleep(jittered_delay)
+                # Exponential backoff with cap
+                delay = min(delay * 2, max_delay)
+            else:
+                logger.error(f"All {max_attempts} attempts failed")
+
+    raise last_exception
 
 
 class SupabaseWriterDriver(Driver):
@@ -214,21 +255,28 @@ class SupabaseWriterDriver(Driver):
                     batch = records[i : i + batch_size]
 
                     try:
-                        if write_mode == "insert":
-                            client.table(table_name).insert(batch).execute()
-                        elif write_mode == "upsert":
-                            client.table(table_name).upsert(
-                                batch, on_conflict=",".join(primary_key)
-                            ).execute()
-                        elif write_mode == "replace":
-                            # Replace mode: delete all then insert
-                            if i == 0:  # Only delete on first batch
-                                client.table(table_name).delete().neq(
-                                    "id", "0"
-                                ).execute()  # Delete all
-                            client.table(table_name).insert(batch).execute()
-                        else:
-                            raise ValueError(f"Unsupported write mode: {write_mode}")
+                        # Wrap Supabase operations in retry logic
+                        def write_batch(batch_data=batch, batch_idx=i):
+                            if write_mode == "insert":
+                                return client.table(table_name).insert(batch_data).execute()
+                            elif write_mode == "upsert":
+                                return (
+                                    client.table(table_name)
+                                    .upsert(batch_data, on_conflict=",".join(primary_key))
+                                    .execute()
+                                )
+                            elif write_mode == "replace":
+                                # Replace mode: delete all then insert
+                                if batch_idx == 0:  # Only delete on first batch
+                                    client.table(table_name).delete().neq(
+                                        "id", "0"
+                                    ).execute()  # Delete all
+                                return client.table(table_name).insert(batch_data).execute()
+                            else:
+                                raise ValueError(f"Unsupported write mode: {write_mode}")
+
+                        # Execute with retry
+                        retry_with_backoff(write_batch, max_attempts=3)
 
                         rows_written += len(batch)
 

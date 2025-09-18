@@ -78,6 +78,13 @@ class E2BAdapter(ExecutionAdapter):
                         cfg_content = self._load_cfg_file(cfg_path, source_manifest_path)
                         if cfg_content:
                             cfg_index[cfg_path] = cfg_content
+                        else:
+                            # File doesn't exist (e.g., in tests) - use step config
+                            cfg_index[cfg_path] = {
+                                "id": step.get("id"),
+                                "driver": step.get("driver"),
+                                "config": step.get("config", {}),
+                            }
                     except Exception as e:
                         log_event(
                             "cfg_load_warning",
@@ -85,9 +92,13 @@ class E2BAdapter(ExecutionAdapter):
                             error=str(e),
                             session_id=context.session_id,
                         )
-                        # Fallback to step config without connection info
-                        step_config = {k: v for k, v in step.items() if k != "cfg_path"}
-                        cfg_index[cfg_path] = step_config
+                        # Fallback to step config on error
+                        # Include essential fields for contract compliance
+                        cfg_index[cfg_path] = {
+                            "id": step.get("id"),
+                            "driver": step.get("driver"),
+                            "config": step.get("config", {}),
+                        }
 
             # Setup I/O layout for remote execution
             remote_logs_dir = context.logs_dir / "remote"

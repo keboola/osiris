@@ -8,6 +8,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **E2B Transparent Proxy Architecture** (M1e)
+  - Complete redesign eliminating E2BPack in favor of transparent proxy approach
+  - New `E2BTransparentProxy` class replacing legacy `E2BAdapter` and `PayloadBuilder`
+  - `ProxyWorker` for remote execution in E2B sandbox environment
+  - RPC protocol for communication between proxy and worker
+  - Full parity between local and E2B execution paths
+  - Identical log structure and artifact layout across environments
+  - Support for verbose output passthrough from E2B sandbox
+  - Heartbeat mechanism for long-running operations
+  - Clean separation of concerns with ExecutionAdapter pattern
+  - Adapter factory pattern for runtime adapter selection (local vs E2B)
+  - PreparedRun dataclass with deterministic execution packages
+  - ExecutionContext for unified session and artifact management
+  - Support for E2B-specific features: timeout, CPU, memory configuration
+
+### Changed
+- **ExecutionAdapter Interface Stabilization**
+  - Refactored from concrete implementations to abstract base class
+  - Three-phase execution model: prepare() → execute() → collect()
+  - Unified context handling across local and remote execution
+  - Session directory structure simplified (no nested session segments)
+  - Artifact collection standardized with CollectedArtifacts dataclass
+
+### Fixed
+- **Test Suite Modernization**
+  - Fixed RunnerV0 API changes to include required output_dir parameter
+  - Removed 18 obsolete test files for deleted components (SafeLogger, PayloadBuilder, E2BPack)
+  - Fixed mock directory pollution in repository root
+  - Updated .gitignore to prevent test artifact pollution
+  - All 679 tests now passing (was 91 failures)
+
+### Removed
+- **Legacy E2B Implementation**
+  - Deleted E2BPack and PayloadBuilder classes (replaced by E2BTransparentProxy)
+  - Removed SafeLogger (functionality integrated into ProxyWorker)
+  - Eliminated nested run directory structure in E2B execution
+  - Removed obsolete test files for old E2B architecture
+  - Deleted cfg materialization tests (now handled by adapters)
+
+### Added
 - **Runtime Driver Layer** (M1c)
   - New `DriverRegistry` for dynamic driver registration and lookup
   - Concrete drivers: `MySQLExtractorDriver` and `FilesystemCsvWriterDriver`

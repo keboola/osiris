@@ -11,13 +11,35 @@ from typing import Any, Dict, List, Optional
 import yaml
 from rich.console import Console
 
+from ..core.adapter_factory import get_execution_adapter
 from ..core.compiler_v0 import CompilerV0
 from ..core.env_loader import load_env
 from ..core.execution_adapter import ExecutionContext
 from ..core.session_logging import SessionContext, log_event, log_metric, set_current_session
-from ..remote.e2b_adapter import E2BAdapter
-from ..remote.e2b_integration import add_e2b_help_text, parse_e2b_args
-from ..runtime.local_adapter import LocalAdapter
+
+# Defensive imports for E2B components
+try:
+    from ..remote.e2b_integration import add_e2b_help_text, parse_e2b_args
+
+    E2B_AVAILABLE = True
+except ImportError:
+    E2B_AVAILABLE = False
+
+    # Provide fallback implementations
+    def add_e2b_help_text(lines):
+        lines.append("[dim]E2B support not available (missing dependencies)[/dim]")
+
+    def parse_e2b_args(args):
+        # Return minimal config that disables E2B
+        class E2BConfig:
+            enabled = False
+            timeout = 900
+            cpu = 2
+            mem_gb = 4
+            env_vars = {}
+
+        return E2BConfig(), args
+
 
 console = Console()
 
@@ -200,8 +222,8 @@ def detect_file_type(file_path: str) -> str:
 
 def execute_with_adapter(
     manifest_data: Dict[str, Any],
-    use_e2b: bool,
-    e2b_config: Dict[str, Any],
+    target: str,
+    adapter_config: Dict[str, Any],
     context: ExecutionContext,
     use_json: bool = False,  # noqa: ARG001
     source_manifest_path: Optional[str] = None,
@@ -211,8 +233,8 @@ def execute_with_adapter(
 
     Args:
         manifest_data: Compiled manifest as dict
-        use_e2b: Whether to use E2B remote execution
-        e2b_config: E2B configuration dict
+        target: Execution target ("local" or "e2b")
+        adapter_config: Configuration for the adapter
         context: Execution context
         use_json: Whether to use JSON output
         source_manifest_path: Path to original manifest
@@ -222,13 +244,12 @@ def execute_with_adapter(
         Tuple of (success, error_message)
     """
     try:
-        # Select adapter based on execution mode
-        if use_e2b:
-            adapter = E2BAdapter(e2b_config)
-            log_event("adapter_selected", adapter="e2b", session_id=context.session_id)
-        else:
-            adapter = LocalAdapter(verbose=verbose)
-            log_event("adapter_selected", adapter="local", session_id=context.session_id)
+        # Add verbose flag to config
+        adapter_config["verbose"] = verbose
+
+        # Get adapter from factory
+        adapter = get_execution_adapter(target, adapter_config)
+        log_event("adapter_selected", adapter=target, session_id=context.session_id)
 
         # Phase 1: Prepare execution
         log_event("adapter_prepare_start", session_id=context.session_id)
@@ -551,15 +572,17 @@ def run_command(args: List[str]):
                 "memory": e2b_config.mem_gb,
                 "env": e2b_config.env_vars,
                 "verbose": verbose,
+                "install_deps": e2b_config.install_deps,
             }
 
         # Execute with selected adapter
         execute_success, error_message = execute_with_adapter(
             manifest_data=manifest_data,
-            use_e2b=e2b_config.enabled,
-            e2b_config=adapter_e2b_config,
+            target=e2b_config.target,
+            adapter_config=adapter_e2b_config,
             context=exec_context,
             use_json=use_json,
+            source_manifest_path=str(manifest_path),
             verbose=verbose,
         )
 
