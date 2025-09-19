@@ -1,8 +1,7 @@
 # 0004 Configuration Precedence Engine
 
 ## Status
-
-Accepted
+Implemented
 
 ## Context
 

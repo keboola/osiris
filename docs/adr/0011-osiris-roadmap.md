@@ -9,7 +9,7 @@ Status Update (2025-09-09):
 # 0011 Osiris Roadmap
 
 ## Status
-Proposed
+Implemented
 
 ## Context
 Osiris has reached its first usable MVP phase, capable of generating YAML-based data pipelines through conversational interaction. The architecture is stabilizing, and foundational features like discovery cache, secrets masking, and session-scoped logging are implemented. To sustain momentum and ensure long-term alignment, we need a structured roadmap capturing major milestones and their intent.

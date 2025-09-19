@@ -1,7 +1,7 @@
 # ADR 0008: Component Registry
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 In the Osiris pipeline, components are the fundamental building blocks that perform various tasks. Each component can have different configurations, capabilities, versions, and metadata. As the number of components grows, managing them consistently and reliably becomes challenging. There is a need for a centralized registry that declares each component's configuration schema, capabilities (such as discovery, analytics, in-memory processing), versioning, and metadata.

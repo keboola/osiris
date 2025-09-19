@@ -3,7 +3,7 @@
 # 0010 E2B Integration for Pipeline Execution
 
 ## Status
-Accepted
+Superseded by ADR-0026
 
 ## Context
 Osiris needs a deterministic, isolated, and observable execution environment for `osiris run`. Local execution is fine for development, but:

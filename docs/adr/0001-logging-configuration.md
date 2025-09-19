@@ -1,8 +1,7 @@
 # 0001 Logging Configuration
 
 ## Status
-
-Accepted
+Implemented
 
 ## Context
 

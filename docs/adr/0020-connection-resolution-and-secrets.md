@@ -1,7 +1,7 @@
 # ADR 0020: Connection Resolution and Secrets
 
 ## Status
-Accepted
+Implemented
 
 ## Context
 

@@ -1,7 +1,7 @@
 # ADR 0015: Compile Contract — Determinism, Fingerprints & No‑Secrets
 
 ## Status
-Accepted
+Implemented
 
 ## Context
 M1b produces **validated OML (intent)**. M1c introduces a **deterministic compiler** that converts OML into **runnable artifacts**:

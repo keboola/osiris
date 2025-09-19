@@ -1,7 +1,7 @@
 # ADR-0026: E2B Transparent Proxy
 
 ## Status
-Accepted
+Implemented
 
 ## Context
 The current approach to E2B execution uses nested sessions, which introduces several issues. These include incorrect artifact paths, duplication of log lines, and differences in log output between local and E2B runs. This situation complicates analysis and reduces the reliability of results. There is a need to unify local and E2B execution to ensure consistency, easier management, and better integration with other tools.

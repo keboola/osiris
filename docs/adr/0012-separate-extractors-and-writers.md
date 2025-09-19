@@ -1,6 +1,6 @@
 # ADR-0012: Separate Extractors and Writers
 
-**Status**: Accepted  
+**Status**: Implemented  
 **Date**: 2025-01-02  
 **Decision Makers**: Engineering Team
 

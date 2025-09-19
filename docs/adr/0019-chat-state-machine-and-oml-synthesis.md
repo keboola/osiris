@@ -1,7 +1,7 @@
 # ADR 0019: Chat State Machine and OML Synthesis
 
 ## Status
-Accepted
+Implemented
 
 ## Context
 

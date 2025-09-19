@@ -3,7 +3,7 @@
 # 0005 Component Specification and Registry
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 To enable deterministic YAML generation and secure handling of secrets, Osiris needs a standardized way for components to declare their configuration, supported capabilities, and sensitive fields. Currently, secrets masking relies on static heuristics, which is not sustainable. As the ecosystem grows (e.g., new connectors such as Shopify), each component must define:

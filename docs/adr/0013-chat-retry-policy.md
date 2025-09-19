@@ -1,8 +1,7 @@
 # ADR-0013: Chat Retry Policy for Post-Generation Validation
 
 ## Status
-
-Accepted (Implemented in M1b.3)
+Implemented
 
 ## Context
 

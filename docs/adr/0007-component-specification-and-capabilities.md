@@ -1,7 +1,7 @@
 # 0007 Component Specification and Capabilities
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 To enable deterministic YAML generation and reliable execution of pipelines, each Osiris component (e.g., extractors, transformers, writers) must expose a formal specification. This specification defines required configuration, supported operations, and declared capabilities.

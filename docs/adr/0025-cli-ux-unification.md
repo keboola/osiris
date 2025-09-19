@@ -1,9 +1,6 @@
-
-
-
 # ADR-0025: CLI UX Unification (Run vs Logs)
 
-**Status:** Proposed  
+**Status:** Implemented  
 **Date:** 2025-09-09  
 **Authors:** Osiris Core Team
 

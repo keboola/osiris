@@ -1,0 +1,198 @@
+# LLM Instructions for Osiris Pipeline Development
+
+This document provides machine-readable instructions for Large Language Models (LLMs) on how to properly work with and extend the Osiris Pipeline system.
+
+## [CONTRACT OVERVIEW]
+
+The Osiris Pipeline system follows a strict contract-based architecture with three main contracts:
+
+1. OML Contract (v0.1.0):
+   - REQUIRED fields: oml_version (exactly "0.1.0"), name (string), steps (non-empty array)
+   - FORBIDDEN fields: version, connectors, tasks, outputs
+   - Each step MUST have: id (unique), component (registered name), mode (read/write/transform), config (object)
+   - Connection references use "@family.alias" syntax
+
+2. Component Contract:
+   - Components MUST have spec.yaml with: name, version, config_schema, capabilities
+   - Drivers MUST implement: run(step_id, config, inputs, ctx) -> dict
+   - Extractors return {"df": DataFrame}, Writers return {}, Transformers return {"df": DataFrame}
+   - Health checks via optional doctor(config) -> dict method
+
+3. Execution Contract:
+   - Adapters MUST implement: prepare() -> PreparedRun, execute(prepared), collect(prepared) -> dict
+   - Events MUST be JSON with: timestamp, event_type, session_id, data
+   - Metrics MUST include: rows_read, rows_written, execution_time_ms
+
+## [CAPABILITIES]
+
+When implementing Osiris components, understand these capability declarations:
+
+### Standard Capabilities:
+- modes: ["read"] - Can extract data from sources
+- modes: ["write"] - Can write data to destinations
+- modes: ["transform"] - Can modify data in-flight
+- features: ["batch"] - Processes data in batches
+- features: ["streaming"] - Supports streaming (future)
+- features: ["incremental"] - Supports delta processing
+- doctor.enabled: true - Provides health check capability
+
+### Capability Rules:
+- Components with mode "read" MUST NOT require inputs
+- Components with mode "write" MUST accept input "df"
+- Components with mode "transform" MUST accept and return "df"
+- Components declaring "doctor" capability MUST implement doctor() method
+
+## [SPEC FORMAT]
+
+When generating component specifications, follow this EXACT structure:
+
+```yaml
+name: "component_family.component_type"  # e.g., "mysql.extractor"
+version: "1.0.0"  # Semantic versioning
+description: "Clear, concise description"
+author: "Author Name"
+tags: ["tag1", "tag2"]  # Lowercase, descriptive
+
+config_schema:
+  type: object
+  required: ["field1", "field2"]  # List required fields
+  properties:
+    field1:
+      type: string
+      description: "What this field configures"
+    field2:
+      type: integer
+      minimum: 1
+      maximum: 1000
+      default: 100
+
+capabilities:
+  modes: ["read"]  # Or ["write"], ["transform"]
+  features: ["batch"]  # Optional features
+  doctor:
+    enabled: true  # If health check supported
+
+secrets:
+  fields:
+    - path: "/connection/password"  # JSONPath in config
+      description: "Secret description"
+      env_var: "ENV_VAR_NAME"  # Environment variable
+      required: true
+
+output_schema:  # For extractors/transformers
+  type: object
+  properties:
+    df:
+      type: "DataFrame"
+      description: "Output data"
+
+examples:  # CRITICAL for LLM context
+  - description: "Simple example"
+    config:
+      field1: "value1"
+      field2: 100
+```
+
+### Spec Validation Rules:
+1. Name MUST follow pattern: "family.type" (e.g., mysql.extractor)
+2. Version MUST use semantic versioning (MAJOR.MINOR.PATCH)
+3. config_schema MUST be valid JSON Schema Draft 2020-12
+4. Required fields in config_schema MUST NOT have defaults
+5. Secrets MUST NEVER appear in examples
+
+## [REGISTRATION]
+
+To register a new component with Osiris:
+
+### Driver Registration:
+```python
+from osiris.core.driver import Driver, DriverRegistry
+
+class MyDriver(Driver):
+    def run(self, step_id: str, config: dict, inputs: dict, ctx) -> dict:
+        # Implementation
+        ctx.log_metric("rows_read", count)  # Required for extractors
+        ctx.log_metric("rows_written", count)  # Required for writers
+        return {"df": dataframe}  # For extractors/transformers
+
+# Register immediately after class definition
+DriverRegistry.register("my_component.extractor", MyDriver())
+```
+
+### Adapter Registration:
+```python
+from osiris.core.adapter_factory import AdapterFactory
+from osiris.core.execution_adapter import ExecutionAdapter
+
+class MyAdapter(ExecutionAdapter):
+    def prepare(self, manifest, context): pass
+    def execute(self, prepared, context): pass
+    def collect(self, prepared, context): pass
+
+# Register in factory
+AdapterFactory.register("my_platform", MyAdapter)
+```
+
+### Registration Rules:
+1. Drivers MUST be registered before pipeline execution
+2. Component name in registry MUST match spec.yaml name exactly
+3. Registration happens at module import time
+4. Never register the same name twice
+
+## CRITICAL INSTRUCTIONS FOR LLMS:
+
+When generating Osiris pipeline code:
+
+1. ALWAYS validate OML against v0.1.0 schema - no exceptions
+2. NEVER include secrets in OML files - use environment variables
+3. ALWAYS use connection aliases with "@family.alias" syntax
+4. NEVER generate the forbidden fields (version, connectors, tasks, outputs)
+5. ALWAYS emit metrics (rows_read/rows_written) in drivers
+6. NEVER cache DataFrame objects between pipeline runs
+7. ALWAYS use structured logging via ctx.log_event()
+8. NEVER print to stdout/stderr directly in drivers
+9. ALWAYS handle errors gracefully with meaningful messages
+10. NEVER modify component specs at runtime
+
+When implementing drivers:
+- Input validation MUST happen before any processing
+- Resource cleanup MUST happen even if errors occur
+- Metrics MUST be emitted before returning
+- Errors MUST include step_id in the message
+- DataFrames MUST be pandas.DataFrame objects
+
+When implementing adapters:
+- prepare() MUST be idempotent
+- execute() MUST emit events for each step
+- collect() MUST return status and artifacts
+- Errors MUST preserve stack traces
+- Cleanup MUST happen in finally blocks
+
+## ERROR MESSAGES:
+
+Generate errors in this format:
+```
+[COMPONENT_NAME] Step 'step_id' failed: Specific error description
+Context: What was being attempted
+Suggestion: How to fix the issue
+```
+
+## TESTING PATTERNS:
+
+When generating tests:
+```python
+def test_component():
+    # Arrange
+    driver = ComponentDriver()
+    config = {"required": "value"}
+    ctx = MockContext()
+
+    # Act
+    result = driver.run("test_1", config, {}, ctx)
+
+    # Assert
+    assert "df" in result
+    assert ctx.metrics["rows_read"] > 0
+```
+
+Remember: Osiris is an LLM-first system. Make the code LLM-friendly with clear contracts, obvious patterns, and excellent error messages.
