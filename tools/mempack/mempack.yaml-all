@@ -16,6 +16,8 @@ include:
 - osiris/connectors/**/**/*.py
 - osiris/components/*.py
 - osiris/prompts/*
+- osiris/runtime/*.py
+- osiris/remote/*.py
 
 # Components registry/specs
 - components/spec.schema.json
@@ -56,6 +58,15 @@ exclude:
 - "**/events.jsonl"
 - "**/metrics.jsonl"
 - "**/*.log"
+- "artifacts/**"
+- "logs/**"
+- "testing_env/logs/**"
+- "**/compiled/**"
+- "**/artifacts/**"
+- "demo/out/**"
+- "output/**"
+- "testing_env/dist/**"
+- "osiris/tmp/**/artifacts/**"
 
 # Repo internals not in .gitignore
 - .git/**

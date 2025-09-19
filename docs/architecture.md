@@ -1,39 +1,37 @@
-# Osiris MVP - Architecture & Implementation Notes
+# Osiris Architecture
 
-**⚠️ MVP STATUS**: This is a basic proof-of-concept implementation, not a production system.
+**Date:** 2025-01-19
+**Version:** v0.1.2
+**Status:** Production-ready MVP with E2B cloud execution
+**Goal:** LLM-first conversational ETL pipeline generation
 
-**Date:** 2025-08-29
-**Version:** MVP (Minimum Viable Product)
-**Context:** Experimental LLM-driven conversational pipeline generator  
-**Goal:** Natural language → Basic YAML pipeline generation
+## 🎯 System Overview
 
-## 🎯 System Overview (REVISED)
-
-**Philosophy**: LLM does the intelligence, human validates the output. Much simpler!
+**Philosophy**: LLM handles discovery and generation, human validates before execution.
 
 ```
-User Intent → LLM Discovery → LLM Generate → Human Validate → Execute
-     ↓              ↓              ↓             ↓            ↓
-"Analyze users" → Auto-profile → SQL+YAML → "Looks good!" → Run It
+User Intent → LLM Discovery → OML Generation → Compilation → Execution
+     ↓              ↓              ↓              ↓            ↓
+"Copy users" → Schema probe → YAML pipeline → Manifest → Local/E2B
 ```
 
-**Realistic MVP Scope:**
+**Current Capabilities:**
 
-- 2 data sources (MySQL, Supabase)
-- DuckDB transformations (LLM generates sophisticated SQL)
-- 3 destinations (CSV, Parquet, JSON)
-- **LLM-first generation** with human validation loop
-- Human expert validates before execution
+- **Data Sources**: MySQL, Supabase (PostgreSQL)
+- **Transformations**: DuckDB SQL (LLM-generated)
+- **Destinations**: CSV, Parquet, JSON, Supabase
+- **Execution**: Local or E2B cloud sandbox (transparent proxy)
+- **Observability**: Structured events, metrics, HTML reports (`osiris logs html --open`)
 
-## 🏗️ Ultra-Simplified Architecture
+## 🏗️ Core Architecture
 
-### Core Principles (REVISED - LLM-Centric)
+### Design Principles
 
-1. **LLM Intelligence** - Let LLM handle discovery, SQL generation, connector configuration
-2. **Human Validation** - Data engineering expert validates before execution
-3. **Progressive Profiling** - LLM starts with samples, goes deeper as needed
-4. **Conversation Flow** - LLM guides discovery and asks clarifying questions
-5. **Shared State Store** - SQLite for session state, not object passing
+1. **LLM-First** - AI handles discovery, SQL generation, pipeline creation
+2. **Human Validation** - Expert approval required before execution
+3. **Progressive Discovery** - Smart schema exploration with caching
+4. **Stateful Sessions** - SQLite-based conversation context
+5. **Execution Parity** - Identical behavior between local and cloud (E2B)
 
 ### LLM-Driven Intent Structure
 

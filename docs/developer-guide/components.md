@@ -2,10 +2,10 @@
 
 ## Component Lifecycle
 
-TODO: Document complete component lifecycle:
+Components in Osiris follow a well-defined lifecycle from discovery to execution. For database components, the discovery phase is particularly important - see [discovery.md](./discovery.md) for details on schema discovery contracts.
 
 ### 1. Discovery Phase
-TODO: How components are discovered:
+How components support schema exploration:
 - Filesystem scanning in `components/` directory
 - Spec.yaml parsing and validation
 - Registry population at startup

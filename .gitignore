@@ -30,7 +30,11 @@ test_*/
 *_test/
 final_test/
 tools/mempack/gen/*
-tests/*
+
+# keep tests in repo, ignore only caches and reports
+.pytest_cache/
+coverage.xml
+htmlcov/
 
 # Internal tools
 .claude/

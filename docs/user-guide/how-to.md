@@ -187,11 +187,16 @@ TODO: Debugging strategies:
 # View session logs
 osiris logs show --session <id>
 
+# Generate interactive HTML report
+osiris logs html --session <id> --open
+
 # Filter events
 osiris logs show --session <id> --filter "error"
 
 # TODO: Document log structure
 ```
+
+The HTML report provides comprehensive execution analysis with metrics, events timeline, and artifact inspection.
 
 ### Common Errors
 TODO: Troubleshooting guide:

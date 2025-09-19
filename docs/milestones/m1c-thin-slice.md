@@ -143,7 +143,7 @@ Implement the absolute minimum viable path for OML compilation and execution: a 
 
 **Files**:
 - `docs/examples/supabase_to_mysql.yaml`
-- Update: `docs/pipeline-format.md`
+- Update: `docs/reference/pipeline-format.md`
 - Update: `CHANGELOG.md`
 
 **Acceptance**:

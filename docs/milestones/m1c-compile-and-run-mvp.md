@@ -443,7 +443,7 @@ _artifacts/                       # Execution outputs
 - Create: `docs/examples/fanout_pipeline.yaml`
 - Create: `tests/golden/snapshots/`
 - Create: `tests/integration/test_end_to_end.py`
-- Update: `docs/pipeline-format.md`
+- Update: `docs/reference/pipeline-format.md`
 
 **Acceptance Criteria**:
 - [ ] All example pipelines compile successfully
@@ -464,7 +464,7 @@ _artifacts/                       # Execution outputs
 - `osiris/core/dag_expander.py` - DAG expansion logic
 - `osiris/core/manifest_generator.py` - Manifest generation
 - CLI commands: `osiris compile`, `osiris run`, `osiris manifest`
-- Updated `docs/pipeline-format.md` with manifest schema and examples
+- Updated `docs/reference/pipeline-format.md` with manifest schema and examples
 - CHANGELOG + updated milestone status
 - Example pipelines under `docs/examples/` with golden snapshots
 

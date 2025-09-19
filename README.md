@@ -180,8 +180,8 @@ pytest tests/e2b/test_e2b_live.py
 - **[CLAUDE.md](CLAUDE.md)** - AI assistant project instructions and architecture overview
 - **[docs/architecture.md](docs/architecture.md)** - Technical system documentation and component relationships
 - **[docs/repository-structure.md](docs/repository-structure.md)** - Complete file-by-file codebase documentation
-- **[docs/pipeline-format.md](docs/pipeline-format.md)** - OML (Osiris Markup Language) specification
-- **[docs/sql-safety.md](docs/sql-safety.md)** - SQL injection prevention and security measures
+- **[docs/reference/pipeline-format.md](docs/reference/pipeline-format.md)** - OML (Osiris Markup Language) specification
+- **[docs/system/sql-safety.md](docs/system/sql-safety.md)** - SQL injection prevention and security measures
 
 ### Examples & Usage
 - **[docs/examples/README.md](docs/examples/README.md)** - Example pipeline usage guide

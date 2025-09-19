@@ -81,7 +81,7 @@ Created comprehensive test suite (`tests/components/test_bootstrap_specs.py`):
 
 ### 📚 Documentation Updates
 
-- **docs/components-spec.md**: Added Bootstrap Components section
+- **docs/reference/components-spec.md**: Added Bootstrap Components section
 - **docs/milestones/m1-component-registry-and-runner.md**: Updated to reflect extractor/writer separation
 
 ## Key Features Implemented
@@ -241,7 +241,7 @@ For detailed rationale, see [ADR-0012: Separate Extractors and Writers](../adr/0
 - Supabase Extractor: `components/supabase.extractor/spec.yaml`
 - Supabase Writer: `components/supabase.writer/spec.yaml`
 - Tests: `tests/components/test_bootstrap_specs.py`
-- Documentation: `docs/components-spec.md`
+- Documentation: `docs/reference/components-spec.md`
 
 ## Conclusion
 

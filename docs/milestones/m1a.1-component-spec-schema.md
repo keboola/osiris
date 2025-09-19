@@ -63,7 +63,7 @@ Implement a comprehensive JSON Schema (Draft 2020-12) that allows components to 
 - **100% test coverage** for schema validation logic
 - **Edge case handling** for invalid inputs
 
-#### 3. Documentation (`docs/components-spec.md`)
+#### 3. Documentation (`docs/reference/components-spec.md`)
 - **Complete field reference** with tables and descriptions
 - **JSON Pointer syntax guide** with examples
 - **Two full examples**:
@@ -178,7 +178,7 @@ This led to creating three validation levels:
 ## Documentation
 
 ### Component Specification Reference
-The `docs/components-spec.md` provides:
+The `docs/reference/components-spec.md` provides:
 - **Schema version and location** information
 - **Core fields reference** with detailed tables
 - **Field details** for all complex types
@@ -253,7 +253,7 @@ The `docs/components-spec.md` provides:
 ### Implementation Files
 - Schema: `components/spec.schema.json`
 - Tests: `tests/components/test_spec_schema.py`
-- Documentation: `docs/components-spec.md`
+- Documentation: `docs/reference/components-spec.md`
 - Utilities: `osiris/components/utils.py`
 - Validation Tools: `tools/validation/*.py`
 - Example Specs: `examples/specs/*.yaml`
