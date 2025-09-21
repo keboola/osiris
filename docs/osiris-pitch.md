@@ -353,37 +353,50 @@ With Osiris you shift spend from tool-wrangling to outcomes:
 **Bottom line**: Osiris makes teams radically more effective, keeps control with you, and turns data work back into a business lever — not a vendor negotiation or a tooling hobby.
 
 ---
-# 👇TBD (note to self for Padak)
 
 ## 5. Roadmap & Ambition
 
-### Milestone M2: Production Readiness
+- M2 delivers control and confidence.
+- M3 unlocks speed and scale without stress.
+- M4 turns data into a self-managing product.
 
-- **Scheduling**: Native cron with retry policies and SLA monitoring
-- **Lineage Tracking**: Full data provenance from source to destination
-- **Ownership & Approval**: RBAC with approval gates for sensitive operations
-- **Orchestrator Integration**: First-class Airflow/Prefect compatibility
+Throughout: transparency, predictability, no vendor lock-in, and a relentless focus on outcomes—not tools.
 
-### Milestone M3: Technical Scale
 
-- **Streaming I/O**: Process infinite streams without memory constraints
-- **Parallel Execution**: Fan-out processing across distributed workers
-- **Observability**: Datadog metrics, OpenTelemetry traces, custom dashboards
-- **Performance**: Sub-second compilation, million-row/second throughput
+### Milestone M2 — Production Readiness (make it run the way business runs)
 
-### Milestone M4: Intelligent Persistence
+- **Any workflow, not just schedules**. Convert recurring tasks into dependable, governed workflows—from daily refreshes to one-off approvals. One click to run now, clear rules to run later.
+- **Automatic impact analysis**. Before a change goes live, Osiris shows exactly what it will touch (tables, dashboards, teams) and the risks involved. Fewer surprises, fewer incidents.
+- **Ownership & approvals that match your org**. Clear accountability, lightweight approvals for sensitive jobs, and an audit-ready history. Compliance without friction.
+- **Meets you where you are**. Osiris runs standalone or inside existing orchestrators (Airflow, Prefect, etc.). No “big bang” migration—you adopt at your own pace.
+- **Success signal**: Teams stop asking “who is running this and when” and start delivering outcomes with confidence.
 
-- **Iceberg Writer**: ACID transactions with time travel capabilities
-- **DWH Agent**: AI that manages schemas, optimizes queries, controls costs
-- **Cloud Native**: Direct integration with Snowflake, BigQuery, Databricks
-- **Cost Optimization**: Automatic data tiering and compression strategies
+### Milestone M3: Technical Scale (limitless when you need it)
 
-### Beyond M4: The Ecosystem (2026+)
+- **Limitless scaling**. From thousands of rows to billions—Osiris processes data in chunks and in parallel. Same workflows, just without limits.
+- **Faster time-to-answer**. Big jobs use smart parallelization for speed; small jobs deliver insights in real time. Always the right pace.
+- **Live health & trust**. Clear run health, alerts, and simple dashboards that managers can understand. When something happens, you know what and why.
+- **Cost clarity, no surprises**. See the financial impact of workloads and set simple limits. Experiment freely without bill shock.
+- **Success signal**: Large and small datasets alike complete reliably; experiments launch immediately without waiting on “team capacity.”
 
-- **Component Marketplace**: Community-contributed adapters and transformations
-- **Industry Templates**: Pre-built pipelines for common use cases
-- **Federated Execution**: Run across multiple clouds and regions
-- **AI Memory Network**: Shared learning across organizations (with privacy)
+### Milestone M4: Intelligent Persistence (your data runs itself)
+
+- **Self-managing warehouse**. Osiris safely stores, versions, and maintains data truth over time. It hands back optimized, ready-to-use datasets.
+- **From pipeline to product**. Results from Osiris pipelines automatically become trusted sources for new pipelines and AI agents—creating a unified data layer for the whole business.
+- **Performance & cost on autopilot**. Smart suggestions for partitioning, indexing, and tiering save money without slowing you down.
+- **Cloud freedom**. Works with your favorite warehouses and clouds; no lock-in. You decide where your data lives.
+- **Success signal**: Teams spend less time “building plumbing” and more time delivering data products. Costs become predictable, and data quality steadily rises.
+
+### Beyond M4: The Osiris Ecosystem
+
+- **Component marketplace**. Shared connectors and transformations from the community and partners—less reinventing the wheel, more value creation.
+- **Industry blueprints**. Pre-built solutions for common use cases (customer retention, marketing attribution, financial reporting)—from idea to result in hours.
+- **Run anywhere, together**. Federated execution across clouds and regions; one truth, unified control.
+- **Organizational memory network**. What your firm learns with Osiris stays with you—securely carried across teams and projects. Each new initiative starts faster than the last.
+
+---
+
+# 👇TBD (note to self for Padak)
 
 ---
 
