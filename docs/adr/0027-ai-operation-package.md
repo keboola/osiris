@@ -129,11 +129,75 @@ TODO: Implementation phases:
 - Performance tuning and compression support
 - Documentation and tooling
 
+## Graph Export Hints for Future GraphRAG
+
+The AIOP will include optional "graph hints" designed to prepare for future GraphRAG (Graph-based Retrieval-Augmented Generation) systems. This is not a full knowledge graph implementation, but rather strategic metadata that enables future graph construction.
+
+### Triple Generation Strategy
+The package will emit RDF-style triples following the pattern `[subject, predicate, object]`:
+
+```json
+{
+  "graph_hints": {
+    "triples": [
+      ["osiris://run/@run_123", "rdf:type", "osiris:PipelineRun"],
+      ["osiris://run/@run_123", "osiris:executedPipeline", "customer_etl"],
+      ["osiris://run/@run_123", "osiris:hasStep", "osiris://run/@run_123/step/extract"],
+      ["osiris://run/@run_123/step/extract", "osiris:rowsProcessed", "10234"],
+      ["osiris://run/@run_123/step/extract", "osiris:followedBy", "osiris://run/@run_123/step/write"]
+    ]
+  }
+}
+```
+
+### LTM (Long-Term Memory) Touchpoints
+The package identifies key patterns and metrics that should be tracked across runs for organizational learning:
+
+```json
+{
+  "ltm_touchpoints": {
+    "pipeline_pattern": "mysql_to_csv_export",
+    "data_lineage": ["source.mysql.customers", "target.csv.output"],
+    "performance_baseline": {
+      "p50_duration_ms": 323000,
+      "p95_duration_ms": 451000
+    },
+    "failure_signatures": [],
+    "schema_evolution": {
+      "source.mysql.customers": "v2.1"
+    }
+  }
+}
+```
+
+### Embedding-Ready Content
+Specific text fields will be marked as suitable for vector embedding:
+
+```json
+{
+  "embeddings_ready": [
+    "narrative.summary",      // Natural language description
+    "semantic.intent",         // Business purpose
+    "evidence.errors[].message" // Error messages for similarity search
+  ]
+}
+```
+
+## Security Considerations for GraphRAG
+
+When preparing graph hints and LTM touchpoints, the following security measures apply:
+
+1. **No PII in Triples**: Entity URIs use stable IDs, never user data
+2. **Aggregated Metrics Only**: Performance baselines use statistical aggregates
+3. **Schema Fingerprints**: Schema versions use hashes, not actual schemas
+4. **Lineage Abstraction**: Data lineage uses logical names, not physical paths
+
 ## References
 - Issue #XXX: AI-friendly log format request
 - ADR-0003: Session-scoped logging (related)
 - Claude/ChatGPT best practices for context
 - JSON-LD and linked data standards
+- docs/milestones/m2a-aiop.md: Implementation plan for M2a
 
 ## Notes on Milestone M1
 
@@ -157,3 +221,29 @@ Current state:
 - Session-aware logging with structured events
 
 The full AI Operation Package feature is postponed to Milestone M2 for implementation alongside other AI enhancement features.
+
+## Acceptance Criteria for M2a Implementation
+
+### Core Package Generation
+- [ ] `osiris logs aiop --session <id>` generates valid JSON-LD package
+- [ ] Package size ≤300 KB by default (configurable via `--max-core-bytes`)
+- [ ] All three layers present: Narrative, Semantic, Evidence
+- [ ] Deterministic output for same input (stable IDs and ordering)
+- [ ] NO secrets in output (comprehensive redaction)
+
+### GraphRAG Preparation
+- [ ] Graph hints section includes valid RDF triples
+- [ ] LTM touchpoints identify pipeline patterns and baselines
+- [ ] Embedding-ready fields marked for vector generation
+- [ ] Triple URIs follow osiris:// scheme without trailing slashes
+
+### Annex Shards (Optional)
+- [ ] `--policy annex` generates NDJSON shard files
+- [ ] Timeline, metrics, errors exported as separate streams
+- [ ] Core package includes references to annex files
+
+### Validation & Testing
+- [ ] JSON Schema validation for package structure
+- [ ] Secret scanning tests pass (no PII/credentials)
+- [ ] Performance: <5s generation for typical runs
+- [ ] Cross-referenced evidence IDs resolve correctly
