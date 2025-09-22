@@ -45,6 +45,8 @@ class ProxyWorker:
         self.step_count = 0
         self.total_rows = 0
         self.step_outputs = {}  # Cache outputs for downstream steps
+        self.step_rows = {}  # Track rows per step for cleanup aggregation
+        self.step_drivers = {}  # Track driver type per step
 
         # Set up stderr logging for debugging
         logging.basicConfig(
@@ -187,6 +189,18 @@ class ProxyWorker:
         # Get list of loaded drivers
         drivers_loaded = self.list_registered_drivers()
 
+        # Emit run_start event with pipeline_id (before session_initialized)
+        pipeline_id = None
+        if self.manifest and "pipeline" in self.manifest:
+            pipeline_id = self.manifest["pipeline"].get("id", "unknown")
+
+        self.send_event(
+            "run_start",
+            pipeline_id=pipeline_id,
+            manifest_path=f"session/{self.session_id}/manifest.json",
+            profile=self.manifest.get("pipeline", {}).get("fingerprints", {}).get("profile", "default")
+        )
+
         # Send initialization event
         self.send_event(
             "session_initialized", session_id=self.session_id, drivers_loaded=drivers_loaded
@@ -282,9 +296,28 @@ class ProxyWorker:
             # Emit connection resolution events if we have a resolved connection
             # (for parity with local runs, even though resolution happened on host)
             if "resolved_connection" in clean_config:
-                # Extract family and alias if available from the original config
+                # Extract family and alias from the config or resolved_connection
                 family = config.get("_connection_family", "unknown")
                 alias = config.get("_connection_alias", "unknown")
+
+                # Try to infer family from driver name or connection URL if unknown
+                if family == "unknown":
+                    if driver_name.startswith("mysql."):
+                        family = "mysql"
+                    elif driver_name.startswith("supabase."):
+                        family = "supabase"
+                    elif "resolved_connection" in clean_config:
+                        resolved = clean_config["resolved_connection"]
+                        if "url" in resolved:
+                            if "mysql" in resolved.get("url", ""):
+                                family = "mysql"
+                            elif "postgres" in resolved.get("url", "") or "supabase" in resolved.get("url", ""):
+                                family = "supabase"
+
+                # Add connection metadata to the resolved_connection for tracking
+                if family != "unknown" or alias != "unknown":
+                    clean_config["resolved_connection"]["_family"] = family
+                    clean_config["resolved_connection"]["_alias"] = alias
 
                 self.send_event(
                     "connection_resolve_start", step_id=step_id, family=family, alias=alias
@@ -366,17 +399,43 @@ class ProxyWorker:
 
                         if isinstance(result["df"], pd.DataFrame):
                             rows_processed = len(result["df"])
-                            # Emit rows_read for extractors specifically
+                            # Emit rows_read for extractors specifically (ONLY with step tag)
                             if driver_name.endswith(".extractor"):
                                 self.send_metric(
                                     "rows_read", rows_processed, tags={"step": step_id}
                                 )
+                                # DO NOT emit untagged rows_read metric
                     except Exception:
                         pass
 
-            # Update counters
+            # Track driver type and rows for this step
+            self.step_drivers[step_id] = driver_name
+
+            # For writer steps, get actual written count
+            rows_written = 0
+            if driver_name.endswith(".writer"):
+                # Try to get actual written count from driver result or input DataFrame
+                if rows_processed > 0:
+                    rows_written = rows_processed
+                elif resolved_inputs and "df" in resolved_inputs:
+                    try:
+                        import pandas as pd
+                        if isinstance(resolved_inputs["df"], pd.DataFrame):
+                            rows_written = len(resolved_inputs["df"])
+                    except Exception:
+                        pass
+                # Track rows for this writer step
+                self.step_rows[step_id] = rows_written
+                # Writers contribute to total_rows
+                self.total_rows += rows_written
+            else:
+                # Track rows for extractor/transform steps
+                self.step_rows[step_id] = rows_processed
+                # Non-writers don't contribute to total_rows anymore
+                # self.total_rows += rows_processed  # REMOVED
+
+            # Update step counter
             self.step_count += 1
-            self.total_rows += rows_processed
 
             # Calculate duration
             duration_ms = (time.time() - start_time) * 1000
@@ -387,11 +446,13 @@ class ProxyWorker:
                 self.send_metric("rows_processed", rows_processed, tags={"step": step_id})
             self.send_metric("step_duration_ms", duration_ms, tags={"step": step_id})
 
-            # Send completion event
+            # Send completion event with correct row count
+            # Writers report actual written count, extractors report extracted count
+            completion_rows = rows_written if driver_name.endswith(".writer") else rows_processed
             self.send_event(
                 "step_complete",
                 step_id=step_id,
-                rows_processed=rows_processed,
+                rows_processed=completion_rows,
                 duration_ms=duration_ms,
             )
 
@@ -400,9 +461,11 @@ class ProxyWorker:
             )
 
             # CRITICAL: Return response WITHOUT DataFrames - only JSON-serializable data
+            # For RPC response, writers should report actual written count
+            rpc_rows = rows_written if driver_name.endswith(".writer") else rows_processed
             return ExecStepResponse(
                 step_id=step_id,
-                rows_processed=rows_processed,
+                rows_processed=rpc_rows,  # Writers report written count in RPC response
                 outputs={},  # Empty dict instead of the full result containing DataFrames
                 duration_ms=duration_ms,
             )
@@ -435,6 +498,21 @@ class ProxyWorker:
         """Cleanup session resources and write final status."""
         self.send_event("cleanup_start")
 
+        # Calculate correct total_rows based on writer-only aggregation
+        sum_rows_written = 0
+        sum_rows_read = 0
+
+        if hasattr(self, "step_drivers") and hasattr(self, "step_rows"):
+            for step_id, driver_name in self.step_drivers.items():
+                rows = self.step_rows.get(step_id, 0)
+                if driver_name.endswith(".writer"):
+                    sum_rows_written += rows
+                elif driver_name.endswith(".extractor"):
+                    sum_rows_read += rows
+
+        # Use writers-only sum if available, else fall back to extractors
+        final_total_rows = sum_rows_written if sum_rows_written > 0 else sum_rows_read
+
         try:
             # Ensure metrics.jsonl exists even if empty
             if hasattr(self, "metrics_file") and self.metrics_file:
@@ -458,13 +536,13 @@ class ProxyWorker:
             self.step_outputs.clear()
 
         self.send_event(
-            "cleanup_complete", steps_executed=self.step_count, total_rows=self.total_rows
+            "cleanup_complete", steps_executed=self.step_count, total_rows=final_total_rows
         )
 
-        self.logger.info(f"Session {self.session_id} cleaned up")
+        self.logger.info(f"Session {self.session_id} cleaned up - total_rows={final_total_rows} (writers={sum_rows_written}, extractors={sum_rows_read})")
 
         return CleanupResponse(
-            session_id=self.session_id, steps_executed=self.step_count, total_rows=self.total_rows
+            session_id=self.session_id, steps_executed=self.step_count, total_rows=final_total_rows
         )
 
     def handle_ping(self, cmd: PingCommand) -> PingResponse:

@@ -43,7 +43,23 @@ def is_e2b_session(logs_dir: str, session_id: str) -> bool:
         except (OSError, json.JSONDecodeError):
             pass
 
-    # Check events for E2B-specific events
+    # Check commands.jsonl for rpc_* commands (prepare/exec_step/cleanup)
+    commands_file = session_path / "commands.jsonl"
+    if commands_file.exists():
+        try:
+            with open(commands_file) as f:
+                for line in f:
+                    try:
+                        cmd = json.loads(line.strip())
+                        cmd_name = cmd.get("cmd", "")
+                        if cmd_name in ["prepare", "exec_step", "cleanup", "ping"]:
+                            return True
+                    except json.JSONDecodeError:
+                        continue
+        except OSError:
+            pass
+
+    # Check events for E2B-specific events (worker_started, worker_complete, heartbeat)
     events_file = session_path / "events.jsonl"
     if events_file.exists():
         try:
@@ -52,8 +68,16 @@ def is_e2b_session(logs_dir: str, session_id: str) -> bool:
                     try:
                         event = json.loads(line.strip())
                         event_name = event.get("event", "")
+                        # Check for E2B-specific events
+                        if event_name in ["worker_started", "worker_complete", "heartbeat"]:
+                            return True
                         if event_name.startswith("e2b."):
                             return True
+                        # Check if path contains /home/user/session/run_
+                        if "path" in event:
+                            path = str(event["path"])
+                            if "/home/user/session/run_" in path:
+                                return True
                     except json.JSONDecodeError:
                         continue
         except OSError:
@@ -123,12 +147,18 @@ def get_session_metadata(logs_dir: str, session_id: str) -> Dict[str, Any]:
                         event_name = event.get("event", "")
 
                         # Extract pipeline info from run_start event
-                        if event_name == "run_start" and "pipeline_id" in event:
+                        if event_name == "run_start":
                             if "pipeline" not in metadata:
                                 metadata["pipeline"] = {}
-                            metadata["pipeline"]["id"] = event.get("pipeline_id")
+                            if "pipeline_id" in event:
+                                metadata["pipeline"]["id"] = event.get("pipeline_id")
                             metadata["pipeline"]["profile"] = event.get("profile", "default")
                             metadata["pipeline"]["manifest_path"] = event.get("manifest_path", "")
+
+                        # Try to extract from exec_step or config_opened events
+                        elif event_name == "exec_step" and "pipeline_id" not in metadata.get("pipeline", {}):
+                            # This is likely an E2B session, try to find pipeline_id from manifest
+                            pass  # We'll handle this below
 
                         # Extract environment info
                         elif event_name == "env_loaded" and "files" in event:
@@ -153,9 +183,36 @@ def get_session_metadata(logs_dir: str, session_id: str) -> Dict[str, Any]:
                         elif event_name == "connection_resolve_complete" and event.get("ok"):
                             if "connections" not in metadata:
                                 metadata["connections"] = []
-                            conn_info = (
-                                f"{event.get('family', 'unknown')}/{event.get('alias', 'unknown')}"
-                            )
+                            family = event.get('family', 'unknown')
+                            alias = event.get('alias', 'unknown')
+
+                            # If family/alias are unknown, try to read from cleaned_config.json
+                            if family == "unknown" or alias == "unknown":
+                                step_id = event.get('step_id')
+                                if step_id:
+                                    # Look for cleaned_config.json in artifacts
+                                    config_path = session_path / "artifacts" / step_id / "cleaned_config.json"
+                                    if config_path.exists():
+                                        try:
+                                            with open(config_path) as f:
+                                                clean_config = json.load(f)
+                                                if "resolved_connection" in clean_config:
+                                                    resolved = clean_config["resolved_connection"]
+                                                    # Try to infer family from connection type
+                                                    if "url" in resolved and resolved["url"]:
+                                                        if "mysql" in resolved["url"]:
+                                                            family = "mysql"
+                                                        elif "postgres" in resolved["url"] or "supabase" in resolved["url"]:
+                                                            family = "supabase"
+                                                    # Try to get alias from resolved connection
+                                                    if "_alias" in resolved:
+                                                        alias = resolved["_alias"]
+                                                    elif "alias" in resolved:
+                                                        alias = resolved["alias"]
+                                        except (OSError, json.JSONDecodeError):
+                                            pass
+
+                            conn_info = f"{family}/{alias}"
                             if conn_info not in metadata["connections"]:
                                 metadata["connections"].append(conn_info)
 
@@ -163,6 +220,30 @@ def get_session_metadata(logs_dir: str, session_id: str) -> Dict[str, Any]:
                         continue
         except OSError:
             pass
+
+    # If pipeline_id is missing, try to read it from manifest.json
+    if "pipeline" not in metadata or "id" not in metadata.get("pipeline", {}):
+        manifest_file = session_path / "manifest.json"
+        if not manifest_file.exists():
+            # Try YAML format
+            manifest_file = session_path / "manifest.yaml"
+
+        if manifest_file.exists():
+            try:
+                if manifest_file.suffix == ".json":
+                    with open(manifest_file) as f:
+                        manifest = json.load(f)
+                else:
+                    import yaml
+                    with open(manifest_file) as f:
+                        manifest = yaml.safe_load(f)
+
+                if "pipeline" in manifest and "id" in manifest["pipeline"]:
+                    if "pipeline" not in metadata:
+                        metadata["pipeline"] = {}
+                    metadata["pipeline"]["id"] = manifest["pipeline"]["id"]
+            except (OSError, json.JSONDecodeError, yaml.YAMLError):
+                pass
 
     return metadata
 

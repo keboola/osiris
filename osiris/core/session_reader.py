@@ -41,6 +41,9 @@ class SessionSummary:
     artifacts_count: int = 0
     steps_with_artifacts: List[str] = field(default_factory=list)
 
+    # Diagnostic hints
+    double_count_hint: bool = False  # Indicates potential double counting (non-blocking)
+
     # Computed fields
     @property
     def success_rate(self) -> float:
@@ -168,6 +171,22 @@ class SessionReader:
         if remote_path.exists():
             self._merge_remote_data(remote_path, summary)
 
+        # Check for E2B execution via commands.jsonl (RPC commands)
+        commands_path = session_path / "commands.jsonl"
+        if commands_path.exists() and summary.adapter_type != "E2B":
+            try:
+                with open(commands_path) as f:
+                    for line in f:
+                        try:
+                            cmd = json.loads(line.strip())
+                            if cmd.get("cmd") in ["prepare", "exec_step", "cleanup", "ping"]:
+                                summary.adapter_type = "E2B"
+                                break
+                        except json.JSONDecodeError:
+                            continue
+            except OSError:
+                pass
+
         return summary
 
     def get_last_session(self) -> Optional[SessionSummary]:
@@ -202,6 +221,8 @@ class SessionReader:
         """Read and aggregate events.jsonl file."""
         steps_seen: Set[str] = set()
         tables_seen: Set[str] = set()
+        rows_by_step: Dict[str, int] = {}  # Track rows per step to avoid duplicates
+        cleanup_total_rows = None  # Track cleanup_complete.total_rows if present
 
         try:
             with open(path) as f:
@@ -259,14 +280,30 @@ class SessionReader:
 
                         elif event_type == "step_complete":
                             summary.steps_ok += 1
+                            # Track rows_processed from step_complete for writers
+                            step_id = event.get("step_id", "")
+                            if "rows_processed" in event and step_id:
+                                rows_by_step[step_id] = event["rows_processed"]
 
                         elif event_type == "step_error":
                             summary.steps_failed += 1
                             summary.errors += 1
 
-                        # Track data flow
-                        if "rows_read" in event:
-                            summary.rows_in += event["rows_read"]
+                        # Check for cleanup_complete total_rows (preferred source for E2B)
+                        elif event_type == "cleanup_complete" and "total_rows" in event:
+                            cleanup_total_rows = event["total_rows"]
+
+                        # Track data flow (only count if step_id present to avoid duplicates)
+                        # Handle both direct rows_read field and metric-style with value field
+                        if event_type == "rows_read" or "rows_read" in event:
+                            if "step_id" in event:
+                                step_id = event["step_id"]
+                                # Get row count from either 'value' field (metric style) or 'rows_read' field
+                                row_count = event.get("value", event.get("rows_read", 0))
+                                if step_id not in rows_by_step and row_count > 0:
+                                    rows_by_step[step_id] = row_count
+                                    summary.rows_in += row_count
+
                         if "rows_written" in event:
                             summary.rows_out += event["rows_written"]
 
@@ -290,6 +327,26 @@ class SessionReader:
                     except (json.JSONDecodeError, KeyError):
                         continue  # Skip invalid events
 
+            # Use cleanup_complete total_rows if available (most accurate for E2B)
+            if cleanup_total_rows is not None:
+                summary.rows_out = cleanup_total_rows
+
+                # Diagnostic: check for potential double counting
+                # If cleanup_total equals sum of all step rows and we have writer steps
+                if rows_by_step:
+                    total_all_steps = sum(rows_by_step.values())
+                    # Check if any steps look like writers (simple heuristic)
+                    has_writers = any("write" in step_id.lower() for step_id in rows_by_step.keys())
+                    if has_writers and cleanup_total_rows == total_all_steps and total_all_steps > 0:
+                        # Potential double count detected (cleanup should be writers-only)
+                        summary.double_count_hint = True
+
+            # Otherwise, if we have no rows_out but have step data, sum it
+            elif summary.rows_out == 0 and rows_by_step:
+                # For E2B sessions where writers don't emit rows_written,
+                # use the sum of extractor rows as the total
+                summary.rows_out = sum(rows_by_step.values())
+
             summary.tables = sorted(tables_seen)  # Deterministic ordering
 
         except OSError:
@@ -297,14 +354,30 @@ class SessionReader:
 
     def _read_metrics(self, path: Path, summary: SessionSummary) -> None:
         """Read and aggregate metrics.jsonl file."""
+        rows_by_step: Dict[str, int] = {}  # Track to avoid duplicates
+
         try:
             with open(path) as f:
                 for line in f:
                     try:
                         metric = json.loads(line.strip())
 
+                        # Handle rows_read metrics with step_id (ignore untagged)
+                        if metric.get("metric") == "rows_read" and "step_id" in metric:
+                            step_id = metric["step_id"]
+                            value = metric.get("value", 0)
+                            if step_id not in rows_by_step and value > 0:
+                                rows_by_step[step_id] = value
+                                summary.rows_in += value
+
+                        # Handle rows_written metrics
+                        elif metric.get("metric") == "rows_written":
+                            value = metric.get("value", 0)
+                            if value > 0:
+                                summary.rows_out += value
+
                         # Aggregate any additional metrics not in events
-                        if "total_rows" in metric:
+                        elif "total_rows" in metric:
                             # Use max in case of multiple reports
                             summary.rows_out = max(summary.rows_out, metric["total_rows"])
 
