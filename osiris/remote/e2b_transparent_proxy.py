@@ -783,6 +783,9 @@ class E2BTransparentProxy(ExecutionAdapter):
 
                         # Replace the reference with the resolved connection
                         resolved_config["resolved_connection"] = resolved_connection
+                        # Add connection metadata for proxy worker to use in events
+                        resolved_config["_connection_family"] = family
+                        resolved_config["_connection_alias"] = alias if alias else "default"
                         # Remove the reference string
                         del resolved_config["connection"]
 

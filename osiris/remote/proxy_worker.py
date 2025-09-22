@@ -198,7 +198,9 @@ class ProxyWorker:
             "run_start",
             pipeline_id=pipeline_id,
             manifest_path=f"session/{self.session_id}/manifest.json",
-            profile=self.manifest.get("pipeline", {}).get("fingerprints", {}).get("profile", "default")
+            profile=self.manifest.get("pipeline", {})
+            .get("fingerprints", {})
+            .get("profile", "default"),
         )
 
         # Send initialization event
@@ -296,40 +298,45 @@ class ProxyWorker:
             # Emit connection resolution events if we have a resolved connection
             # (for parity with local runs, even though resolution happened on host)
             if "resolved_connection" in clean_config:
-                # Extract family and alias from the config or resolved_connection
-                family = config.get("_connection_family", "unknown")
-                alias = config.get("_connection_alias", "unknown")
+                # Extract family and alias from the config (passed from E2B transparent proxy)
+                family = config.get("_connection_family", None)
+                alias = config.get("_connection_alias", None)
 
-                # Try to infer family from driver name or connection URL if unknown
-                if family == "unknown":
+                # Try to infer family from driver name if not provided
+                if not family:
                     if driver_name.startswith("mysql."):
                         family = "mysql"
                     elif driver_name.startswith("supabase."):
                         family = "supabase"
+                    elif driver_name.startswith("postgres."):
+                        family = "postgres"
                     elif "resolved_connection" in clean_config:
                         resolved = clean_config["resolved_connection"]
                         if "url" in resolved:
-                            if "mysql" in resolved.get("url", ""):
+                            url = resolved.get("url", "")
+                            if "mysql" in url:
                                 family = "mysql"
-                            elif "postgres" in resolved.get("url", "") or "supabase" in resolved.get("url", ""):
+                            elif "postgres" in url or "supabase" in url:
                                 family = "supabase"
 
-                # Add connection metadata to the resolved_connection for tracking
-                if family != "unknown" or alias != "unknown":
+                    # Final fallback - infer from driver
+                    if not family:
+                        family = driver_name.split(".")[0] if "." in driver_name else "unknown"
+
+                # Only emit events if we have at least the family
+                if family and family != "unknown":
+                    # Use actual alias or omit if not available (don't use "unknown")
+                    event_data = {"step_id": step_id, "family": family}
+                    if alias and alias != "unknown":
+                        event_data["alias"] = alias
+
+                    self.send_event("connection_resolve_start", **event_data)
+                    self.send_event("connection_resolve_complete", **event_data, ok=True)
+
+                    # Add metadata to resolved_connection for tracking
                     clean_config["resolved_connection"]["_family"] = family
-                    clean_config["resolved_connection"]["_alias"] = alias
-
-                self.send_event(
-                    "connection_resolve_start", step_id=step_id, family=family, alias=alias
-                )
-
-                self.send_event(
-                    "connection_resolve_complete",
-                    step_id=step_id,
-                    family=family,
-                    alias=alias,
-                    ok=True,
-                )
+                    if alias and alias != "unknown":
+                        clean_config["resolved_connection"]["_alias"] = alias
 
             # Save cleaned config as artifact (with masked secrets)
             cleaned_config_path = step_artifacts_dir / "cleaned_config.json"
@@ -370,11 +377,16 @@ class ProxyWorker:
 
             ctx = SimpleContext(step_artifacts_dir, self)
 
+            # Remove metadata fields that were added for tracking before passing to driver
+            driver_config = clean_config.copy()
+            driver_config.pop("_connection_family", None)
+            driver_config.pop("_connection_alias", None)
+
             # Execute driver
             self.logger.info(f"Executing step {step_id} with driver {driver_name}")
             result = driver.run(
                 step_id=step_id,
-                config=clean_config,  # Use cleaned config like LocalAdapter
+                config=driver_config,  # Use cleaned config without metadata
                 inputs=resolved_inputs,
                 ctx=ctx,
             )
@@ -420,6 +432,7 @@ class ProxyWorker:
                 elif resolved_inputs and "df" in resolved_inputs:
                     try:
                         import pandas as pd
+
                         if isinstance(resolved_inputs["df"], pd.DataFrame):
                             rows_written = len(resolved_inputs["df"])
                     except Exception:
@@ -539,7 +552,9 @@ class ProxyWorker:
             "cleanup_complete", steps_executed=self.step_count, total_rows=final_total_rows
         )
 
-        self.logger.info(f"Session {self.session_id} cleaned up - total_rows={final_total_rows} (writers={sum_rows_written}, extractors={sum_rows_read})")
+        self.logger.info(
+            f"Session {self.session_id} cleaned up - total_rows={final_total_rows} (writers={sum_rows_written}, extractors={sum_rows_read})"
+        )
 
         return CleanupResponse(
             session_id=self.session_id, steps_executed=self.step_count, total_rows=final_total_rows

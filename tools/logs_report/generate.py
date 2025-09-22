@@ -156,7 +156,9 @@ def get_session_metadata(logs_dir: str, session_id: str) -> Dict[str, Any]:
                             metadata["pipeline"]["manifest_path"] = event.get("manifest_path", "")
 
                         # Try to extract from exec_step or config_opened events
-                        elif event_name == "exec_step" and "pipeline_id" not in metadata.get("pipeline", {}):
+                        elif event_name == "exec_step" and "pipeline_id" not in metadata.get(
+                            "pipeline", {}
+                        ):
                             # This is likely an E2B session, try to find pipeline_id from manifest
                             pass  # We'll handle this below
 
@@ -183,15 +185,17 @@ def get_session_metadata(logs_dir: str, session_id: str) -> Dict[str, Any]:
                         elif event_name == "connection_resolve_complete" and event.get("ok"):
                             if "connections" not in metadata:
                                 metadata["connections"] = []
-                            family = event.get('family', 'unknown')
-                            alias = event.get('alias', 'unknown')
+                            family = event.get("family", "unknown")
+                            alias = event.get("alias", "unknown")
 
                             # If family/alias are unknown, try to read from cleaned_config.json
                             if family == "unknown" or alias == "unknown":
-                                step_id = event.get('step_id')
+                                step_id = event.get("step_id")
                                 if step_id:
                                     # Look for cleaned_config.json in artifacts
-                                    config_path = session_path / "artifacts" / step_id / "cleaned_config.json"
+                                    config_path = (
+                                        session_path / "artifacts" / step_id / "cleaned_config.json"
+                                    )
                                     if config_path.exists():
                                         try:
                                             with open(config_path) as f:
@@ -202,7 +206,10 @@ def get_session_metadata(logs_dir: str, session_id: str) -> Dict[str, Any]:
                                                     if "url" in resolved and resolved["url"]:
                                                         if "mysql" in resolved["url"]:
                                                             family = "mysql"
-                                                        elif "postgres" in resolved["url"] or "supabase" in resolved["url"]:
+                                                        elif (
+                                                            "postgres" in resolved["url"]
+                                                            or "supabase" in resolved["url"]
+                                                        ):
                                                             family = "supabase"
                                                     # Try to get alias from resolved connection
                                                     if "_alias" in resolved:
@@ -235,6 +242,7 @@ def get_session_metadata(logs_dir: str, session_id: str) -> Dict[str, Any]:
                         manifest = json.load(f)
                 else:
                     import yaml
+
                     with open(manifest_file) as f:
                         manifest = yaml.safe_load(f)
 
@@ -293,7 +301,13 @@ def get_pipeline_steps(logs_dir: str, session_id: str) -> list:
                             step_id = event.get("step_id", "unknown")
                             if step_id in step_info:
                                 step_info[step_id]["status"] = "completed"
-                                step_info[step_id]["duration"] = event.get("duration", "")
+                                # Try to get duration from event (might be "duration" or "duration_ms")
+                                duration_str = event.get("duration", "")
+                                if not duration_str and "duration_ms" in event:
+                                    duration_ms = event.get("duration_ms", 0)
+                                    if duration_ms:
+                                        duration_str = f"{duration_ms}ms"
+                                step_info[step_id]["duration"] = duration_str
                                 step_info[step_id]["output_dir"] = event.get("output_dir", "")
 
                         # Try to get config path from artifacts
@@ -681,7 +695,17 @@ def generate_overview_page(sessions, logs_dir: str) -> str:  # noqa: ARG001
         .status-unknown {{ background: #e2e3e5; color: #383d41; }}
         .e2b-badge {{
             display: inline-block;
-            background: #ff8c00;
+            background: #ff6b00;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: bold;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            margin-left: 0.5rem;
+        }}
+        .local-badge {{
+            display: inline-block;
+            background: #6c757d;
             color: white;
             font-size: 0.75rem;
             font-weight: bold;
@@ -802,10 +826,14 @@ def generate_overview_page(sessions, logs_dir: str) -> str:  # noqa: ARG001
                 else:
                     duration = f"{session.duration_ms / 60000:.1f}m"
 
-            # Check if this session used E2B remote execution
-            e2b_badge = ""
+            # Check if this session used E2B remote execution and add appropriate badge
+            badge = ""
             if hasattr(session, "adapter_type") and session.adapter_type == "E2B":
-                e2b_badge = '<span class="e2b-badge">E2B</span>'
+                badge = '<span class="e2b-badge">E2B</span>'
+            else:
+                # For run sessions that are not E2B, show Local badge
+                if session_type == "run":
+                    badge = '<span class="local-badge">Local</span>'
 
             # Get pipeline name from SessionReader (already extracted)
             pipeline_name = session.pipeline_name or ""
@@ -819,7 +847,7 @@ def generate_overview_page(sessions, logs_dir: str) -> str:  # noqa: ARG001
 
             html += f"""
                     <tr class="clickable-row" onclick="window.location.href='{session.session_id}/index.html'" data-duration="{duration_ms}" data-rows="{rows}" data-pipeline="{pipeline_name.lower()}">
-                        <td class="session-id">{session.session_id}{e2b_badge}</td>
+                        <td class="session-id">{session.session_id}{badge}</td>
                         <td class="pipeline-name">{pipeline_name[:40] if pipeline_name else '-'}</td>
                         <td class="session-time">{started_time}</td>
                         <td class="session-duration">{duration or '-'}</td>
@@ -1010,6 +1038,24 @@ def generate_session_detail_page(session, session_logs) -> str:
 
     metadata = get_session_metadata(logs_dir, session.session_id)
     pipeline_steps = get_pipeline_steps(logs_dir, session.session_id)
+
+    # Check if this is an E2B session
+    is_e2b = False
+    adapter_event = next((e for e in events if e.get("event") == "adapter_selected"), None)
+    if (
+        adapter_event
+        and adapter_event.get("adapter") == "e2b"
+        or hasattr(session, "adapter_type")
+        and session.adapter_type == "E2B"
+    ):
+        is_e2b = True
+
+    # Create appropriate badge based on execution type
+    badge = ""
+    if is_e2b:
+        badge = '<span class="e2b-badge">E2B</span>'
+    elif "run" in session.session_id:
+        badge = '<span class="local-badge">Local</span>'
 
     # Parse events and metrics for display
     events_html = ""
@@ -1471,6 +1517,42 @@ def generate_session_detail_page(session, session_logs) -> str:
             <div class='perf-secondary-value'>{unit_display}</div>
         </div>"""
 
+    # E2B Bootstrap Time card (for E2B sessions)
+    if is_e2b:
+        # Calculate bootstrap time from events
+        adapter_start = next((e for e in events if e.get("event") == "adapter_execute_start"), None)
+        # Look for first worker event that indicates sandbox is ready
+        first_worker = next(
+            (
+                e
+                for e in events
+                if e.get("event") in ["cfg_materialized", "worker_started", "step_start"]
+            ),
+            None,
+        )
+
+        bootstrap_time = None
+        if adapter_start and first_worker and adapter_start.get("ts") and first_worker.get("ts"):
+            try:
+                from datetime import datetime
+
+                # Parse ISO timestamps
+                start_time = datetime.fromisoformat(adapter_start["ts"].replace("Z", "+00:00"))
+                worker_time = datetime.fromisoformat(first_worker["ts"].replace("Z", "+00:00"))
+                # Calculate difference in seconds
+                bootstrap_time = (worker_time - start_time).total_seconds()
+
+                if bootstrap_time >= 0:  # Only show if positive
+                    performance_html += f"""<div class='perf-card'>
+                        <div class='perf-card-title'>E2B Bootstrap</div>
+                        <div class='perf-card-subtitle'>Sandbox initialization time</div>
+                        <div class='perf-primary-value'>{bootstrap_time:.2f}</div>
+                        <div class='perf-secondary-value'>seconds</div>
+                    </div>"""
+            except Exception:
+                # If timestamp parsing fails, silently skip
+                pass
+
     # Payload Size card
     if payload_size:
         value = payload_size.get("value", 0)
@@ -1567,17 +1649,35 @@ def generate_session_detail_page(session, session_logs) -> str:
             <div class='stat-label'>Steps Completed</div>
         </div>"""
 
-        # Calculate total step time
+        # Calculate total step time from events and metrics
         total_step_time = 0
-        for step in pipeline_steps:
-            if step.get("duration"):
-                # Parse duration string (e.g., "2.25s", "347.2ms")
-                dur_str = step["duration"]
-                if isinstance(dur_str, str):
-                    if "ms" in dur_str:
-                        total_step_time += float(dur_str.replace("ms", "")) / 1000
-                    elif "s" in dur_str:
-                        total_step_time += float(dur_str.replace("s", ""))
+
+        # Try to get step durations from metrics first (more accurate)
+        step_duration_metrics = [m for m in metrics if m.get("metric") == "step_duration_ms"]
+        if step_duration_metrics:
+            for metric in step_duration_metrics:
+                duration_ms = metric.get("value", 0)
+                if isinstance(duration_ms, (int, float)):
+                    total_step_time += duration_ms / 1000.0
+
+        # If no metrics, fall back to pipeline_steps durations
+        if total_step_time == 0:
+            for step in pipeline_steps:
+                if step.get("duration"):
+                    # Parse duration string (e.g., "2.25s", "347.2ms", "1094.63s")
+                    dur_str = str(step["duration"])
+                    try:
+                        if "ms" in dur_str:
+                            total_step_time += (
+                                float(dur_str.replace("ms", "").replace("s", "")) / 1000
+                            )
+                        elif "s" in dur_str:
+                            total_step_time += float(dur_str.replace("s", ""))
+                        else:
+                            # Assume it's already in seconds if it's a number
+                            total_step_time += float(dur_str)
+                    except (ValueError, TypeError):
+                        pass  # Skip invalid durations
 
         overview_html += f"""<div class='summary-stat'>
             <div class='stat-number'>{total_step_time:.2f}s</div>
@@ -1615,18 +1715,41 @@ def generate_session_detail_page(session, session_logs) -> str:
             <h3>Key Metrics</h3>
             <div class='metrics-summary'>"""
 
-        # Group metrics by type
-        rows_metrics = [m for m in metrics if "rows" in m.get("metric", "")]
-        duration_metrics = [m for m in metrics if "duration" in m.get("metric", "")]
+        # Calculate data volume using single source of truth
+        total_rows = 0
 
-        if rows_metrics:
-            total_rows = sum(
-                m.get("value", 0) for m in rows_metrics if isinstance(m.get("value"), (int, float))
-            )
-            overview_html += f"""<div class='metric-card'>
-                <div class='metric-title'>Data Volume</div>
-                <div class='metric-value'>{total_rows:,} rows</div>
-            </div>"""
+        # Priority 1: Use cleanup_complete.total_rows if available
+        cleanup_event = next(
+            (e for e in events if e.get("event") == "cleanup_complete" and "total_rows" in e), None
+        )
+        if cleanup_event:
+            total_rows = cleanup_event.get("total_rows", 0)
+        else:
+            # Priority 2: Sum only rows_written from metrics (writers only)
+            writer_metrics = [m for m in metrics if m.get("metric") == "rows_written"]
+            if writer_metrics:
+                total_rows = sum(
+                    m.get("value", 0)
+                    for m in writer_metrics
+                    if isinstance(m.get("value"), (int, float))
+                )
+            else:
+                # Priority 3: Use rows_read only if no writers exist
+                reader_metrics = [m for m in metrics if m.get("metric") == "rows_read"]
+                if reader_metrics:
+                    total_rows = sum(
+                        m.get("value", 0)
+                        for m in reader_metrics
+                        if isinstance(m.get("value"), (int, float))
+                    )
+
+        overview_html += f"""<div class='metric-card'>
+            <div class='metric-title'>Data Volume</div>
+            <div class='metric-value'>{total_rows:,} rows</div>
+        </div>"""
+
+        # Group other metrics
+        duration_metrics = [m for m in metrics if "duration" in m.get("metric", "")]
 
         if duration_metrics:
             overview_html += """<div class='metric-card'>
@@ -1750,9 +1873,11 @@ def generate_session_detail_page(session, session_logs) -> str:
             padding: 1rem;
             max-height: 600px;
             overflow-y: auto;
+            position: relative;
         }}
         .tab-panel {{
             display: none;
+            position: relative;
         }}
         .tab-panel.active {{
             display: block;
@@ -2130,6 +2255,55 @@ def generate_session_detail_page(session, session_logs) -> str:
         .status-success {{ color: #28a745; }}
         .status-pending {{ color: #ffc107; }}
         .status-failed {{ color: #dc3545; }}
+
+        /* Scroll indicator styles */
+        .scroll-indicator {{
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 40px;
+            background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.95));
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 10;
+        }}
+        .scroll-indicator.visible {{
+            opacity: 1;
+        }}
+        .scroll-indicator::after {{
+            content: '↓ More content below ↓';
+            position: absolute;
+            bottom: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #666;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-shadow: 0 0 4px white;
+        }}
+        /* Badge styles for detail page */
+        .e2b-badge {{
+            display: inline-block;
+            background: #ff6b00;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: bold;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            margin-left: 0.5rem;
+        }}
+        .local-badge {{
+            display: inline-block;
+            background: #6c757d;
+            color: white;
+            font-size: 0.75rem;
+            font-weight: bold;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            margin-left: 0.5rem;
+        }}
     </style>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>
@@ -2171,7 +2345,7 @@ def generate_session_detail_page(session, session_logs) -> str:
     <a href="../index.html" class="back-link">← Back to Sessions</a>
 
     <div class="header">
-        <h1>{session.session_id}</h1>
+        <h1>{session.session_id} {badge}</h1>
         <p class="subtitle">Session details and execution logs</p>
     </div>
 
@@ -2257,7 +2431,48 @@ def generate_session_detail_page(session, session_logs) -> str:
 
             // Add active class to clicked tab
             event.target.classList.add('active');
+
+            // Check if scroll indicator is needed for this tab
+            setTimeout(() => checkScrollIndicator(), 100);
         }}
+
+        function checkScrollIndicator() {{
+            const tabContent = document.querySelector('.tab-content');
+            const activePanel = document.querySelector('.tab-panel.active');
+
+            if (!tabContent || !activePanel) return;
+
+            // Check if content is scrollable
+            const isScrollable = tabContent.scrollHeight > tabContent.clientHeight;
+            const isNotAtBottom = tabContent.scrollTop + tabContent.clientHeight < tabContent.scrollHeight - 10;
+
+            // Get or create scroll indicator
+            let indicator = tabContent.querySelector('.scroll-indicator');
+            if (!indicator && isScrollable) {{
+                indicator = document.createElement('div');
+                indicator.className = 'scroll-indicator';
+                tabContent.appendChild(indicator);
+            }}
+
+            // Show/hide indicator based on scroll position
+            if (indicator) {{
+                if (isScrollable && isNotAtBottom) {{
+                    indicator.classList.add('visible');
+                }} else {{
+                    indicator.classList.remove('visible');
+                }}
+            }}
+        }}
+
+        // Add scroll event listener for tab content
+        document.addEventListener('DOMContentLoaded', function() {{
+            const tabContent = document.querySelector('.tab-content');
+            if (tabContent) {{
+                tabContent.addEventListener('scroll', checkScrollIndicator);
+                // Initial check
+                setTimeout(() => checkScrollIndicator(), 100);
+            }}
+        }})
 
         function showLogTab(logName) {{
             // Hide all log panels
