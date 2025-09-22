@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Local Row Totals Parity with E2B**
+  - Local runs now report correct total rows matching E2B execution
+  - Added `cleanup_complete` event with accurate `total_rows` in local sessions
+  - Fixed double-counting issue where extractors and writers were both summed
+  - Improved SessionReader fallback logic for historical sessions without cleanup totals
+  - Total rows now correctly computed as: writer rows if present, else extractor rows
+
+- **Verbose Output Streaming in LocalAdapter**
+  - Local `--verbose` now streams events live during execution, matching E2B behavior
+  - Added real-time event interception with `[local]` prefix for consistency
+  - Step events (step_start, step_complete) appear as they happen, not after completion
+  - Metrics (rows_read, rows_written) are displayed immediately when emitted
+  - All verbose output properly flushed to avoid buffering delays
+
 ### Added
 - **E2B Transparent Proxy Architecture** (M1e)
   - Complete redesign eliminating E2BPack in favor of transparent proxy approach

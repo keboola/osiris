@@ -98,6 +98,34 @@ class SessionReader:
         """
         self.logs_dir = Path(logs_dir)
 
+    def _is_writer_driver(self, driver_name: str, step_id: str = "") -> bool:
+        """Determine if a driver is a writer based on name patterns.
+
+        Args:
+            driver_name: Driver name (e.g., "mysql.extractor", "supabase.writer")
+            step_id: Optional step ID for fallback classification
+
+        Returns:
+            True if driver is a writer, False otherwise
+        """
+        # Check driver name patterns
+        if driver_name:
+            if ".writer" in driver_name or ".load" in driver_name:
+                return True
+            if ".extractor" in driver_name or ".extract" in driver_name:
+                return False
+
+        # Fall back to step_id patterns
+        if step_id:
+            step_lower = step_id.lower()
+            if "write" in step_lower or "load" in step_lower:
+                return True
+            if "extract" in step_lower or "read" in step_lower:
+                return False
+
+        # Default to extractor (safer to avoid double counting)
+        return False
+
     def list_sessions(self, limit: Optional[int] = None) -> List[SessionSummary]:
         """List all sessions, ordered by newest first.
 
@@ -146,20 +174,30 @@ class SessionReader:
 
         summary = SessionSummary(session_id=session_id)
 
+        # Shared tracking dictionaries
+        rows_by_step: Dict[str, int] = {}
+        driver_names: Dict[str, str] = {}
+        cleanup_total_rows = None
+
         # Read metadata.json if it exists
         metadata_path = session_path / "metadata.json"
         if metadata_path.exists():
             self._read_metadata(metadata_path, summary)
 
-        # Read events.jsonl for step metrics
+        # Read events.jsonl for step metrics and cleanup total
         events_path = session_path / "events.jsonl"
         if events_path.exists():
-            self._read_events(events_path, summary)
+            cleanup_total_rows = self._read_events_v2(
+                events_path, summary, rows_by_step, driver_names
+            )
 
         # Read metrics.jsonl for additional metrics
         metrics_path = session_path / "metrics.jsonl"
         if metrics_path.exists():
-            self._read_metrics(metrics_path, summary)
+            self._read_metrics(metrics_path, summary, rows_by_step, driver_names)
+
+        # Finalize row totals using single source of truth
+        self._finalize_row_totals(summary, cleanup_total_rows, rows_by_step, driver_names)
 
         # Read artifacts directory
         artifacts_path = session_path / "artifacts"
@@ -216,6 +254,144 @@ class SessionReader:
 
         except (OSError, json.JSONDecodeError):
             pass  # Ignore invalid metadata files
+
+    def _read_events_v2(
+        self,
+        path: Path,
+        summary: SessionSummary,
+        rows_by_step: Dict[str, int],
+        driver_names: Dict[str, str],
+    ) -> Optional[int]:
+        """Read and aggregate events.jsonl file (v2 - no double counting).
+
+        Args:
+            path: Path to events.jsonl
+            summary: Session summary to update
+            rows_by_step: Shared dict tracking rows per step
+            driver_names: Shared dict tracking driver names per step
+
+        Returns:
+            cleanup_total_rows if found, None otherwise
+        """
+        steps_seen: Set[str] = set()
+        tables_seen: Set[str] = set()
+        cleanup_total_rows = None
+
+        try:
+            with open(path) as f:
+                for line in f:
+                    try:
+                        event = json.loads(line.strip())
+                        event_type = event.get("event")
+
+                        # Track session timing
+                        if event_type == "run_start":
+                            summary.started_at = event.get("ts")
+                            summary.status = "running"
+                            # Extract pipeline name from run_start event
+                            if "pipeline_id" in event:
+                                summary.pipeline_name = event["pipeline_id"]
+
+                        elif event_type == "run_end":
+                            summary.finished_at = event.get("ts", event.get("end_time"))
+                            # Extract duration from event if available
+                            if "duration_seconds" in event:
+                                summary.duration_ms = int(event["duration_seconds"] * 1000)
+                            # Determine final status
+                            if summary.errors > 0 or summary.steps_failed > 0:
+                                summary.status = "failed"
+                            else:
+                                summary.status = "success"
+
+                        # Track steps
+                        elif event_type == "step_start":
+                            step_id = event.get("step_id")
+                            driver = event.get("driver", "")
+                            if step_id:
+                                if step_id not in steps_seen:
+                                    steps_seen.add(step_id)
+                                    summary.steps_total += 1
+                                if driver:
+                                    driver_names[step_id] = driver
+
+                        elif event_type == "step_complete":
+                            summary.steps_ok += 1
+                            step_id = event.get("step_id", "")
+                            # Track rows_processed from step_complete
+                            if "rows_processed" in event and step_id:
+                                rows_by_step[step_id] = event["rows_processed"]
+
+                        elif event_type == "step_error":
+                            summary.steps_failed += 1
+                            summary.errors += 1
+
+                        # Check for cleanup_complete total_rows (single source of truth)
+                        elif event_type == "cleanup_complete" and "total_rows" in event:
+                            cleanup_total_rows = event["total_rows"]
+
+                        # Track tables
+                        if "table" in event:
+                            tables_seen.add(event["table"])
+
+                        # Track warnings/errors
+                        level = event.get("level", "").lower()
+                        if level == "warning":
+                            summary.warnings += 1
+                        elif level == "error":
+                            summary.errors += 1
+
+                    except (json.JSONDecodeError, KeyError):
+                        continue  # Skip invalid events
+
+            summary.tables = sorted(tables_seen)  # Deterministic ordering
+
+        except OSError:
+            pass  # Ignore if file can't be read
+
+        return cleanup_total_rows
+
+    def _finalize_row_totals(
+        self,
+        summary: SessionSummary,
+        cleanup_total_rows: Optional[int],
+        rows_by_step: Dict[str, int],
+        driver_names: Dict[str, str],
+    ) -> None:
+        """Finalize row totals using single source of truth logic.
+
+        Args:
+            summary: Session summary to update
+            cleanup_total_rows: Total from cleanup_complete event if available
+            rows_by_step: Rows tracked per step
+            driver_names: Driver names per step
+        """
+        # If cleanup_complete has total_rows, use it (highest priority)
+        if cleanup_total_rows is not None and cleanup_total_rows >= 0:
+            summary.rows_out = cleanup_total_rows
+            return
+
+        # Otherwise, calculate from steps
+        if rows_by_step:
+            writers_total = 0
+            extractors_total = 0
+
+            for step_id, row_count in rows_by_step.items():
+                driver_name = driver_names.get(step_id, "")
+                is_writer = self._is_writer_driver(driver_name, step_id)
+
+                if is_writer:
+                    writers_total += row_count
+                else:
+                    extractors_total += row_count
+
+            # Use writers if any, else extractors
+            if writers_total > 0:
+                summary.rows_out = writers_total
+            else:
+                summary.rows_out = extractors_total
+
+            # Also set rows_in for extractors
+            summary.rows_in = extractors_total
 
     def _read_events(self, path: Path, summary: SessionSummary) -> None:
         """Read and aggregate events.jsonl file."""
@@ -304,8 +480,10 @@ class SessionReader:
                                     rows_by_step[step_id] = row_count
                                     summary.rows_in += row_count
 
-                        if "rows_written" in event:
-                            summary.rows_out += event["rows_written"]
+                        # Don't accumulate rows_written here - will be handled by metrics or cleanup
+                        # Keep the event for timeline purposes only
+                        # if "rows_written" in event:
+                        #     summary.rows_out += event["rows_written"]
 
                         # Track tables
                         if "table" in event:
@@ -327,8 +505,8 @@ class SessionReader:
                     except (json.JSONDecodeError, KeyError):
                         continue  # Skip invalid events
 
-            # Use cleanup_complete total_rows if available (most accurate for E2B)
-            if cleanup_total_rows is not None:
+            # Use cleanup_complete total_rows if available (most accurate)
+            if cleanup_total_rows is not None and cleanup_total_rows > 0:
                 summary.rows_out = cleanup_total_rows
 
                 # Diagnostic: check for potential double counting
@@ -336,50 +514,117 @@ class SessionReader:
                 if rows_by_step:
                     total_all_steps = sum(rows_by_step.values())
                     # Check if any steps look like writers (simple heuristic)
-                    has_writers = any("write" in step_id.lower() for step_id in rows_by_step.keys())
-                    if has_writers and cleanup_total_rows == total_all_steps and total_all_steps > 0:
+                    has_writers = any("write" in step_id.lower() for step_id in rows_by_step)
+                    if (
+                        has_writers
+                        and cleanup_total_rows == total_all_steps
+                        and total_all_steps > 0
+                    ):
                         # Potential double count detected (cleanup should be writers-only)
                         summary.double_count_hint = True
 
-            # Otherwise, if we have no rows_out but have step data, sum it
+            # Otherwise, if we have no rows_out but have step data, use smart fallback
             elif summary.rows_out == 0 and rows_by_step:
-                # For E2B sessions where writers don't emit rows_written,
-                # use the sum of extractor rows as the total
-                summary.rows_out = sum(rows_by_step.values())
+                # Try to classify steps as writer vs extractor based on step_id or driver info
+                writers_only = {}
+                extractors_only = {}
+
+                # Look through events to get driver names for classification
+                driver_names = {}  # step_id -> driver_name
+
+                # Re-scan events for driver information
+                try:
+                    with open(path) as f:
+                        for line in f:
+                            try:
+                                event = json.loads(line.strip())
+                                if event.get("event") == "step_start":
+                                    step_id = event.get("step_id")
+                                    driver = event.get("driver", "")
+                                    if step_id and driver:
+                                        driver_names[step_id] = driver
+                            except json.JSONDecodeError:
+                                continue
+                except OSError:
+                    pass
+
+                # Classify steps
+                for step_id, count in rows_by_step.items():
+                    driver_name = driver_names.get(step_id, "")
+
+                    # Check driver name first (most reliable)
+                    if ".writer" in driver_name or ".load" in driver_name:
+                        writers_only[step_id] = count
+                    elif ".extractor" in driver_name or ".extract" in driver_name:
+                        extractors_only[step_id] = count
+                    # Fall back to step_id patterns
+                    elif "write" in step_id.lower() or "load" in step_id.lower():
+                        writers_only[step_id] = count
+                    elif "extract" in step_id.lower() or "read" in step_id.lower():
+                        extractors_only[step_id] = count
+                    else:
+                        # Ambiguous - default to extractor to avoid double counting
+                        extractors_only[step_id] = count
+
+                # Apply E2B logic: writers if any, else extractors
+                if writers_only:
+                    summary.rows_out = sum(writers_only.values())
+                elif extractors_only:
+                    summary.rows_out = sum(extractors_only.values())
+                else:
+                    # Last resort: use all rows (shouldn't happen with proper classification)
+                    summary.rows_out = sum(rows_by_step.values())
 
             summary.tables = sorted(tables_seen)  # Deterministic ordering
 
         except OSError:
             pass  # Ignore if file can't be read
 
-    def _read_metrics(self, path: Path, summary: SessionSummary) -> None:
-        """Read and aggregate metrics.jsonl file."""
-        rows_by_step: Dict[str, int] = {}  # Track to avoid duplicates
+    def _read_metrics(
+        self,
+        path: Path,
+        summary: SessionSummary,
+        rows_by_step: Dict[str, int],
+        driver_names: Dict[str, str],
+    ) -> None:
+        """Read and aggregate metrics.jsonl file.
 
+        Args:
+            path: Path to metrics.jsonl
+            summary: Session summary to update
+            rows_by_step: Shared dict tracking rows per step
+            driver_names: Shared dict tracking driver names per step
+        """
         try:
             with open(path) as f:
                 for line in f:
                     try:
                         metric = json.loads(line.strip())
 
-                        # Handle rows_read metrics with step_id (ignore untagged)
-                        if metric.get("metric") == "rows_read" and "step_id" in metric:
-                            step_id = metric["step_id"]
+                        # Handle rows_read metrics
+                        if metric.get("metric") == "rows_read":
+                            step_id = metric.get("step_id") or metric.get("step")
                             value = metric.get("value", 0)
-                            if step_id not in rows_by_step and value > 0:
-                                rows_by_step[step_id] = value
-                                summary.rows_in += value
+                            if step_id and value > 0:
+                                # Track for final calculation, don't add to summary yet
+                                if step_id not in rows_by_step:
+                                    rows_by_step[step_id] = value
+                                # Infer it's an extractor if we see rows_read
+                                if step_id not in driver_names:
+                                    driver_names[step_id] = f"{step_id}.extractor"
 
                         # Handle rows_written metrics
                         elif metric.get("metric") == "rows_written":
+                            step_id = metric.get("step_id") or metric.get("step")
                             value = metric.get("value", 0)
-                            if value > 0:
-                                summary.rows_out += value
+                            if step_id and value > 0:
+                                # Overwrite with written count (more accurate for writers)
+                                rows_by_step[step_id] = value
+                                # Mark as writer
+                                if step_id not in driver_names:
+                                    driver_names[step_id] = f"{step_id}.writer"
 
-                        # Aggregate any additional metrics not in events
-                        elif "total_rows" in metric:
-                            # Use max in case of multiple reports
-                            summary.rows_out = max(summary.rows_out, metric["total_rows"])
+                        # Don't accumulate total_rows here - will be handled in finalization
 
                     except (json.JSONDecodeError, KeyError):
                         continue

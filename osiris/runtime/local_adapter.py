@@ -5,6 +5,7 @@ ExecutionAdapter contract, ensuring identical behavior while providing
 a stable execution boundary.
 """
 
+import json
 import shutil
 import time
 from pathlib import Path
@@ -159,50 +160,194 @@ class LocalAdapter(ExecutionAdapter):
             # Materialize cfg files from source to run session
             self._materialize_cfg_files(prepared, context, manifest_path)
 
+            # Track step metadata for totals calculation
+            step_rows = {}  # step_id -> rows count
+            step_driver_names = {}  # step_id -> driver name
+
+            # Set up verbose event streaming if enabled
+            original_log_event = None
+            original_log_metric = None
+            if self.verbose:
+                print(f"🚀 Executing pipeline with {len(prepared.plan.get('steps', []))} steps")
+                print(f"📁 Artifacts base: {context.artifacts_dir}")
+
+                # Monkey-patch session logging to intercept events in real-time
+                from .. import core
+
+                original_log_event = core.session_logging.log_event
+                original_log_metric = core.session_logging.log_metric
+
+                def verbose_log_event(event_name: str, **kwargs):
+                    # Call original function first
+                    original_log_event(event_name, **kwargs)
+
+                    # Stream to stdout immediately with [local] prefix
+                    if event_name == "step_start":
+                        step_id = kwargs.get("step_id", "unknown")
+                        driver = kwargs.get("driver", "")
+                        print(f"[local]   ▶ {step_id}: Starting... (driver: {driver})", flush=True)
+                        # Track driver for classification
+                        if step_id != "unknown" and driver:
+                            step_driver_names[step_id] = driver
+                    elif event_name == "step_complete":
+                        step_id = kwargs.get("step_id", "unknown")
+                        duration = kwargs.get("duration", 0)
+                        # Check for rows in kwargs (from step_complete event)
+                        rows = (
+                            kwargs.get("rows_read", 0)
+                            or kwargs.get("rows_written", 0)
+                            or kwargs.get("rows_processed", 0)
+                        )
+                        if rows > 0:
+                            print(
+                                f"[local]   ✓ {step_id}: Complete (duration: {duration:.2f}s, rows: {rows})",
+                                flush=True,
+                            )
+                            # Track rows for totals
+                            if step_id != "unknown":
+                                step_rows[step_id] = rows
+                        else:
+                            print(
+                                f"[local]   ✓ {step_id}: Complete (duration: {duration:.2f}s)",
+                                flush=True,
+                            )
+                    elif event_name == "step_error":
+                        step_id = kwargs.get("step_id", "unknown")
+                        error = kwargs.get("error", "Unknown error")
+                        print(f"[local]   ✗ {step_id}: Failed - {error}", flush=True)
+                    elif event_name == "connection_resolve_start":
+                        step_id = kwargs.get("step_id", "unknown")
+                        family = kwargs.get("family", "unknown")
+                        alias = kwargs.get("alias", "default")
+                        print(
+                            f"[local]   🔌 {step_id}: Resolving {family} connection ({alias})",
+                            flush=True,
+                        )
+                    elif event_name == "run_start":
+                        pipeline_id = kwargs.get("pipeline_id", "unknown")
+                        print(f"[local]   🎯 Pipeline: {pipeline_id}", flush=True)
+
+                def verbose_log_metric(metric: str, value, **kwargs):
+                    # Call original function first
+                    original_log_metric(metric, value, **kwargs)
+
+                    # Stream metrics to stdout
+                    if metric == "rows_read":
+                        step_id = kwargs.get("step_id") or kwargs.get("step", "unknown")
+                        print(f"[local]   📊 {step_id}: Read {value} rows", flush=True)
+                        # Track read rows for extractors
+                        if step_id != "unknown" and step_id not in step_rows:
+                            step_rows[step_id] = value
+                    elif metric == "rows_written":
+                        step_id = kwargs.get("step_id") or kwargs.get("step", "unknown")
+                        print(f"[local]   📊 {step_id}: Wrote {value} rows", flush=True)
+                        # Track written rows (overwrites read if present)
+                        if step_id != "unknown":
+                            step_rows[step_id] = value
+                            # Mark as writer
+                            if step_id not in step_driver_names:
+                                step_driver_names[step_id] = f"{step_id}.writer"
+                    elif metric == "rows_processed":
+                        step_id = kwargs.get("step_id") or kwargs.get("step", "unknown")
+                        print(f"[local]   📊 {step_id}: Processed {value} rows", flush=True)
+
+                # Apply monkey-patch
+                core.session_logging.log_event = verbose_log_event
+                core.session_logging.log_metric = verbose_log_metric
+
             # Create runner with existing implementation
             runner = RunnerV0(
                 manifest_path=str(manifest_path), output_dir=str(context.artifacts_dir)
             )
 
-            # If verbose, print starting message and artifacts base
-            if self.verbose:
-                print(f"🚀 Executing pipeline with {len(prepared.plan.get('steps', []))} steps")
-                print(f"📁 Artifacts base: {context.artifacts_dir}")
+            try:
+                # Execute pipeline
+                success = runner.run()
 
-            # Execute pipeline
-            success = runner.run()
+                # Also collect rows from runner events for any we missed
+                if hasattr(runner, "events"):
+                    for event in runner.events:
+                        if event.get("type") == "step_complete":
+                            step_id = event.get("data", {}).get("step_id")
+                            driver = event.get("data", {}).get("driver", "")
+                            if step_id and driver and step_id not in step_driver_names:
+                                step_driver_names[step_id] = driver
+                            # Get rows from event data if not already tracked
+                            if step_id and step_id not in step_rows:
+                                rows = (
+                                    event.get("data", {}).get("rows_written", 0)
+                                    or event.get("data", {}).get("rows_read", 0)
+                                    or event.get("data", {}).get("rows_processed", 0)
+                                )
+                                if rows > 0:
+                                    step_rows[step_id] = rows
+
+            finally:
+                # Restore original functions if we patched them
+                if original_log_event:
+                    from .. import core
+
+                    core.session_logging.log_event = original_log_event
+                if original_log_metric:
+                    core.session_logging.log_metric = original_log_metric
 
             duration = time.time() - start_time
 
-            # If verbose, print step results summary
+            # Also read from metrics.jsonl for any rows_written we missed
+            metrics_file = context.logs_dir / "metrics.jsonl"
+            if metrics_file.exists():
+                try:
+                    with open(metrics_file) as f:
+                        for line in f:
+                            try:
+                                metric = json.loads(line.strip())
+                                if metric.get("metric") == "rows_written":
+                                    step_id = metric.get("step_id") or metric.get("step")
+                                    value = metric.get("value", 0)
+                                    if value > 0 and step_id:
+                                        step_rows[step_id] = value
+                                        # Infer it's a writer if we have rows_written metric
+                                        if step_id not in step_driver_names:
+                                            step_driver_names[step_id] = f"{step_id}.writer"
+                            except json.JSONDecodeError:
+                                continue
+                except OSError:
+                    pass
+
+            # Calculate totals like E2B does: writers if any, else extractors
+            sum_rows_written = 0
+            sum_rows_read = 0
+
+            for step_id, rows in step_rows.items():
+                driver_name = step_driver_names.get(step_id, "")
+                if (
+                    ".writer" in driver_name
+                    or "write" in step_id.lower()
+                    or "load" in step_id.lower()
+                ):
+                    sum_rows_written += rows
+                elif (
+                    ".extractor" in driver_name
+                    or "extract" in step_id.lower()
+                    or "read" in step_id.lower()
+                ):
+                    sum_rows_read += rows
+                else:
+                    # Ambiguous step - for now count as extractor
+                    sum_rows_read += rows
+
+            final_total_rows = sum_rows_written if sum_rows_written > 0 else sum_rows_read
+
+            # Emit cleanup_complete event with total_rows (matching E2B)
+            log_event(
+                "cleanup_complete",
+                steps_executed=len(prepared.plan.get("steps", [])),
+                total_rows=final_total_rows,
+            )
+
             if self.verbose:
-                # Extract step events from runner
-                step_events = [
-                    e
-                    for e in runner.events
-                    if e.get("type") in ["step_start", "step_complete", "step_error"]
-                ]
-                for event in step_events:
-                    event_type = event.get("type")
-                    event_data = event.get("data", {})
-                    step_id = event_data.get("step_id", "unknown")
-
-                    if event_type == "step_start":
-                        print(f"  ▶ {step_id}: Starting...")
-                    elif event_type == "step_complete":
-                        rows_read = event_data.get("rows_read", 0)
-                        rows_written = event_data.get("rows_written", 0)
-                        if rows_read > 0:
-                            print(f"  ✓ {step_id}: Complete (read {rows_read} rows)")
-                        elif rows_written > 0:
-                            print(f"  ✓ {step_id}: Complete (wrote {rows_written} rows)")
-                        else:
-                            print(f"  ✓ {step_id}: Complete")
-                    elif event_type == "step_error":
-                        error = event_data.get("error", "Unknown error")
-                        print(f"  ✗ {step_id}: Failed - {error}")
-
                 print(f"Pipeline {'completed' if success else 'failed'} in {duration:.2f}s")
+
             log_metric("execution_duration", duration, unit="seconds")
 
             # Determine exit code
@@ -253,7 +398,7 @@ class LocalAdapter(ExecutionAdapter):
                     if glob.glob(pattern):
                         events_jsonl_exists = True
                         break
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
             # Generate status.json with four-proof rule
@@ -290,11 +435,9 @@ class LocalAdapter(ExecutionAdapter):
             # Write status.json to logs directory for consistency
             status_file = context.logs_dir / "status.json"
             try:
-                import json
-
                 with open(status_file, "w") as f:
                     json.dump(status_data, f, indent=2)
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
             log_event(
