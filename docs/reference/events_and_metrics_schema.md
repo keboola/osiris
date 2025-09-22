@@ -158,6 +158,75 @@ Local and E2B runs should have:
 - Matching artifact structure
 - Consistent error reporting
 
+## Row Totals Normalization
+
+### Single Source of Truth
+
+For determining total rows processed in a pipeline run:
+
+1. **Primary source**: `cleanup_complete.total_rows` event field
+   - When present, this is the authoritative total for "Data Volume / Rows Processed"
+   - UI tools and reports should always prefer this value
+
+2. **Fallback logic** (for legacy sessions without `cleanup_complete.total_rows`):
+   - Sum `rows_written` metrics from writer steps
+   - If no writers exist, sum `rows_read` metrics from extractor steps
+
+### Avoiding Double-Counting
+
+**Important**: Don't sum both events and metrics for totals. The correct approach:
+
+- Use `cleanup_complete.total_rows` when available (single source of truth)
+- Only use metric summation as fallback for older sessions
+- Never add `rows_read` and `rows_written` together (they represent the same data at different stages)
+
+### Metric Clarification
+
+- **`rows_read`**: Emitted by extractor components when reading from sources
+  - Tagged with `step_id` for the specific extraction step
+  - Represents input data volume
+
+- **`rows_written`**: Emitted by writer components when writing to destinations
+  - Tagged with `step_id` for the specific writer step
+  - Represents output data volume
+
+### Example Events
+
+Extractor reading 20 rows:
+```json
+{"event": "step_complete", "step_id": "extract_customers", "rows_processed": 20}
+{"metric": "rows_read", "value": 20, "tags": {"step": "extract_customers"}}
+```
+
+Writer writing 20 rows:
+```json
+{"event": "step_complete", "step_id": "write_customers", "rows_processed": 20}
+{"metric": "rows_written", "value": 20, "tags": {"step": "write_customers"}}
+```
+
+Final cleanup with authoritative total:
+```json
+{"event": "cleanup_complete", "total_rows": 84, "duration_ms": 1234}
+```
+
+## Local vs E2B Execution Parity
+
+Both local and E2B execution produce compatible events and metrics:
+
+- **Same event types**: Both emit identical event types and structures
+- **Same metrics**: Data flow metrics (`rows_read`, `rows_written`) are consistent
+- **Adapter selection**: The `adapter_selected` event indicates execution mode ("local" or "e2b")
+- **E2B additions**: E2B may emit additional bootstrap events (`worker_started`, RPC communication)
+
+### E2B-Specific UI Elements
+
+When displaying E2B execution results:
+
+- **E2B Badge**: Orange "E2B" indicator in report headers
+- **Bootstrap Time**: Time to provision and initialize sandbox (typically 800-1200ms)
+  - Calculated from `adapter_execute_start` to first worker event
+  - Displayed separately from pipeline execution time
+
 ## Best Practices
 
 1. **Always emit paired events**: start/complete, start/failed
@@ -166,3 +235,4 @@ Local and E2B runs should have:
 4. **Mask sensitive data before emission**
 5. **Emit metrics immediately after measurement**
 6. **Use tags for additional context rather than new metric names**
+7. **Prefer cleanup_complete.total_rows for row totals**

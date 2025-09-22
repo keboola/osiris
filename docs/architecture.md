@@ -637,3 +637,209 @@ load:
    - **Core logic: ~200 lines** (well under 300 line goal)
 
 **🚀 FINAL STATUS: MVP COMPLETE & GOALS EXCEEDED**
+
+# Osiris Architecture
+
+**Date:** 2025-09-22  
+**Version:** v0.2.0  
+**Status:** Milestone M1 — Component Registry & Runner (release)  
+**Purpose:** A lightweight overview of how Osiris compiles conversational intent into deterministic, production‑ready data pipelines.
+
+---
+
+## System Overview
+
+Osiris turns business intent into a deterministic pipeline you can run locally or in an E2B cloud sandbox with identical behavior.
+
+```
+Intent (chat / YAML) → OML (v0.1.0) → Compile (deterministic manifest) → Run (Local | E2B) → Logs & HTML report
+```
+
+### High‑level flow
+
+```mermaid
+flowchart TD
+    User([User / CLI])
+    Chat{{Chat<br/>OML input}}
+    OML([OML v0.1.0])
+    Compiler[[Compiler]]
+    Manifest([Deterministic Manifest<br/>SHA-256 fingerprint])
+    Runner([Runner])
+    subgraph Adapter_Proxy["Adapters / Proxy"]
+      direction LR
+      LocalAdapter([Local Adapter])
+      Proxy([E2B Transparent Proxy])
+    end
+    Observations(["Events · Metrics · Artifacts"])
+    HTMLReport(["HTML Report<br/>osiris logs html --open"])
+
+    User -- "describe outcome" --> Chat
+    Chat --> OML
+    OML --> Compiler
+    Compiler --> Manifest
+    Manifest --> Runner
+    Runner --> LocalAdapter
+    Runner --> Proxy
+    LocalAdapter --> Observations
+    Proxy --> Observations
+    Observations --> HTMLReport
+
+    %% Optional: Style nodes for emphasis
+    style User fill:#ddeeff,stroke:#222
+    style Observations fill:#ffeebb,stroke:#b96
+    style HTMLReport fill:#e7fde7,stroke:#585
+
+```
+
+---
+
+## Core Concepts
+
+### OML (Osiris Markup Language) — v0.1.0
+A concise, YAML‑based pipeline spec. It references connections by alias (e.g. `@mysql.db_movies`) and uses self‑describing components.
+
+- **Deterministic input** to the compiler  
+- **Versioned** alongside your code  
+- **No secrets** inside (only references)
+
+### Deterministic Compiler
+Validates the OML against component specs, resolves dependencies, and emits a **fingerprinted manifest**. Same inputs → same manifest, every time.
+
+- JSON Schema validation against the **Component Registry**
+- Secrets remain references; never embedded in artifacts
+- Produces a plan the Runner can execute anywhere
+
+### Runner & Execution Adapters
+One runner, multiple environments with **full parity**:
+
+- **Local Adapter:** executes on your machine
+- **E2B Transparent Proxy:** spins an ephemeral sandbox and streams live events back
+
+Both paths yield the **same logs, metrics, and artifacts**.
+
+### Component Registry (Self‑describing)
+Components declare capabilities and config via JSON Schema. The registry powers:
+
+- Strict validation & guardrails
+- Human‑readable errors
+- LLM context generation (for chat)
+
+### Connections & Secrets
+Non‑secret connection metadata lives in `osiris_connections.yaml` (versioned). Secrets are provided via environment variables. The compiler and runtime resolve `@family.alias` at execution time.
+
+### Observability by Default
+Every run produces a structured session:
+
+```
+logs/<session>/
+  ├─ events.jsonl
+  ├─ metrics.jsonl
+  └─ artifacts/
+```
+
+`osiris logs html --open` renders an interactive report with **rows processed, durations, per‑step details**, and environment badges (Local / E2B).
+
+---
+
+## Architecture at a Glance
+
+```mermaid
+flowchart TB
+  %% === Authoring ===
+  subgraph A["**Authoring**"]
+    I1@{shape: stadium, label: "Chat / OML"}
+    V1@{shape: diamond, label: "Validator\n(JSON Schema)\nOML v0.1.0"}
+    I1 --> V1
+  end
+
+  %% === Compilation ===
+  subgraph C["**Compilation**"]
+    V1 --> C1@{shape: hex, label: "Compiler"}
+    C1 --> MF@{shape: tag-rect, label: "Manifest + Fingerprint"}
+  end
+
+  %% === Execution ===
+  subgraph E["**Execution**"]
+    MF --> RR@{shape: fr-rect, label: "Runner"}
+    RR --> A1@{shape: rect, label: "Local Adapter"}
+    RR --> A2@{shape: rect, label: "E2B Proxy"}
+    A1 --> OUT@{shape: bow-rect, label: "Events • Metrics • Artifacts"}
+    A2 --> OUT
+  end
+
+  %% === Observability ===
+  subgraph O["**Observability**"]
+    OUT --> RPT@{shape: doc, label: "HTML Report\n(osiris logs html --open)"}
+  end
+
+  %% === Registry ===
+  subgraph R["**Registry**"]
+    REG@{shape: cyl, label: "Component Registry\nSelf-describing specs"}
+  end
+
+  REG -.-> V1
+  REG -.-> C1
+
+  %% Optional styling
+  classDef key fill:#e7f7ff,stroke:#002244,stroke-width:2px;
+  classDef main fill:#f9fff3,stroke:#35510a,stroke-width:2px;
+  class I1,V1,C1,MF,RR,A1,A2,OUT,RPT key
+  class REG main
+
+  %% Descriptive titles for easier navigation
+  %% (Descriptions and tooltips could be added if desired)
+
+
+
+```
+
+---
+
+## What’s in v0.2.0 (M1)
+
+- ✅ **Compiler** for OML v0.1.0 → deterministic manifests (with SHA‑256)
+- ✅ **Runner** with **Local** and **E2B Transparent Proxy** adapters (full parity)
+- ✅ **Component Registry** with JSON Schema specs (MySQL extractor, Supabase writer, CSV writer, …)
+- ✅ **Connections & Secrets** via `osiris_connections.yaml` + environment variables
+- ✅ **Observability**: structured events/metrics, HTML reports, environment badges
+- ✅ **Row totals normalization** and **verbose streaming** parity (Local ↔ E2B)
+
+### Not in this version (tracked in ADRs)
+
+- ⏭️ **Streaming I/O** / RowStream API (ADR‑0022)  
+- ⏭️ **Remote object store writers** (S3/Azure/GCS) (ADR‑0023)  
+- ⏳ **Run export/context bundle** (ADR‑0027) — foundation exists; integration planned for M2
+
+---
+
+## CLI Quick Reference
+
+```bash
+# Compile OML to a deterministic manifest
+osiris compile path/to/pipeline.yaml
+
+# Run last compiled manifest locally (verbose)
+osiris run --last-compile --verbose
+
+# Run in E2B sandbox (installs deps in sandbox on first run)
+osiris run --last-compile --e2b --e2b-install-deps --verbose
+
+# Open HTML report for the last run
+osiris logs html --open
+
+# List components and connections
+osiris components list
+osiris connections list
+```
+
+---
+
+## Design Principles (Why it works)
+
+1. **Determinism** — compilers over ad‑hoc glue; identical inputs → identical outputs  
+2. **Parity** — same behavior locally and in cloud sandboxes  
+3. **Transparency** — self‑describing components, explainable failures, rich logs  
+4. **Separation of concerns** — specs in the registry, secrets out of artifacts  
+5. **Open by default** — Apache 2.0 core; adopt gradually and run anywhere
+
+---
