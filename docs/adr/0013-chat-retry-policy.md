@@ -1,7 +1,7 @@
 # ADR-0013: Chat Retry Policy for Post-Generation Validation
 
 ## Status
-Implemented
+Accepted
 
 ## Context
 
@@ -125,3 +125,19 @@ Note: Runner logic for executing pipelines is explicitly NOT part of M1b scope (
 - [M1b Milestone: Context Builder and Validation](../milestones/m1b-context-builder-and-validation.md)
 - [M1a.4: Friendly Error Mapper](../milestones/m1a-component-registry.md)
 - [ADR-0007: Component Specification and Capabilities](./0007-component-specification-and-capabilities.md)
+
+## Notes on Milestone M1
+
+**Implementation Status**: Fully implemented in Milestone M1.
+
+The retry mechanism has been implemented in:
+- **Core implementation**: `osiris/core/validation_retry.py` - Contains the bounded retry logic with configurable attempts (0-5, default 2)
+- **Test coverage**: `tests/chat/test_validation_retry_flow.py` - Comprehensive tests for retry scenarios including success, failure, and HITL escalation
+- **Integration**: Integrated into the chat flow with proper session event logging, retry trail artifacts, and token usage tracking
+
+Key features delivered:
+- Configurable retry attempts via CLI (`--retry-attempts`), ENV (`OSIRIS_VALIDATE_RETRY_ATTEMPTS`), or YAML config
+- Friendly error messages using the FriendlyErrorMapper from M1a.4
+- Complete retry trail with events, artifacts, patches, and metrics
+- HITL escalation with retry counter reset capability
+- Proper secret redaction while preserving operational metrics

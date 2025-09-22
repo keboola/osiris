@@ -1,7 +1,7 @@
 # ADR 0019: Chat State Machine and OML Synthesis
 
 ## Status
-Implemented
+Accepted
 
 ## Context
 
@@ -174,3 +174,22 @@ Given: "export all tables from MySQL to Supabase, no scheduler"
 - ADR 0015: Compile Contract Determinism - Compilation requirements
 - `osiris/core/prompt_manager.py:OML_CONTRACT` - Prompt section enforcing v0.1.0
 - Issue #M1c - Milestone documentation for state machine implementation
+
+## Notes on Milestone M1
+
+**Implementation Status**: Fully implemented in Milestone M1.
+
+The chat state machine and OML synthesis enforcement has been implemented in:
+- **Core enforcement**: `osiris/core/conversational_agent.py` - Contains the state machine logic, post-discovery synthesis, and strict OML v0.1.0 contract enforcement
+- **Test coverage**: `tests/chat/test_post_discovery_synthesis.py` - Validates that no open questions are asked after discovery, direct synthesis occurs
+- **Schema validation**: `osiris/core/oml_schema_guard.py` - Enforces required keys, forbids legacy keys, validates step structure
+- **Additional tests**: Coverage in `tests/chat/test_no_empty_responses.py`, `tests/core/test_oml_schema_guard.py`, and `tests/chat/test_chat_mysql_to_csv.py`
+
+Key features delivered:
+- Mandatory FSM flow with deterministic transitions
+- Hard rule: NO open questions after discovery phase
+- Strict OML v0.1.0 contract with required keys {oml_version, name, steps}
+- Forbidden legacy keys {version, connectors, tasks, outputs} with automatic detection
+- Single regeneration attempt on validation failure
+- Non-empty assistant message fallback for better UX
+- Structured event logging for each state transition

@@ -2,15 +2,13 @@
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
 
-from osiris.core.session_reader import SessionReader, SessionSummary
+from osiris.core.session_reader import SessionReader
 from tools.logs_report.generate import (
     generate_html_report,
-    get_pipeline_name,
     get_session_metadata,
     is_e2b_session,
 )
@@ -31,12 +29,12 @@ def test_is_e2b_session_detection(tmp_path):
 
     # E2B session - has commands.jsonl with RPC commands
     (e2b_session / "commands.jsonl").write_text(
-        json.dumps({"cmd": "prepare", "session_id": "run_e2b"}) + "\n"
-        + json.dumps({"cmd": "exec_step", "step_id": "test"}) + "\n"
+        json.dumps({"cmd": "prepare", "session_id": "run_e2b"})
+        + "\n"
+        + json.dumps({"cmd": "exec_step", "step_id": "test"})
+        + "\n"
     )
-    (e2b_session / "events.jsonl").write_text(
-        json.dumps({"event": "worker_started"}) + "\n"
-    )
+    (e2b_session / "events.jsonl").write_text(json.dumps({"event": "worker_started"}) + "\n")
 
     # Test detection
     assert not is_e2b_session(str(tmp_path / "logs"), "run_local")
@@ -149,7 +147,7 @@ def test_connection_resolution_from_cleaned_config(tmp_path):
     # Create cleaned_config.json with connection info
     cleaned_config = {
         "resolved_connection": {
-            "url": "mysql://user:pass@host:3306/db",
+            "url": "mysql://user:pass@host:3306/db",  # pragma: allowlist secret
             "_alias": "mydb",
             "_family": "mysql",
         }
@@ -192,7 +190,9 @@ def test_e2b_badge_display(tmp_path):
         json.dumps({"cmd": "prepare", "session_id": "run_e2b_badge"}) + "\n"
     )
     (session_dir / "events.jsonl").write_text(
-        json.dumps({"event": "run_start", "pipeline_id": "test-pipeline", "ts": "2025-01-01T00:00:00Z"})
+        json.dumps(
+            {"event": "run_start", "pipeline_id": "test-pipeline", "ts": "2025-01-01T00:00:00Z"}
+        )
         + "\n"
     )
 

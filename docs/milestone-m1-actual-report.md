@@ -1,6 +1,21 @@
 # Osiris Pipeline M1 Milestone - Actual Implementation Report
 *Comprehensive analysis of documented plans vs. actual implementation*
-*Date: 2025-09-18*
+*Date: 2025-09-22*
+
+## What Shipped in M1 (v0.2.0)
+- **Component Registry**: Self-describing components with JSON Schema validation and friendly error mapping
+- **Runtime Driver Layer**: Unified execution with MySQL extractor and CSV writer drivers
+- **E2B Transparent Proxy**: Full parity cloud execution with <1% overhead
+- **HTML Logs Browser**: Rich visualization with badges, metrics, and performance dashboards
+- **Connection Resolution**: External `osiris_connections.yaml` with secure secrets management
+- **CLI Unification**: Rich-only interface with `osiris logs` namespace
+- **Validation & Retry**: Post-generation validation with bounded retries and HITL escalation
+- **Test Suite**: 694+ tests passing with comprehensive coverage
+
+## Deferred to M2
+- **ADR-0022**: Streaming IO and Spill (RowStream API not implemented)
+- **ADR-0023**: Remote Object Store Writers (S3/Azure/GCS not implemented)
+- **ADR-0027**: Run Export Context for AI (partial - foundation exists, integration postponed)
 
 ## Executive Summary
 

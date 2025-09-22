@@ -1,6 +1,6 @@
 # ADR-0025: CLI UX Unification (Run vs Logs)
 
-**Status:** Implemented  
+**Status:** Accepted  
 **Date:** 2025-09-09  
 **Authors:** Osiris Core Team
 
@@ -40,3 +40,25 @@ We want to simplify mental model:
 - Milestone M1d – Logs & CLI Unification
 - ADR-0003 Session-Scoped Logging
 - Implementation tracked in Milestone: docs/milestones/m1d-logs-and-cli-unification.md
+
+## Notes on Milestone M1
+
+**Implementation Status**: Fully implemented in Milestone M1.
+
+The CLI UX unification has been completed with Click library completely removed and Rich framework used exclusively:
+- **Core implementation**: `osiris/cli/main.py` - Rich-only CLI implementation without Click dependency
+- **Logs commands**: `osiris/cli/logs.py` - Full implementation of `osiris logs` namespace with list, show, gc, html commands
+- **Test coverage**: `tests/cli/` - Comprehensive tests for all CLI commands
+
+Key features delivered:
+- Complete removal of Click library dependency
+- Rich framework provides all CLI functionality with beautiful terminal output
+- `osiris logs` namespace for all inspection commands:
+  - `osiris logs list` - List sessions with wrapping, filtering, and status
+  - `osiris logs show` - Display session details with metrics and events
+  - `osiris logs gc` - Cleanup old sessions
+  - `osiris logs html` - Generate HTML reports from sessions
+- Unified `osiris run` command handles both OML and compiled manifests
+- Session-scoped logging with structured JSONL events and metrics
+- Beautiful Rich tables, colors, and progress indicators throughout
+- Consistent JSON output support across all commands with `--json` flag

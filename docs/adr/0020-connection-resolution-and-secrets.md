@@ -1,7 +1,7 @@
 # ADR 0020: Connection Resolution and Secrets
 
 ## Status
-Implemented
+Accepted
 
 ## Context
 
@@ -240,3 +240,27 @@ osiris connections add mysql --alias prod --set-default
 - Issue #M1c: Connection resolution requirements
 - `osiris/core/config.py` - Implementation location
 - `osiris/core/secrets_masking.py` - Redaction implementation
+
+## Notes on Milestone M1
+
+**Implementation Status**: Fully implemented in Milestone M1.
+
+The connection resolution and secrets management system has been implemented in:
+- **Core implementation**: `osiris/core/config.py` - Contains `load_connections_yaml()` and `resolve_connection()` functions with ${ENV_VAR} substitution
+- **Environment loading**: `osiris/core/env_loader.py` - Unified environment loading system ensuring consistent behavior across all commands
+- **CLI commands**: `osiris/cli/connections_cmd.py` - Implementation of `osiris connections list` and `osiris connections doctor` commands
+- **Runtime integration**: Connection resolution integrated into runner, components receive resolved connection dicts
+
+Key features delivered:
+- External `osiris_connections.yaml` for non-secret connection metadata
+- Environment variable substitution for secrets using `${ENV_VAR}` syntax
+- Connection alias model with family-based organization
+- Default selection precedence: `default:true` → alias named "default" → error
+- Optional OML reference syntax: `config.connection: "@family.alias"`
+- CLI commands: `osiris connections list` (shows aliases with masked secrets)
+- CLI commands: `osiris connections doctor` (tests connectivity)
+- Complete separation of secrets from pipeline definitions
+- Runtime connection resolution with per-step events
+- Automatic redaction of sensitive fields in logs and outputs
+
+Note: The connection wizard (`osiris connections add`) was deferred to M1d as planned.

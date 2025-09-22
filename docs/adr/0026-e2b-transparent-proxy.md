@@ -1,7 +1,7 @@
 # ADR-0026: E2B Transparent Proxy
 
 ## Status
-Implemented
+Accepted
 
 ## Context
 The current approach to E2B execution uses nested sessions, which introduces several issues. These include incorrect artifact paths, duplication of log lines, and differences in log output between local and E2B runs. This situation complicates analysis and reduces the reliability of results. There is a need to unify local and E2B execution to ensure consistency, easier management, and better integration with other tools.
@@ -450,3 +450,26 @@ The E2B transparent proxy architecture has been successfully implemented and har
 - **Security**: Secret masking verified
 
 The system is now production-ready with full feature parity between local and E2B execution modes.
+
+## Notes on Milestone M1
+
+**Implementation Status**: Fully implemented in Milestone M1.
+
+The E2B Transparent Proxy architecture has been completely implemented and production-hardened:
+- **Core implementation**: `osiris/remote/e2b_transparent_proxy.py` - E2BTransparentProxy class replacing legacy E2BAdapter and PayloadBuilder
+- **Worker implementation**: `osiris/remote/proxy_worker.py` - ProxyWorker for remote execution in E2B sandbox
+- **RPC protocol**: `osiris/remote/rpc_protocol.py` - Bidirectional communication protocol with heartbeat support
+- **Test coverage**: Comprehensive testing showing <1% overhead and full parity with local execution
+
+Key features delivered:
+- Complete redesign eliminating E2BPack in favor of transparent proxy approach
+- Full parity between local and E2B execution paths with identical artifact structure
+- Identical log structure across environments (events.jsonl, metrics.jsonl)
+- Support for verbose output passthrough from E2B sandbox
+- Heartbeat mechanism for long-running operations
+- Clean separation of concerns with ExecutionAdapter pattern
+- Adapter factory pattern for runtime adapter selection (local vs E2B)
+- PreparedRun dataclass with deterministic execution packages
+- ExecutionContext for unified session and artifact management
+- Support for E2B-specific features: timeout, CPU, memory configuration
+- Performance characteristics: ~8.3s sandbox initialization, <1% per-step overhead

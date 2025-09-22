@@ -1,7 +1,7 @@
 # ADR 0023: Remote Object Store Writers
 
 ## Status
-Accepted
+Deferred
 
 ## Context
 With RowStream support from ADR-0022, Osiris can handle large datasets efficiently. However, current writers only support local filesystem and databases. Modern data architectures require direct writing to cloud object stores (S3, Azure Blob Storage, Google Cloud Storage) for data lake scenarios. We need writers that can stream data directly to these remote stores without requiring local staging.
@@ -210,3 +210,20 @@ The driver-based runtime provides the foundation for remote object store writers
 - The deterministic CSV contract is already implemented in the filesystem driver
 - DriverRegistry allows registration of cloud-specific drivers alongside local ones
 - Connection resolution and metrics tracking work identically for all driver types
+
+## Notes on Milestone M1
+
+**Implementation Status**: Not implemented in Milestone M1. Postponed to Milestone M2.
+
+The remote object store writers (S3, Azure Blob Storage, Google Cloud Storage) described in this ADR have not been implemented:
+- **No S3 writer**: The `s3.csv_writer` component does not exist
+- **No Azure Blob writer**: The `azure_blob.csv_writer` component does not exist
+- **No GCS writer**: The `gcs.csv_writer` component does not exist
+- **No cloud SDK dependencies**: boto3, azure-storage-blob, google-cloud-storage are not included
+
+Current state:
+- Only `filesystem.csv_writer` is implemented for local file writing
+- No multipart upload capability for large files
+- No direct cloud storage integration
+
+This feature is postponed to Milestone M2 for implementation alongside other data lake and cloud integration features.

@@ -1,7 +1,7 @@
 # ADR 0022: Streaming IO and Spill
 
 ## Status
-Accepted
+Deferred
 
 ## Context
 Current Osiris extractors return complete pandas DataFrames, which requires loading all data into memory. This approach does not scale to datasets of 10GB+ and can cause OOM errors. We need an iterator-first approach that supports streaming data processing while maintaining backward compatibility.
@@ -137,3 +137,20 @@ The driver-based runtime introduced in M1c provides the foundation for streaming
 - `filesystem.csv_writer` driver is the first concrete implementation with spill-to-disk capability
 - The DriverRegistry allows seamless registration of both DataFrame and streaming-based drivers
 - Metrics (`rows_read`, `rows_written`) are automatically tracked for data flow visibility
+
+## Notes on Milestone M1
+
+**Implementation Status**: Not implemented in Milestone M1. Planned for Milestone M2.
+
+The RowStream API and streaming IO capabilities described in this ADR have not been implemented yet:
+- **No RowStream interface**: The codebase does not contain the RowStream protocol or ColumnSchema dataclass
+- **No streaming extractors**: MySQL and Supabase extractors still return full DataFrames
+- **No streaming writers**: Writers still consume entire DataFrames at once
+- **No spill-to-disk**: No DuckDB or Parquet spill strategies implemented
+
+Current state:
+- All data processing still uses pandas DataFrames loaded fully into memory
+- The driver-based runtime in M1c provides a foundation but uses DataFrames exclusively
+- Memory usage remains proportional to dataset size
+
+This feature is postponed to Milestone M2 for implementation alongside other scaling improvements.

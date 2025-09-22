@@ -1,7 +1,7 @@
 # ADR-0027: Run Export Context for AI
 
 ## Status
-Proposed
+Partially Accepted
 
 ## Context
 
@@ -255,3 +255,26 @@ TODO: Implementation phases:
 - ADR-0003: Session-scoped logging (related)
 - Claude/ChatGPT best practices for context
 - JSONL vs TXT format analysis
+
+## Notes on Milestone M1
+
+**Implementation Status**: Partially implemented in Milestone M1. Integration postponed to Milestone M2.
+
+The context builder foundation has been implemented, but the run export feature described in this ADR has not been fully integrated:
+- **Context builder implemented**: `osiris/prompts/build_context.py` - Builds minimal component context for LLM consumption
+- **JSON schema defined**: `osiris/prompts/context.schema.json` - Schema for context format with strict validation
+- **CLI command exists**: `osiris prompts build-context` - Generates component context with caching and fingerprinting
+
+What has NOT been implemented:
+- **Run bundle generation**: The `osiris logs bundle` command does not exist
+- **AI-optimized run export**: No integration between run logs and AI context
+- **Enhanced context sections**: Timeline, metrics summary, AI hints not implemented
+- **Chat integration**: Context builder not fully integrated into chat command workflow
+
+Current state:
+- The context builder successfully generates a minimal (~330 token) JSON representation of component capabilities
+- It includes SHA-256 fingerprinting and disk caching for efficiency
+- NO-SECRETS guarantee implemented with comprehensive secret filtering
+- Session-aware logging with structured events
+
+The full run export context for AI feature is postponed to Milestone M2 for implementation alongside other AI enhancement features.
