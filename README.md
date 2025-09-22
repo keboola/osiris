@@ -1,4 +1,4 @@
-# Osiris Pipeline v0.1.0 - Conversational ETL Pipeline Generator
+# Osiris Pipeline v0.2.0 - Conversational ETL Pipeline Generator
 
 **MVP**: Basic conversational ETL pipeline generation using AI. Simple proof-of-concept implementation.
 
