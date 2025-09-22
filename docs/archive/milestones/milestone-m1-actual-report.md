@@ -15,7 +15,7 @@
 ## Deferred to M2
 - **ADR-0022**: Streaming IO and Spill (RowStream API not implemented)
 - **ADR-0023**: Remote Object Store Writers (S3/Azure/GCS not implemented)
-- **ADR-0027**: Run Export Context for AI (partial - foundation exists, integration postponed)
+- **ADR-0027**: AI Operation Package (AIOP) (partial - foundation exists, integration postponed)
 
 ## Executive Summary
 

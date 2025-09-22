@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Milestone M2a - AI Operation Package (AIOP)** planning document
+  - Comprehensive implementation plan for ADR-0027
+  - JSON-LD based semantic export format for LLM consumption
+  - Three-layer architecture: Narrative, Semantic, Evidence
+  - CLI command specification: `osiris logs aiop`
+  - Deterministic, secret-free export with size controls
+
 ## [0.2.0] - 2025-01-23
 
 **Major Release: Milestone M1 - Component Registry and Runner**
