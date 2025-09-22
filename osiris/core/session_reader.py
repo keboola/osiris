@@ -340,6 +340,12 @@ class SessionReader:
                         elif level == "error":
                             summary.errors += 1
 
+                        # Extract pipeline metadata from OML events
+                        if event_type == "oml_validated":
+                            summary.oml_version = event.get("oml_version")
+                            if "pipeline" in event:
+                                summary.pipeline_name = event["pipeline"].get("name")
+
                     except (json.JSONDecodeError, KeyError):
                         continue  # Skip invalid events
 
