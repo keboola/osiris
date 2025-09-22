@@ -1,6 +1,7 @@
-# Osiris Pipeline v0.2.0 - Conversational ETL Pipeline Generator
+# Osiris Pipeline v0.2.0
 
-**MVP**: Basic conversational ETL pipeline generation using AI. Simple proof-of-concept implementation.
+**The deterministic compiler for AI-native data pipelines.**
+You describe outcomes in plain English; Osiris compiles them into **reproducible, production-ready manifests** that run with the **same behavior everywhere** (local or cloud).
 
 ## 🚀 Quick Start
 
@@ -11,185 +12,106 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 # Initialize configuration
-python osiris.py init
+osiris init
 
-# Start conversation
-python osiris.py chat
+# Start conversation - describe what you want in plain English
+osiris chat
 ```
+
+## 🎯 What Makes Osiris Different
+
+- **Compiler, not orchestrator** - Others schedule what you hand-craft. Osiris generates, validates, and compiles pipelines from plain English.
+- **Determinism as a contract** - Fingerprinted manifests guarantee reproducibility across environments.
+- **Conversational → executable** - Describe intent; Osiris interrogates real systems and proposes a feasible plan.
+- **Run anywhere, same results** - Transparent adapters deliver execution parity (local and E2B today).
+- **Boring by design** - Predictable, explainable, portable — industrial-grade AI, not magical fragility.
+
+## 📊 Visual Overview
+
+### Pipeline Execution Dashboard
+![Osiris Dashboard](docs/img/logs-dashb.jpg)
+*Interactive HTML dashboard showing pipeline execution metrics and performance*
+
+### Run Overview with E2B Integration
+![Run Overview](docs/img/run-overview.jpg)
+*Comprehensive run overview showing E2B cloud execution with <1% overhead*
+
+### Step-by-Step Pipeline Execution
+![Pipeline Steps](docs/img/run-pipeline-steps.jpg)
+*Detailed view of pipeline steps with row counts and execution times*
 
 ## Example Conversation
 
 ```
-$ python osiris.py chat
+$ osiris chat
 
-You: "Show me top 10 customers by revenue"
+You: "Identify customers inactive for 90 days and export to CSV for re-activation campaign"
 
-Bot: I'll help analyze your top customers! Let me discover your database...
-     Found tables: customers, orders. I'll create a pipeline that joins these 
-     and calculates total revenue per customer.
+Osiris: I'll help you identify inactive customers. Let me explore your database...
+        Found tables: customers, orders, sessions. I'll create a pipeline that:
+        1. Identifies customers with no activity in the last 90 days
+        2. Exports their details for your re-activation campaign
 
-     Here's the generated pipeline:
-     [Shows YAML pipeline]
-     
-     Does this look correct?
+        Here's the generated pipeline:
+        [Shows OML pipeline with SQL queries and transformations]
 
-You: "Perfect, run it!"
+        Shall I compile this for execution?
 
-Bot: ✓ Pipeline run complete! Found 10 customers, saved to output/results.csv
+You: "Yes, compile and run it locally"
+
+Osiris: ✓ Pipeline compiled (manifest hash: a3f2b1c4)
+        ✓ Execution complete: 847 inactive customers exported to output/inactive_customers.csv
+        View report: osiris logs html --open
 ```
 
-## 🎯 Pro Mode - Custom LLM Prompts
+## ✨ Key Features
 
-Osiris includes a powerful **pro mode** that allows advanced users to customize the AI system prompts:
+- **AI-native pipeline generation** from plain English descriptions
+- **Deterministic compilation** with fingerprinted, reproducible manifests
+- **Run anywhere** with identical behavior (local or E2B cloud)
+- **Interactive HTML reports** with comprehensive observability
+- **LLM-friendly** with machine-readable documentation for AI assistants
 
-```bash
-# Export system prompts for customization
-python osiris.py dump-prompts --export
+## 🤖 LLM-Friendly Documentation
 
-# Edit prompts in .osiris_prompts/ directory:
-# - conversation_system.txt    # Main AI personality & behavior  
-# - sql_generation_system.txt  # SQL generation instructions
-# - user_prompt_template.txt   # User context building template
+Osiris provides machine-readable documentation for AI assistants:
 
-# Use your custom prompts
-python osiris.py chat --pro-mode
-```
+- **For Users**: Share [`docs/user-guide/llms.txt`](docs/user-guide/llms.txt) with ChatGPT/Claude to generate pipelines
+- **For Developers**: Use [`docs/developer-guide/llms.txt`](docs/developer-guide/llms.txt) for AI-assisted development
+- **Pro Mode**: Customize AI behavior with `osiris dump-prompts --export` and `osiris chat --pro-mode`
 
-**Use Cases:**
-- 🏥 **Domain-specific**: Adapt for healthcare, finance, retail terminology
-- 🎨 **Response style**: Make AI more technical, concise, or detailed
-- 🌍 **Multi-language**: Adapt prompts for different languages
-- ⚡ **Performance**: Fine-tune for better response quality
+## 🚀 E2B Cloud Execution
 
-## MVP Features
-
-- **🤖 AI Chat Interface**: Conversational pipeline creation with natural language
-- **🎯 Custom LLM Prompts**: Pro mode allows customizing AI system prompts for domain-specific use
-- **🔧 Multi-Database Support**: MySQL, Supabase (PostgreSQL), and CSV file processing
-- **📋 YAML Pipeline Generation**: Structured, reusable pipeline format
-- **✅ Human-in-the-Loop**: Manual validation and approval before execution
-- **🎨 Rich Terminal UI**: Beautiful formatted output with colors, tables, and progress indicators
-
-**Note**: This is an early prototype. Many features are experimental.
-
-## Supported Sources
-
-- **MySQL/MariaDB**: Full extraction and loading support
-- **Supabase**: Cloud PostgreSQL with real-time capabilities
-- **CSV Files**: Local file processing
-
-## 🚀 Running in E2B (Remote Execution)
-
-Osiris supports remote pipeline execution in E2B sandboxes for secure, isolated runtime environments.
-
-### Setup
-
-1. **Get E2B API Key**: Sign up at [e2b.dev](https://e2b.dev) and get your API key
-2. **Set Environment Variable**: 
-   ```bash
-   export E2B_API_KEY="your-api-key-here"
-   ```
-
-### Basic Usage
+Run pipelines in isolated E2B sandboxes with <1% overhead:
 
 ```bash
-# Execute pipeline remotely in E2B sandbox
+# Run in cloud sandbox
 osiris run pipeline.yaml --e2b
 
 # With custom resources
-osiris run pipeline.yaml --e2b --e2b-cpu 4 --e2b-mem 8 --e2b-timeout 1800
-
-# Pass environment variables to sandbox
-osiris run pipeline.yaml --e2b \
-  --e2b-pass-env SUPABASE_URL \
-  --e2b-pass-env SUPABASE_SERVICE_ROLE_KEY
-
-# Load env vars from file
-osiris run pipeline.yaml --e2b --e2b-env-from production.env
-
-# Dry run to see what would be sent
-osiris run pipeline.yaml --e2b --dry-run
+osiris run pipeline.yaml --e2b --e2b-cpu 4 --e2b-mem 8
 ```
 
-### Environment Requirements
+See the [User Guide](docs/user-guide/user-guide.md#2-running-pipelines) for complete E2B documentation.
 
-For MySQL-based pipelines, these environment variables are required:
+## 📚 Documentation
 
-- **`MYSQL_DB`** (or `MYSQL_DATABASE`): Database name
-- **`MYSQL_PASSWORD`**: Database password
+For comprehensive documentation, visit the **[Documentation Hub](docs/README.md)**:
 
-Optional variables:
-- `MYSQL_HOST`: Server host (default: localhost)
-- `MYSQL_PORT`: Server port (default: 3306)
-- `MYSQL_USER`: Username (default: root)
+- **[Quickstart](docs/quickstart.md)** - 10-minute setup guide
+- **[User Guide](docs/user-guide/user-guide.md)** - Complete usage documentation
+- **[Architecture](docs/architecture.md)** - Technical deep-dive with diagrams
+- **[Developer Guide](docs/developer-guide/README.md)** - Module patterns and LLM contracts
+- **[Examples](docs/examples/)** - Ready-to-use pipelines
 
-Example with MySQL credentials:
-```bash
-osiris run pipeline.yaml --e2b \
-  --e2b-env-from testing_env/.env \
-  --e2b-pass-env MYSQL_PASSWORD
-```
+## 🚦 Roadmap
 
-### E2B Options
+- **v0.2.0 (Current)** ✅ - Conversational agent, deterministic compiler, E2B parity
+- **M2** - Production workflows, approvals, orchestrator integration
+- **M3** - Streaming, parallelism, enterprise scale
+- **M4** - Iceberg tables, intelligent DWH agent
 
-- `--e2b`: Enable remote execution in E2B sandbox
-- `--e2b-timeout SECONDS`: Execution timeout (default: 900)
-- `--e2b-cpu N`: Number of CPU cores (default: 2)
-- `--e2b-mem GB`: Memory in GB (default: 4)
-- `--e2b-env KEY=VALUE`: Set environment variable (repeatable)
-- `--e2b-env-from FILE`: Load environment variables from file
-- `--e2b-pass-env NAME`: Pass environment variable from current shell (repeatable)
-- `--dry-run`: Show payload details without executing
-
-### Security Notes
-
-- **Secrets are never written to artifacts**: Environment variables are passed securely to the sandbox at creation time
-- **Allowlist-only payload**: Only essential files (manifest, runner, requirements) are uploaded
-- **Isolated execution**: Each run gets a fresh sandbox with no access to local filesystem
-- **Automatic cleanup**: Sandboxes are closed after execution or timeout
-
-### Remote Artifacts
-
-After remote execution, artifacts are downloaded to:
-```
-logs/<session>/remote/
-├── events.jsonl      # Execution events from sandbox
-├── metrics.jsonl     # Performance metrics
-├── osiris.log        # Full execution log
-└── artifacts/        # Output files from pipeline
-```
-
-The HTML Logs Browser automatically integrates remote execution data, showing a unified timeline of local preparation and remote execution phases.
-
-### Testing E2B Integration
-
-```bash
-# Run unit tests (no network required)
-pytest tests/e2b/
-
-# Run live integration tests (requires E2B_API_KEY)
-cd testing_env
-source .env  # Contains E2B_API_KEY
-export E2B_LIVE_TESTS=1
-pytest tests/e2b/test_e2b_live.py
-```
-
-## Documentation
-
-### Core Documentation
-- **[CLAUDE.md](CLAUDE.md)** - AI assistant project instructions and architecture overview
-- **[docs/architecture.md](docs/architecture.md)** - Technical system documentation and component relationships
-- **[docs/repository-structure.md](docs/repository-structure.md)** - Complete file-by-file codebase documentation
-- **[docs/reference/pipeline-format.md](docs/reference/pipeline-format.md)** - OML (Osiris Markup Language) specification
-- **[docs/system/sql-safety.md](docs/system/sql-safety.md)** - SQL injection prevention and security measures
-
-### Examples & Usage
-- **[docs/examples/README.md](docs/examples/README.md)** - Example pipeline usage guide
-- **[docs/examples/sample_pipeline.yaml](docs/examples/sample_pipeline.yaml)** - Basic MySQL pipeline template  
-- **[docs/examples/top_customers_revenue.yaml](docs/examples/top_customers_revenue.yaml)** - Advanced revenue analysis pipeline
-
-### Development Archive
-- **[docs/archive/](docs/archive/)** - Historical development documentation
+See [docs/roadmap/](docs/roadmap/) for details.
 
 ## License
 

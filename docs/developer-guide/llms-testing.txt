@@ -1,0 +1,256 @@
+# LLM Contract for Test Development
+
+## CONTEXT
+You are writing tests for the Osiris Pipeline system. Follow these patterns EXACTLY.
+
+## TEST STRUCTURE
+Every test file MUST follow this pattern:
+
+```python
+import pytest
+from pathlib import Path
+import tempfile
+
+class TestComponentName:
+    """Test suite for ComponentName."""
+
+    def test_successful_operation(self):
+        """Test happy path."""
+        # Arrange
+        input_data = create_test_data()
+
+        # Act
+        result = function_under_test(input_data)
+
+        # Assert
+        assert result is not None
+        assert result["status"] == "success"
+
+    def test_error_condition(self):
+        """Test error handling."""
+        with pytest.raises(SpecificError, match="Expected error message"):
+            function_under_test(invalid_input)
+```
+
+## FIXTURE PATTERNS
+
+### Temporary Directories
+ALWAYS use pytest fixtures for temp dirs:
+
+```python
+def test_with_temp_dir(tmp_path):
+    """Test using temporary directory."""
+    test_file = tmp_path / "test.yaml"
+    test_file.write_text("content")
+
+    result = process_file(test_file)
+    assert result.exists()
+```
+
+NEVER create files in repository:
+```python
+# ❌ WRONG - pollutes repository
+Path("test_output.csv").write_text("data")
+
+# ✅ CORRECT - uses temp directory
+(tmp_path / "test_output.csv").write_text("data")
+```
+
+### Mock Context
+```python
+@pytest.fixture
+def mock_context():
+    """Create mock execution context."""
+    class MockContext:
+        def __init__(self):
+            self.events = []
+            self.metrics = {}
+
+        def log_event(self, event, data):
+            self.events.append({"event": event, "data": data})
+
+        def log_metric(self, name, value):
+            self.metrics[name] = value
+
+    return MockContext()
+```
+
+## DRIVER TESTING
+```python
+class TestMyDriver:
+    def test_extraction(self, mock_context):
+        """Test data extraction."""
+        driver = MyDriver()
+        config = {
+            "resolved_connection": {
+                "host": "localhost",
+                "database": "test"
+            },
+            "query": "SELECT * FROM test"
+        }
+
+        result = driver.run("test_step", config, None, mock_context)
+
+        assert "df" in result
+        assert mock_context.metrics["rows_read"] > 0
+
+    def test_missing_config(self, mock_context):
+        """Test missing configuration."""
+        driver = MyDriver()
+
+        with pytest.raises(ValueError, match="Missing required"):
+            driver.run("test_step", {}, None, mock_context)
+```
+
+## CLI TESTING
+```python
+from click.testing import CliRunner
+from osiris.cli.main import cli
+
+def test_cli_command():
+    """Test CLI command."""
+    runner = CliRunner()
+
+    with runner.isolated_filesystem():
+        # Create test files
+        Path("test.yaml").write_text("oml_version: '0.1.0'")
+
+        # Run command
+        result = runner.invoke(cli, ['compile', 'test.yaml'])
+
+        # Assert
+        assert result.exit_code == 0
+        assert "Success" in result.output
+```
+
+## MOCK PATTERNS
+
+### Mock Database Connection
+```python
+@pytest.fixture
+def mock_mysql_connection(monkeypatch):
+    """Mock MySQL connection."""
+    def mock_execute(query):
+        return pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})
+
+    monkeypatch.setattr(
+        "osiris.connectors.mysql.connection.execute_query",
+        mock_execute
+    )
+```
+
+### Mock E2B Sandbox
+```python
+class MockSandbox:
+    def __init__(self):
+        self.files = {}
+        self.processes = []
+
+    def upload(self, path, content):
+        self.files[path] = content
+
+    def process_start(self, cmd):
+        return MockProcess(cmd)
+
+    def kill(self):
+        pass
+```
+
+## SECRET HANDLING IN TESTS
+For dummy credentials in tests:
+
+```python
+def test_with_credentials():
+    """Test with dummy credentials."""
+    # Use pragma comment for detect-secrets
+    password = "dummy_password_123"  # pragma: allowlist secret
+    api_key = "sk_test_abc123xyz"  # pragma: allowlist secret
+
+    config = {
+        "password": password,
+        "api_key": api_key
+    }
+```
+
+## PARAMETRIZED TESTS
+```python
+@pytest.mark.parametrize("write_mode,expected", [
+    ("append", "added"),
+    ("overwrite", "replaced"),
+    ("upsert", "updated"),
+])
+def test_write_modes(write_mode, expected):
+    """Test different write modes."""
+    result = process_with_mode(write_mode)
+    assert result["action"] == expected
+```
+
+## INTEGRATION TEST MARKERS
+```python
+@pytest.mark.integration
+def test_database_connection():
+    """Test real database connection."""
+    # Requires actual database
+
+@pytest.mark.e2b
+def test_e2b_execution():
+    """Test E2B sandbox execution."""
+    # Requires E2B_API_KEY
+```
+
+## CLEANUP PATTERNS
+```python
+def test_with_cleanup():
+    """Test with proper cleanup."""
+    resource = None
+    try:
+        resource = acquire_resource()
+        result = use_resource(resource)
+        assert result
+
+    finally:
+        if resource:
+            resource.close()
+```
+
+## ASSERTION PATTERNS
+```python
+# Specific assertions
+assert len(result) == 5, f"Expected 5 items, got {len(result)}"
+
+# DataFrame assertions
+assert isinstance(df, pd.DataFrame)
+assert not df.empty
+assert "column_name" in df.columns
+
+# Event assertions
+assert any(e["event"] == "step_complete" for e in events)
+
+# File assertions
+assert output_file.exists()
+assert output_file.read_text().startswith("expected")
+```
+
+## TEST ORGANIZATION
+```
+tests/
+├── unit/
+│   ├── test_driver.py
+│   └── test_compiler.py
+├── integration/
+│   ├── test_mysql_connection.py
+│   └── test_e2b_execution.py
+└── fixtures/
+    ├── sample_pipeline.yaml
+    └── test_data.csv
+```
+
+## CRITICAL RULES
+1. NEVER create files in repository root - use tmp_path
+2. ALWAYS mock external dependencies in unit tests
+3. NEVER commit real credentials - use pragma comments
+4. ALWAYS test error conditions, not just happy path
+5. NEVER use absolute paths - use Path objects
+6. ALWAYS clean up resources in finally blocks
+
+When generating test code, follow these patterns EXACTLY.
