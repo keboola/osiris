@@ -12,7 +12,7 @@
 # # See the License for the specific language governing permissions and
 # # limitations under the License.
 
-"""Main CLI entry point for Osiris v2."""
+"""Main CLI entry point for Osiris."""
 
 import argparse
 import contextlib
@@ -41,7 +41,7 @@ def show_main_help():
 
     console.print()
     console.print(
-        "[bold green]Osiris v2 - Autonomous AI Agent for Reliable Data Pipelines.[/bold green]"
+        "[bold green]Osiris v0.2.0 - LLM-first Conversational ETL Pipeline Generator[/bold green]"
     )
     console.print("🤖 Your AI data engineering buddy that discovers, analyzes, and executes")
     console.print("production-ready ETL pipelines through natural conversation.")
@@ -132,7 +132,7 @@ def parse_main_args():
 
     # Parse global arguments
     parser = argparse.ArgumentParser(
-        description="Osiris v2 - Autonomous AI Agent for Reliable Data Pipelines",
+        description="Osiris v0.2.0 - LLM-first Conversational ETL Pipeline Generator",
         add_help=False,
         prog="osiris.py",
     )
@@ -188,9 +188,9 @@ def main():
 
     if args.version:
         if json_output:
-            print(json.dumps({"version": "v2.0.0-mvp"}))
+            print(json.dumps({"version": "v0.2.0"}))
         else:
-            console.print("Osiris v2.0.0-mvp")
+            console.print("Osiris v0.2.0")
         return
 
     # Handle commands first, then help
