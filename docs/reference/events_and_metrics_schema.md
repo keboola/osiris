@@ -44,6 +44,7 @@ All events follow a common structure defined in `schemas/events.schema.json`:
   - Required: `step_id`, `family`, `alias`
 - `connection_resolve_complete`: Connection resolved
   - Required: `step_id`, `family`, `alias`, `ok` (boolean)
+  - See [SQL safety rules](sql-safety.md) for connection security boundaries
 
 #### Driver Events
 - `driver_registered`: Driver successfully registered

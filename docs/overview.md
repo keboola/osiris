@@ -1,176 +1,107 @@
-# Osiris Pipeline Overview
+# Osiris Pipeline — Overview (v0.2.0)
 
-## Introduction
+Osiris is the **deterministic compiler for AI‑native data pipelines**.  
+You describe outcomes in plain English; Osiris compiles them into **reproducible, production‑ready manifests** that run with the **same behavior everywhere** (local or cloud).
 
-TODO: Write comprehensive introduction covering:
-- What is Osiris Pipeline
-- Key value proposition (LLM-first conversational ETL)
-- Target audience (data engineers, analysts, ML engineers)
-- How it differs from traditional ETL tools
-- Quick example of conversational pipeline creation
+---
 
-## Conceptual Flow
+## 1) Executive Summary
 
-TODO: Explain the high-level flow:
-- User describes data needs in natural language
-- AI discovers database schemas progressively
-- OML (Osiris Markup Language) generation
-- Compilation to deterministic manifest
-- Execution in local or E2B cloud environment
-- Session-scoped logging and artifacts
+**Breakthrough:** Osiris turns **ambiguous, plain‑language intent** into a **deterministic, portable pipeline** — without forcing teams to master a dozen tools. It combines the **creativity of AI** with the **safety of compilers**: same inputs → same outputs, every time.
 
-### Diagram 1: Chat → OML State Machine
+**Why it matters (value):**
+- **AI without chaos.** Guardrails, validation, and deterministic manifests make AI‑assisted pipelines **safe for production**.
+- **Speed without fragility.** Idea → compiled pipeline **in minutes**, not weeks; fewer rewrites.
+- **Portability without lock‑in.** **Parity adapters** run the same manifest anywhere (local or E2B today; Keboola/Kubernetes on the roadmap).
+- **Transparency without toil.** Deep observability and **AI‑ready run bundles** make every run explainable to humans and usable by AI.
 
-```mermaid
-stateDiagram-v2
-    [*] --> INIT
-    INIT --> INTENT_CAPTURED: User describes need
-    INTENT_CAPTURED --> DISCOVERY: Schema exploration
-    DISCOVERY --> OML_SYNTHESIS: Generate pipeline
-    OML_SYNTHESIS --> VALIDATE_OML: Validate syntax
-    VALIDATE_OML --> REGENERATE_ONCE: Validation failed
-    REGENERATE_ONCE --> VALIDATE_OML: Retry
-    VALIDATE_OML --> COMPILE: Valid OML
-    COMPILE --> RUN: Execute pipeline
-    RUN --> COMPLETE: Success
+**Tagline:** *Osiris is the reliable bridge between human intent and machine execution for AI‑native data work.*
 
-    note right of DISCOVERY
-        TODO: Add details about:
-        - Progressive profiling
-        - Cache fingerprinting
-        - Discovery snapshots
-    end note
+---
 
-    note right of OML_SYNTHESIS
-        TODO: Add details about:
-        - OML v0.1.0 schema
-        - Required/forbidden keys
-        - Connection resolution
-    end note
-```
+## 2) What Makes Osiris Different
 
-## Detailed Execution
+- **Compiler, not orchestrator.** Others schedule what you hand‑craft. Osiris **generates, validates, and compiles** pipelines from plain English.
+- **Determinism as a contract.** Fingerprinted manifests guarantee **reproducibility** across environments.
+- **Conversational → executable.** Analysts, domain experts, and engineers can describe intent; Osiris interrogates real systems and proposes a **feasible** plan.
+- **Run anywhere, same results.** Transparent adapters deliver **execution parity** (local and E2B today).
+- **Boring by design.** Predictable, explainable, portable — **industrial‑grade** AI, not magical fragility.
 
-TODO: Deep dive into execution model:
+---
 
-### Local Execution
-- ExecutionAdapter pattern
-- LocalAdapter implementation
-- Driver registration and lookup
-- In-memory data caching between steps
-- Artifact generation
+## 3) Key Capabilities
 
-### E2B Cloud Execution
-- Transparent proxy architecture
-- RPC communication protocol
-- Sandbox lifecycle management
-- Artifact synchronization
-- Performance characteristics (<1% overhead)
+- **Conversational Pipeline Synthesis.** Describe outcomes; Osiris explores available sources, asks clarifying questions, and synthesizes an **OML** (Osiris Markup Language) pipeline grounded in reality.
+- **Deterministic Compiler & Runtime.** OML compiles to a **fingerprinted manifest**. If it compiles, it’s **production‑ready**: validated configs, resolved dependencies, and an execution plan.
+- **Transparent Execution Adapters.** Run the same manifest **locally** or in **E2B sandboxes** with identical logs, metrics, and artifacts. *(Roadmap: Keboola, Kubernetes/OpenShift, enterprise schedulers.)*
+- **Comprehensive Observability.** Structured **events + metrics**, interactive **HTML reports**, and an **AI‑ready Run Context Bundle** enable post‑mortems and “AI SRE” workflows.
+- **Self‑Describing Component Registry.** JSON‑Schema specs power validation, secret masking, and rich LLM context. Adding components is intentionally simple. *(Planned community compatibility: Airbyte, Singer, Mage, Boomi, Keboola connectors.)*
 
-### Diagram 2: Compile Pipeline
+> **Delivered in v0.2.0 (M1):** conversational → OML flow, deterministic compiler, local/E2B parity adapters, HTML reports, component registry, unified CLI.  
+> **On the roadmap:** Scheduling & lineage (M2), streaming & parallelism (M3), Iceberg & DWH agent (M4), organizational memory.
 
-```mermaid
-graph LR
-    subgraph "Compilation Process"
-        OML[OML File] --> Parser[Parse & Validate]
-        Parser --> Resolver[Resolve Connections]
-        Resolver --> Fingerprint[Generate Fingerprints]
-        Fingerprint --> Manifest[Deterministic Manifest]
+---
 
-        Config[osiris_connections.yaml] --> Resolver
-        Env[Environment Variables] --> Resolver
-    end
+## 4) How Osiris Works (at a glance)
 
-    style OML fill:#f9f,stroke:#333,stroke-width:2px
-    style Manifest fill:#9f9,stroke:#333,stroke-width:2px
+1. **Chat** – `osiris chat` captures intent (e.g., “Identify customers inactive for 90 days and export a re‑activation list”); Osiris knows your **available connectors** and capability context.
+2. **Synthesize OML** – The agent explores schemas, validates assumptions, and proposes an **OML pipeline**.
+3. **Compile** – `osiris compile` validates OML and produces a **deterministic manifest** (your source of truth in Git).
+4. **Run** – `osiris run` executes via adapters with **full parity** (add `--e2b` for sandboxed cloud execution).
+5. **Observe** – `osiris logs html --open` shows interactive reports; the **AI bundle** enables automated analysis.
 
-    %% TODO: Add more detail about:
-    %% - Connection precedence rules
-    %% - Secret masking during compilation
-    %% - Fingerprint calculation
-    %% - Manifest structure
-```
+---
 
-### Diagram 3: Run Pipeline
+## 5) Who It’s For
+
+- **Data Analysts:** self‑service pipelines without learning a stack.
+- **Data Engineers:** standard, reproducible manifests; focus on the hard 10%.
+- **ML/AI Teams:** fast, explainable data prep; AI‑ready run artifacts.
+- **Leaders:** faster outcomes, fewer incidents, no lock‑in.
+
+---
+
+## 6) Roadmap & Ambition
+
+- **M2 — Production Readiness:** workflows & approvals; **automatic impact analysis**; ownership that mirrors your org; native integration with existing orchestrators.
+- **M3 — Technical Scale:** **limitless** scaling via chunking/parallelism; live health & clear cost controls.
+- **M4 — Intelligent Persistence:** **Iceberg** tables and a **DWH Agent** that persists/serves datasets for pipelines and AI agents.
+
+Throughout: **transparency, predictability, no vendor lock‑in, outcome‑first**.
+
+---
+
+## 7) License & Positioning
+
+Open source under **Apache 2.0** (core). Run locally, in your cloud, or inside your orchestrator. You **own** what you depend on.
+
+---
+
+## 8) Quick Links
+
+- **Quickstart:** [docs/quickstart.md](quickstart.md)
+- **Architecture:** [docs/architecture.md](architecture.md)
+- **User Guide:** [docs/user-guide/user-guide.md](user-guide/user-guide.md)
+- **Examples:** [docs/examples/](examples/)
+- **ADR Index:** [docs/adr/](adr/)
+- **Roadmap:** [docs/roadmap/](roadmap/)
+
+---
+
+### Diagram — From Intent to Deterministic Execution
 
 ```mermaid
 graph TB
-    subgraph "Runtime Execution"
-        Start[Start Runner] --> Adapter{Local or E2B?}
-
-        Adapter -->|Local| LocalRun[LocalAdapter]
-        Adapter -->|E2B| E2BRun[E2BTransparentProxy]
-
-        LocalRun --> Drivers[Load Drivers]
-        E2BRun --> Sandbox[Create Sandbox]
-        Sandbox --> ProxyWorker[Deploy ProxyWorker]
-        ProxyWorker --> Drivers
-
-        Drivers --> Execute[Execute Steps]
-        Execute --> Artifacts[Generate Artifacts]
-        Artifacts --> Logs[Session Logs]
-
-        Logs --> Complete[Pipeline Complete]
-    end
-
-    style Start fill:#f9f,stroke:#333,stroke-width:2px
-    style Complete fill:#9f9,stroke:#333,stroke-width:2px
-
-    %% TODO: Add details about:
-    %% - Driver protocol (run method)
-    %% - Data flow between steps
-    %% - Metric collection
-    %% - Error handling & retry
+    U[User] -->|Plain English| CHAT[osiris chat]
+    CHAT --> DISC[Discovery & Feasibility]
+    DISC --> OML[OML Spec]
+    OML --> COMP[Deterministic Compiler]
+    COMP --> M[Fingerprint Manifest]
+    M --> RUN[osiris run]
+    RUN --> LCL[Local Adapter]
+    RUN --> E2B[E2B Adapter]
+    LCL --> OBS[Events • Metrics • Artifacts]
+    E2B --> OBS
+    OBS --> HTML[HTML Report]
+    OBS --> AIB[AI‑ready Run Bundle]
 ```
-
-## Error Handling
-
-TODO: Document error handling strategies:
-
-### Compilation Errors
-- OML validation failures
-- Missing connections
-- Invalid configurations
-- Schema mismatches
-
-### Runtime Errors
-- Driver failures
-- Connection issues
-- Data validation errors
-- E2B sandbox errors
-
-### Recovery Strategies
-- Retry policies
-- HITL (Human-In-The-Loop) escalation
-- Session preservation
-- Partial execution recovery
-
-### Error Reporting
-- Structured error events
-- Human-readable messages
-- Debug information in logs
-- Troubleshooting guides
-
-## Performance Considerations
-
-TODO: Add performance guidelines:
-- Memory usage with large datasets
-- Streaming vs in-memory processing
-- E2B overhead characteristics
-- Optimization strategies
-
-## Security Model
-
-TODO: Document security features:
-- Secret masking in logs
-- Connection isolation
-- E2B sandbox security
-- Data privacy considerations
-
-## Next Steps
-
-TODO: Link to other guides:
-- [Getting Started Guide](user-guide/kickstart.md)
-- [How-To Guide](user-guide/how-to.md)
-- [Developer Guide](developer-guide/components.md)
-- [API Reference](#) - TODO: Create API docs

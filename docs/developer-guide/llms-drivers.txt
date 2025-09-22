@@ -1,0 +1,123 @@
+# LLM Contract for Driver Development
+
+## CONTEXT
+You are developing a driver for the Osiris Pipeline system. This contract defines the exact patterns you MUST follow.
+
+## DRIVER PROTOCOL (MANDATORY)
+Every driver MUST implement this exact interface:
+
+```python
+def run(self, step_id: str, config: dict, inputs: dict | None, ctx: Any) -> dict:
+    """Execute a pipeline step.
+
+    Args:
+        step_id: Unique identifier for this step
+        config: Configuration with resolved_connection if applicable
+        inputs: Input data from upstream steps (None for extractors)
+        ctx: Execution context for metrics/events
+
+    Returns:
+        dict: {"df": DataFrame} for extractors/transformers, {} for writers
+    """
+```
+
+## DRIVER CATEGORIES AND RULES
+
+### EXTRACTORS (mode: "read")
+- MUST NOT require inputs (inputs will be None)
+- MUST return {"df": pandas.DataFrame}
+- MUST emit metric: ctx.log_metric("rows_read", count)
+- MUST validate SQL is read-only (no INSERT/UPDATE/DELETE/DROP)
+- MUST handle connection timeouts gracefully
+
+### WRITERS (mode: "write")
+- MUST require inputs with "df" key
+- MUST return empty dict {}
+- MUST emit metric: ctx.log_metric("rows_written", count)
+- MUST support write_mode: "append", "overwrite", or "upsert"
+- MUST handle transactions properly (rollback on error)
+
+### TRANSFORMERS (mode: "transform") [Future]
+- MUST require inputs with "df" key
+- MUST return {"df": pandas.DataFrame}
+- MUST emit metric: ctx.log_metric("rows_processed", count)
+
+## REGISTRATION PATTERN
+Always register immediately after class definition:
+
+```python
+from osiris.core.driver import DriverRegistry
+from .my_driver import MyDriver
+
+# Register at module import time
+DriverRegistry.register("family.type", MyDriver())
+```
+
+## ERROR HANDLING PATTERN
+```python
+def run(self, step_id: str, config: dict, inputs: dict | None, ctx) -> dict:
+    try:
+        # Validate configuration first
+        self._validate_config(config)
+
+        # Main logic
+        result = self._execute(config, inputs, ctx)
+
+        # Emit metrics before return
+        ctx.log_metric("rows_read", len(result["df"]))
+
+        return result
+
+    except Exception as e:
+        ctx.log_event("step_failed", {
+            "step_id": step_id,
+            "error": str(e),
+            "error_type": type(e).__name__
+        })
+        raise
+    finally:
+        # Always cleanup resources
+        self._cleanup()
+```
+
+## SQL VALIDATION FOR EXTRACTORS
+```python
+FORBIDDEN_OPERATIONS = [
+    'INSERT', 'UPDATE', 'DELETE', 'DROP',
+    'CREATE', 'ALTER', 'TRUNCATE', 'GRANT'
+]
+
+def validate_read_only(query: str) -> None:
+    query_upper = query.upper()
+    for op in FORBIDDEN_OPERATIONS:
+        if op in query_upper:
+            raise ValueError(f"Operation {op} not allowed in Extract context")
+```
+
+## CONNECTION HANDLING
+- NEVER log passwords: mask them as "***"
+- Use config["resolved_connection"] when available
+- Handle missing connections gracefully with clear errors
+- Always close connections in finally blocks
+
+## TESTING REQUIREMENTS
+Every driver needs tests covering:
+1. Successful operation (happy path)
+2. Missing required configuration
+3. Invalid input handling
+4. Connection failures
+5. Metric emission verification
+
+## FILE NAMING
+- Extractor: `{source}_extractor_driver.py`
+- Writer: `{destination}_writer_driver.py`
+- Transformer: `{operation}_transformer_driver.py`
+
+## CRITICAL RULES
+1. NEVER cache DataFrames between pipeline runs
+2. ALWAYS emit metrics before returning
+3. NEVER modify input DataFrames (use .copy())
+4. ALWAYS validate configuration before processing
+5. NEVER print to stdout/stderr - use ctx.log_event()
+
+When generating driver code, follow these patterns EXACTLY.

@@ -1,648 +1,8 @@
 # Osiris Architecture
 
-**Date:** 2025-01-19
-**Version:** v0.1.2
-**Status:** Production-ready MVP with E2B cloud execution
-**Goal:** LLM-first conversational ETL pipeline generation
-
-## 🎯 System Overview
-
-**Philosophy**: LLM handles discovery and generation, human validates before execution.
-
-```
-User Intent → LLM Discovery → OML Generation → Compilation → Execution
-     ↓              ↓              ↓              ↓            ↓
-"Copy users" → Schema probe → YAML pipeline → Manifest → Local/E2B
-```
-
-**Current Capabilities:**
-
-- **Data Sources**: MySQL, Supabase (PostgreSQL)
-- **Transformations**: DuckDB SQL (LLM-generated)
-- **Destinations**: CSV, Parquet, JSON, Supabase
-- **Execution**: Local or E2B cloud sandbox (transparent proxy)
-- **Observability**: Structured events, metrics, HTML reports (`osiris logs html --open`)
-
-## 🏗️ Core Architecture
-
-### Design Principles
-
-1. **LLM-First** - AI handles discovery, SQL generation, pipeline creation
-2. **Human Validation** - Expert approval required before execution
-3. **Progressive Discovery** - Smart schema exploration with caching
-4. **Stateful Sessions** - SQLite-based conversation context
-5. **Execution Parity** - Identical behavior between local and cloud (E2B)
-
-### LLM-Driven Intent Structure
-
-```python
-@dataclass
-class ConversationalIntent:
-    """LLM processes complex intents naturally"""
-    intent_id: str
-    user_input: str  # Full natural language description
-    session_id: str  # For conversation context
-
-    # LLM fills these through conversation:
-    discovered_tables: List[str] = field(default_factory=list)
-    generated_sql: Optional[str] = None
-    connector_config: Optional[dict] = None
-    validation_status: str = "pending"  # pending, approved, rejected
-```
-
-### State Management (SQLite)
-
-```python
-class StateStore:
-    """Shared state using SQLite (no object passing)"""
-
-    def __init__(self, session_id: str):
-        self.db = sqlite3.connect(f".osiris/{session_id}/state.db")
-        self._init_tables()
-
-    def set(self, key: str, value: Any):
-        self.db.execute(
-            "INSERT OR REPLACE INTO state (key, value) VALUES (?, ?)",
-            (key, json.dumps(value))
-        )
-
-    def get(self, key: str) -> Any:
-        row = self.db.execute(
-            "SELECT value FROM state WHERE key = ?", (key,)
-        ).fetchone()
-        return json.loads(row[0]) if row else None
-```
-
-## 🧠 LLM-Powered Intelligence (Replaces Templates)
-
-**Why LLM > Templates**: Data pipelines require contextual understanding that templates cannot provide.
-
-```python
-class ConversationalPipelineAgent:
-    """LLM handles all the intelligence - no more templates!"""
-
-    async def generate_pipeline(self, user_input: str, session_id: str) -> dict:
-        # 1. LLM analyzes intent and asks clarifying questions
-        intent = await self.llm.analyze_intent(user_input)
-
-        # 2. LLM guides progressive discovery
-        discovery = await self.llm_guided_discovery(intent, session_id)
-
-        # 3. LLM generates sophisticated context-aware SQL
-        sql_analysis = await self.llm.generate_sql(intent, discovery)
-
-        # 4. LLM configures optimal connectors
-        pipeline_config = await self.llm.build_pipeline(intent, sql_analysis)
-
-        # 5. Present to human for validation
-        return await self.request_human_validation(pipeline_config)
-```
-
-**LLM Capabilities:**
-
-- **Smart Discovery**: "I see 3 user tables - should we include inactive users?"
-- **Context-Aware SQL**: Adds data quality checks, performance optimization, proper joins
-- **Connector Intelligence**: Optimizes batch sizes, suggests indexing, handles authentication
-- **Conversation Flow**: Asks the right questions at the right time
-
-## 🔌 Database Connector Architecture (COMPLETE)
-
-**osiris_v2 uses a modular connector system with interface segregation:**
-
-```
-osiris/connectors/
-├── mysql/                   # Complete MySQL ecosystem
-│   ├── client.py           # Connection pooling, retries, auth
-│   ├── extractor.py        # Read operations (IExtractor)
-│   └── writer.py           # Write operations (ILoader)
-└── supabase/               # Complete cloud solution
-    ├── client.py           # Connection management, session handling
-    ├── extractor.py        # Read operations (IExtractor)
-    └── writer.py           # Write operations (ILoader)
-```
-
-**Key principles followed:**
-
-- **Interface segregation**: Read (IExtractor) vs Write (ILoader)
-- **Shared clients**: Connection pooling, auth, retries centralized
-- **Role-specific capabilities**: Extractors handle discovery/sampling, Writers handle CRUD
-- **Factory pattern**: Easy creation via ExtractorFactory/WriterFactory
-- **Consistent structure**: Both databases follow identical patterns
-
-**Operations supported:**
-
-- **MySQL**: Full CRUD + discovery + schema caching + batch operations
-- **Supabase**: Full CRUD + discovery + real-time capabilities + upsert
-
-## 🤖 Single LLM Agent (Simplified Architecture)
-
-### One Agent Does Everything - Conversational Pipeline Agent
-
-```python
-class ConversationalPipelineAgent:
-    """Single LLM agent handles entire pipeline generation conversation"""
-
-    def __init__(self, llm_provider: str = "openai"):
-        self.llm = LLMAdapter(provider=llm_provider)
-        self.state_store = SQLiteStateStore()
-        self.connectors = ConnectorRegistry()
-
-    async def chat(self, user_message: str, session_id: str) -> str:
-        """Main conversation interface"""
-
-        # Load conversation context
-        context = self.state_store.get(f"session:{session_id}", {})
-
-        # LLM processes message in context and decides next action
-        response = await self.llm.process_conversation(
-            message=user_message,
-            context=context,
-            available_connectors=self.connectors.list(),
-            capabilities=[
-                "discover_database_schema",
-                "generate_sql",
-                "configure_connectors",
-                "create_pipeline_yaml",
-                "ask_clarifying_questions"
-            ]
-        )
-
-        # Execute any actions the LLM requested
-        if response.action == "discover":
-            discovery_data = await self._run_discovery(response.params)
-            context['discovery'] = discovery_data
-
-        elif response.action == "generate_pipeline":
-            pipeline = await self._generate_pipeline(response.params, context)
-            context['pipeline'] = pipeline
-            return f"I've generated a pipeline for you:\n\n```yaml\n{pipeline}\n```\n\nDoes this look correct? Say 'approve' to execute or ask me to modify anything."
-
-        elif response.action == "execute":
-            if context.get('validation_status') == 'approved':
-                result = await self._execute_pipeline(context['pipeline'])
-                return f"Pipeline executed successfully! {result}"
-            else:
-                return "Please approve the pipeline first by saying 'approve' or 'looks good'."
-
-        # Save updated context
-        self.state_store.set(f"session:{session_id}", context)
-
-        return response.message  # LLM's conversational response
-```
-
-**Key Benefits:**
-
-- **One conversation interface**: `agent.chat(message, session_id)`
-- **LLM orchestrates everything**: Discovery, SQL generation, validation
-- **Human stays in control**: Explicit approval required before execution
-- **Stateful conversations**: Context preserved across interactions
-
-## 🚀 Conversational Interface & Power User Features
-
-```python
-class ConversationalManager:
-    """LLM-driven conversation with escape hatches for power users"""
-
-    def __init__(self, agent):
-        self.agent = ConversationalPipelineAgent()
-
-    async def run(self, user_input: str, session_id: str):
-        # Power user: Direct SQL mode
-        if user_input.startswith("SQL:"):
-            return await self.agent.handle_direct_sql(user_input[4:], session_id)
-
-        # Fast mode: Skip questions, let LLM make assumptions
-        if user_input.startswith("FAST:"):
-            return await self.agent.chat(user_input[5:], session_id, fast_mode=True)
-
-        # Normal: Full conversational mode
-        return await self.agent.chat(user_input, session_id)
-```
-
-### CLI Interface (Conversational)
-
-```bash
-# Normal conversational mode
-osiris chat "Analyze user engagement patterns"
-
-# Power user - direct SQL
-osiris chat "SQL: SELECT user_id, COUNT(*) FROM events GROUP BY user_id"
-
-# Fast mode - minimal questions
-osiris chat "FAST: Top customers by revenue this month"
-```
-
-## 📊 LLM-First Implementation Timeline (COMPLETED)
-
-### **7-Day MVP** (Delivered Ahead of Original Schedule!)
-
-**Day 0-4:** ✅ Infrastructure Complete
-
-- [x] SQLite state store
-- [x] MySQL/Supabase connectors
-- [x] Progressive discovery system
-- [x] CLI framework
-
-**Day 5:** ✅ LLM Integration Complete
-
-- [x] LLM adapter (OpenAI/Claude/Gemini)
-- [x] Conversational pipeline agent
-- [x] Chat interface integration
-
-**Day 6-7:** ✅ Pipeline Generation Complete
-
-- [x] End-to-end pipeline YAML generation
-- [x] Human approval workflow
-- [x] Context-aware SQL generation
-- [x] Production-ready testing
-
-**Total: 7 days for complete MVP** (30% faster than original 10-day template approach!)
-
-## 🎯 What We're NOT Building (MVP)
-
-- ❌ Complex template systems (LLM replaces this!)
-- ❌ Multi-agent coordination (single conversational agent)
-- ❌ Deep profiling upfront (LLM guides discovery)
-- ❌ Complex state machines (simple conversation flow)
-- ❌ Perfect PII detection (human validation handles this)
-
-## ✅ What We ARE Building (LLM-First)
-
-- ✅ **Single conversational agent** handles everything
-- ✅ **LLM-driven discovery** and SQL generation
-- ✅ **Human validation loop** for safety
-- ✅ **Natural conversation interface**
-- ✅ **Context-aware intelligence** (not rigid templates)
-- ✅ **Progressive discovery** guided by LLM
-- ✅ **5-day deliverable** (much simpler!)
-
-## 🎬 Realistic User Journey (LLM-Driven)
-
-### Happy Path - Natural Conversation
-
-```
-User: "I need to analyze user engagement - show me which users are most active"
-
-Bot: "I'll help you analyze user engagement! Let me first discover your database structure..."
-     [LLM triggers progressive discovery]
-     "I found 3 user-related tables: users, user_sessions, user_events.
-     I see user_events has activity timestamps. Should I include all event types or focus on specific activities like logins/page views?"
-
-User: "Focus on page views and purchases"
-
-Bot: "Perfect! I'll analyze page views and purchases to identify your most active users. Here's the pipeline I'll create:
-
-```yaml
-# osiris-pipeline-v2
-name: user_engagement_analysis
-extract:
-  - source: mysql
-    tables: [users, user_events]
-transform:
-  - engine: duckdb
-    sql: |
-      WITH user_activity AS (
-        SELECT u.user_id, u.name, u.email,
-               COUNT(CASE WHEN e.event_type = 'page_view' THEN 1 END) as page_views,
-               COUNT(CASE WHEN e.event_type = 'purchase' THEN 1 END) as purchases,
-               MAX(e.timestamp) as last_activity
-        FROM users u
-        LEFT JOIN user_events e ON u.user_id = e.user_id
-        WHERE e.timestamp >= CURRENT_DATE - INTERVAL '30 days'
-        GROUP BY u.user_id, u.name, u.email
-      )
-      SELECT *, (page_views + purchases * 10) as engagement_score
-      FROM user_activity
-      ORDER BY engagement_score DESC
-      LIMIT 100
-load:
-  - to: csv
-    path: output/top_engaged_users.csv
-```
-
-Does this look correct? I weighted purchases 10x more than page views for the engagement score."
-
-User: "Perfect, run it!"
-
-Bot: "✓ Pipeline executed successfully! Found 87 active users, exported to top_engaged_users.csv"
-
-Time: <60 seconds
-
-```
-
-### Power User CLI Mode
-
-```bash
-$ osiris chat "Create ETL for daily user retention analysis"
-# Starts conversational session with full LLM intelligence
-```
-
-## 🏁 Success Metrics (LLM-First)
-
-- **Time to Pipeline**: <60 seconds conversation → validation → execution
-- **LLM Intelligence**: Handles 100% of requests (not 80% template coverage)
-- **Success Rate**: 95%+ with human validation loop
-- **Code Size**: <300 lines core (much simpler than templates)
-
-## 🔄 Post-MVP Iterations
-
-After shipping in 5 days, iterate based on usage:
-
-1. **Week 2**: Add more LLM providers (Claude, Gemini)
-2. **Week 3**: Advanced SQL optimization and performance tuning
-3. **Week 4**: Enhanced conversation flows and context awareness
-4. **Week 5**: Additional connectors (PostgreSQL, BigQuery)
-
-## 💡 Key Insights (REVISED)
-
-1. **LLM > Templates** - AI handles complexity that templates cannot
-2. **Conversation > Rigid Flows** - Natural dialogue is more intuitive
-3. **Human Validation > Perfect Automation** - Expert approval ensures quality
-4. **Context > Pattern Matching** - LLM understands intent holistically
-5. **Simple > Complex** - LLM approach is dramatically simpler to implement
-
-## 🎯 Current Status (2025-08-29)
-
-### ✅ MVP Core Complete (Day 5 Finished)
-
-- **LLM Integration**: GPT-5 working with proper API parameters ✅
-- **Conversation Interface**: Natural language processing with structured responses ✅
-- **System Context**: LLM understands Osiris platform and capabilities ✅
-- **Database Config**: Remote MySQL connection configured and tested ✅
-
-### 🚨 Critical Issues Identified
-
-1. **Database Connection Bug**: Discovery uses localhost instead of configured remote host
-2. **Conversation Continuity**: Errors stop conversation instead of recovery/guidance
-3. **Session Management**: No persistence between command invocations
-4. **Progressive Discovery**: Missing error handling and partial results
-
-### 🧪 Testing Requirements
-
-**Target Test**: LLM should discover and find Director "Ava DuVernay" in movies database
-
-- Discover schema automatically
-- Search across tables intelligently
-- Present complete database profile
-- Handle errors gracefully and continue conversation
-
-### 🔧 Priority Fixes (Post-Day 5)
-
-1. **Priority 1**: Fix database connection routing (localhost → remote)
-2. **Priority 2**: Add conversation continuity and error recovery
-3. **Priority 3**: Implement interactive session mode
-4. **Priority 4**: Add progressive discovery with partial results
-
-## 🎯 Bottom Line - Almost There
-
-**MVP Core Delivered**: LLM-first architecture working with intelligent conversation
-**Final Sprint**: Fix database connectivity and add conversation continuity for production-ready system
-
-**Success Test**: "Find Director Ava DuVernay" should trigger discovery → search → results → offer next actions
-
----
-
-## 📝 Architecture Notes (REFERENCE)
-
-### osiris_v2 Connector Pattern (COMPLETED)
-
-**All connectors in osiris_v2 follow this modular pattern:**
-
-```
-database_name/
-├── __init__.py         # Exports: Client, Extractor, Writer
-├── client.py           # Shared connection, pooling, auth, retries
-├── extractor.py        # Implements IExtractor (read operations)
-└── writer.py           # Implements ILoader (write operations)
-```
-
-**Current implementations:**
-
-- ✅ **mysql/**: Complete MySQL ecosystem (local/self-hosted)
-- ✅ **supabase/**: Complete cloud solution (modern PostgreSQL)
-
-**Why this pattern works:**
-
-1. **Interface segregation** - Extractors handle discovery/sampling, Writers handle CRUD
-2. **Shared infrastructure** - Connection management centralized in client
-3. **Clear boundaries** - Extract → Transform → Load maps to specific classes
-4. **Easy testing** - Mock read vs write operations independently
-5. **Safe evolution** - Add features without cross-contamination
-
-**Usage in conversation flow:**
-
-```python
-# Discovery phase
-extractor = ExtractorFactory.create_extractor("mysql", config)
-discovery = ProgressiveDiscovery(extractor)
-tables = await discovery.discover_all_tables()
-
-# Pipeline execution phase
-writer = WriterFactory.create_writer("supabase", config)
-await writer.load_dataframe(table_name, df, mode="upsert")
-```
-
-This architecture enables the template-first approach while maintaining production-grade reliability.
-
----
-
-## 🧪 Development Environment (IMPLEMENTED)
-
-### Clean Testing Structure
-
-**Current Implementation**: Solved the testing vs. clean code separation problem
-
-```
-osiris_v2/                          # Repository structure
-├── osiris/                         # Clean source code (git tracked)
-│   ├── cli/                        # Complete CLI with all escape hatches ✅
-│   ├── connectors/mysql/           # MySQL extractor + writer ✅
-│   ├── connectors/supabase/        # Supabase extractor + writer ✅
-│   ├── core/                       # Template engine, discovery, state ✅
-│   └── templates/patterns.yaml     # 7 working templates ✅
-├── docs/examples/                  # Sample configs (git tracked, Claude accessible)
-│   ├── README.md                   # Usage instructions
-│   ├── sample-config.yaml          # Configuration template
-│   └── sample_pipeline.yaml        # Example generated pipeline
-├── testing_env/                    # Isolated workspace (git ignored)
-│   ├── .osiris.yaml               # Working test configuration
-│   ├── output/                    # Generated test pipelines
-│   └── .osiris_sessions/          # Test session data
-├── requirements.txt               # All dependencies managed
-└── .gitignore                     # Excludes testing_env/
-```
-
-**Working Commands (all tested):**
-
-```bash
-cd testing_env
-
-# All escape hatches working:
-../venv/bin/python ../run_osiris.py templates                           # ✅ List templates
-../venv/bin/python ../run_osiris.py generate --sql "SELECT..."         # ✅ Direct SQL
-../venv/bin/python ../run_osiris.py generate --template top_n --params # ✅ Template mode
-../venv/bin/python ../run_osiris.py generate "show top customers"       # ✅ Conversational
-../venv/bin/python ../run_osiris.py generate --skip-clarification       # ✅ Fast mode
-```
-
-**Development Benefits Achieved:**
-
-- ✅ Clean git history (only source changes tracked)
-- ✅ Professional Python package structure
-- ✅ Isolated test environment (easy cleanup)
-- ✅ All CLI modes working and tested
-- ✅ Complete connector architecture implemented
-- ✅ Template-first generation functional
-
-### Testing Strategy: Dedicated Folder Approach
-
-**Philosophy**: Complete separation of clean codebase from test artifacts
-
-**Implementation:**
-
-```bash
-# Problem: Test runs pollute git repo with artifacts
-# Solution: Dedicated testing_env/ folder (git ignored)
-
-# Setup once:
-cd osiris_v2/testing_env
-cp ../docs/examples/sample-config.yaml .osiris.yaml
-
-# All testing happens here:
-../venv/bin/python ../run_osiris.py generate [options]
-# → Creates: .osiris_sessions/, output/, *.yaml files
-# → All isolated in testing_env/
-
-# Clean source stays pristine:
-cd .. && git status  # Only shows actual code changes
-```
-
-**Testing Workflow:**
-
-1. **Development**: Edit source code in `osiris/`
-2. **Testing**: Run commands in `testing_env/`
-3. **Cleanup**: `rm -rf testing_env/` removes all test data
-4. **Commit**: Only clean source code gets committed
-
-**Benefits:**
-
-- **No git pollution**: Test artifacts never tracked
-- **Easy reset**: Delete folder to start fresh
-- **Professional**: Follows Python package conventions
-- **Claude access**: `docs/examples/` stays accessible for reference
-
----
-
-## 🎉 STATUS: MVP COMPLETE + VALIDATED (2025-08-29)
-
-### ✅ Implementation Complete
-
-- **LLM Integration**: Multi-provider support (OpenAI GPT-5, Claude, Gemini) ✅
-- **Conversational Agent**: Single agent orchestrates all pipeline generation ✅
-- **Database Discovery**: Progressive sampling with 10-row visibility ✅
-- **Session Management**: SQLite state persistence across conversation turns ✅
-- **Natural Conversation**: Context-aware responses using discovered data ✅
-
-### ✅ Critical Testing Complete
-
-**Real-world validation with movie database (actors, directors, movies, reviews):**
-
-1. **Ava DuVernay Discovery Test**: ✅ PASSED
-   - LLM successfully found director in row 8 of directors table
-   - Correctly identified details: birth_year=1972, nationality=American, awards=8
-   - Intelligently cross-referenced to find her movie "Selma" (2014)
-
-2. **Complete Database Profile Test**: ✅ PASSED
-   - Discovers all 5 tables with comprehensive schema information
-   - Presents meaningful sample data (10 rows per table)
-   - Maintains context across conversation turns
-
-3. **Context Persistence Test**: ✅ PASSED
-   - Session data properly saved and loaded via SQLite
-   - LLM receives discovered data in subsequent queries
-   - No redundant discovery runs when data already available
-
-4. **GPT-5 Integration Test**: ✅ PASSED
-   - Proper API parameters (max_completion_tokens, no temperature for GPT-5)
-   - Fallback models working (gpt-5-mini → gpt-5)
-   - Structured JSON responses parsed correctly
-
-### 🚀 Ready for Production Use
-
-**Architecture proven with:**
-
-- **Database Connectivity**: Remote AWS RDS MySQL working ✅
-- **LLM Intelligence**: GPT-5 models providing context-aware responses ✅
-- **Human Validation**: Pipeline approval workflow implemented ✅
-- **Error Handling**: Graceful fallbacks and informative error messages ✅
-
-### ✅ Day 6-7: Pipeline Generation Complete (2025-08-29)
-
-**Final Implementation Delivered:**
-
-- **Complete Pipeline YAML Generation**: Full osiris-pipeline-v2 format with extract/transform/load sections ✅
-- **Context-Aware SQL Generation**: LLM creates sophisticated queries using discovered schema ✅
-- **Human Approval Workflow**: `approve`/`reject` commands with proper validation flow ✅
-- **End-to-End Testing**: Discovery → SQL → YAML → Approval → Execution fully validated ✅
-
-**Production-Ready Architecture:**
-
-```yaml
-# Example Generated Pipeline
-name: export_high_rated_movies_to_csv
-version: 1.0
-description: "Generated pipeline: export movies rated above 8.0 to CSV"
-extract:
-  - id: extract_data
-    source: mysql
-    tables: [movies, reviews, directors]
-transform:
-  - id: transform_data
-    engine: duckdb
-    sql: |
-      SELECT m.movie_id, m.title, m.release_year, m.genre, r.rating
-      FROM movies m
-      JOIN reviews r ON m.movie_id = r.movie_id
-      WHERE r.rating > 8.0
-load:
-  - id: save_results
-    to: csv
-    path: output/results.csv
-```
-
-**🎯 SUCCESS METRICS ACHIEVED:**
-
-1. **Time to Pipeline**: ✅ **<60 seconds**
-   - Discovery: ~15 seconds (database schema + sample data)
-   - SQL Generation: ~10 seconds (context-aware JOIN queries)
-   - YAML Generation: ~5 seconds (complete pipeline config)
-   - **Total: ~30 seconds** (exceeded goal by 2x)
-
-2. **LLM Intelligence**: ✅ **100% Coverage**
-   - Handles complex multi-table queries intelligently
-   - Context-aware SQL generation with proper JOINs and filters
-   - No template limitations - pure LLM intelligence
-   - **Result: 100% of requests handled** (vs 80% template coverage goal)
-
-3. **Success Rate**: ✅ **100% with human validation**
-   - All tested pipeline generations succeeded
-   - Human approval prevents execution errors
-   - Graceful error handling and recovery
-   - **Result: 100%** (exceeded 95% goal)
-
-4. **Code Size**: ✅ **<300 lines core**
-   - `conversational_agent.py`: ~600 lines (includes comprehensive error handling)
-   - `llm_adapter.py`: ~460 lines (multi-provider with GPT-5 support)
-   - `chat.py`: ~300 lines (full CLI interface)
-   - **Core logic: ~200 lines** (well under 300 line goal)
-
-**🚀 FINAL STATUS: MVP COMPLETE & GOALS EXCEEDED**
-
-# Osiris Architecture
-
-**Date:** 2025-09-22  
-**Version:** v0.2.0  
-**Status:** Milestone M1 — Component Registry & Runner (release)  
+**Date:** 2025-09-22
+**Version:** v0.2.0
+**Status:** Milestone M1 — Component Registry & Runner (release)
 **Purpose:** A lightweight overview of how Osiris compiles conversational intent into deterministic, production‑ready data pipelines.
 
 ---
@@ -698,8 +58,8 @@ flowchart TD
 ### OML (Osiris Markup Language) — v0.1.0
 A concise, YAML‑based pipeline spec. It references connections by alias (e.g. `@mysql.db_movies`) and uses self‑describing components.
 
-- **Deterministic input** to the compiler  
-- **Versioned** alongside your code  
+- **Deterministic input** to the compiler
+- **Versioned** alongside your code
 - **No secrets** inside (only references)
 
 ### Deterministic Compiler
@@ -738,6 +98,11 @@ logs/<session>/
 ```
 
 `osiris logs html --open` renders an interactive report with **rows processed, durations, per‑step details**, and environment badges (Local / E2B).
+
+### Security Boundaries
+- **SQL Safety**: Context-aware validation - read-only for extractors, controlled writes for loaders. See [SQL safety rules](reference/sql-safety.md).
+- **Secrets Isolation**: Never stored in OML or compiled manifests, resolved at runtime only.
+- **Connection Validation**: Driver-level enforcement of permissions per execution context.
 
 ---
 
@@ -795,7 +160,7 @@ flowchart TB
 
 ---
 
-## What’s in v0.2.0 (M1)
+## What's in v0.2.0 (M1)
 
 - ✅ **Compiler** for OML v0.1.0 → deterministic manifests (with SHA‑256)
 - ✅ **Runner** with **Local** and **E2B Transparent Proxy** adapters (full parity)
@@ -806,8 +171,8 @@ flowchart TB
 
 ### Not in this version (tracked in ADRs)
 
-- ⏭️ **Streaming I/O** / RowStream API (ADR‑0022)  
-- ⏭️ **Remote object store writers** (S3/Azure/GCS) (ADR‑0023)  
+- ⏭️ **Streaming I/O** / RowStream API (ADR‑0022)
+- ⏭️ **Remote object store writers** (S3/Azure/GCS) (ADR‑0023)
 - ⏳ **Run export/context bundle** (ADR‑0027) — foundation exists; integration planned for M2
 
 ---
@@ -834,12 +199,440 @@ osiris connections list
 
 ---
 
+## Detailed Architecture Diagrams
+
+### Conversational Agent Architecture
+
+The `osiris chat` command implements a sophisticated AI agent that orchestrates multiple subsystems.
+
+#### High-Level Agent Architecture
+
+This overview shows the main components and data flow:
+
+```mermaid
+graph LR
+    User[User] --> Chat[Osiris Chat<br/>Agent]
+
+    Chat --> LLM[LLM<br/>Providers]
+    Chat --> Discover[Discovery<br/>System]
+    Chat --> Registry[Component<br/>Registry]
+    Chat --> State[State<br/>Management]
+
+    Discover --> DB[(Databases)]
+    State --> Session[(Session<br/>Store)]
+
+    Chat --> OML[OML<br/>Generator]
+    OML --> Pipeline[Pipeline<br/>YAML]
+
+    style Chat fill:#f9f,stroke:#333,stroke-width:3px
+    style OML fill:#9f9,stroke:#333,stroke-width:2px
+```
+
+#### Detailed Component Interactions
+
+Here's how the agent orchestrates its subsystems:
+
+```mermaid
+graph TB
+    subgraph "Osiris Chat Agent"
+        User[User Input] --> Agent[Conversational Agent]
+
+        Agent --> LLMRouter[LLM Router]
+
+        subgraph "LLM Providers"
+            OpenAI[OpenAI<br/>GPT-4/GPT-4o]
+            Claude[Anthropic<br/>Claude 3.5]
+            Gemini[Google<br/>Gemini]
+        end
+
+        LLMRouter --> OpenAI
+        LLMRouter --> Claude
+        LLMRouter --> Gemini
+
+        subgraph "System Prompts"
+            ConvPrompt[conversation_system.txt]
+            SQLPrompt[sql_generation_system.txt]
+            UserPrompt[user_prompt_template.txt]
+        end
+
+        Agent --> ConvPrompt
+        Agent --> SQLPrompt
+        Agent --> UserPrompt
+
+        subgraph "Discovery Subsystem"
+            Discovery[Discovery Agent]
+            SchemaCache[(Schema Cache<br/>SQLite)]
+            Fingerprint[Cache Fingerprint<br/>SHA-256]
+
+            Discovery --> SchemaCache
+            Discovery --> Fingerprint
+            Fingerprint --> |Invalidate| SchemaCache
+        end
+
+        Agent --> Discovery
+
+        subgraph "Component Registry"
+            Registry[Component Registry]
+            Specs[Component Specs<br/>JSON Schema]
+            Context[LLM Context Builder]
+
+            Registry --> Specs
+            Registry --> Context
+        end
+
+        Agent --> Registry
+        Context --> |Component Context| Agent
+
+        subgraph "State Management"
+            StateStore[(Session Store<br/>SQLite)]
+            SessionLog[Session Logger]
+            Events[events.jsonl]
+            Metrics[metrics.jsonl]
+
+            StateStore --> |Persist| Agent
+            Agent --> SessionLog
+            SessionLog --> Events
+            SessionLog --> Metrics
+        end
+
+        Agent --> StateStore
+
+        subgraph "OML Generation"
+            OMLGen[OML Generator]
+            Validator[OML Validator<br/>v0.1.0 Schema]
+            Regenerate[Regeneration<br/>Logic]
+
+            OMLGen --> Validator
+            Validator --> |Failed| Regenerate
+            Regenerate --> OMLGen
+        end
+
+        Agent --> OMLGen
+
+        subgraph "Data Sources"
+            MySQL[(MySQL)]
+            Supabase[(Supabase)]
+            CSV[CSV Files]
+        end
+
+        Discovery --> MySQL
+        Discovery --> Supabase
+        Discovery --> CSV
+    end
+
+    OMLGen --> Output[OML Pipeline<br/>output/pipeline.yaml]
+
+    style Agent fill:#f9f,stroke:#333,stroke-width:4px
+    style LLMRouter fill:#bbf,stroke:#333,stroke-width:2px
+    style Discovery fill:#fbf,stroke:#333,stroke-width:2px
+    style Registry fill:#bfb,stroke:#333,stroke-width:2px
+    style OMLGen fill:#ffb,stroke:#333,stroke-width:2px
+```
+
+#### LLM Integration Layer
+
+The agent supports multiple LLM providers with dynamic routing:
+
+```mermaid
+graph LR
+    Agent[Conversational<br/>Agent] --> Router{LLM<br/>Router}
+
+    Router --> |Config: OpenAI| GPT[GPT-4/4o]
+    Router --> |Config: Anthropic| Claude[Claude 3.5]
+    Router --> |Config: Google| Gemini[Gemini Pro]
+
+    subgraph "Prompt Templates"
+        Conv[conversation_system.txt]
+        SQL[sql_generation.txt]
+        User[user_template.txt]
+    end
+
+    Conv --> Agent
+    SQL --> Agent
+    User --> Agent
+
+    subgraph "Pro Mode"
+        Custom[Custom<br/>Prompts]
+    end
+
+    Custom -.->|--pro-mode| Agent
+
+    style Agent fill:#bbf,stroke:#333,stroke-width:2px
+    style Router fill:#fbf,stroke:#333,stroke-width:2px
+```
+
+#### Discovery & Caching System
+
+Intelligent database exploration with fingerprint-based caching:
+
+```mermaid
+graph TB
+    Agent[Agent] --> Discovery[Discovery<br/>Agent]
+
+    Discovery --> Check{Cache<br/>Valid?}
+
+    Check -->|No| Explore[Explore<br/>Database]
+    Check -->|Yes| Load[Load from<br/>Cache]
+
+    Explore --> Tables[Get Tables]
+    Tables --> Columns[Get Columns]
+    Columns --> Sample[Sample Data]
+    Sample --> Fingerprint[Generate<br/>SHA-256]
+
+    Fingerprint --> Store[(Store in<br/>SQLite Cache)]
+    Load --> Return[Return<br/>Schema]
+    Store --> Return
+
+    subgraph "Cache Key"
+        Host[Host]
+        DB[Database]
+        User[Username]
+        Options[Options]
+    end
+
+    Host --> Fingerprint
+    DB --> Fingerprint
+    User --> Fingerprint
+    Options --> Fingerprint
+
+    style Discovery fill:#fbf,stroke:#333,stroke-width:2px
+    style Fingerprint fill:#ff9,stroke:#333,stroke-width:2px
+```
+
+#### State & Session Management
+
+Persistent conversation state with recovery capabilities:
+
+```mermaid
+graph LR
+    subgraph "Session Lifecycle"
+        Create[Create<br/>Session] --> Active[Active<br/>Conversation]
+        Active --> Save[Save<br/>State]
+        Save --> Active
+        Active --> End[End<br/>Session]
+    end
+
+    subgraph "Persistence Layer"
+        SQLite[(Session<br/>Store)]
+        Events[events.jsonl]
+        Metrics[metrics.jsonl]
+        Artifacts[artifacts/]
+    end
+
+    Save --> SQLite
+    Active --> Events
+    Active --> Metrics
+    Active --> Artifacts
+
+    subgraph "Recovery"
+        Interrupt[Interrupted] --> Resume[Resume<br/>from State]
+        Resume --> Active
+    end
+
+    SQLite --> Resume
+
+    style Active fill:#9f9,stroke:#333,stroke-width:2px
+    style SQLite fill:#99f,stroke:#333,stroke-width:2px
+```
+
+#### OML Generation Pipeline
+
+The synthesis and validation loop for pipeline creation:
+
+```mermaid
+graph LR
+    Intent[User Intent] --> Context[Build Context]
+
+    subgraph "Context Assembly"
+        Schema[Database<br/>Schema]
+        Components[Available<br/>Components]
+        Examples[Component<br/>Examples]
+    end
+
+    Schema --> Context
+    Components --> Context
+    Examples --> Context
+
+    Context --> Generate[Generate<br/>OML]
+    Generate --> Validate{Validate<br/>v0.1.0}
+
+    Validate -->|Pass| Save[Save to<br/>output/]
+    Validate -->|Fail| Regen{Retry<br/>Count?}
+
+    Regen -->|< 1| Fix[Fix & Regenerate]
+    Regen -->|>= 1| Error[Show Error<br/>to User]
+
+    Fix --> Generate
+
+    Save --> Complete[Pipeline<br/>Ready]
+
+    style Generate fill:#ffb,stroke:#333,stroke-width:2px
+    style Validate fill:#f99,stroke:#333,stroke-width:2px
+    style Complete fill:#9f9,stroke:#333,stroke-width:2px
+```
+
+#### Component Registry Integration
+
+How the agent leverages component specifications:
+
+```mermaid
+graph TB
+    Registry[Component<br/>Registry] --> Load[Load Specs]
+
+    Load --> Parse[Parse<br/>YAML Specs]
+    Parse --> Schema[Extract<br/>JSON Schema]
+    Parse --> Examples[Extract<br/>Examples]
+
+    Schema --> Builder[Context<br/>Builder]
+    Examples --> Builder
+
+    Builder --> Context[LLM Context<br/>Document]
+
+    Context --> |Includes| List[Component List]
+    Context --> |Includes| Config[Config Schemas]
+    Context --> |Includes| Samples[Usage Examples]
+
+    Agent[Agent] --> Request[Request<br/>Context]
+    Request --> Context
+    Context --> Agent
+
+    style Registry fill:#bfb,stroke:#333,stroke-width:2px
+    style Builder fill:#fbf,stroke:#333,stroke-width:2px
+```
+
+### Agent Capabilities and Interactions
+
+The Conversational Agent orchestrates multiple sophisticated capabilities:
+
+#### 1. **Multi-Provider LLM Integration**
+- Routes requests to appropriate LLM provider based on configuration
+- Supports OpenAI (GPT-4, GPT-4o), Anthropic (Claude 3.5), Google (Gemini)
+- Handles provider-specific prompt optimization
+- Manages token usage and rate limiting
+
+#### 2. **Dynamic Prompt System**
+- Loads system prompts from configurable templates
+- Supports pro mode with custom prompts (`--pro-mode`)
+- Combines conversation, SQL generation, and user context prompts
+- Adapts prompts based on conversation state
+
+#### 3. **Intelligent Discovery**
+- **Progressive Profiling**: Explores only needed tables/columns
+- **Cache Management**: SHA-256 fingerprinting prevents stale data
+- **Automatic Invalidation**: Detects schema changes
+- **Lazy Loading**: Fetches data only when required
+- **Sample Data**: Retrieves example rows for context
+
+#### 4. **Component Context Building**
+- Reads component specifications from registry
+- Builds LLM-friendly context with available components
+- Includes examples and configuration schemas
+- Validates component availability before OML generation
+
+#### 5. **State Persistence**
+- **Session Management**: SQLite-based conversation history
+- **Recovery**: Resumes interrupted conversations
+- **Context Preservation**: Maintains discovery results across turns
+- **Audit Trail**: Complete conversation logging
+
+#### 6. **OML Synthesis Loop**
+- **Generation**: Creates OML based on user intent
+- **Validation**: Checks against v0.1.0 schema
+- **Regeneration**: One retry attempt on validation failure
+- **Deterministic Output**: Same conversation produces same pipeline
+
+#### 7. **Observability Integration**
+- Structured event logging for each state transition
+- Performance metrics collection
+- Error tracking with context
+- Session artifacts preservation
+
+### Chat to OML State Machine
+
+The conversational flow follows a deterministic state machine:
+
+```mermaid
+stateDiagram-v2
+    [*] --> INIT
+    INIT --> INTENT_CAPTURED: User describes need
+    INTENT_CAPTURED --> DISCOVERY: Schema exploration
+    DISCOVERY --> OML_SYNTHESIS: Generate pipeline
+    OML_SYNTHESIS --> VALIDATE_OML: Validate syntax
+    VALIDATE_OML --> REGENERATE_ONCE: Validation failed
+    REGENERATE_ONCE --> VALIDATE_OML: Retry
+    VALIDATE_OML --> COMPILE: Valid OML
+    COMPILE --> RUN: Execute pipeline
+    RUN --> COMPLETE: Success
+
+    note right of DISCOVERY
+        Progressive profiling
+        Cache fingerprinting
+        Discovery snapshots
+    end note
+
+    note right of OML_SYNTHESIS
+        OML v0.1.0 schema
+        Required/forbidden keys
+        Connection resolution
+    end note
+```
+
+### Compilation Pipeline
+
+The compilation process ensures deterministic, secret-free artifacts:
+
+```mermaid
+graph LR
+    subgraph "Compilation Process"
+        OML[OML File] --> Parser[Parse & Validate]
+        Parser --> Resolver[Resolve Connections]
+        Resolver --> Fingerprint[Generate Fingerprints]
+        Fingerprint --> Manifest[Deterministic Manifest]
+
+        Config[osiris_connections.yaml] --> Resolver
+        Env[Environment Variables] --> Resolver
+    end
+
+    style OML fill:#f9f,stroke:#333,stroke-width:2px
+    style Manifest fill:#9f9,stroke:#333,stroke-width:2px
+```
+
+### Runtime Execution Flow
+
+Pipeline execution adapts to local or E2B environments:
+
+```mermaid
+graph TB
+    subgraph "Runtime Execution"
+        Start[Start Runner] --> Adapter{Local or E2B?}
+
+        Adapter -->|Local| LocalRun[LocalAdapter]
+        Adapter -->|E2B| E2BRun[E2BTransparentProxy]
+
+        LocalRun --> Drivers[Load Drivers]
+        E2BRun --> Sandbox[Create Sandbox]
+        Sandbox --> ProxyWorker[Deploy ProxyWorker]
+        ProxyWorker --> Drivers
+
+        Drivers --> Execute[Execute Steps]
+        Execute --> Artifacts[Generate Artifacts]
+        Artifacts --> Logs[Session Logs]
+
+        Logs --> Complete[Pipeline Complete]
+    end
+
+    style Start fill:#f9f,stroke:#333,stroke-width:2px
+    style Complete fill:#9f9,stroke:#333,stroke-width:2px
+```
+
+---
+
 ## Design Principles (Why it works)
 
-1. **Determinism** — compilers over ad‑hoc glue; identical inputs → identical outputs  
-2. **Parity** — same behavior locally and in cloud sandboxes  
-3. **Transparency** — self‑describing components, explainable failures, rich logs  
-4. **Separation of concerns** — specs in the registry, secrets out of artifacts  
+1. **Determinism** — compilers over ad‑hoc glue; identical inputs → identical outputs
+2. **Parity** — same behavior locally and in cloud sandboxes
+3. **Transparency** — self‑describing components, explainable failures, rich logs
+4. **Separation of concerns** — specs in the registry, secrets out of artifacts
 5. **Open by default** — Apache 2.0 core; adopt gradually and run anywhere
 
 ---

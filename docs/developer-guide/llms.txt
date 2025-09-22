@@ -1,6 +1,51 @@
-# LLM Instructions for Osiris Pipeline Development
+# LLM Contract for Osiris Pipeline Development
 
-This document provides machine-readable instructions for Large Language Models (LLMs) on how to properly work with and extend the Osiris Pipeline system.
+## INTRODUCTION
+
+This is the MAIN contract file for AI models working with the Osiris Pipeline system. When developing or extending Osiris, **ALWAYS load this file into your LLM context first**. This document provides machine-readable instructions and strict contracts that ensure code generation follows Osiris architecture patterns.
+
+## SPECIALIZED CONTRACTS
+
+For specific development tasks, also load the appropriate specialized contract:
+- **Driver Development**: Load `llms-drivers.txt` for driver implementation patterns
+- **CLI Development**: Load `llms-cli.txt` for Rich-based CLI commands
+- **Test Development**: Load `llms-testing.txt` for test writing patterns
+
+## REPOSITORY STRUCTURE
+
+```
+osiris_pipeline/
+├── osiris/                     # Core package
+│   ├── core/                   # Core functionality
+│   │   ├── driver.py           # Driver base class and registry
+│   │   ├── execution_adapter.py # ExecutionAdapter ABC
+│   │   ├── adapter_factory.py  # Adapter factory and selection
+│   │   ├── config.py           # Configuration management
+│   │   └── session_logging.py  # Structured logging
+│   ├── drivers/                # Concrete driver implementations
+│   │   ├── mysql_extractor_driver.py
+│   │   ├── supabase_writer_driver.py
+│   │   └── filesystem_csv_writer_driver.py
+│   ├── remote/                 # E2B cloud execution
+│   │   ├── e2b_transparent_proxy.py
+│   │   └── proxy_worker.py
+│   ├── runtime/                # Local execution
+│   │   └── local_adapter.py
+│   └── cli/                    # Command-line interface
+│       └── main.py             # CLI entry point
+├── docs/                       # Documentation
+│   ├── examples/               # OML pipeline examples
+│   ├── reference/              # Format specifications
+│   └── adr/                    # Architecture decisions
+├── tests/                      # Test suite
+└── testing_env/                # Testing workspace
+
+Key Files for Development:
+- osiris/core/driver.py: Driver protocol and registry
+- osiris/core/execution_adapter.py: Adapter interface
+- docs/examples/*.yaml: Working OML examples
+- docs/reference/pipeline-format.md: OML specification
+```
 
 ## [CONTRACT OVERVIEW]
 
@@ -194,5 +239,14 @@ def test_component():
     assert "df" in result
     assert ctx.metrics["rows_read"] > 0
 ```
+
+## DEVELOPMENT WORKFLOW:
+
+1. **Before coding**: Load this contract file into your LLM context
+2. **Check examples**: Review docs/examples/*.yaml for working pipelines
+3. **Follow patterns**: Use existing drivers in osiris/drivers/ as templates
+4. **Test locally**: Use testing_env/ directory for isolated testing
+5. **Validate OML**: Always compile before running (osiris compile)
+6. **Check logs**: Use osiris logs html for debugging
 
 Remember: Osiris is an LLM-first system. Make the code LLM-friendly with clear contracts, obvious patterns, and excellent error messages.

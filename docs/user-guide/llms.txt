@@ -1,0 +1,177 @@
+# AI Assistant Guide for Osiris Pipeline Users
+
+## Introduction
+
+This guide helps you use your AI assistant (ChatGPT, Claude, etc.) to create and run Osiris pipelines. Simply share this document with your AI assistant to ensure it generates correct pipeline code.
+
+## Quick Checklist for AI
+
+When creating Osiris pipelines with your AI assistant, paste this checklist:
+
+```
+OSIRIS PIPELINE REQUIREMENTS:
+1. Always use oml_version: "0.1.0" (exactly this value)
+2. Never include passwords or API keys in the pipeline
+3. Use connection aliases like @mysql.default or @supabase.main
+4. Use "mode: write" for output steps (not "mode: load")
+5. Only use these top-level keys: oml_version, name, steps
+6. Never use these forbidden keys: version, connectors, tasks, outputs
+7. Each step needs: id, component, mode, config
+8. Writers need inputs: {df: "${previous_step.df}"}
+```
+
+## Essential Commands
+
+Share these commands with your AI assistant:
+
+```bash
+# Compile your pipeline
+osiris compile pipeline.oml
+
+# Run the last compiled pipeline locally
+osiris run --last-compile
+
+# Run in E2B cloud sandbox (requires E2B_API_KEY)
+osiris run --last-compile --e2b
+
+# Run in E2B with auto-install dependencies
+osiris run --last-compile --e2b --e2b-install-deps
+
+# Generate HTML report to view results
+osiris logs html --open
+
+# Check your connections
+osiris connections list
+osiris connections doctor
+```
+
+## Pipeline Structure
+
+Tell your AI assistant to follow this structure:
+
+```yaml
+oml_version: "0.1.0"  # MUST be exactly this
+name: "my_pipeline"   # Your pipeline name
+steps:
+  - id: "extract_data"
+    component: "mysql.extractor"
+    mode: "read"
+    config:
+      connection: "@mysql.default"  # Use connection alias
+      query: "SELECT * FROM users"
+
+  - id: "save_to_csv"
+    component: "filesystem.csv_writer"
+    mode: "write"  # NOT "load"
+    inputs:
+      df: "${extract_data.df}"  # Reference previous step
+    config:
+      path: "output/users.csv"
+      write_mode: "overwrite"
+```
+
+## Connection Setup
+
+Your connections go in `osiris_connections.yaml`:
+
+```yaml
+connections:
+  mysql:
+    default:  # Alias name
+      host: ${MYSQL_HOST:-localhost}
+      port: ${MYSQL_PORT:-3306}
+      database: ${MYSQL_DATABASE}
+      username: ${MYSQL_USER:-root}
+      password: ${MYSQL_PASSWORD}  # From environment variable
+
+  supabase:
+    main:  # Alias name
+      url: ${SUPABASE_URL}
+      key: ${SUPABASE_SERVICE_ROLE_KEY}
+```
+
+Secrets go in `.env` file (never commit this):
+```bash
+MYSQL_PASSWORD=your-actual-password
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-key
+```
+
+## Common Components
+
+Tell your AI these are the available components:
+
+**Extractors (mode: "read")**:
+- `mysql.extractor` - Read from MySQL/MariaDB
+- `supabase.extractor` - Read from Supabase
+
+**Writers (mode: "write")**:
+- `filesystem.csv_writer` - Write to CSV file
+- `supabase.writer` - Write to Supabase table
+- `mysql.writer` - Write to MySQL/MariaDB
+
+**Write Modes** (for writers):
+- `append` - Add new rows
+- `overwrite` - Replace all data
+- `upsert` - Update or insert (needs primary_key)
+
+## Example Prompts for Your AI
+
+Try these prompts with your AI assistant:
+
+1. "Create an Osiris pipeline that extracts all customers from MySQL and saves them to a CSV file"
+
+2. "Write an Osiris OML pipeline that copies the 'orders' table from MySQL to Supabase"
+
+3. "Generate an Osiris pipeline that reads products from MySQL where price > 100 and writes to output/expensive_products.csv"
+
+## Troubleshooting
+
+If your pipeline fails:
+
+1. **Check the OML version**: Must be exactly `"0.1.0"`
+2. **Check connections**: Run `osiris connections doctor`
+3. **Check environment variables**: Make sure `.env` is loaded
+4. **View the HTML report**: Run `osiris logs html --open`
+5. **Check for forbidden keys**: Remove any `version`, `connectors`, `tasks`, or `outputs` keys
+
+## Working with E2B Cloud
+
+For cloud execution, set your E2B API key:
+
+```bash
+export E2B_API_KEY="your-e2b-api-key"
+```
+
+Then run with E2B flags:
+```bash
+# Basic E2B execution
+osiris run --last-compile --e2b
+
+# With more resources
+osiris run --last-compile --e2b --e2b-cpu 4 --e2b-mem 8
+
+# With longer timeout (in seconds)
+osiris run --last-compile --e2b --e2b-timeout 3600
+```
+
+## Tips for AI Assistants
+
+When working with your AI:
+
+1. **Be specific**: "Extract the last 30 days of orders" is better than "get recent orders"
+2. **Mention connections**: "Use the @mysql.primary connection" helps the AI
+3. **Specify output format**: "Write to CSV" or "Write to Supabase table 'analytics'"
+4. **Request validation**: Ask the AI to "validate this follows OML v0.1.0"
+5. **Ask for examples**: "Show me the compile and run commands for this pipeline"
+
+## Final Reminder
+
+Always remember:
+- **No secrets in OML files** - Use environment variables
+- **Use connection aliases** - Like @mysql.default
+- **Correct mode names** - "write" not "load"
+- **Check HTML reports** - They show detailed execution info
+- **Test locally first** - Before running in E2B cloud
+
+Share this guide with your AI assistant to ensure it generates correct Osiris pipelines!

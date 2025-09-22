@@ -1,0 +1,164 @@
+# LLM Contract for CLI Development
+
+## CONTEXT
+You are developing CLI commands for the Osiris Pipeline system using Rich framework. Follow these patterns EXACTLY.
+
+## RICH CONSOLE RULES
+NEVER use print(). ALWAYS use Rich console:
+
+```python
+from rich.console import Console
+
+console = Console()
+console.print("[cyan]Info message[/cyan]")
+console.print("[green]✓[/green] Success")
+console.print("[red]✗[/red] Error")
+```
+
+## COMMAND PATTERN
+Every command MUST follow this structure:
+
+```python
+@cli.command()
+@click.option('--verbose', '-v', is_flag=True, help='Verbose output')
+@click.pass_context
+def my_command(ctx, verbose):
+    """Brief description.
+
+    Longer description explaining the command.
+
+    Examples:
+        osiris my-command
+        osiris my-command --verbose
+    """
+    console = ctx.obj['console']
+
+    try:
+        # Command logic
+        result = do_something()
+        console.print("[green]Success![/green]")
+        return 0  # Success exit code
+
+    except SpecificError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        return 1  # Error exit code
+```
+
+## TABLE FORMATTING
+Use Rich tables for structured data:
+
+```python
+from rich.table import Table
+
+table = Table(title="Results")
+table.add_column("Name", style="cyan")
+table.add_column("Status", style="green")
+table.add_column("Count", justify="right")
+
+table.add_row("Pipeline 1", "✓ Complete", "100")
+console.print(table)
+```
+
+## PROGRESS INDICATORS
+Show progress for long operations:
+
+```python
+from rich.progress import track
+
+for step in track(steps, description="Processing..."):
+    process_step(step)
+```
+
+## ERROR MESSAGES
+Provide helpful, actionable errors:
+
+```python
+if error_condition:
+    console.print("[red]Error:[/red] Configuration file not found")
+    console.print("[yellow]Suggestion:[/yellow] Run 'osiris init' to create configuration")
+    raise SystemExit(1)
+```
+
+## EXIT CODES
+- 0: Success
+- 1: General error
+- 2: Configuration error
+- 3: Compilation error
+- 4: Execution error
+
+## HELP TEXT REQUIREMENTS
+Every command MUST have:
+1. Brief description (first line of docstring)
+2. Detailed description (paragraph after blank line)
+3. Examples section with actual commands
+
+## CONFIGURATION LOADING
+```python
+from osiris.core.config import Config
+from osiris.core.env_loader import load_env
+
+# Load environment first
+load_env()
+
+# Load configuration
+config = Config.from_files(
+    ctx.obj.get('config_file'),
+    required=False
+)
+```
+
+## SESSION LOGGING
+```python
+from osiris.core.session_logging import SessionLogger
+
+session = SessionLogger.create_session("command_name")
+session.log_event("command_started", {"args": args})
+```
+
+## VALIDATION PATTERN
+```python
+# Validate input early
+if not Path(file_path).exists():
+    console.print(f"[red]Error:[/red] File not found: {file_path}")
+    raise SystemExit(2)
+
+# Then proceed with operation
+```
+
+## GLOBAL OPTIONS
+These are available in ctx.obj:
+- `console`: Rich console instance
+- `config_file`: Path to config file
+- `verbose`: Verbose flag
+- `env_loaded`: Environment loaded flag
+
+## COLOR CONVENTIONS
+- `[cyan]` - Information
+- `[green]` - Success
+- `[yellow]` - Warning
+- `[red]` - Error
+- `[blue]` - File paths
+- `[magenta]` - Commands
+
+## SUBCOMMAND GROUPS
+```python
+@cli.group()
+def connections():
+    """Manage connections."""
+    pass
+
+@connections.command()
+def list():
+    """List all connections."""
+    # Implementation
+```
+
+## CRITICAL RULES
+1. NEVER use print() - ALWAYS use console.print()
+2. ALWAYS provide examples in help text
+3. NEVER expose secrets in output
+4. ALWAYS validate before expensive operations
+5. ALWAYS use proper exit codes
+6. NEVER catch generic Exception without re-raising
+
+When generating CLI code, follow these patterns EXACTLY.
