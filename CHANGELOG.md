@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2024-09-22
+
+**Major Release: Milestone M1 - Component Registry and Runner**
+
+This release represents a complete architectural overhaul with the implementation of the Component Registry system, unified runtime, E2B transparent proxy, and comprehensive tooling for data engineers. The system now provides full parity between local and E2B execution with production-ready logging, validation, and error handling.
+
 ### Fixed
 - **HTML Report Improvements**
   - Fixed E2B connection aliases showing as "unknown" in reports
@@ -42,13 +48,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Scroll indicator for Overview tab when content overflows with smooth fade effect
   - Improved visual distinction between local and E2B runs in session lists and detail pages
 
+- **HTML Logs Browser** (M1d)
+  - Complete data engineer-focused log visualization system
+  - Performance dashboard matching e2b.dev design aesthetics
+  - SessionReader for structured session analysis and metrics aggregation
+  - Sortable tables with row counts and session statistics
+  - Technical Logs tab with filtered event streams
+  - Multi-page report generation with session details
+  - Mermaid diagram support for pipeline visualization
+  - Rich terminal integration for session management
+
 ### Changed
 - **Development Environment**
   - Added `*.bak` files to .gitignore to prevent tracking of backup files
   - Cleaned up old backup files from repository
 
 ### Added
-- **E2B Transparent Proxy Architecture** (M1e)
+- **E2B Transparent Proxy Architecture** (M1e/M1f)
   - Complete redesign eliminating E2BPack in favor of transparent proxy approach
   - New `E2BTransparentProxy` class replacing legacy `E2BAdapter` and `PayloadBuilder`
   - `ProxyWorker` for remote execution in E2B sandbox environment
@@ -429,6 +445,7 @@ This is the first MVP release of Osiris Pipeline - an experimental proof-of-conc
 **Status**: Early prototype suitable for demonstration and initial testing
 **Confidence**: Core functionality working with movies database testing completed
 
+[0.2.0]: https://github.com/keboola/osiris_pipeline/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/keboola/osiris_pipeline/releases/tag/v0.1.2
 [0.1.1]: https://github.com/keboola/osiris_pipeline/releases/tag/v0.1.1
 [0.1.0]: https://github.com/keboola/osiris_pipeline/releases/tag/v0.1.0
