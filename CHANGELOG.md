@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Documentation
-- **Comprehensive Documentation Overhaul** (2025-01-23)
+## [0.2.0] - 2025-01-23
+
+**Major Release: Milestone M1 - Component Registry and Runner**
+
+This release represents a complete architectural overhaul with the implementation of the Component Registry system, unified runtime, E2B Transparent Proxy, and comprehensive tooling for data engineers. The system now provides full parity between local and E2B execution with production-ready logging, validation, and error handling.
+
+### Documentation (2025-01-23)
+- **Comprehensive Documentation Overhaul**
   - Eliminated all TODOs (50+ → 0) across documentation
   - Created quickstart.md for 10-minute onboarding experience
   - Consolidated 3 user guides into single comprehensive user-guide.md
@@ -23,12 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added screenshots to README showcasing HTML reports
   - Simplified README to avoid duplication, added LLM-friendly documentation section
   - Updated docs/README.md as comprehensive documentation hub
-
-## [0.2.0] - 2025-09-22
-
-**Major Release: Milestone M1 - Component Registry and Runner**
-
-This release represents a complete architectural overhaul with the implementation of the Component Registry system, unified runtime, E2B Transparent Proxy, and comprehensive tooling for data engineers. The system now provides full parity between local and E2B execution with production-ready logging, validation, and error handling.
 
 ### Upgrade notes
 - **Breaking**: Supabase writers now require `key` field (was optional). **Action**: Add `key` to Supabase connection config.
