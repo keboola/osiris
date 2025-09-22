@@ -43,7 +43,7 @@ The AI Operation Package (AIOP) is a model-agnostic, JSON-LD based, deterministi
   - `timeline.ndjson`: Full event stream
   - `metrics.ndjson`: All metrics data points
   - `errors.ndjson`: Error details and stack traces
-  - `discovery.ndjson`: Schema catalogs (future)
+  - `discovery.ndjson`: Schema catalogs (future M3+, placeholder only in M2a)
 - **Size**: Unbounded (with optional compression)
 
 ### Configuration Knobs
@@ -61,7 +61,7 @@ The AI Operation Package (AIOP) is a model-agnostic, JSON-LD based, deterministi
 ### Truncation Order
 1. Preserve: Run summary, critical errors, step totals
 2. Truncate: Mid-timeline events, detailed metrics, large artifacts
-3. Mark: `"truncated": true`, `"dropped_events": N`, `"annex_ref": "path"`
+3. Mark: Truncation markers appear at the level of the truncated object (e.g., `timeline.truncated: true`, `timeline.dropped_events: 47`)
 
 ## Architecture & Data Model
 
@@ -94,9 +94,9 @@ The AI Operation Package (AIOP) is a model-agnostic, JSON-LD based, deterministi
 |--------|-------------|---------|
 | Pipeline | `osiris://pipeline/<name>@<manifest_hash>` | `osiris://pipeline/customer_etl@abc123def` |
 | Step | `osiris://pipeline/<name>@<manifest_hash>/step/<step_id>` | `osiris://pipeline/customer_etl@abc123def/step/extract` |
-| Run | `osiris://run/<run_fingerprint>` | `osiris://run/fp_1234567890abcdef` |
-| Artifact | `osiris://run/<run_fingerprint>/artifact/<path>` | `osiris://run/fp_123/artifact/output/data.csv` |
-| Evidence | `osiris://run/<run_fingerprint>/evidence/<evidence_id>` | `osiris://run/fp_123/evidence/ev.metric.extract.rows_read.1234567890000` |
+| Run | `osiris://run/@<session_id>` | `osiris://run/@run_1234567890` |
+| Artifact | `osiris://run/@<session_id>/artifact/<path>` | `osiris://run/@run_123/artifact/output/data.csv` |
+| Evidence | `osiris://run/@<session_id>/evidence/<evidence_id>` | `osiris://run/@run_123/evidence/ev.metric.extract.rows_read.1234567890000` |
 
 **Rules:**
 - No trailing slashes
@@ -123,6 +123,7 @@ SHA-256({osiris_version}:{env}:{manifest_hash}:{session_id}:{start_timestamp_ms}
 - `manifest_hash`: From compilation
 - `session_id`: e.g., "run_1234567890"
 - `start_timestamp_ms`: Unix epoch milliseconds UTC
+- **Note**: run_fingerprint is computed for reproducibility but URIs use session_id directly
 
 **evidence_id Scheme:**
 ```
@@ -131,6 +132,7 @@ ev.<type>.<step_id>.<name>.<timestamp_ms_utc>
 - Types: `metric`, `check`, `artifact`, `event`
 - Timestamp: Always milliseconds since Unix epoch UTC
 - Reserved: No dots in user values; underscores replace spaces
+- **Name field**: May only contain lowercase alphanumeric and underscore (a-z0-9_). Spaces and dashes are converted to underscores
 - Examples:
   - `ev.metric.extract.rows_read.1705315200000`
   - `ev.check.transform.quality_check.1705315201500`
@@ -158,17 +160,21 @@ ev.<type>.<step_id>.<name>.<timestamp_ms_utc>
 
 ```bash
 # Export AIOP for specific session
-osiris logs aiop --session <session_id> --output <path> [--format json|md] [--policy core|full]
+osiris logs aiop --session <session_id> --output <path> [--format json|md] [--policy core|annex]
 
 # Export AIOP for last run
 osiris logs aiop --last [--format json|md]
 
 # With Annex shards
-osiris logs aiop --last --policy full --annex-dir ./aiop-annex/
+osiris logs aiop --last --policy annex --annex-dir ./aiop-annex/
 
 # Custom configuration
 osiris logs aiop --last --max-core-bytes 500000 --timeline-density high --compress gzip
 ```
+
+**Parameters:**
+- `--timeline-density`: `low` (key events only), `medium` (default, includes metrics), `high` (all events including debug)
+- `--compress`: Default: none. When enabled, applies to Annex files only (Core always uncompressed for readability)
 
 ### Markdown Run-Card Format
 
@@ -192,7 +198,7 @@ The `--format md` option generates a concise run-card suitable for PR comments:
 - `0`: Success
 - `1`: General error
 - `2`: Missing session (`Error: Session 'run_xyz' not found`)
-- `4`: Size limit exceeded (`Warning: AIOP truncated at limit`)
+- `4`: Size limit exceeded (Warning: truncated but AIOP generated successfully)
 
 **Note**: `osiris logs aiop` does NOT require a git repository (read-only export works anywhere)
 
@@ -422,6 +428,7 @@ def test_aiop_redacts_secrets():
 1. Same `manifest_hash` (exact pipeline version)
 2. Fallback to same `pipeline_name` (latest prior run)
 3. Return `"delta": null` if no comparable run found
+4. For first runs, delta contains `"first_run": true` instead of comparison values
 
 **Artifact References:**
 ```json
@@ -593,6 +600,8 @@ TRUNCATION_RULES = {
 6. ✅ MD run-card links cite evidence IDs correctly
 7. ✅ Truncation markers appear when size limit exceeded
 8. ✅ CLI returns appropriate exit codes
+9. ✅ `--policy annex` generates NDJSON shard files correctly
+10. ✅ Delta calculation works correctly for first run (no previous), subsequent runs, and missing previous runs
 
 ## Examples
 

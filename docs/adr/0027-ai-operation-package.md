@@ -247,3 +247,4 @@ The full AI Operation Package feature is postponed to Milestone M2 for implement
 - [ ] Secret scanning tests pass (no PII/credentials)
 - [ ] Performance: <5s generation for typical runs
 - [ ] Cross-referenced evidence IDs resolve correctly
+- [ ] Delta calculation works correctly for first run, subsequent runs, and missing previous runs
