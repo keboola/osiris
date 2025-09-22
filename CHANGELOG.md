@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **HTML Report Improvements**
+  - Fixed E2B connection aliases showing as "unknown" in reports
+  - Fixed Data Volume calculation to use single source of truth (cleanup_complete > writers > extractors)
+  - Fixed Total Step Time aggregation that was showing 0.00s
+  - Fixed metadata fields in driver config causing validation errors in E2B execution
+  - Added E2B Bootstrap time metric to Performance panel for E2B runs
+
+- **Session Reader OML Version Extraction**
+  - Fixed missing oml_validated event handling in _read_events_v2 method
+  - Added oml_version extraction from oml_validated events
+  - Added pipeline name extraction from oml_validated events
+  - Restored parity between _read_events and _read_events_v2 methods
+
 - **Local Row Totals Parity with E2B**
   - Local runs now report correct total rows matching E2B execution
   - Added `cleanup_complete` event with accurate `total_rows` in local sessions
@@ -21,6 +34,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Step events (step_start, step_complete) appear as they happen, not after completion
   - Metrics (rows_read, rows_written) are displayed immediately when emitted
   - All verbose output properly flushed to avoid buffering delays
+
+### Added
+- **HTML Report Enhancements**
+  - Visual badges to distinguish execution environments (orange "E2B" badge, grey "Local" badge)
+  - E2B Bootstrap time metric in Performance panel showing sandbox initialization time
+  - Scroll indicator for Overview tab when content overflows with smooth fade effect
+  - Improved visual distinction between local and E2B runs in session lists and detail pages
+
+### Changed
+- **Development Environment**
+  - Added `*.bak` files to .gitignore to prevent tracking of backup files
+  - Cleaned up old backup files from repository
 
 ### Added
 - **E2B Transparent Proxy Architecture** (M1e)
