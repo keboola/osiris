@@ -1,6 +1,0 @@
-user_id,email,phone,created_at,last_login,consent_marketing,data_residency
-1,john.doe@example.com,555-0101,2023-01-15,2024-09-15,true,EU
-2,jane.smith@example.com,555-0102,2023-02-20,2024-08-20,true,EU
-3,bob.wilson@example.com,555-0103,2023-03-10,2024-07-10,false,EU
-4,alice.johnson@example.com,555-0104,2023-04-05,2024-06-05,true,EU
-5,charlie.brown@example.com,555-0105,2023-05-12,2024-05-12,true,EU

@@ -1,6 +1,0 @@
-ticket_id,requester_email,subject,description,created_at,status,priority
-tkt_3001,john.doe@example.com,Shipping delay,My order hasn't arrived yet,2024-01-20,solved,normal
-tkt_3002,jane.smith@example.com,Payment failed,Credit card was declined,2024-01-25,closed,high
-tkt_3003,bob.wilson@example.com,Return request,Product doesn't fit,2024-02-15,solved,normal
-tkt_3004,alice.johnson@example.com,Account access,Can't log in to my account,2024-02-20,solved,high
-tkt_3005,charlie.brown@example.com,Promo code issue,Discount not applied,2024-03-05,closed,low
