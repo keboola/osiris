@@ -1,0 +1,26 @@
+# Output file (you will upload this single file to ChatGPT)
+output: ./mempack.txt
+
+notes: |
+  Osiris – active milestone M1c (feature/m1c). Prioritize compiler+runner + chat flow fixes.
+  Pack only deterministic, review-friendly sources. No secrets / no heavy logs / no run artifacts.
+
+include:
+# Core src
+- docs/**
+# Note: Most other exclusions are now handled by .gitignore:
+# - testing_env/ artifacts (handled by .gitignore)
+# - output/ directories (handled by .gitignore)
+# - compiled/ and _artifacts/ (handled by .gitignore)
+# - mempack.txt itself (handled by .gitignore)
+
+# Also embed a fresh project tree (so I can see structure at-a-glance)
+embed_tree: false
+
+# Automatically exclude files/dirs from .gitignore
+# When true, patterns from .gitignore are applied before explicit excludes
+# Include patterns can override gitignore/exclude patterns (include wins)
+use_gitignore: false
+
+# Safety: cap the size so we don't over-feed the model by accident
+max_bytes: 6000000 # ~6 MB, uprav když bude potřeba

@@ -150,7 +150,7 @@ cache_key = "mysql.table:0.1.0:@mysql:abc123...:def456..."
 
 ## Acceptance Criteria Results ✅
 
-**From dev-plan.md M0 acceptance criteria:**
+**From initial plan M0 acceptance criteria:**
 - [x] Cache invalidates when component options change (schema, table, columns)
 - [x] Cache invalidates when component spec schema changes  
 - [x] Basic validation catches missing required fields (connection, table, mode)
@@ -336,6 +336,35 @@ This M0 implementation directly enables the upcoming milestones:
 - **Error Rates**: Monitor validation error frequency
 - **User Adoption**: Track usage of validation modes
 
+## Configuration Extensions (M0-Validation-4)
+
+### Configuration Precedence Rules
+Configuration values are resolved according to the following precedence order, from highest to lowest priority:
+1. CLI flags
+2. Environment variable overrides  
+3. Configuration YAML file
+4. Default values hardcoded in the pipeline
+
+### Discovery Cache Configuration
+```yaml
+discovery:
+  cache:
+    ttl_seconds: 3600
+    dir: ./cache/discovery
+```
+
+### Validation Modes Configuration
+```yaml
+validate:
+  mode: strict  # Options: strict, warn, off
+  json: true    # Enable JSON output format
+```
+
+## Validation Reports
+
+### Test Report
+- **[M0 Validation-4 Test Report](reports/m0-validation-4-test-report.md)**: Comprehensive test results for configuration extensions and validation modes
+
 ## Conclusion
 
 Milestone M0 successfully resolves the critical context mismatch issue that was blocking LLM functionality in v0.1.1. The implementation provides:
@@ -345,8 +374,9 @@ Milestone M0 successfully resolves the critical context mismatch issue that was 
 - **User Safety**: Clear rollback and validation modes
 - **Security Protection**: Critical credential leak vulnerabilities fixed
 - **Enhanced UX**: Improved CLI argument parsing and structured logging
+- **Configuration Flexibility**: Precedence-based configuration with YAML, ENV, and CLI overrides
 - **Future Foundation**: Architecture ready for component registry
 
-The system is now ready to proceed with M1a - Component Registry Foundation, building upon the solid fingerprinting, validation, and security foundation established in M0.
+The system is now ready to proceed with M1a - Component Registry Foundation, building upon the solid fingerprinting, validation, security, and configuration foundation established in M0.
 
-**Total Impact**: From broken LLM responses due to cache conflicts and security vulnerabilities → Reliable, fast, secure discovery with intelligent cache invalidation, comprehensive validation, and protected credentials.
+**Total Impact**: From broken LLM responses due to cache conflicts and security vulnerabilities → Reliable, fast, secure discovery with intelligent cache invalidation, comprehensive validation, configurable behavior, and protected credentials.

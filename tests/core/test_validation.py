@@ -122,9 +122,11 @@ class TestConnectionValidator:
         assert not result.is_valid
         assert len(result.errors) > 0
 
-        # Check that missing fields are reported
-        error_paths = {error.path for error in result.errors}
-        assert "database" in error_paths or any("database" in path for path in error_paths)
+        # Check that missing fields are reported in error messages
+        error_messages = " ".join(error.message for error in result.errors)
+        assert "database" in error_messages
+        assert "user" in error_messages
+        assert "password" in error_messages
 
     def test_supabase_connection_valid(self):
         """Test valid Supabase connection configuration."""
@@ -146,7 +148,7 @@ class TestConnectionValidator:
 
         supabase_config = {"type": "supabase", "url": "not-a-valid-url", "key": "anon-public-key"}
 
-        result = validator.validate_connection(supabase_config)
+        validator.validate_connection(supabase_config)
         # May pass with basic validation, but would fail with full jsonschema
         # This tests the fallback validation path
 
@@ -243,7 +245,7 @@ class TestConnectionValidator:
             "password": "testpass",  # pragma: allowlist secret
         }
 
-        result = validator.validate_connection(config)
+        validator.validate_connection(config)
         # Should pass with basic validation even if jsonschema is missing
 
 

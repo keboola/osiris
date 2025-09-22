@@ -211,8 +211,4 @@ def should_invalidate_cache(
         return True
 
     # Fingerprints don't match
-    if not fingerprints_match(cached_entry.fingerprint, current_fingerprint):
-        return True
-
-    # Cache is valid
-    return False
+    return not fingerprints_match(cached_entry.fingerprint, current_fingerprint)

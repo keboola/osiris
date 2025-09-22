@@ -40,6 +40,28 @@ SENSITIVE_REGEX = re.compile(
     "|".join(f"({pattern})" for pattern in SENSITIVE_PATTERNS), re.IGNORECASE
 )
 
+# Structural keys that should NEVER be masked (used for system operation)
+STRUCTURAL_KEYS = {
+    "session_id",
+    "session",
+    "event",
+    "event_type",
+    "event_name",
+    "command",
+    "timestamp",
+    "duration",
+    "duration_ms",
+    "token_count",
+    "tokens",
+    "total_tokens",
+    "prompt_tokens",
+    "completion_tokens",
+    "size",
+    "count",
+    "attempts",
+    "retry_count",
+}
+
 MASK_VALUE = "***"
 
 
@@ -53,8 +75,12 @@ def mask_sensitive_value(key: str, value: Any) -> Any:
     Returns:
         Masked value if key is sensitive, original value otherwise
     """
-    if isinstance(key, str) and SENSITIVE_REGEX.search(key):
-        return MASK_VALUE
+    # Never mask structural keys
+    if isinstance(key, str):
+        if key.lower() in STRUCTURAL_KEYS:
+            return value
+        if SENSITIVE_REGEX.search(key):
+            return MASK_VALUE
     return value
 
 

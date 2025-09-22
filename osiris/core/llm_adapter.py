@@ -33,7 +33,10 @@ import logging
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from .prompt_manager import PromptManager
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +57,7 @@ class LLMResponse:
     action: Optional[str] = None
     params: Optional[Dict[str, Any]] = None
     confidence: float = 1.0
+    token_usage: Optional[Dict[str, int]] = None
 
 
 @dataclass
@@ -76,7 +80,12 @@ class LLMAdapter:
     """Multi-provider LLM adapter for conversational pipeline generation."""
 
     def __init__(
-        self, provider: str = "openai", config: Optional[Dict] = None, pro_mode: bool = False
+        self,
+        provider: str = "openai",
+        config: Optional[Dict] = None,
+        pro_mode: bool = False,
+        prompt_manager: Optional["PromptManager"] = None,
+        context: Optional[Dict[str, Any]] = None,
     ):
         """Initialize LLM adapter.
 
@@ -84,15 +93,18 @@ class LLMAdapter:
             provider: LLM provider (openai, claude, gemini)
             config: Provider-specific configuration
             pro_mode: Whether to load custom prompts from files
+            prompt_manager: Optional PromptManager instance with context loaded
+            context: Optional component context dictionary
         """
         self.provider = LLMProvider(provider.lower())
         self.config = config or {}
         self.client = None
         self.pro_mode = pro_mode
+        self.context = context
 
-        # Initialize prompt manager for pro mode
-        self.prompt_manager = None
-        if pro_mode:
+        # Initialize prompt manager for pro mode or use provided one
+        self.prompt_manager = prompt_manager
+        if pro_mode and not self.prompt_manager:
             from .prompt_manager import PromptManager
 
             self.prompt_manager = PromptManager()
@@ -101,17 +113,47 @@ class LLMAdapter:
         self._setup_provider()
 
     def _setup_provider(self):
-        """Setup provider-specific configuration."""
+        """Setup provider-specific configuration.
+
+        Precedence order for model configuration:
+        1. CLI parameters (if passed in config)
+        2. Environment variables
+        3. osiris.yaml configuration
+        4. Hardcoded defaults
+        """
+        llm_config = self.config.get("llm", {})
+
         if self.provider == LLMProvider.OPENAI:
             self.api_key = os.environ.get("OPENAI_API_KEY")
-            self.model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
-            self.fallback_model = os.environ.get("OPENAI_MODEL_FALLBACK", "gpt-4o")
+            # Precedence: ENV > config > default
+            self.model = os.environ.get("OPENAI_MODEL") or llm_config.get("model") or "gpt-4o-mini"
+            self.fallback_model = (
+                os.environ.get("OPENAI_MODEL_FALLBACK")
+                or llm_config.get("fallback_model")
+                or "gpt-4o"
+            )
         elif self.provider == LLMProvider.CLAUDE:
             self.api_key = os.environ.get("CLAUDE_API_KEY")
-            self.model = os.environ.get("CLAUDE_MODEL", "claude-3-sonnet-20240229")
+            # Precedence: ENV > config > default
+            self.model = (
+                os.environ.get("CLAUDE_MODEL")
+                or llm_config.get("model")
+                or "claude-3-sonnet-20240229"
+            )
+            self.fallback_model = (
+                os.environ.get("CLAUDE_MODEL_FALLBACK")
+                or llm_config.get("fallback_model")
+                or "claude-3-opus-20240229"
+            )
         elif self.provider == LLMProvider.GEMINI:
             self.api_key = os.environ.get("GEMINI_API_KEY")
-            self.model = os.environ.get("GEMINI_MODEL", "gemini-pro")
+            # Precedence: ENV > config > default
+            self.model = os.environ.get("GEMINI_MODEL") or llm_config.get("model") or "gemini-pro"
+            self.fallback_model = (
+                os.environ.get("GEMINI_MODEL_FALLBACK")
+                or llm_config.get("fallback_model")
+                or "gemini-1.5-flash"
+            )
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
 
@@ -251,6 +293,7 @@ class LLMAdapter:
         capabilities: List[str],
     ) -> LLMResponse:
         """Process conversation message and return structured response."""
+        from ..core.session_logging import get_current_session
 
         system_prompt = self._build_system_prompt(available_connectors, capabilities)
         user_prompt = self._build_user_prompt(message, context)
@@ -260,10 +303,32 @@ class LLMAdapter:
             {"role": "user", "content": user_prompt},
         ]
 
+        # Calculate token estimates
+        total_prompt_tokens = 0
+        if self.prompt_manager:
+            total_prompt_tokens = self.prompt_manager.estimate_tokens(
+                system_prompt
+            ) + self.prompt_manager.estimate_tokens(user_prompt)
+        else:
+            # Fallback estimation
+            total_prompt_tokens = (len(system_prompt) + len(user_prompt)) // 4
+
+        # Log token usage before request
+        session = get_current_session()
+        if session:
+            session.log_event(
+                "llm_request_start",
+                provider=self.provider.value,
+                prompt_tokens_est=total_prompt_tokens,
+                has_context=self.context is not None,
+                context_components=len(self.context.get("components", [])) if self.context else 0,
+            )
+
         # Debug logging: show full conversation sent to LLM
         logger.info("=== LLM CONVERSATION DEBUG ===")
         logger.info(f"SYSTEM PROMPT:\n{system_prompt}")
         logger.info(f"USER PROMPT:\n{user_prompt}")
+        logger.info(f"TOKEN ESTIMATE: ~{total_prompt_tokens} tokens")
         logger.info("=== END DEBUG ===")
 
         try:
@@ -279,9 +344,33 @@ class LLMAdapter:
             # Debug logging: show LLM's raw response
             logger.info(f"LLM RAW RESPONSE:\n{response_text}")
 
+            # Estimate response tokens
+            response_tokens_est = 0
+            if self.prompt_manager:
+                response_tokens_est = self.prompt_manager.estimate_tokens(response_text)
+            else:
+                response_tokens_est = len(response_text) // 4
+
+            # Log token usage after response
+            if session:
+                session.log_event(
+                    "llm_response_complete",
+                    provider=self.provider.value,
+                    prompt_tokens_est=total_prompt_tokens,
+                    response_tokens_est=response_tokens_est,
+                    total_tokens_est=total_prompt_tokens + response_tokens_est,
+                )
+
             # Parse structured response
             parsed_response = self._parse_response(response_text)
             logger.info(f"PARSED RESPONSE: {parsed_response}")
+
+            # Store token usage in response
+            parsed_response.token_usage = {
+                "prompt_tokens": total_prompt_tokens,
+                "response_tokens": response_tokens_est,
+                "total_tokens": total_prompt_tokens + response_tokens_est,
+            }
 
             return parsed_response
 
@@ -295,16 +384,18 @@ class LLMAdapter:
 
     def _build_system_prompt(self, available_connectors: List[str], capabilities: List[str]) -> str:
         """Build system prompt for conversation."""
+        base_prompt = ""
+
         if self.pro_mode and self.prompt_manager:
             # Use custom prompt from files
-            return self.prompt_manager.get_conversation_prompt(
+            base_prompt = self.prompt_manager.get_conversation_prompt(
                 pro_mode=True,
                 available_connectors=", ".join(available_connectors),
                 capabilities=", ".join(capabilities),
             )
         else:
             # Use default hardcoded prompt
-            return f"""You are the conversational interface for Osiris, a production-grade data pipeline platform. You help users create data pipelines through natural conversation.
+            base_prompt = f"""You are the conversational interface for Osiris, a production-grade data pipeline platform. You help users create data pipelines through natural conversation.
 
 SYSTEM CONTEXT:
 - This is Osiris v2 with LLM-first pipeline generation
@@ -353,6 +444,12 @@ IMMEDIATE ACTIONS:
 
 IMPORTANT: Don't ask for database credentials - they're already configured. Jump straight to discovery when appropriate.
 """
+
+        # Inject component context if available
+        if self.context and self.prompt_manager:
+            base_prompt = self.prompt_manager.inject_context(base_prompt, self.context)
+
+        return base_prompt
 
     def _build_user_prompt(self, message: str, context: ConversationContext) -> str:
         """Build user prompt with context."""

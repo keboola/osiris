@@ -133,3 +133,76 @@ class MySQLClient:
         except Exception as e:
             logger.error(f"Connection test failed: {e}")
             return False
+
+    def doctor(self, connection: dict, timeout: float = 2.0) -> tuple[bool, dict]:
+        """Health check for MySQL connection.
+
+        Args:
+            connection: Connection configuration dict
+            timeout: Maximum time to wait for connection (seconds)
+
+        Returns:
+            Tuple of (ok: bool, details: dict) where details contains:
+                - latency_ms: Connection latency in milliseconds
+                - category: Error category (auth/network/permission/timeout/unknown)
+                - message: Redacted error message
+        """
+        import time
+
+        import pymysql
+
+        start_time = time.time()
+
+        try:
+            # Try to connect and execute a simple query
+            conn = pymysql.connect(
+                host=connection.get("host", "localhost"),
+                port=connection.get("port", 3306),
+                user=connection.get("user"),
+                password=connection.get("password"),
+                database=connection.get("database"),
+                connect_timeout=timeout,
+            )
+
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+
+            conn.close()
+
+            latency_ms = (time.time() - start_time) * 1000
+            return True, {"latency_ms": round(latency_ms, 2), "message": "Connection successful"}
+
+        except pymysql.err.OperationalError as e:
+            latency_ms = (time.time() - start_time) * 1000
+            error_code = e.args[0] if e.args else 0
+            error_msg = str(e.args[1] if len(e.args) > 1 else e)
+
+            # Categorize error
+            category = "unknown"
+            if error_code in (1045, 1698):  # Access denied
+                category = "auth"
+                error_msg = "Authentication failed"
+            elif error_code in (2003, 2005, 2006):  # Can't connect
+                category = "network"
+                error_msg = "Cannot connect to server"
+            elif error_code == 1044:  # Access denied to database
+                category = "permission"
+                error_msg = "Access denied to database"
+            elif "timeout" in error_msg.lower():
+                category = "timeout"
+                error_msg = "Connection timeout"
+
+            return False, {
+                "latency_ms": round(latency_ms, 2),
+                "category": category,
+                "message": error_msg,
+            }
+
+        except Exception:
+            latency_ms = (time.time() - start_time) * 1000
+            return False, {
+                "latency_ms": round(latency_ms, 2),
+                "category": "unknown",
+                "message": "Connection test failed",
+            }

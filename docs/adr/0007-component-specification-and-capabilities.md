@@ -1,7 +1,7 @@
 # 0007 Component Specification and Capabilities
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 To enable deterministic YAML generation and reliable execution of pipelines, each Osiris component (e.g., extractors, transformers, writers) must expose a formal specification. This specification defines required configuration, supported operations, and declared capabilities.
@@ -32,6 +32,38 @@ Currently, components are integrated ad-hoc with implicit expectations. This mak
 - Implicit integration (status quo): rejected due to fragility and lack of determinism.
 - Hardcoded capability mapping: rejected due to poor scalability.
 
+## Amendment 1: Mode Standardization (2025-01-02)
+
+### Context
+During implementation of M1a.2, we discovered inconsistencies in mode naming conventions, particularly the use of 'load' vs 'write' for data writing operations.
+
+### Decision
+- Standardize on 'write' mode for all data writing operations
+- Deprecate 'load' mode but maintain in schema for backward compatibility
+- All writer components support both 'write' and 'discover' modes
+- Component modes are strictly defined: extract, write, transform, discover, analyze, stream
+
+### Impact
+- Component specs must use consistent mode terminology
+- LLM context generation improved with standardized vocabulary
+- Migration path provided for existing 'load' mode usage
+
+## Amendment 2: Required Fields and Capabilities Audit (2025-01-02)
+
+### Context
+Audit of component specs against actual connector implementations revealed discrepancies in required fields and capability declarations.
+
+### Decision
+- Supabase components now require `key` field (was optional)
+- Capabilities must reflect actual implementation, not theoretical support
+- CLI enhanced to show both required config and secrets
+
+### Impact
+- Breaking change: Supabase configs without `key` will fail validation
+- More accurate capability reporting prevents runtime surprises
+- CLI provides complete visibility into component requirements
+
 ## References
 - ADR-0004 Configuration Precedence Engine
 - ADR-0006 Session-Scoped Logging and Artifacts
+- ADR-0012 Separate Extractors and Writers

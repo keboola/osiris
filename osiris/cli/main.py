@@ -15,11 +15,17 @@
 """Main CLI entry point for Osiris v2."""
 
 import argparse
+import contextlib
 import json
 import logging
 import sys
 
 from rich.console import Console
+
+from osiris.core.env_loader import load_env
+
+# Load environment variables at CLI entry
+loaded_env_files = load_env()
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -63,10 +69,16 @@ def show_main_help():
         "  [cyan]validate[/cyan]     Validate Osiris configuration file and environment setup"
     )
     console.print("  [cyan]chat[/cyan]         Conversational pipeline generation with LLM")
-    console.print("  [cyan]run[/cyan]          Execute a pipeline YAML file")
+    console.print("  [cyan]compile[/cyan]      Compile OML pipeline to deterministic manifest")
+    console.print("  [cyan]run[/cyan]          Execute pipeline (OML or compiled manifest)")
     console.print("  [cyan]logs[/cyan]         Manage session logs (list, show, bundle, gc)")
+    console.print("  [cyan]test[/cyan]         Run automated test scenarios")
+    console.print("  [cyan]components[/cyan]   Manage and inspect Osiris components")
+    console.print("  [cyan]connections[/cyan]  Manage database connections")
+    console.print("  [cyan]oml[/cyan]          Validate OML (Osiris Markup Language) files")
     console.print(
-        "  [cyan]dump-prompts[/cyan] Export LLM system prompts for customization (pro mode)"
+        "  [cyan]dump-prompts[/cyan] Export LLM system prompts for customization (pro mode)\n"
+        "  [cyan]prompts[/cyan]      Manage component context for LLM"
     )
     console.print()
 
@@ -94,8 +106,15 @@ def parse_main_args():
             "validate",
             "chat",
             "run",
+            "runs",  # deprecated but still supported
+            "compile",
             "logs",
+            "test",
+            "components",
+            "connections",
+            "oml",
             "dump-prompts",
+            "prompts",
         ]:
             command = arg
             command_index = i
@@ -184,10 +203,26 @@ def main():
         validate_command(command_args)
     elif args.command == "run":
         run_command(command_args)
+    elif args.command == "runs":
+        runs_command(command_args)  # deprecated
     elif args.command == "logs":
         logs_command(command_args)
+    elif args.command == "test":
+        test_command(command_args)
+    elif args.command == "components":
+        components_command(command_args)
+    elif args.command == "connections":
+        connections_command(command_args)
+    elif args.command == "oml":
+        oml_command(command_args)
+    elif args.command == "compile":
+        from .compile import compile_command
+
+        compile_command(command_args)
     elif args.command == "dump-prompts":
         dump_prompts_command(command_args)
+    elif args.command == "prompts":
+        prompts_command(command_args)
     elif args.command == "chat":
         # This case is now handled early in main() to preserve argument order
         pass
@@ -201,9 +236,14 @@ def main():
                             "init",
                             "validate",
                             "chat",
+                            "compile",
                             "run",
                             "logs",
+                            "components",
+                            "connections",
+                            "oml",
                             "dump-prompts",
+                            "prompts",
                         ],
                     }
                 )
@@ -220,9 +260,14 @@ def main():
                             "init",
                             "validate",
                             "chat",
+                            "compile",
                             "run",
                             "logs",
+                            "components",
+                            "connections",
+                            "oml",
                             "dump-prompts",
+                            "prompts",
                         ],
                     }
                 )
@@ -833,183 +878,14 @@ def validate_command(args: list):
             session.close()
 
 
-def show_run_help(json_output=False):
-    """Display clean run command help using Rich formatting or JSON."""
-    if json_output:
-        help_data = {
-            "command": "run",
-            "description": "Execute or validate data pipeline configurations",
-            "usage": "osiris run [OPTIONS] PIPELINE_FILE",
-            "arguments": {"PIPELINE_FILE": "Path to the pipeline YAML file to execute"},
-            "options": {
-                "--dry-run": "Validate pipeline structure without executing",
-                "--verbose": "Show detailed execution logs and debug info",
-                "--json": "Output in JSON format for programmatic use",
-                "--help": "Show this help message",
-            },
-            "pipeline_format": [
-                "extract: Data source configuration (MySQL, CSV, etc.)",
-                "transform: DuckDB SQL transformations and analysis",
-                "load: Output format and destination (CSV, Parquet, etc.)",
-            ],
-            "examples": [
-                "osiris run sample_pipeline.yaml --dry-run",
-                "osiris run sample_pipeline.yaml",
-                "osiris run sample_pipeline.yaml --verbose",
-            ],
-        }
-        print(json.dumps(help_data, indent=2))
-        return
-    console.print()
-    console.print("[bold green]osiris run - Execute Pipeline YAML Files[/bold green]")
-    console.print("🚀 Execute or validate data pipeline configurations generated by Osiris chat")
-    console.print()
-
-    # Usage
-    console.print("[bold]Usage:[/bold] osiris run [OPTIONS] PIPELINE_FILE")
-    console.print()
-
-    # Description
-    console.print("[bold blue]📖 What this does[/bold blue]")
-    console.print("  • Loads and validates pipeline YAML structure")
-    console.print("  • Checks extract/transform/load sections are present")
-    console.print("  • Executes the complete ETL pipeline (when ready)")
-    console.print("  • Provides detailed error reporting and logs")
-    console.print()
-
-    # Arguments
-    console.print("[bold blue]📁 Arguments[/bold blue]")
-    console.print("  [cyan]PIPELINE_FILE[/cyan]     Path to the pipeline YAML file to execute")
-    console.print("                      Generated by 'osiris chat' or manually created")
-    console.print()
-
-    # Options
-    console.print("[bold blue]⚙️  Options[/bold blue]")
-    console.print("  [cyan]--dry-run[/cyan]         Validate pipeline structure without executing")
-    console.print("                      Perfect for testing YAML generated by chat")
-    console.print("  [cyan]--verbose[/cyan]         Show detailed execution logs and debug info")
-    console.print("  [cyan]--json[/cyan]            Output in JSON format for programmatic use")
-    console.print("  [cyan]--help[/cyan]            Show this help message")
-    console.print()
-
-    # Examples
-    console.print("[bold blue]💡 Examples[/bold blue]")
-    console.print("  [green]# Validate a pipeline generated from chat[/green]")
-    console.print("  osiris run sample_pipeline.yaml --dry-run")
-    console.print()
-    console.print("  [green]# Execute a validated pipeline[/green]")
-    console.print("  osiris run sample_pipeline.yaml")
-    console.print()
-    console.print("  [green]# Debug pipeline with detailed logs[/green]")
-    console.print("  osiris run sample_pipeline.yaml --verbose")
-    console.print()
-
-    # Pipeline Format
-    console.print("[bold blue]📋 Expected Pipeline Format[/bold blue]")
-    console.print("  YAML files must contain these sections:")
-    console.print("  • [cyan]extract:[/cyan] Data source configuration (MySQL, CSV, etc.)")
-    console.print("  • [cyan]transform:[/cyan] DuckDB SQL transformations and analysis")
-    console.print("  • [cyan]load:[/cyan] Output format and destination (CSV, Parquet, etc.)")
-    console.print()
-
-    # Workflow
-    console.print("[bold blue]🔄 Typical Workflow[/bold blue]")
-    console.print(
-        "  [cyan]1.[/cyan] [green]osiris chat[/green]      Generate pipeline via conversation"
-    )
-    console.print(
-        "  [cyan]2.[/cyan] [green]osiris run <file> --dry-run[/green]  Validate the generated YAML"
-    )
-    console.print(
-        "  [cyan]3.[/cyan] [green]osiris run <file>[/green]             Execute the validated pipeline"
-    )
-    console.print()
+# show_run_help removed - now in run.py
 
 
 def run_command(args):
-    """Execute a pipeline YAML file."""
-    # Check for help flag or no arguments
-    if not args or "--help" in args or "-h" in args:
-        json_mode = "--json" in args if args else False
-        show_run_help(json_output=json_mode or json_output)
-        return
+    """Execute a pipeline (OML or manifest)."""
+    from .run import run_command as new_run_command
 
-    # Parse run-specific arguments manually to avoid argparse help interference
-    pipeline_file = None
-    dry_run = False
-    use_json = json_output or "--json" in args
-
-    # Simple argument parsing
-    for _i, arg in enumerate(args):
-        if arg.startswith("--"):
-            if arg == "--dry-run":
-                dry_run = True
-            elif arg == "--verbose":
-                pass  # Verbose flag recognized but not used in this implementation
-            elif arg == "--json":
-                use_json = True
-            else:
-                if use_json:
-                    print(json.dumps({"error": f"Unknown option: {arg}"}))
-                else:
-                    console.print(f"❌ Unknown option: {arg}")
-                    console.print("💡 Run 'osiris run --help' to see available options")
-                sys.exit(1)
-        else:
-            if pipeline_file is None:
-                pipeline_file = arg
-            else:
-                console.print("❌ Multiple pipeline files specified")
-                console.print("💡 Only one pipeline file can be processed at a time")
-                sys.exit(1)
-
-    if not pipeline_file:
-        console.print("❌ No pipeline file specified")
-        console.print("💡 Run 'osiris run --help' to see usage examples")
-        sys.exit(1)
-
-    try:
-        from pathlib import Path
-
-        import yaml
-
-        pipeline_path = Path(pipeline_file)
-
-        if not pipeline_path.exists():
-            console.print(f"❌ Pipeline file '{pipeline_file}' not found")
-            sys.exit(1)
-
-        # Load and validate YAML
-        with open(pipeline_path) as f:
-            pipeline_config = yaml.safe_load(f)
-
-        console.print(f"📄 Loaded pipeline: {pipeline_config.get('name', 'unnamed')}")
-        console.print(f"📁 File: {pipeline_path}")
-
-        if dry_run:
-            console.print("🔍 Dry run mode - validating pipeline structure...")
-
-            # Basic validation
-            required_sections = ["extract", "transform", "load"]
-            for section in required_sections:
-                if section not in pipeline_config:
-                    console.print(f"❌ Missing required section: {section}")
-                    sys.exit(1)
-                else:
-                    console.print(f"   ✅ {section}: Found")
-
-            console.print("✅ Pipeline validation passed!")
-        else:
-            console.print("🚀 Executing pipeline...")
-            console.print("⚠️  Pipeline execution not yet implemented")
-            console.print("💡 Use --dry-run to validate pipeline structure")
-
-    except yaml.YAMLError as e:
-        console.print(f"❌ Invalid YAML format: {e}")
-        sys.exit(1)
-    except Exception as e:
-        console.print(f"❌ Error executing pipeline: {e}")
-        sys.exit(1)
+    new_run_command(args)
 
 
 def dump_prompts_command(args):
@@ -1185,9 +1061,355 @@ def dump_prompts_command(args):
         sys.exit(1)
 
 
+def components_command(args: list) -> None:
+    """Manage and inspect Osiris components."""
+
+    def show_components_help():
+        """Show components command help."""
+        console.print()
+        console.print("[bold green]osiris components - Component Management[/bold green]")
+        console.print("🧩 Manage and inspect Osiris component specifications")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris components SUBCOMMAND [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Subcommands[/bold blue]")
+        console.print("  [cyan]list[/cyan]              List available components")
+        console.print("  [cyan]show <name>[/cyan]       Show component details")
+        console.print("  [cyan]validate <name>[/cyan]   Validate component spec")
+        console.print("  [cyan]config-example[/cyan]    Show example configuration")
+        console.print("  [cyan]discover <name>[/cyan]   Run discovery mode (if supported)")
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print("  [green]osiris components list[/green]")
+        console.print("  [green]osiris components list --mode write[/green]")
+        console.print("  [green]osiris components list --runnable[/green]")
+        console.print("  [green]osiris components list --runnable --json[/green]")
+        console.print("  [green]osiris components show mysql.extractor[/green]")
+        console.print("  [green]osiris components validate mysql.writer[/green]")
+        console.print("  [green]osiris components config-example supabase.extractor[/green]")
+        console.print()
+
+    if not args or args[0] in ["--help", "-h"]:
+        show_components_help()
+        return
+
+    # Import the components module
+    try:
+        from .components_cmd import (
+            discover_with_component,
+            list_components,
+            show_component,
+            show_config_example,
+            validate_component,
+        )
+    except ImportError as e:
+        console.print(f"❌ Failed to import components module: {e}")
+        sys.exit(1)
+
+    subcommand = args[0]
+    subcommand_args = args[1:]
+
+    if subcommand == "list":
+        # Check for help flag first
+        if "--help" in subcommand_args or "-h" in subcommand_args:
+            console.print("[bold]Usage:[/bold] osiris components list [OPTIONS]")
+            console.print()
+            console.print("[bold blue]Options:[/bold blue]")
+            console.print(
+                "  [cyan]--mode MODE[/cyan]      Filter by mode (extract, write, transform, etc.)"
+            )
+            console.print(
+                "  [cyan]--runnable[/cyan]       Show only components with runtime drivers"
+            )
+            console.print("  [cyan]--json[/cyan]           Output as JSON")
+            console.print()
+            console.print("[bold blue]Examples:[/bold blue]")
+            console.print("  [green]osiris components list[/green]")
+            console.print("  [green]osiris components list --mode write[/green]")
+            console.print("  [green]osiris components list --runnable[/green]")
+            console.print("  [green]osiris components list --runnable --json[/green]")
+            return
+
+        # Parse list options
+        mode = "all"
+        as_json = False
+        runnable = False
+        i = 0
+        while i < len(subcommand_args):
+            arg = subcommand_args[i]
+            if arg == "--mode" and i + 1 < len(subcommand_args):
+                mode = subcommand_args[i + 1]
+                i += 2
+            elif arg == "--json":
+                as_json = True
+                i += 1
+            elif arg == "--runnable":
+                runnable = True
+                i += 1
+            else:
+                i += 1
+        list_components(mode, as_json, runnable)
+    elif subcommand == "show":
+        if not subcommand_args or "--help" in subcommand_args or "-h" in subcommand_args:
+            console.print("[bold]Usage:[/bold] osiris components show <component_name> [OPTIONS]")
+            console.print()
+            console.print("[bold blue]Options:[/bold blue]")
+            console.print("  [cyan]--json[/cyan]           Output as JSON")
+            console.print()
+            console.print("[bold blue]Examples:[/bold blue]")
+            console.print("  [green]osiris components show mysql.extractor[/green]")
+            console.print("  [green]osiris components show supabase.writer --json[/green]")
+            if not subcommand_args:
+                sys.exit(1)
+            return
+        as_json = "--json" in subcommand_args
+        component_name = subcommand_args[0]
+        show_component(component_name, as_json)
+    elif subcommand == "validate":
+        if not subcommand_args or "--help" in subcommand_args or "-h" in subcommand_args:
+            console.print(
+                "[bold]Usage:[/bold] osiris components validate <component_name> [OPTIONS]"
+            )
+            console.print()
+            console.print("[bold blue]Options:[/bold blue]")
+            console.print(
+                "  [cyan]--level LEVEL[/cyan]        Validation level: basic, enhanced, strict (default: enhanced)"
+            )
+            console.print(
+                "  [cyan]--session-id ID[/cyan]      Use specific session ID (default: auto-generated)"
+            )
+            console.print(
+                "  [cyan]--logs-dir DIR[/cyan]       Directory for session logs (default: logs)"
+            )
+            console.print(
+                "  [cyan]--log-level LEVEL[/cyan]    Log level: DEBUG, INFO, WARNING, ERROR (default: INFO)"
+            )
+            console.print(
+                "  [cyan]--events PATTERN[/cyan]     Event patterns to log, comma-separated (default: *)"
+            )
+            console.print("  [cyan]--json[/cyan]               Output in JSON format")
+            console.print("  [cyan]--verbose[/cyan]            Include technical error details")
+            console.print()
+            console.print("[bold blue]Examples:[/bold blue]")
+            console.print("  [green]osiris components validate mysql.extractor[/green]")
+            console.print(
+                "  [green]osiris components validate supabase.writer --level strict[/green]"
+            )
+            console.print(
+                "  [green]osiris components validate mysql.writer --json --verbose[/green]"
+            )
+            if not subcommand_args:
+                sys.exit(1)
+            return
+
+        # Parse arguments for components validate
+        import argparse
+        import os
+
+        parser = argparse.ArgumentParser(add_help=False)
+        parser.add_argument("component_name", help="Component to validate")
+        parser.add_argument("--level", default="enhanced", choices=["basic", "enhanced", "strict"])
+        parser.add_argument("--session-id", default=None, help="Session ID")
+        parser.add_argument("--logs-dir", default=None, help="Logs directory")
+        parser.add_argument("--log-level", default=None, help="Log level")
+        parser.add_argument("--events", default=None, help="Event patterns")
+        parser.add_argument("--json", action="store_true", help="JSON output")
+        parser.add_argument("--verbose", action="store_true", help="Include technical details")
+
+        try:
+            parsed = parser.parse_args(subcommand_args)
+
+            # Load config to get defaults (with precedence: CLI > ENV > YAML > defaults)
+            from ..core.config import load_config
+
+            # Try to load config file
+            config_data = {}
+            with contextlib.suppress(Exception):
+                config_data = load_config("osiris.yaml")
+
+            # Determine logs_dir with precedence
+            logs_dir = "logs"  # default
+            if "logging" in config_data and "logs_dir" in config_data["logging"]:
+                logs_dir = config_data["logging"]["logs_dir"]  # YAML
+            if "OSIRIS_LOGS_DIR" in os.environ:
+                logs_dir = os.environ["OSIRIS_LOGS_DIR"]  # ENV
+            if parsed.logs_dir:
+                logs_dir = parsed.logs_dir  # CLI
+
+            # Determine log_level with precedence
+            log_level = "INFO"  # default
+            if "logging" in config_data and "level" in config_data["logging"]:
+                log_level = config_data["logging"]["level"]  # YAML
+            if "OSIRIS_LOG_LEVEL" in os.environ:
+                log_level = os.environ["OSIRIS_LOG_LEVEL"]  # ENV
+            if parsed.log_level:
+                log_level = parsed.log_level  # CLI
+
+            # Determine events with precedence
+            events = ["*"]  # default
+            if "logging" in config_data and "events" in config_data["logging"]:
+                events = config_data["logging"]["events"]  # YAML
+            if "OSIRIS_LOG_EVENTS" in os.environ:
+                events = [e.strip() for e in os.environ["OSIRIS_LOG_EVENTS"].split(",")]  # ENV
+            if parsed.events:
+                events = [e.strip() for e in parsed.events.split(",")]  # CLI
+
+            validate_component(
+                parsed.component_name,
+                level=parsed.level,
+                session_id=parsed.session_id,
+                logs_dir=logs_dir,
+                log_level=log_level,
+                events=events,
+                json_output=parsed.json,
+                verbose=parsed.verbose,
+            )
+        except SystemExit:
+            # argparse will print its own error message
+            pass
+        except Exception as e:
+            console.print(f"❌ Error: {e}")
+            sys.exit(1)
+    elif subcommand == "config-example":
+        if not subcommand_args or "--help" in subcommand_args or "-h" in subcommand_args:
+            console.print(
+                "[bold]Usage:[/bold] osiris components config-example <component_name> [OPTIONS]"
+            )
+            console.print()
+            console.print("[bold blue]Options:[/bold blue]")
+            console.print("  [cyan]--example-index N[/cyan]    Example index to show (default: 0)")
+            console.print()
+            console.print("[bold blue]Examples:[/bold blue]")
+            console.print("  [green]osiris components config-example mysql.extractor[/green]")
+            console.print(
+                "  [green]osiris components config-example supabase.writer --example-index 1[/green]"
+            )
+            if not subcommand_args:
+                sys.exit(1)
+            return
+        example_index = 0
+        component_name = subcommand_args[0]
+        for i, arg in enumerate(subcommand_args):
+            if arg == "--example-index" and i + 1 < len(subcommand_args):
+                try:
+                    example_index = int(subcommand_args[i + 1])
+                except ValueError:
+                    console.print("❌ Invalid example index")
+                    sys.exit(1)
+        show_config_example(component_name, example_index)
+    elif subcommand == "discover":
+        if not subcommand_args or "--help" in subcommand_args or "-h" in subcommand_args:
+            console.print(
+                "[bold]Usage:[/bold] osiris components discover <component_name> [OPTIONS]"
+            )
+            console.print()
+            console.print("[bold blue]Options:[/bold blue]")
+            console.print("  [cyan]--config FILE[/cyan]        Configuration file for discovery")
+            console.print()
+            console.print("[bold blue]Examples:[/bold blue]")
+            console.print("  [green]osiris components discover mysql.extractor[/green]")
+            console.print(
+                "  [green]osiris components discover supabase.extractor --config config.yaml[/green]"
+            )
+            console.print()
+            console.print("[dim]Note: Component must support discovery mode[/dim]")
+            if not subcommand_args:
+                sys.exit(1)
+            return
+        config_file = None
+        component_name = subcommand_args[0]
+        for i, arg in enumerate(subcommand_args):
+            if arg == "--config" and i + 1 < len(subcommand_args):
+                config_file = subcommand_args[i + 1]
+        discover_with_component(component_name, config_file)
+    else:
+        console.print(f"❌ Unknown subcommand: {subcommand}")
+        console.print("Available subcommands: list, show, validate, config-example, discover")
+        console.print("Use 'osiris components --help' for detailed help.")
+
+
+def connections_command(args: list) -> None:
+    """Manage database connections."""
+
+    def show_connections_help():
+        """Show connections command help."""
+        if json_output:
+            help_data = {
+                "command": "connections",
+                "description": "Manage database connections",
+                "subcommands": {
+                    "list": {
+                        "description": "List all configured connections",
+                        "options": {"--json": "Output in JSON format"},
+                    },
+                    "doctor": {
+                        "description": "Test connectivity for all configured connections",
+                        "options": {
+                            "--json": "Output in JSON format",
+                            "--family": "Test only connections for this family",
+                            "--alias": "Test only this specific connection",
+                        },
+                    },
+                },
+            }
+            print(json.dumps(help_data, indent=2))
+        else:
+            console.print()
+            console.print("[bold green]osiris connections - Connection Management[/bold green]")
+            console.print("🔌 Manage and test Osiris database connections")
+            console.print()
+            console.print("[bold]Usage:[/bold] osiris connections SUBCOMMAND [OPTIONS]")
+            console.print()
+            console.print("[bold blue]Subcommands[/bold blue]")
+            console.print("  [cyan]list[/cyan]      List all configured connections")
+            console.print("  [cyan]doctor[/cyan]    Test connectivity for all connections")
+            console.print()
+            console.print("[bold blue]Examples[/bold blue]")
+            console.print("  [green]osiris connections list[/green]")
+            console.print("  [green]osiris connections list --json[/green]")
+            console.print("  [green]osiris connections doctor[/green]")
+            console.print("  [green]osiris connections doctor --family mysql[/green]")
+            console.print(
+                "  [green]osiris connections doctor --family mysql --alias db_movies[/green]"
+            )
+            console.print()
+
+    if not args or args[0] in ["--help", "-h"]:
+        show_connections_help()
+        return
+
+    # Import the connections module functions directly
+    try:
+        from .connections_cmd import doctor_connections, list_connections
+    except ImportError as e:
+        console.print(f"❌ Failed to import connections module: {e}")
+        sys.exit(1)
+
+    # Get subcommand and pass remaining args
+    subcommand = args[0]
+    subcommand_args = args[1:]
+
+    if subcommand == "list":
+        list_connections(subcommand_args)
+    elif subcommand == "doctor":
+        doctor_connections(subcommand_args)
+    else:
+        console.print(f"❌ Unknown subcommand: {subcommand}")
+        console.print("Available subcommands: list, doctor")
+        console.print("Use 'osiris connections --help' for detailed help.")
+
+
 def logs_command(args: list) -> None:
-    """Manage session logs (list, show, bundle, gc)."""
-    from .logs import bundle_session, gc_sessions, list_sessions, show_session
+    """Manage session logs (list, show, bundle, gc, html, open)."""
+    from .logs import (
+        bundle_session,
+        gc_sessions,
+        html_report,
+        last_session,
+        list_sessions,
+        open_session,
+        show_session,
+    )
 
     def show_logs_help():
         """Show logs command help."""
@@ -1198,14 +1420,25 @@ def logs_command(args: list) -> None:
         console.print("[bold]Usage:[/bold] osiris logs SUBCOMMAND [OPTIONS]")
         console.print()
         console.print("[bold blue]Subcommands[/bold blue]")
-        console.print("  [cyan]list[/cyan]                   List recent session directories")
+        console.print(
+            "  [cyan]list[/cyan]                   List recent session directories (wraps IDs by default)"
+        )
+        console.print("  [cyan]last[/cyan]                   Show the most recent session")
         console.print("  [cyan]show --session <id>[/cyan]   Show session details and summary")
         console.print("  [cyan]bundle --session <id>[/cyan] Bundle session into zip file")
         console.print("  [cyan]gc[/cyan]                     Garbage collect old sessions")
+        console.print("  [cyan]html[/cyan]                   Generate static HTML report")
+        console.print("  [cyan]open <session>[/cyan]        Generate and open single-session HTML")
         console.print()
         console.print("[bold blue]Examples[/bold blue]")
         console.print(
             "  [green]osiris logs list[/green]                         # List recent sessions"
+        )
+        console.print(
+            "  [green]osiris logs last[/green]                         # Show most recent session"
+        )
+        console.print(
+            "  [green]osiris logs list --no-wrap[/green]               # List with single-line IDs"
         )
         console.print(
             "  [green]osiris logs show --session 20250901_123456_abc[/green]  # Show session details"
@@ -1219,6 +1452,12 @@ def logs_command(args: list) -> None:
         console.print(
             "  [green]osiris logs gc --days 7 --max-gb 0.5[/green]    # Clean up old sessions"
         )
+        console.print(
+            "  [green]osiris logs html --open[/green]                  # Generate and open HTML report"
+        )
+        console.print(
+            "  [green]osiris logs open last[/green]                    # Open the last session in browser"
+        )
         console.print()
 
     if not args or args[0] in ["--help", "-h"]:
@@ -1230,16 +1469,529 @@ def logs_command(args: list) -> None:
 
     if subcommand == "list":
         list_sessions(subcommand_args)
+    elif subcommand == "last":
+        last_session(subcommand_args)
     elif subcommand == "show":
         show_session(subcommand_args)
     elif subcommand == "bundle":
         bundle_session(subcommand_args)
     elif subcommand == "gc":
         gc_sessions(subcommand_args)
+    elif subcommand == "html":
+        html_report(subcommand_args)
+    elif subcommand == "open":
+        open_session(subcommand_args)
     else:
         console.print(f"❌ Unknown subcommand: {subcommand}")
-        console.print("Available subcommands: list, show, bundle, gc")
+        console.print("Available subcommands: list, last, show, bundle, gc, html, open")
         console.print("Use 'osiris logs --help' for detailed help.")
+
+
+def runs_command(args: list) -> None:
+    """Deprecated: Legacy shim for 'osiris runs' commands."""
+    from .logs import runs_bundle, runs_gc, runs_last, runs_list, runs_show
+
+    def show_runs_help():
+        """Show deprecated runs command help."""
+        console.print()
+        console.print("[yellow]⚠️  Warning: 'osiris runs' is deprecated.[/yellow]")
+        console.print("[yellow]   Please use 'osiris logs' instead.[/yellow]")
+        console.print()
+        console.print("[bold red]DEPRECATED: osiris runs[/bold red]")
+        console.print("This command is deprecated. Please use 'osiris logs' instead.")
+        console.print()
+        console.print("[bold]Migration guide:[/bold]")
+        console.print("  osiris runs list    → osiris logs list")
+        console.print("  osiris runs show    → osiris logs show")
+        console.print("  osiris runs last    → osiris logs last")
+        console.print("  osiris runs bundle  → osiris logs bundle")
+        console.print("  osiris runs gc      → osiris logs gc")
+        console.print()
+
+    if not args or args[0] in ["--help", "-h"]:
+        show_runs_help()
+        return
+
+    subcommand = args[0]
+    subcommand_args = args[1:]
+
+    if subcommand == "list":
+        runs_list(subcommand_args)
+    elif subcommand == "last":
+        runs_last(subcommand_args)
+    elif subcommand == "show":
+        runs_show(subcommand_args)
+    elif subcommand == "bundle":
+        runs_bundle(subcommand_args)
+    elif subcommand == "gc":
+        runs_gc(subcommand_args)
+    else:
+        console.print(f"❌ Unknown subcommand: {subcommand}")
+        console.print(
+            "[yellow]Note: 'osiris runs' is deprecated. Use 'osiris logs' instead.[/yellow]"
+        )
+
+
+def test_command(args: list) -> None:
+    """Run automated test scenarios."""
+    import argparse
+
+    def show_test_help():
+        """Show test command help."""
+        console.print()
+        console.print("[bold green]osiris test - Automated Test Scenarios[/bold green]")
+        console.print("🧪 Run automated validation test scenarios for M1b.3")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris test SUBCOMMAND [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Subcommands[/bold blue]")
+        console.print("  [cyan]validation[/cyan]    Run validation test scenarios")
+        console.print()
+        console.print("[bold blue]Options for validation[/bold blue]")
+        console.print(
+            "  [cyan]--scenario NAME[/cyan]  Scenario to run (valid|broken|unfixable|all, default: all)"
+        )
+        console.print("  [cyan]--out DIR[/cyan]        Output directory for artifacts")
+        console.print("  [cyan]--max-attempts N[/cyan] Override max retry attempts")
+        console.print()
+        console.print("[bold blue]Scenarios[/bold blue]")
+        console.print("  [cyan]valid[/cyan]     Pipeline that passes validation on first attempt")
+        console.print("  [cyan]broken[/cyan]    Pipeline with fixable errors corrected after retry")
+        console.print("  [cyan]unfixable[/cyan] Pipeline that fails after max attempts")
+        console.print("  [cyan]all[/cyan]       Run all scenarios")
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print(
+            "  [green]osiris test validation[/green]                    # Run all scenarios"
+        )
+        console.print(
+            "  [green]osiris test validation --scenario broken[/green] # Run broken scenario"
+        )
+        console.print(
+            "  [green]osiris test validation --out ./results[/green]   # Custom output dir"
+        )
+        console.print()
+
+    parser = argparse.ArgumentParser(prog="osiris test", add_help=False)
+    parser.add_argument("subcommand", nargs="?", help="Subcommand to run")
+    parser.add_argument("--help", "-h", action="store_true", help="Show help")
+    parser.add_argument(
+        "--scenario", choices=["valid", "broken", "unfixable", "all"], default="all"
+    )
+    parser.add_argument("--out", type=str, help="Output directory")
+    parser.add_argument("--max-attempts", type=int, help="Max retry attempts")
+
+    # Parse args
+    try:
+        parsed_args = parser.parse_args(args)
+    except SystemExit:
+        show_test_help()
+        return
+
+    if parsed_args.help or not parsed_args.subcommand:
+        show_test_help()
+        return
+
+    if parsed_args.subcommand == "validation":
+        # Import and run test harness
+        from pathlib import Path
+
+        from osiris.core.test_harness import ValidationTestHarness
+
+        try:
+            harness = ValidationTestHarness(max_attempts=parsed_args.max_attempts)
+            output_dir = Path(parsed_args.out) if parsed_args.out else None
+
+            if parsed_args.scenario == "all":
+                results = harness.run_all_scenarios(output_dir=output_dir)
+                # Use the worst exit code from all scenarios
+                worst_code = max(result["return_code"] for _, result in results.values())
+                sys.exit(worst_code)
+            else:
+                success, result = harness.run_scenario(parsed_args.scenario, output_dir=output_dir)
+                # Use the return_code from the result
+                sys.exit(result["return_code"])
+
+        except Exception as e:
+            console.print(f"[bold red]Error running test scenario: {e}[/bold red]")
+            logger.error(f"Test scenario failed: {e}", exc_info=True)
+            sys.exit(1)
+    else:
+        console.print(f"❌ Unknown subcommand: {parsed_args.subcommand}")
+        console.print("Available subcommands: validation")
+        console.print("Use 'osiris test --help' for detailed help.")
+
+
+def prompts_command(args: list):
+    """Manage component context for LLM."""
+    import argparse
+
+    def show_prompts_help():
+        """Show help for prompts command."""
+        if json_output:
+            help_data = {
+                "command": "prompts",
+                "description": "Manage component context for LLM",
+                "subcommands": {
+                    "build-context": {
+                        "description": "Build minimal component context for LLM",
+                        "usage": "osiris prompts build-context [OPTIONS]",
+                        "options": {
+                            "--out PATH": "Output file path (default: .osiris_prompts/context.json)",
+                            "--force": "Force rebuild even if cache is valid",
+                            "--session-id ID": "Use specific session ID (default: auto-generated)",
+                            "--logs-dir DIR": "Directory for session logs (default: logs)",
+                            "--log-level LEVEL": "Log level: DEBUG, INFO, WARNING, ERROR (default: INFO)",
+                            "--events PATTERN": "Event patterns to log, comma-separated (default: *)",
+                            "--json": "Output in JSON format",
+                            "--help": "Show this help message",
+                        },
+                        "outputs": "Compact JSON with component names, required configs, enums, examples",
+                        "metrics": "Size in bytes, estimated token count",
+                    }
+                },
+                "examples": [
+                    "osiris prompts build-context",
+                    "osiris prompts build-context --out context.json",
+                    "osiris prompts build-context --force",
+                    "osiris prompts build-context --json",
+                ],
+            }
+            print(json.dumps(help_data, indent=2))
+            return
+
+        console.print()
+        console.print("[bold green]osiris prompts - Component Context Management[/bold green]")
+        console.print("🧠 Build minimal component context for LLM consumption")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris prompts SUBCOMMAND [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Subcommands[/bold blue]")
+        console.print("  [cyan]build-context[/cyan]    Build minimal component context for LLM")
+        console.print()
+        console.print("[bold blue]Options for build-context[/bold blue]")
+        console.print(
+            "  [cyan]--out PATH[/cyan]       Output file path (default: .osiris_prompts/context.json)"
+        )
+        console.print("  [cyan]--force[/cyan]          Force rebuild even if cache is valid")
+        console.print(
+            "  [cyan]--session-id ID[/cyan]  Use specific session ID (default: auto-generated)"
+        )
+        console.print("  [cyan]--logs-dir DIR[/cyan]   Directory for session logs (default: logs)")
+        console.print("  [cyan]--log-level LEVEL[/cyan] Log level (default: INFO)")
+        console.print("  [cyan]--events PATTERN[/cyan] Event patterns to log (default: *)")
+        console.print("  [cyan]--json[/cyan]           Output in JSON format")
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print("  [green]osiris prompts build-context[/green]")
+        console.print("  [green]osiris prompts build-context --out context.json[/green]")
+        console.print("  [green]osiris prompts build-context --force --json[/green]")
+        console.print()
+
+    if not args or args[0] in ["--help", "-h"]:
+        show_prompts_help()
+        return
+
+    subcommand = args[0]
+    subcommand_args = args[1:]
+
+    if subcommand == "build-context":
+        # Parse arguments for build-context
+        import os
+        import time
+        from pathlib import Path
+
+        from ..core.session_logging import SessionContext, set_current_session
+
+        parser = argparse.ArgumentParser(description="Build component context", add_help=False)
+        parser.add_argument("--out", help="Output file path")
+        parser.add_argument("--force", action="store_true", help="Force rebuild")
+        parser.add_argument("--session-id", default=None, help="Session ID")
+        parser.add_argument("--logs-dir", default=None, help="Logs directory")
+        parser.add_argument("--log-level", default=None, help="Log level")
+        parser.add_argument("--events", default=None, help="Event patterns")
+        parser.add_argument("--json", action="store_true", help="JSON output")
+        parser.add_argument("--help", "-h", action="store_true", help="Show help")
+
+        # Parse known args only
+        parsed_args, _ = parser.parse_known_args(subcommand_args)
+
+        if parsed_args.help:
+            show_prompts_help()
+            return
+
+        # Load config to get defaults (with precedence: CLI > ENV > YAML > defaults)
+        from ..core.config import load_config
+
+        # Try to load config file
+        config_data = {}
+        with contextlib.suppress(Exception):
+            config_data = load_config("osiris.yaml")
+
+        # Determine logs_dir with precedence
+        logs_dir = "logs"  # default
+        if "logging" in config_data and "logs_dir" in config_data["logging"]:
+            logs_dir = config_data["logging"]["logs_dir"]  # YAML
+        if "OSIRIS_LOGS_DIR" in os.environ:
+            logs_dir = os.environ["OSIRIS_LOGS_DIR"]  # ENV
+        if parsed_args.logs_dir:
+            logs_dir = parsed_args.logs_dir  # CLI
+
+        # Determine log_level with precedence
+        log_level = "INFO"  # default
+        if "logging" in config_data and "level" in config_data["logging"]:
+            log_level = config_data["logging"]["level"]  # YAML
+        if "OSIRIS_LOG_LEVEL" in os.environ:
+            log_level = os.environ["OSIRIS_LOG_LEVEL"]  # ENV
+        if parsed_args.log_level:
+            log_level = parsed_args.log_level  # CLI
+
+        # Determine events with precedence
+        events = ["*"]  # default
+        if "logging" in config_data and "events" in config_data["logging"]:
+            events = config_data["logging"]["events"]  # YAML
+        if "OSIRIS_LOG_EVENTS" in os.environ:
+            events = [e.strip() for e in os.environ["OSIRIS_LOG_EVENTS"].split(",")]  # ENV
+        if parsed_args.events:
+            events = [e.strip() for e in parsed_args.events.split(",")]  # CLI
+
+        # Create session context
+        if parsed_args.session_id is None:
+            session_id = f"prompts_build_context_{int(time.time() * 1000)}"
+        else:
+            session_id = parsed_args.session_id
+
+        # Create session with logging configuration
+        session = SessionContext(
+            session_id=session_id, base_logs_dir=Path(logs_dir), allowed_events=events
+        )
+        set_current_session(session)
+
+        # Setup logging
+        import logging
+
+        log_level_int = getattr(logging, log_level.upper(), logging.INFO)
+        enable_debug = log_level_int <= logging.DEBUG
+
+        # Remove any existing console handlers from root logger
+        # This prevents DEBUG messages from going to stdout unless explicitly requested
+        root_logger = logging.getLogger()
+        handlers_to_remove = []
+        for handler in root_logger.handlers:
+            if isinstance(handler, logging.StreamHandler):
+                handlers_to_remove.append(handler)
+        for handler in handlers_to_remove:
+            root_logger.removeHandler(handler)
+
+        # Setup session logging (only file handlers)
+        session.setup_logging(level=log_level_int, enable_debug=enable_debug)
+
+        # Only add console handler back if user explicitly requested DEBUG level
+        if parsed_args.log_level and parsed_args.log_level.upper() == "DEBUG":
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(logging.DEBUG)
+            console_formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+            console_handler.setFormatter(console_formatter)
+            root_logger.addHandler(console_handler)
+
+        # Print session ID unless JSON output
+        if not parsed_args.json:
+            console.print(f"[dim]Session: {session_id}[/dim]")
+
+        # Import and run the context builder
+        try:
+            from ..prompts.build_context import main as build_context_main
+
+            result = build_context_main(
+                output_path=parsed_args.out,
+                force=parsed_args.force,
+                json_output=parsed_args.json,
+                session=session,
+            )
+
+            # If JSON output requested, include session_id
+            if parsed_args.json and result:
+                result["session_id"] = session_id
+                print(json.dumps(result, separators=(",", ":")))
+
+            # Close session properly
+            session.close()
+
+        except Exception as e:
+            # Log error and close session
+            session.log_event("run_error", error=str(e))
+            session.close()
+
+            if parsed_args.json:
+                print(json.dumps({"error": str(e), "session_id": session_id}))
+            else:
+                console.print(f"[red]Error building context: {e}[/red]")
+            sys.exit(1)
+    else:
+        if json_output:
+            print(json.dumps({"error": f"Unknown subcommand: {subcommand}"}))
+        else:
+            console.print(f"❌ Unknown subcommand: {subcommand}")
+            console.print("Available subcommands: build-context")
+            console.print("Use 'osiris prompts --help' for detailed help.")
+
+
+def oml_command(args: list) -> None:
+    """OML validation command handler."""
+    # Check for help flag first
+    if "--help" in args or "-h" in args:
+        if "--json" in args or json_output:
+            help_data = {
+                "command": "oml",
+                "description": "Validate OML (Osiris Markup Language) files",
+                "usage": "osiris oml SUBCOMMAND [OPTIONS]",
+                "subcommands": {"validate": "Validate OML YAML files against v0.1.0 specification"},
+                "examples": [
+                    "osiris oml validate pipeline.yaml",
+                    "osiris oml validate pipeline.yaml --verbose",
+                    "osiris oml validate pipeline.yaml --json",
+                    "osiris oml validate *.yaml --json",
+                ],
+            }
+            print(json.dumps(help_data, indent=2))
+        else:
+            console.print()
+            console.print("[bold green]osiris oml - OML Management[/bold green]")
+            console.print("🔍 Validate and manage OML (Osiris Markup Language) files")
+            console.print()
+            console.print("[bold]Usage:[/bold] osiris oml SUBCOMMAND [OPTIONS]")
+            console.print()
+            console.print("[bold blue]Subcommands[/bold blue]")
+            console.print(
+                "  [cyan]validate[/cyan]  Validate OML YAML files against v0.1.0 specification"
+            )
+            console.print()
+            console.print("[bold blue]Examples[/bold blue]")
+            console.print(
+                "  [green]osiris oml validate pipeline.yaml[/green]         # Validate single file"
+            )
+            console.print(
+                "  [green]osiris oml validate pipeline.yaml --verbose[/green]  # Show details"
+            )
+            console.print(
+                "  [green]osiris oml validate pipeline.yaml --json[/green]  # JSON output"
+            )
+            console.print(
+                "  [green]osiris oml validate *.yaml[/green]                # Validate multiple files"
+            )
+            console.print()
+        return
+
+    # Parse subcommand
+    if not args:
+        if json_output:
+            print(json.dumps({"error": "No subcommand specified", "available": ["validate"]}))
+        else:
+            console.print("❌ No subcommand specified")
+            console.print("Available subcommands: validate")
+            console.print("Use 'osiris oml --help' for detailed help.")
+        return
+
+    subcommand = args[0]
+    sub_args = args[1:]
+
+    if subcommand == "validate":
+        # Import here to avoid circular dependencies
+        # Parse validate arguments
+        import argparse
+
+        from .oml_validate import validate_batch, validate_oml_command
+
+        parser = argparse.ArgumentParser(prog="osiris oml validate", add_help=False)
+        parser.add_argument("files", nargs="+", help="OML files to validate")
+        parser.add_argument("--json", action="store_true", help="Output as JSON")
+        parser.add_argument(
+            "--verbose", "-v", action="store_true", help="Show detailed information"
+        )
+        parser.add_argument("--help", "-h", action="store_true", help="Show help")
+
+        # Handle help for validate subcommand
+        if "--help" in sub_args or "-h" in sub_args:
+            if json_output or "--json" in sub_args:
+                help_data = {
+                    "subcommand": "validate",
+                    "description": "Validate OML YAML files against v0.1.0 specification",
+                    "usage": "osiris oml validate FILE [FILE...] [OPTIONS]",
+                    "options": {
+                        "--json": "Output results as JSON",
+                        "--verbose, -v": "Show detailed validation information",
+                        "--help, -h": "Show this help message",
+                    },
+                    "validation_checks": [
+                        "Required keys: oml_version, name, steps",
+                        "Forbidden keys: version, connectors, tasks, outputs",
+                        "Step structure and dependencies",
+                        "Connection reference format (@family.alias)",
+                        "Component configurations",
+                    ],
+                }
+                print(json.dumps(help_data, indent=2))
+            else:
+                console.print()
+                console.print("[bold green]osiris oml validate - Validate OML Files[/bold green]")
+                console.print("Validate OML YAML files against v0.1.0 specification")
+                console.print()
+                console.print("[bold]Usage:[/bold] osiris oml validate FILE [FILE...] [OPTIONS]")
+                console.print()
+                console.print("[bold blue]Options[/bold blue]")
+                console.print("  [cyan]--json[/cyan]         Output results as JSON")
+                console.print("  [cyan]--verbose, -v[/cyan]  Show detailed validation information")
+                console.print("  [cyan]--help, -h[/cyan]     Show this help message")
+                console.print()
+                console.print("[bold blue]Validation Checks[/bold blue]")
+                console.print("  • Required keys: oml_version, name, steps")
+                console.print("  • Forbidden keys: version, connectors, tasks, outputs")
+                console.print("  • Step structure and dependencies")
+                console.print("  • Connection reference format (@family.alias)")
+                console.print("  • Component configurations")
+                console.print()
+            return
+
+        try:
+            parsed = parser.parse_args(sub_args)
+
+            # Handle multiple files
+            if len(parsed.files) == 1:
+                exit_code = validate_oml_command(
+                    parsed.files[0], json_output=parsed.json or json_output, verbose=parsed.verbose
+                )
+            else:
+                exit_code = validate_batch(
+                    parsed.files, json_output=parsed.json or json_output, verbose=parsed.verbose
+                )
+
+            sys.exit(exit_code)
+
+        except SystemExit as e:
+            if e.code != 0:
+                if json_output:
+                    print(json.dumps({"error": "Invalid arguments"}))
+                else:
+                    console.print(
+                        "❌ Invalid arguments. Use 'osiris oml validate --help' for usage."
+                    )
+            sys.exit(e.code)
+        except Exception as e:
+            if json_output:
+                print(json.dumps({"error": str(e)}))
+            else:
+                console.print(f"❌ Error: {e}")
+            sys.exit(1)
+    else:
+        if json_output:
+            print(json.dumps({"error": f"Unknown subcommand: {subcommand}"}))
+        else:
+            console.print(f"❌ Unknown subcommand: {subcommand}")
+            console.print("Available subcommands: validate")
+            console.print("Use 'osiris oml --help' for detailed help.")
 
 
 if __name__ == "__main__":

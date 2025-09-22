@@ -1,7 +1,7 @@
 # ADR 0006: Pipeline Runner and Execution
 
 ## Status
-Accepted
+Implemented
 
 ## Context
 Osiris is designed to orchestrate complex workflows defined as YAML pipelines. To ensure these pipelines execute reliably and predictably, we need a dedicated component to run and manage pipeline execution. This component must handle artifact management, session logging, and support extensibility for future integrations.

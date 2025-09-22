@@ -1,0 +1,663 @@
+{
+  "audit_metadata": {
+    "date": "2025-09-09",
+    "version": "1.0",
+    "documents_scanned": 41,
+    "milestones": 14,
+    "adrs": 25,
+    "roadmaps": 2
+  },
+  "docs": [
+    {
+      "doc_type": "milestone",
+      "path": "docs/milestones/_initial_plan.md",
+      "id": "Initial",
+      "title": "Initial Plan",
+      "status": "Historical Reference",
+      "date": "2025-09-04",
+      "owners": [],
+      "depends_on": [],
+      "deliverables": [
+        "M0: Discovery Cache Fingerprinting",
+        "M1a: Component Registry Foundation",
+        "M1b: Post-Generation Validation",
+        "M2: LLM Context Builder",
+        "M3: Compile & Run MVP"
+      ],
+      "acceptance_criteria": [
+        "First-try validity rate: +50-70% vs baseline",
+        "Chat response time: ≤3s E2E",
+        "Validation overhead: ≤350ms p50",
+        "Schema-mismatch incidents: eliminated"
+      ],
+      "out_of_scope": [],
+      "links": [
+        "docs/adr/0013-chat-retry-policy.md",
+        "docs/milestones/m1b-context-builder-and-validation.md"
+      ],
+      "notes": "Consolidated development planning for post-0.1.1 architecture"
+    },
+    {
+      "doc_type": "milestone",
+      "path": "docs/milestones/m0-discovery-cache.md",
+      "id": "M0",
+      "title": "Discovery Cache Fingerprinting Implementation",
+      "status": "Complete",
+      "date": "2025-09-01",
+      "owners": [],
+      "depends_on": [],
+      "deliverables": [
+        "SHA-256 fingerprinting system",
+        "Cache invalidation logic",
+        "JSON Schema validation"
+      ],
+      "acceptance_criteria": [
+        "Cache invalidation on option/spec changes",
+        "Validation modes: warn|strict|off",
+        "Emergency bypass via OSIRIS_VALIDATION=off"
+      ],
+      "out_of_scope": [],
+      "links": [],
+      "notes": "Released in v0.1.2"
+    },
+    {
+      "doc_type": "milestone",
+      "path": "docs/milestones/m0-session-logs.md",
+      "id": "M0",
+      "title": "Session-scoped Logging & Artifacts Implementation",
+      "status": "Complete",
+      "date": "2025-09-01",
+      "owners": [],
+      "depends_on": [],
+      "deliverables": [
+        "Session-scoped logging system",
+        "Structured JSONL events",
+        "CLI tools for session management",
+        "Secrets masking"
+      ],
+      "acceptance_criteria": [
+        "Individual session directories",
+        "Automatic retention policies",
+        "CLI commands: logs list/show/gc"
+      ],
+      "out_of_scope": [],
+      "links": [],
+      "notes": "Phase 3 of M0"
+    },
+    {
+      "doc_type": "milestone",
+      "path": "docs/milestones/m1-component-registry-and-runner.md",
+      "id": "M1",
+      "title": "Component Registry and Runner",
+      "status": "In Progress",
+      "date": null,
+      "owners": [],
+      "depends_on": ["ADR-0005", "ADR-0006", "ADR-0007", "ADR-0008"],
+      "deliverables": [
+        "Component Registry with self-describing components",
+        "Deterministic pipeline runner",
+        "Contract-backed pipeline generation"
+      ],
+      "acceptance_criteria": [
+        "Components self-describe configuration",
+        "Machine-readable context for LLM",
+        "Deterministic compilation OML to manifests"
+      ],
+      "out_of_scope": [],
+      "links": [
+        "docs/adr/0005-component-specification-and-registry.md",
+        "docs/adr/0006-pipeline-runner-and-execution.md",
+        "docs/adr/0007-component-specification-and-capabilities.md",
+        "docs/adr/0008-component-registry.md"
+      ],
+      "notes": "Parent milestone for M1a series"
+    },
+    {
+      "doc_type": "milestone",
+      "path": "docs/milestones/m1a.1-component-spec-schema.md",
+      "id": "M1a.1",
+      "title": "Component Spec Schema",
+      "status": "Complete",
+      "date": "2025-09-02",
+      "owners": [],
+      "depends_on": [],
+      "deliverables": [
+        "JSON Schema for component specs",
+        "Self-describing component framework"
+      ],
+      "acceptance_criteria": [
+        "Components declare configuration schema",
+        "Security-sensitive fields marked",
+        "LLM hints included"
+      ],
+      "out_of_scope": [],
+      "links": [],
+      "notes": "Foundation of Component Registry"
+    },
+    {
+      "doc_type": "milestone",
+      "path": "docs/milestones/m1a.2-bootstrap-component-specs.md",
+      "id": "M1a.2",
+      "title": "Bootstrap Component Specs",
+      "status": "Complete",
+      "date": "2025-09-02",
+      "owners": [],
+      "depends_on": ["M1a.1"],
+      "deliverables": [
+        "MySQL extractor/writer specs",
+        "Supabase extractor/writer specs"
+      ],
+      "acceptance_criteria": [
+        "Separate extractor and writer specs",
+        "Clean separation of concerns",
+        "Pipeline flexibility"
+      ],
+      "out_of_scope": [],
+      "links": [],
+      "notes": "Implements ADR-0012 separation"
+    },
+    {
+      "doc_type": "milestone",
+      "path": "docs/milestones/m1a.3-component-registry.md",
+      "id": "M1a.3",
+      "title": "Component Registry Implementation",
+      "status": "Complete",
+      "date": "2025-01-03",
+      "owners": [],
+      "depends_on": ["M1a.1", "M1a.2"],
+      "deliverables": [
+        "Registry with filesystem loading",
+        "Three validation levels",
+        "Secret map extraction",
+        "CLI commands"
+      ],
+      "acceptance_criteria": [
+        "In-memory cache with mtime invalidation",
+        "Session-scoped logging integration",
+        "osiris components commands work"
+      ],
+      "out_of_scope": [],
+      "links": [],
+      "notes": "440 lines implementation"
+    },
+    {
+      "doc_type": "milestone",
+      "path": "docs/milestones/m1a.4-friendly-error-mapper.md",
+      "id": "M1a.4",
+      "title": "Friendly Error Mapper",
+      "status": "Complete",
+      "date": "2025-01",
+      "owners": [],
+      "depends_on": ["M1a.3"],
+      "deliverables": [
+        "Human-readable error messages",
+        "JSON Pointer path mapping",
+        "Fix suggestions with examples"
+      ],
+      "acceptance_criteria": [
+        "Cryptic errors transformed",
+        "Actionable guidance provided",
+        "JSON output support"
+      ],
+      "out_of_scope": [],
+      "links": [],
+      "notes": "Enhances developer experience"
+    },
+    {
+      "doc_type": "milestone",
+      "path": "docs/milestones/m1b-context-builder-and-validation.md",
+      "id": "M1b",
+      "title": "Context Builder and Validation",
+      "status": "Not Started",
+      "date": null,
+      "owners": [],
+      "depends_on": ["M1a"],
+      "deliverables": [
+        "Minimal context export",
+        "Token efficiency optimization",
+        "LLM integration",
+        "Post-generation validation"
+      ],
+      "acceptance_criteria": [
+        "Context size ≤2000 tokens",
+        "NO-SECRETS guarantee",
+        "Validation integrated in chat"
+      ],
+      "out_of_scope": [],
+      "links": [],
+      "notes": "Bridges Component Registry with LLM"
+    },
+    {
+      "doc_type": "milestone",
+      "path": "docs/milestones/m1c-compile-and-run-mvp.md",
+      "id": "M1c",
+      "title": "Compile and Run MVP",
+      "status": "In Progress",
+      "date": "2025-01",
+      "owners": [],
+      "depends_on": ["M1a", "M1b"],
+      "deliverables": [
+        "Chat FSM with OML synthesis",
+        "OML v0.1.0 validation",
+        "Supabase writer hardened",
+        "Runtime Driver Layer",
+        "Golden path MySQL→CSV",
+        "Connection resolution"
+      ],
+      "acceptance_criteria": [
+        "Golden path complete",
+        "Chat generates valid OML",
+        "Runtime unified around registry",
+        "All tests passing"
+      ],
+      "out_of_scope": [
+        "Manifest utilities (skeleton only)"
+      ],
+      "links": [
+        "docs/adr/0014-OML_v0.1.0-scope-and-schema.md",
+        "docs/adr/0015-compile-contract-determinism-fingerprints-nosecrets.md",
+        "docs/adr/0019-chat-state-machine-and-oml-synthesis.md",
+        "docs/adr/0020-connection-resolution-and-secrets.md"
+      ],
+      "notes": "90% complete, Golden Path working"
+    },
+    {
+      "doc_type": "milestone",
+      "path": "docs/milestones/m1c-thin-slice.md",
+      "id": "M1c",
+      "title": "Thin-Slice Compile and Run",
+      "status": "Complete",
+      "date": null,
+      "owners": [],
+      "depends_on": [],
+      "deliverables": [
+        "Compiler v0",
+        "Manifest v0",
+        "Runner v0",
+        "Parameter resolution",
+        "No secrets enforcement"
+      ],
+      "acceptance_criteria": [
+        "Deterministic compilation",
+        "Linear pipeline execution",
+        "Supabase→DuckDB→MySQL path"
+      ],
+      "out_of_scope": [
+        "Fan-out/fan-in",
+        "Retry/timeout",
+        "Compile cache",
+        "Scheduling",
+        "e2b integration"
+      ],
+      "links": [
+        "docs/adr/0014-OML_v0.1.0-scope-and-schema.md",
+        "docs/adr/0015-compile-contract-determinism-fingerprints-nosecrets.md"
+      ],
+      "notes": "Thin-slice implementation"
+    },
+    {
+      "doc_type": "milestone",
+      "path": "docs/milestones/m1d-logs-and-cli-unification.md",
+      "id": "M1d",
+      "title": "Logs & CLI Unification",
+      "status": "Planned",
+      "date": null,
+      "owners": ["Osiris Core Team"],
+      "depends_on": ["M1c"],
+      "deliverables": [
+        "Unified CLI: run=action, logs=inspection",
+        "Stable session_id with label metadata",
+        "Quick inspection commands",
+        "HTML logs browser",
+        "Deprecate runs commands"
+      ],
+      "acceptance_criteria": [
+        "osiris run --label creates session with metadata",
+        "osiris logs last --json returns valid schema",
+        "osiris logs html opens browser",
+        "runs commands show deprecation"
+      ],
+      "out_of_scope": [],
+      "links": [],
+      "notes": "Needs link to ADR-0025"
+    },
+    {
+      "doc_type": "adr",
+      "path": "docs/adr/0001-logging-configuration.md",
+      "id": "ADR-0001",
+      "title": "Logging Configuration",
+      "status": "Accepted",
+      "date": null,
+      "owners": [],
+      "depends_on": [],
+      "deliverables": [],
+      "acceptance_criteria": [],
+      "out_of_scope": [],
+      "links": [],
+      "notes": "Foundation for session logging"
+    },
+    {
+      "doc_type": "adr",
+      "path": "docs/adr/0002-discovery-cache-fingerprinting.md",
+      "id": "ADR-0002",
+      "title": "Discovery Cache Fingerprinting",
+      "status": "Accepted",
+      "date": null,
+      "owners": [],
+      "depends_on": [],
+      "deliverables": [],
+      "acceptance_criteria": [],
+      "out_of_scope": [],
+      "links": ["M0"],
+      "notes": "Solves context mismatch issue"
+    },
+    {
+      "doc_type": "adr",
+      "path": "docs/adr/0003-session-scoped-logging.md",
+      "id": "ADR-0003",
+      "title": "Session-Scoped Logging & Artifacts",
+      "status": "Accepted",
+      "date": null,
+      "owners": [],
+      "depends_on": [],
+      "deliverables": [],
+      "acceptance_criteria": [],
+      "out_of_scope": [],
+      "links": ["M0"],
+      "notes": "Per-session isolation"
+    },
+    {
+      "doc_type": "adr",
+      "path": "docs/adr/0011-osiris-roadmap.md",
+      "id": "ADR-0011",
+      "title": "Osiris Roadmap",
+      "status": "Proposed",
+      "date": null,
+      "owners": [],
+      "depends_on": [],
+      "deliverables": [
+        "M0: Foundation Stabilization",
+        "M1: Component Registry",
+        "M2: Runner Integration",
+        "M3: Conversational Refinement",
+        "M4: Process Workflows"
+      ],
+      "acceptance_criteria": [],
+      "out_of_scope": [],
+      "links": [],
+      "notes": "High-level roadmap, needs update"
+    },
+    {
+      "doc_type": "adr",
+      "path": "docs/adr/0014-OML_v0.1.0-scope-and-schema.md",
+      "id": "ADR-0014",
+      "title": "OML v0.1.0 Scope and Schema",
+      "status": "Accepted",
+      "date": null,
+      "owners": [],
+      "depends_on": [],
+      "deliverables": [],
+      "acceptance_criteria": [],
+      "out_of_scope": [],
+      "links": ["M1c"],
+      "notes": "Defines OML contract"
+    },
+    {
+      "doc_type": "adr",
+      "path": "docs/adr/0015-compile-contract-determinism-fingerprints-nosecrets.md",
+      "id": "ADR-0015",
+      "title": "Compile Contract",
+      "status": "Accepted",
+      "date": null,
+      "owners": [],
+      "depends_on": [],
+      "deliverables": [],
+      "acceptance_criteria": [],
+      "out_of_scope": [],
+      "links": ["M1c"],
+      "notes": "Determinism and no-secrets"
+    },
+    {
+      "doc_type": "adr",
+      "path": "docs/adr/0019-chat-state-machine-and-oml-synthesis.md",
+      "id": "ADR-0019",
+      "title": "Chat State Machine and OML Synthesis",
+      "status": "Accepted",
+      "date": null,
+      "owners": [],
+      "depends_on": [],
+      "deliverables": [],
+      "acceptance_criteria": [],
+      "out_of_scope": [],
+      "links": ["M1c"],
+      "notes": "Mandatory state machine flow"
+    },
+    {
+      "doc_type": "adr",
+      "path": "docs/adr/0020-connection-resolution-and-secrets.md",
+      "id": "ADR-0020",
+      "title": "Connection Resolution and Secrets",
+      "status": "Accepted",
+      "date": null,
+      "owners": [],
+      "depends_on": [],
+      "deliverables": [],
+      "acceptance_criteria": [],
+      "out_of_scope": [],
+      "links": ["M1c"],
+      "notes": "osiris_connections.yaml format"
+    },
+    {
+      "doc_type": "adr",
+      "path": "docs/adr/0025-cli-ux-unification.md",
+      "id": "ADR-0025",
+      "title": "CLI UX Unification (Run vs Logs)",
+      "status": "Proposed",
+      "date": "2025-09-09",
+      "owners": ["Osiris Core Team"],
+      "depends_on": [],
+      "deliverables": [],
+      "acceptance_criteria": [],
+      "out_of_scope": [],
+      "links": ["ADR-0003"],
+      "notes": "Needs link to M1d"
+    },
+    {
+      "doc_type": "roadmap",
+      "path": "docs/roadmap/0.x-initial-plan.md",
+      "id": "Roadmap-Initial",
+      "title": "Product Strategy & Implementation Brief",
+      "status": "Active",
+      "date": null,
+      "owners": [],
+      "depends_on": [],
+      "deliverables": [
+        "M1: Component Registry",
+        "M2: Chat Context Builder",
+        "M3: Compile & Run MVP",
+        "M4: Light Multi-Agent",
+        "M5: Docs-as-Code"
+      ],
+      "acceptance_criteria": [],
+      "out_of_scope": [
+        "Distributed event bus",
+        "Heavy DSL",
+        "Replace Airflow/Prefect"
+      ],
+      "links": [],
+      "notes": "Comprehensive implementation plan"
+    },
+    {
+      "doc_type": "roadmap",
+      "path": "docs/roadmap/0.x-m1c-ideas.md",
+      "id": "Roadmap-M1c",
+      "title": "Milestone M1c: Compile and Run MVP",
+      "status": "Active",
+      "date": null,
+      "owners": [],
+      "depends_on": ["ADR-0014", "ADR-0015"],
+      "deliverables": [
+        "OML Compilation",
+        "Runner MVP",
+        "Manifest Utilities",
+        "Connection Resolution"
+      ],
+      "acceptance_criteria": [
+        "Deterministic artifacts",
+        "Secrets cause compilation failure",
+        "Runner respects DAG",
+        "CLI exits with correct codes"
+      ],
+      "out_of_scope": [],
+      "links": ["ADR-0020", "ADR-0022", "ADR-0023"],
+      "notes": "M1c specific planning"
+    }
+  ],
+  "findings": [
+    {
+      "type": "id_collision",
+      "severity": "high",
+      "where": ["m1c-compile-and-run-mvp.md", "m1c-thin-slice.md"],
+      "details": "Two milestone documents both claim M1c identifier with different scopes and completion status"
+    },
+    {
+      "type": "status_drift",
+      "severity": "high",
+      "where": ["M1c", "ADR-0011"],
+      "details": "M1c shows 90% complete in main doc, 'Completed (Thin-Slice)' in other, while ADR-0011 shows M1 as future work"
+    },
+    {
+      "type": "status_drift",
+      "severity": "high",
+      "where": ["M0", "ADR-0011"],
+      "details": "ADR-0011 shows M0 as incomplete, but M0 milestone docs show Complete status"
+    },
+    {
+      "type": "scope_drift",
+      "severity": "medium",
+      "where": ["M1", "M1a.1-M1a.4"],
+      "details": "Parent M1 shows 'In Progress' while all child milestones M1a.1-M1a.4 show 'Complete'"
+    },
+    {
+      "type": "scope_drift",
+      "severity": "medium",
+      "where": ["M1c", "ADR-0020"],
+      "details": "Connection resolution ownership unclear between M1c variants and ADR-0020"
+    },
+    {
+      "type": "missing_links",
+      "severity": "high",
+      "where": ["M1d", "ADR-0025"],
+      "details": "New M1d milestone not referenced from ADR-0025, and vice versa"
+    },
+    {
+      "type": "missing_links",
+      "severity": "medium",
+      "where": ["M1c", "ADR-0020"],
+      "details": "M1c documents don't consistently reference ADR-0020 for connection resolution"
+    },
+    {
+      "type": "acceptance_incomplete",
+      "severity": "medium",
+      "where": ["M1d"],
+      "details": "M1d has goals but lacks quantifiable acceptance criteria and test plans"
+    },
+    {
+      "type": "acceptance_incomplete",
+      "severity": "medium",
+      "where": ["M1b"],
+      "details": "M1b shows checkboxes marked 'Not Started' with no clear definition of done"
+    },
+    {
+      "type": "naming_inconsistency",
+      "severity": "low",
+      "where": ["ADR-0025", "various docs"],
+      "details": "Some docs still reference 'runs' commands despite ADR-0025 mandating 'logs' namespace"
+    }
+  ],
+  "proposals": [
+    {
+      "action": "merge",
+      "target": "docs/milestones/m1c-thin-slice.md",
+      "merge_into": "docs/milestones/m1c-compile-and-run-mvp.md",
+      "rationale": "rule#2",
+      "details": "Merge thin-slice content as a section in main M1c doc to establish single source of truth"
+    },
+    {
+      "action": "update_status",
+      "target": "docs/milestones/m1c-compile-and-run-mvp.md",
+      "new_status": "Complete (Golden Path)",
+      "rationale": "rule#3",
+      "details": "Mark M1c as complete for Golden Path MySQL→Supabase functionality"
+    },
+    {
+      "action": "update_status",
+      "target": "docs/adr/0011-osiris-roadmap.md",
+      "updates": {
+        "M0": "Complete",
+        "M1a": "Complete",
+        "M1c": "Complete (Golden Path)"
+      },
+      "rationale": "rule#3",
+      "details": "Update roadmap ADR to reflect actual milestone completion"
+    },
+    {
+      "action": "link",
+      "target": "docs/milestones/m1d-logs-and-cli-unification.md",
+      "add_links": ["docs/adr/0025-cli-ux-unification.md"],
+      "rationale": "rule#1",
+      "details": "Add 'Implements ADR-0025 decisions' to M1d"
+    },
+    {
+      "action": "link",
+      "target": "docs/adr/0025-cli-ux-unification.md",
+      "add_links": ["docs/milestones/m1d-logs-and-cli-unification.md"],
+      "rationale": "rule#1",
+      "details": "Add 'Implementation tracked in Milestone M1d' to ADR-0025"
+    },
+    {
+      "action": "link",
+      "target": "docs/milestones/m1c-compile-and-run-mvp.md",
+      "add_links": ["docs/adr/0020-connection-resolution-and-secrets.md"],
+      "rationale": "rule#1",
+      "details": "Add explicit reference to ADR-0020 for connection resolution feature"
+    },
+    {
+      "action": "add_criteria",
+      "target": "docs/milestones/m1d-logs-and-cli-unification.md",
+      "add_items": [
+        "HTML browser loads in <2s",
+        "logs last --json returns valid schema per specification",
+        "All runs commands show deprecation warning with migration hint"
+      ],
+      "rationale": "rule#3",
+      "details": "Add measurable acceptance criteria to M1d"
+    },
+    {
+      "action": "archive",
+      "target": "docs/milestones/m1c-thin-slice.md",
+      "new_location": "docs/archive/m1c-thin-slice.md",
+      "rationale": "rule#2",
+      "details": "Archive duplicate M1c document after merging content"
+    },
+    {
+      "action": "update",
+      "target": "docs/roadmap/0.x-initial-plan.md",
+      "updates": {
+        "M0_status": "Complete (v0.1.2)",
+        "M1a_status": "Complete",
+        "M1c_status": "Complete (Golden Path)",
+        "add_milestone": "M1d"
+      },
+      "rationale": "rule#1",
+      "details": "Update roadmap to reflect current progress and add M1d"
+    },
+    {
+      "action": "rename",
+      "target": "docs/milestones/m1-component-registry-and-runner.md",
+      "new_name": "m1-overview.md",
+      "rationale": "rule#4",
+      "details": "Clarify that M1 is parent overview for M1a-M1d series"
+    }
+  ]
+}

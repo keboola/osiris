@@ -12,15 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Prompt management for pro mode customization."""
+"""Prompt management for pro mode customization and component context injection."""
 
+import json
 import logging
+import re
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict, List, Literal, Optional
 
 import yaml
+from jsonschema import Draft202012Validator, ValidationError
+
+from ..core.session_logging import get_current_session
 
 logger = logging.getLogger(__name__)
+
+# Context injection placeholder
+CONTEXT_PLACEHOLDER = "{{OSIRIS_CONTEXT}}"
 
 
 class PromptManager:
@@ -41,6 +49,13 @@ class PromptManager:
             "sql_generation_system": self._get_default_sql_prompt(),
             "user_prompt_template": self._get_default_user_template(),
         }
+
+        # Component context caching
+        self._context_cache: Optional[Dict[str, Any]] = None
+        self._cache_path: Optional[Path] = None
+        self._cache_mtime: Optional[float] = None
+        self._cache_fingerprint: Optional[str] = None
+        self._schema_validator: Optional[Draft202012Validator] = None
 
     def dump_prompts(self) -> str:
         """Export current system prompts to files for customization.
@@ -248,6 +263,16 @@ SYSTEM CONTEXT:
 AVAILABLE CONNECTORS: {available_connectors}
 YOUR CAPABILITIES: {capabilities}
 
+STATE MACHINE (CRITICAL):
+You MUST follow this state progression:
+INIT → INTENT_CAPTURED → (optional) DISCOVERY → OML_SYNTHESIS → VALIDATE_OML → (optional) REGENERATE_ONCE → COMPILE → (optional) RUN → COMPLETE
+
+IMPORTANT STATE RULES:
+- After DISCOVERY, NEVER ask open questions - ALWAYS proceed to OML_SYNTHESIS
+- During OML_SYNTHESIS, capabilities are LIMITED to ["generate_pipeline"] only
+- If empty response occurs, provide short helpful fallback (non-empty)
+- On schema failure: regenerate ONCE with targeted fixes, then HITL message if still failing
+
 RESPONSE FORMAT:
 You must respond with a JSON object containing:
 {{
@@ -260,31 +285,85 @@ You must respond with a JSON object containing:
 ACTIONS YOU CAN TAKE:
 - "discover": Immediately explore database schema and sample data (no credentials needed)
 - "generate_pipeline": Create complete YAML pipeline configuration
-- "ask_clarification": Ask user for more specific information
+- "ask_clarification": Ask user for more specific information (NEVER after discovery)
 - "execute": Execute the approved pipeline
 - "validate": Validate user input or configuration
+
+OML_CONTRACT (REQUIRED - Use this EXACT format for ALL pipeline generation):
+============================================================
+Output format: YAML
+Required top-level keys:
+  - oml_version: "0.1.0" (REQUIRED - exact string)
+  - name: pipeline-name (REQUIRED - kebab-case)
+  - steps: (REQUIRED - array of step objects)
+
+Forbidden keys (legacy): version, connectors, tasks, outputs, schedule
+
+Each step requires:
+  - id: unique-step-id (kebab-case)
+  - component: component.name (e.g., mysql.extractor, supabase.writer)
+  - mode: "read" | "write" | "transform"
+  - config: YAML map with component-specific settings
+
+No secrets in YAML. Connections/credentials resolved by runtime.
+
+Example:
+```yaml
+oml_version: "0.1.0"
+name: example-pipeline
+steps:
+  - id: extract-data
+    component: mysql.extractor
+    mode: read
+    config:
+      query: "SELECT * FROM users"
+      connection: "@default"
+  - id: write-data
+    component: supabase.writer
+    mode: write
+    config:
+      table: "target_users"
+```
+============================================================
+
+POST-DISCOVERY SYNTHESIS TEMPLATE:
+When synthesizing after discovery, use this template:
+- User Intent: {{user_intent}}
+- Discovered Tables: {{comma_separated_table_names}}
+- MUST return:
+  {{
+    "action": "generate_pipeline",
+    "params": {{
+      "pipeline_yaml": "<Valid OML v0.1.0 YAML matching OML_CONTRACT above>"
+    }}
+  }}
+
+REGENERATION & HITL:
+- On schema validation failure: Regenerate ONCE with targeted fixes
+  Examples: "Remove forbidden key 'tasks', use 'steps' instead"
+           "Add required field 'oml_version: 0.1.0'"
+- On second failure: Return concise HITL error with reason
+  Example: "Unable to generate valid pipeline. Manual intervention needed: [specific issue]"
 
 CONVERSATION PRINCIPLES:
 1. Be conversational and helpful
 2. When users want to explore data, use "discover" action immediately
-3. When users describe a data need, guide them through discovery → generate_pipeline (NEVER provide manual analysis)
-4. Always generate YAML pipelines for analytical requests (top N, rankings, aggregations, comparisons)
-5. NEVER manually analyze sample data - always use "generate_pipeline" action instead
-6. Generate complete, production-ready YAML pipelines with proper SQL
-7. Database connections are pre-configured - just use the "discover" action
+3. After discovery, ALWAYS synthesize OML - NEVER ask "What would you like to do with this data?"
+4. Generate complete, production-ready pipelines with proper SQL
+5. Database connections are pre-configured - just use the "discover" action
 
-CRITICAL RULE: When users request analytical insights (top performers, rankings, aggregations):
-- NEVER provide manual analysis like "Top 3 actors are: 1. Actor A, 2. Actor B"
-- ALWAYS use "generate_pipeline" action to create YAML with analytical SQL
-- Let the pipeline perform the analysis, don't do it manually from samples
+CRITICAL RULES:
+- After DISCOVERY: MUST proceed to generate_pipeline, NO open questions
+- Always use OML_CONTRACT format for pipeline generation
+- When users request data operations (export, transfer, analyze): generate pipeline immediately after discovery
+- NEVER manually analyze sample data - always use "generate_pipeline" action
 
-IMMEDIATE ACTIONS:
-- If user asks about capabilities: explain and offer to discover their data
-- If user wants to see data: use "discover" action immediately
-- If user describes analysis needs: start with "discover" then ALWAYS use "generate_pipeline"
-- If user says "start discovery" or similar: use "discover" action
-
-IMPORTANT: Don't ask for database credentials - they're already configured. Jump straight to discovery when appropriate."""
+ACCEPTANCE CRITERIA:
+Given "export all tables from MySQL to Supabase, no scheduler" after discovery:
+- Return valid OML v0.1.0 with steps array
+- Use mysql.extractor and supabase.writer components
+- NO open questions, NO asking for clarification
+- Immediate pipeline generation with discovered table information"""
 
     def _get_default_sql_prompt(self) -> str:
         """Get the default SQL generation prompt from llm_adapter.py."""
@@ -310,6 +389,285 @@ Return only the SQL query, no additional text."""
 {discovery_data}
 
 {pipeline_status}"""
+
+    # Component Context Methods
+
+    def _get_schema_validator(self) -> Draft202012Validator:
+        """Get or create the schema validator for component context."""
+        if self._schema_validator is None:
+            schema_path = Path(__file__).parent.parent / "prompts" / "context.schema.json"
+            with open(schema_path) as f:
+                schema = json.load(f)
+            self._schema_validator = Draft202012Validator(schema)
+        return self._schema_validator
+
+    def load_context(self, path: Path | str) -> Dict[str, Any]:
+        """Load component context from file and validate against schema.
+
+        Args:
+            path: Path to context.json file
+
+        Returns:
+            Loaded and validated context dictionary
+
+        Raises:
+            FileNotFoundError: If context file doesn't exist
+            ValidationError: If context doesn't match schema (with --strict-context)
+        """
+        path = Path(path)
+        session = get_current_session()
+
+        # Log start event
+        if session:
+            session.log_event(
+                "context_load_start",
+                path=str(path),
+                cache_hit=self._is_cache_valid(path),
+            )
+
+        # Check cache validity
+        if self._is_cache_valid(path):
+            logger.debug(f"Using cached context from {path}")
+            if session:
+                context_str = json.dumps(self._context_cache, separators=(",", ":"))
+                session.log_event(
+                    "context_load_complete",
+                    components_count=len(self._context_cache.get("components", [])),
+                    bytes=len(context_str),
+                    est_tokens=len(context_str) // 4,
+                    cached=True,
+                )
+            return self._context_cache
+
+        # Load fresh context
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Context file not found: {path}. Run 'osiris prompts build-context' to generate it."
+            )
+
+        with open(path) as f:
+            context = json.load(f)
+
+        # Validate against schema
+        try:
+            self._get_schema_validator().validate(context)
+        except ValidationError as e:
+            logger.warning(f"Context validation failed: {e.message}")
+            # Re-raise for strict mode (handled by caller)
+            raise ValidationError(
+                f"Invalid context format: {e.message}. "
+                f"Regenerate with 'osiris prompts build-context --force'"
+            ) from e
+
+        # Update cache
+        self._context_cache = context
+        self._cache_path = path
+        self._cache_mtime = path.stat().st_mtime
+        self._cache_fingerprint = context.get("fingerprint")
+
+        # Log completion event
+        if session:
+            context_str = json.dumps(context, separators=(",", ":"))
+            session.log_event(
+                "context_load_complete",
+                components_count=len(context.get("components", [])),
+                bytes=len(context_str),
+                est_tokens=len(context_str) // 4,
+                cached=False,
+            )
+
+        return context
+
+    def _is_cache_valid(self, path: Path) -> bool:
+        """Check if cached context is still valid.
+
+        Args:
+            path: Path to context file
+
+        Returns:
+            True if cache is valid, False otherwise
+        """
+        if self._context_cache is None or self._cache_path != path or not path.exists():
+            return False
+
+        # Check mtime
+        current_mtime = path.stat().st_mtime
+        if current_mtime != self._cache_mtime:
+            logger.debug("Cache invalid: file modified")
+            return False
+
+        # Check fingerprint if available
+        if self._cache_fingerprint:
+            # Quick check without full load
+            try:
+                with open(path) as f:
+                    # Read just enough to get fingerprint
+                    content = f.read(500)  # fingerprint is near the beginning
+                    if self._cache_fingerprint not in content:
+                        logger.debug("Cache invalid: fingerprint mismatch")
+                        return False
+            except Exception:
+                return False
+
+        return True
+
+    def get_context(
+        self,
+        strategy: Literal["full", "component-scoped"] = "full",
+        components: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Get context based on strategy.
+
+        Args:
+            strategy: Context strategy - "full" or "component-scoped"
+            components: List of component names for component-scoped strategy
+
+        Returns:
+            Context dictionary (full or filtered)
+        """
+        if self._context_cache is None:
+            raise RuntimeError(
+                "No context loaded. Call load_context() first or check --no-context flag."
+            )
+
+        if strategy == "full":
+            return self._context_cache
+
+        if strategy == "component-scoped":
+            if not components:
+                logger.warning(
+                    "Component-scoped strategy requested but no components specified. Using full context."
+                )
+                return self._context_cache
+
+            # Filter to specified components
+            filtered_context = {
+                "version": self._context_cache.get("version"),
+                "generated_at": self._context_cache.get("generated_at"),
+                "fingerprint": self._context_cache.get("fingerprint"),
+                "components": [
+                    comp
+                    for comp in self._context_cache.get("components", [])
+                    if comp.get("name") in components
+                ],
+            }
+            return filtered_context
+
+        raise ValueError(f"Unknown strategy: {strategy}")
+
+    def inject_context(self, system_template: str, context: Dict[str, Any]) -> str:
+        """Inject context into system prompt template.
+
+        Args:
+            system_template: System prompt template with {{OSIRIS_CONTEXT}} placeholder
+            context: Context dictionary to inject
+
+        Returns:
+            System prompt with context injected
+        """
+        if CONTEXT_PLACEHOLDER not in system_template:
+            # Add context at the beginning if no placeholder
+            logger.debug(f"No {CONTEXT_PLACEHOLDER} found, prepending context")
+            context_str = self._format_context_for_injection(context)
+            return f"{context_str}\n\n{system_template}"
+
+        # Replace placeholder
+        context_str = self._format_context_for_injection(context)
+        return system_template.replace(CONTEXT_PLACEHOLDER, context_str)
+
+    def _format_context_for_injection(self, context: Dict[str, Any]) -> str:
+        """Format context for injection into prompt.
+
+        Args:
+            context: Context dictionary
+
+        Returns:
+            Formatted context string for LLM consumption
+        """
+        # Create a concise, readable format for LLM
+        lines = ["## Available Components\n"]
+
+        for component in context.get("components", []):
+            name = component.get("name", "unknown")
+            modes = ", ".join(component.get("modes", []))
+            lines.append(f"### {name} (modes: {modes})")
+
+            # Add required config
+            required_config = component.get("required_config", [])
+            if required_config:
+                lines.append("Required configuration:")
+                for field in required_config:
+                    field_type = field.get("type", "string")
+                    field_name = field.get("field", "")
+
+                    # Include enum values if present
+                    if "enum" in field:
+                        enum_values = ", ".join(str(v) for v in field["enum"])
+                        lines.append(f"  - {field_name}: {field_type} (options: {enum_values})")
+                    elif "default" in field:
+                        lines.append(
+                            f"  - {field_name}: {field_type} (default: {field['default']})"
+                        )
+                    else:
+                        lines.append(f"  - {field_name}: {field_type}")
+
+            # Add example if present
+            example = component.get("example")
+            if example:
+                lines.append("Example configuration:")
+                lines.append("  " + json.dumps(example, separators=(",", ":")))
+
+            lines.append("")  # Empty line between components
+
+        return "\n".join(lines)
+
+    def verify_no_secrets(self, prompt: str) -> bool:
+        """Verify that no secrets appear in the prompt.
+
+        Args:
+            prompt: Complete prompt to check
+
+        Returns:
+            True if no secrets found, False otherwise
+        """
+        # Check for common secret patterns
+        secret_patterns = [
+            r'\bpassword\s*[=:]\s*["\']?[^"\'\s]+',
+            r'\bsecret\s*[=:]\s*["\']?[^"\'\s]+',
+            r'\bapi[_-]?key\s*[=:]\s*["\']?[^"\'\s]+',
+            r'\btoken\s*[=:]\s*["\']?[^"\'\s]+',
+            r"\bbearer\s+[A-Za-z0-9+/=]{20,}",
+            r"[A-Za-z0-9+/]{40,}={0,2}",  # Long base64 strings
+        ]
+
+        prompt_lower = prompt.lower()
+        for pattern in secret_patterns:
+            if re.search(pattern, prompt_lower, re.IGNORECASE):
+                logger.error(f"Potential secret detected in prompt matching pattern: {pattern}")
+                return False
+
+        # Additional check for redacted values that shouldn't be there
+        if "***redacted***" in prompt:
+            logger.warning("Redacted values found in prompt - this should not happen")
+            return False
+
+        return True
+
+    def estimate_tokens(self, text: str) -> int:
+        """Estimate token count for a text string.
+
+        Uses a simple heuristic: ~4 characters per token for English text.
+        This is a rough approximation; actual token count varies by model.
+
+        Args:
+            text: Text to estimate tokens for
+
+        Returns:
+            Estimated token count
+        """
+        # Simple heuristic: ~4 characters per token
+        # This approximation works reasonably well for English text
+        return len(text) // 4
 
     def _generate_readme(self) -> str:
         """Generate README.md for custom prompts directory."""

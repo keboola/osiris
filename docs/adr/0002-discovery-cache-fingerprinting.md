@@ -1,5 +1,8 @@
 # ADR 0002: Discovery Cache Fingerprinting
 
+## Status
+Implemented
+
 ## Context
 In the current Osiris Pipeline system, the discovery cache is used to store metadata about components to improve performance by avoiding repeated expensive discovery operations. However, the cache has suffered from issues related to stale entries and context mismatches, leading to incorrect or outdated component information being used. This has caused failures or inconsistencies in pipeline execution. The challenge lies in ensuring that the cache is invalidated deterministically whenever relevant aspects of the component or its environment change, while maintaining efficient cache lookups and minimizing unnecessary recomputations.
 

@@ -1,0 +1,24 @@
+{
+  "audiences": [
+    {
+      "name": "lapsed90",
+      "size": 42000,
+      "holdout": 0.1
+    },
+    {
+      "name": "lapsed_vip",
+      "size": 4200,
+      "holdout": 0.1
+    },
+    {
+      "name": "churnrisk_high",
+      "size": 8500,
+      "holdout": 0.1
+    }
+  ],
+  "frequency_cap_per_week": 3,
+  "channels": [
+    "Google Ads",
+    "ESP"
+  ]
+}

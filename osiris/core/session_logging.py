@@ -25,11 +25,12 @@ import sys
 import tempfile
 import time
 import uuid
+from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .secrets_masking import mask_sensitive_dict
+from .redaction import create_redactor
 
 
 class SessionContext:
@@ -40,6 +41,7 @@ class SessionContext:
         session_id: Optional[str] = None,
         base_logs_dir: Optional[Path] = None,
         allowed_events: Optional[List[str]] = None,
+        privacy_level: Optional[str] = None,
     ):
         """Initialize session context.
 
@@ -47,11 +49,13 @@ class SessionContext:
             session_id: Unique session identifier. Generated if None.
             base_logs_dir: Base directory for logs. Defaults to ./logs/
             allowed_events: List of event types to log. Use ["*"] or None for all events.
+            privacy_level: Privacy level for redaction (standard or strict). Uses env var if None.
         """
         self.session_id = session_id or self._generate_session_id()
         self.base_logs_dir = base_logs_dir or Path("logs")
         self.session_dir = self.base_logs_dir / self.session_id
         self.start_time = datetime.now(timezone.utc)
+        self.redactor = create_redactor(privacy_level)
 
         # Event filtering: None or ["*"] means log all events
         self.allowed_events = allowed_events or ["*"]
@@ -100,11 +104,8 @@ class SessionContext:
             )
             self.session_dir = self._fallback_temp_dir
             self.artifacts_dir = self.session_dir / "artifacts"
-            try:
+            with suppress(OSError, PermissionError):
                 self.artifacts_dir.mkdir(exist_ok=True)
-            except (OSError, PermissionError):
-                # If even temp directory fails, just continue without artifacts dir
-                pass
 
             # Update all file paths to use temp directory
             self.osiris_log = self.session_dir / "osiris.log"
@@ -157,6 +158,7 @@ class SessionContext:
                     # Format the message normally first
                     msg = super().format(record)
                     # Then mask any sensitive information in the entire message
+                    # Use legacy string masking for log files (not structured data)
                     from .secrets_masking import mask_sensitive_string
 
                     return mask_sensitive_string(msg)
@@ -215,26 +217,26 @@ class SessionContext:
             handler.close()
         self._handlers.clear()
 
-    def log_event(self, event: str, **kwargs) -> None:
+    def log_event(self, event_name: str, **kwargs) -> None:
         """Log a structured event to events.jsonl.
 
         Args:
-            event: Event type (cache_hit, cache_miss, run_start, etc.)
+            event_name: Event type (cache_hit, cache_miss, run_start, etc.)
             **kwargs: Additional event data
         """
         # Event filtering: skip if not in allowed events (unless wildcard "*" is used)
-        if "*" not in self.allowed_events and event not in self.allowed_events:
+        if "*" not in self.allowed_events and event_name not in self.allowed_events:
             return
         try:
             event_data = {
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "session": self.session_id,
-                "event": event,
+                "event": event_name,
                 **kwargs,
             }
 
-            # Mask sensitive data
-            event_data = mask_sensitive_dict(event_data)
+            # Redact sensitive data using new redactor
+            event_data = self.redactor.redact_dict(event_data)
 
             # Convert non-serializable objects to strings
             def make_serializable(obj):
@@ -256,10 +258,10 @@ class SessionContext:
 
         except (OSError, PermissionError) as e:
             # Fallback to stderr if we can't write events
-            print(f"WARNING: Could not write event {event}: {e}", file=sys.stderr)
+            print(f"WARNING: Could not write event {event_name}: {e}", file=sys.stderr)
         except (TypeError, ValueError) as e:
             # JSON serialization error
-            print(f"WARNING: Could not serialize event {event}: {e}", file=sys.stderr)
+            print(f"WARNING: Could not serialize event {event_name}: {e}", file=sys.stderr)
 
     def log_metric(self, metric: str, value: Any, **kwargs) -> None:
         """Log a metric to metrics.jsonl.
@@ -278,8 +280,8 @@ class SessionContext:
                 **kwargs,
             }
 
-            # Mask sensitive data
-            metric_data = mask_sensitive_dict(metric_data)
+            # Redact sensitive data using new redactor
+            metric_data = self.redactor.redact_dict(metric_data)
 
             # Convert non-serializable objects to strings
             def make_serializable(obj):
@@ -313,7 +315,7 @@ class SessionContext:
             config: Configuration dictionary to save
         """
         try:
-            masked_config = mask_sensitive_dict(config)
+            masked_config = self.redactor.redact_dict(config)
             with open(self.config_file, "w", encoding="utf-8") as f:
                 json.dump(masked_config, f, indent=2)
         except (OSError, PermissionError) as e:
@@ -326,7 +328,7 @@ class SessionContext:
             manifest: Run manifest dictionary to save
         """
         try:
-            masked_manifest = mask_sensitive_dict(manifest)
+            masked_manifest = self.redactor.redact_dict(manifest)
             with open(self.manifest_file, "w", encoding="utf-8") as f:
                 json.dump(masked_manifest, f, indent=2)
         except (OSError, PermissionError) as e:
@@ -360,7 +362,7 @@ class SessionContext:
 
             if content_type == "json":
                 masked_content = (
-                    mask_sensitive_dict(content) if isinstance(content, dict) else content
+                    self.redactor.redact_dict(content) if isinstance(content, dict) else content
                 )
                 with open(artifact_path, "w", encoding="utf-8") as f:
                     json.dump(masked_content, f, indent=2)
@@ -423,10 +425,10 @@ def clear_current_session() -> None:
     _current_session = None
 
 
-def log_event(event: str, **kwargs) -> None:
+def log_event(event_name: str, **kwargs) -> None:
     """Log an event to the current session (if active)."""
     if _current_session:
-        _current_session.log_event(event, **kwargs)
+        _current_session.log_event(event_name, **kwargs)
 
 
 def log_metric(metric: str, value: Any, **kwargs) -> None:

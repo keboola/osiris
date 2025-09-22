@@ -1,0 +1,195 @@
+# Supabase Extractor Component Specification
+name: supabase.extractor
+version: 1.0.0
+title: Supabase Data Extractor
+description: Extract data from Supabase PostgreSQL databases via REST API with support for discovery and filtering
+
+modes:
+- extract
+- discover
+
+capabilities:
+  discover: true # list_tables implemented (with limitations)
+  adHocAnalytics: false # execute_query raises NotImplementedError
+  inMemoryMove: false # returns DataFrame but no direct move API
+  streaming: false # no streaming support
+  bulkOperations: true # limit/offset supported
+  transactions: false # REST API doesn't support transactions
+  partitioning: false # no partitioning support
+  customTransforms: false # no custom transforms
+
+configSchema:
+  type: object
+  properties:
+    url:
+      type: string
+      description: Supabase project URL (https://project.supabase.co)
+      pattern: "^https://[a-zA-Z0-9-]+\\.supabase\\.co$"
+    key:
+      type: string
+      description: Supabase anon/public API key
+      minLength: 20
+    project_id:
+      type: string
+      description: Supabase project ID (alternative to url)
+      pattern: "^[a-zA-Z0-9-]+$"
+    table:
+      type: string
+      description: Table name to extract data from
+      minLength: 1
+    schema:
+      type: string
+      description: Database schema
+      default: public
+    select:
+      type: string
+      description: Columns to select (Supabase select syntax)
+      default: "*"
+    filter:
+      type: object
+      description: PostgREST filter conditions
+      additionalProperties: true
+    order:
+      type: string
+      description: Order by column and direction (e.g., "created_at.desc")
+    limit:
+      type: integer
+      description: Maximum number of rows to extract
+      minimum: 1
+      maximum: 1000
+      default: 1000
+    offset:
+      type: integer
+      description: Number of rows to skip
+      minimum: 0
+      default: 0
+    timeout:
+      type: integer
+      description: Request timeout in seconds
+      default: 30
+      minimum: 5
+      maximum: 300
+    retries:
+      type: integer
+      description: Number of retry attempts
+      default: 3
+      minimum: 0
+      maximum: 10
+    tables:
+      type: array
+      description: List of known tables (for discovery fallback)
+      items:
+        type: string
+  required:
+  - key
+  - table
+  additionalProperties: false
+
+secrets:
+- /key
+
+redaction:
+  strategy: mask
+  mask: "****"
+  extras:
+  - /url
+  - /project_id
+
+constraints:
+  required:
+  - when:
+      url: null
+    must:
+      project_id:
+        minLength: 1
+    error: Either 'url' or 'project_id' must be specified
+
+examples:
+- title: Basic Supabase extraction
+  config:
+    url: https://myproject.supabase.co
+    key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+    table: users
+    select: "id,email,created_at"
+    limit: 100
+  notes: Extract specific columns from users table
+
+- title: Advanced extraction with filters
+  config:
+    project_id: myproject
+    key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+    table: orders
+    schema: public
+    select: "*,customer:customers(name,email)"
+    filter:
+      status: eq.completed
+      created_at: gte.2024-01-01
+    order: created_at.desc
+    limit: 500
+  notes: Extract orders with customer joins and filters
+
+compatibility:
+  requires:
+  - python>=3.10
+  - supabase>=2.0
+  platforms:
+  - linux
+  - darwin
+  - windows
+  - docker
+
+llmHints:
+  inputAliases:
+    url:
+    - supabase_url
+    - project_url
+    - endpoint
+    key:
+    - api_key
+    - anon_key
+    - supabase_key
+    table:
+    - table_name
+    - source_table
+    - from_table
+  promptGuidance: |
+    Use supabase.extractor to read from Supabase tables.
+    Requires either url or project_id, plus API key.
+    Supports PostgREST filters and joins via select syntax.
+  yamlSnippets:
+  - "type: supabase.extractor"
+  - "url: https://{{ project }}.supabase.co"
+  - "key: {{ api_key }}"
+  - "table: {{ table_name }}"
+  commonPatterns:
+  - pattern: full_table_extract
+    description: Extract entire table with select="*"
+  - pattern: filtered_extract
+    description: Use filter object for WHERE conditions
+  - pattern: join_extract
+    description: Use select with foreign key syntax for joins
+
+loggingPolicy:
+  sensitivePaths:
+  - /key
+  - /url
+  - /project_id
+  eventDefaults:
+  - extraction.start
+  - extraction.progress
+  - extraction.complete
+  - api.request
+  - api.response
+  metricsToCapture:
+  - rows_read
+  - bytes_processed
+  - duration_ms
+
+limits:
+  maxRows: 1000000
+  maxSizeMB: 1024
+  maxDurationSeconds: 600
+  maxConcurrency: 3
+  rateLimit:
+    requests: 100
+    period: second

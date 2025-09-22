@@ -1,9 +1,15 @@
 
 
+Status Update (2025-09-09):
+- M0: Complete (released in v0.1.2)
+- M1a.1–M1a.4: Complete
+- M1c: Complete (Golden Path)
+- New: Milestone M1d (Logs & CLI Unification) added to the near-term plan
+
 # 0011 Osiris Roadmap
 
 ## Status
-Proposed
+Implemented
 
 ## Context
 Osiris has reached its first usable MVP phase, capable of generating YAML-based data pipelines through conversational interaction. The architecture is stabilizing, and foundational features like discovery cache, secrets masking, and session-scoped logging are implemented. To sustain momentum and ensure long-term alignment, we need a structured roadmap capturing major milestones and their intent.
@@ -29,6 +35,7 @@ We adopt a phased roadmap approach that defines clear milestones (M0, M1, …) w
 - Component specs publish config schema and capabilities
 - System prompt/context enriched with registry knowledge
 - Osiris agent can generate YAML pipelines using registry
+- M1d – Logs & CLI Unification: Unify CLI (run vs logs), add HTML Logs Browser, and deprecate legacy runs commands (see ADR-0025).
 - **Impact**: Deterministic pipeline generation; extensible component ecosystem
 
 ### M2 – Runner Integration

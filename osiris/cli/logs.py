@@ -28,6 +28,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from osiris.core.logs_serialize import to_index_json, to_session_json
+from osiris.core.session_reader import SessionReader
+
 console = Console()
 
 
@@ -60,6 +63,14 @@ def list_sessions(args: list) -> None:
         console.print("  [cyan]--json[/cyan]                Output in JSON format")
         console.print("  [cyan]--limit COUNT[/cyan]         Maximum sessions to show (default: 20)")
         console.print("  [cyan]--logs-dir DIR[/cyan]        Base logs directory (default: logs)")
+        console.print(
+            "  [cyan]--no-wrap[/cyan]             Print session IDs on one line (may truncate in narrow terminals)"
+        )
+        console.print()
+        console.print("[bold blue]Session ID Display[/bold blue]")
+        console.print("  By default, session IDs wrap to multiple lines to show the full value.")
+        console.print("  This allows copy/paste of complete IDs even in narrow terminals.")
+        console.print("  Use --no-wrap to force single-line display (legacy behavior).")
         console.print()
         console.print("[bold blue]Examples[/bold blue]")
         console.print(
@@ -91,6 +102,11 @@ def list_sessions(args: list) -> None:
         default=default_logs_dir,
         help=f"Base logs directory (default: {default_logs_dir})",
     )
+    parser.add_argument(
+        "--no-wrap",
+        action="store_true",
+        help="Print session IDs on one line (may truncate in narrow terminals)",
+    )
 
     try:
         parsed_args = parser.parse_args(args)
@@ -98,35 +114,26 @@ def list_sessions(args: list) -> None:
         console.print("❌ Invalid arguments. Use 'osiris logs list --help' for usage information.")
         return
 
+    # Check if logs directory exists
     logs_dir = Path(parsed_args.logs_dir)
-
     if not logs_dir.exists():
         if parsed_args.json:
-            print(json.dumps({"error": "Logs directory not found", "path": str(logs_dir)}))
+            error_response = {"error": f"Logs directory not found: {parsed_args.logs_dir}"}
+            print(json.dumps(error_response))
         else:
-            console.print(f"❌ Logs directory not found: {logs_dir}")
+            console.print(f"❌ Logs directory not found: {parsed_args.logs_dir}")
         return
 
-    # Scan session directories
-    sessions = []
-    for session_dir in logs_dir.iterdir():
-        if not session_dir.is_dir():
-            continue
-
-        session_info = _get_session_info(session_dir)
-        if session_info:
-            sessions.append(session_info)
-
-    # Sort by start time (newest first)
-    sessions.sort(key=lambda s: s["start_time"], reverse=True)
-
-    # Limit results
-    sessions = sessions[: parsed_args.limit]
+    # Use SessionReader to get sessions
+    reader = SessionReader(logs_dir=parsed_args.logs_dir)
+    sessions = reader.list_sessions(limit=parsed_args.limit)
 
     if parsed_args.json:
-        print(json.dumps({"sessions": sessions}, indent=2))
+        # Output as JSON using the serializer
+        json_output = to_index_json(sessions)
+        print(json_output)
     else:
-        _display_sessions_table(sessions)
+        _display_sessions_table_v2(sessions, no_wrap=parsed_args.no_wrap)
 
 
 def show_session(args: list) -> None:
@@ -232,6 +239,74 @@ def show_session(args: list) -> None:
         print(json.dumps(session_info, indent=2))
     else:
         _display_session_summary(session_info, session_dir)
+
+
+def last_session(args: list) -> None:
+    """Show the most recent session."""
+
+    def show_last_help():
+        """Show help for logs last subcommand."""
+        console.print()
+        console.print("[bold green]osiris logs last - Show Most Recent Session[/bold green]")
+        console.print("🕐 Display details of the most recent session")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris logs last [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Optional Arguments[/bold blue]")
+        console.print("  [cyan]--json[/cyan]                Output in JSON format")
+        console.print("  [cyan]--logs-dir DIR[/cyan]        Base logs directory (default: logs)")
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print(
+            "  [green]osiris logs last[/green]                        # Show most recent session"
+        )
+        console.print(
+            "  [green]osiris logs last --json[/green]                 # JSON format output"
+        )
+        console.print(
+            "  [green]osiris logs last --logs-dir /path/to/logs[/green]  # Custom logs directory"
+        )
+        console.print()
+
+    if args and args[0] in ["--help", "-h"]:
+        show_last_help()
+        return
+
+    # Get default logs directory from config
+    default_logs_dir = _get_logs_dir_from_config()
+
+    parser = argparse.ArgumentParser(description="Show most recent session", add_help=False)
+    parser.add_argument("--json", action="store_true", help="Output in JSON format")
+    parser.add_argument(
+        "--logs-dir",
+        default=default_logs_dir,
+        help=f"Base logs directory (default: {default_logs_dir})",
+    )
+
+    try:
+        parsed_args = parser.parse_args(args)
+    except SystemExit:
+        console.print("❌ Invalid arguments. Use 'osiris logs last --help' for usage information.")
+        return
+
+    # Use SessionReader to get the last session
+    reader = SessionReader(logs_dir=parsed_args.logs_dir)
+    session = reader.get_last_session()
+
+    if not session:
+        if parsed_args.json:
+            print(json.dumps({"error": "No sessions found"}))
+        else:
+            console.print("❌ No sessions found")
+        return
+
+    if parsed_args.json:
+        # Output as JSON using the serializer
+        json_output = to_session_json(session, logs_dir=parsed_args.logs_dir)
+        print(json_output)
+    else:
+        # Display in Rich format
+        _display_session_summary_v2(session)
 
 
 def bundle_session(args: list) -> None:
@@ -554,7 +629,9 @@ def _get_session_info(session_dir: Path) -> Optional[Dict[str, Any]]:
         # Determine status based on last event
         status = "unknown"
         if last_event.get("event") == "run_end":
-            status = "completed"
+            # Check if there's a status field in the run_end event
+            event_status = last_event.get("status", "completed")
+            status = "failed" if event_status == "failed" else "completed"
         elif last_event.get("event") == "run_error":
             status = "error"
         elif last_event.get("event") == "run_start":
@@ -624,14 +701,124 @@ def _format_duration(seconds: Optional[float]) -> str:
         return f"{hours:.1f}h"
 
 
-def _display_sessions_table(sessions: List[Dict[str, Any]]) -> None:
-    """Display sessions in a Rich table."""
+def _display_sessions_table_v2(sessions: List, no_wrap: bool = False) -> None:
+    """Display SessionSummary objects in a Rich table.
+
+    Args:
+        sessions: List of SessionSummary objects.
+        no_wrap: If True, session IDs will be on one line (may truncate).
+                 If False (default), session IDs will wrap to show full value.
+    """
     if not sessions:
         console.print("No sessions found.")
         return
 
     table = Table(title="Session Directories")
-    table.add_column("Session ID", style="cyan")
+
+    # Configure Session ID column based on wrap preference
+    if no_wrap:
+        table.add_column("Session ID", style="cyan")
+    else:
+        table.add_column("Session ID", style="cyan", overflow="fold", no_wrap=False, min_width=20)
+
+    table.add_column("Pipeline", style="magenta")
+    table.add_column("Start Time", style="dim")
+    table.add_column("Status", style="bold")
+    table.add_column("Duration", style="green")
+    table.add_column("Steps", style="blue")
+    table.add_column("Errors", style="red")
+
+    for session in sessions:
+        status_style = {
+            "success": "green",
+            "failed": "red",
+            "running": "yellow",
+            "unknown": "dim",
+        }.get(session.status, "dim")
+
+        # Format duration
+        duration_str = (
+            _format_duration(session.duration_ms / 1000) if session.duration_ms else "unknown"
+        )
+
+        # Format steps as "ok/total"
+        steps_str = f"{session.steps_ok}/{session.steps_total}" if session.steps_total else "0/0"
+
+        # Format errors/warnings
+        error_str = str(session.errors) if session.errors else "-"
+
+        table.add_row(
+            session.session_id,
+            session.pipeline_name or "unknown",
+            session.started_at[:19].replace("T", " ") if session.started_at else "unknown",
+            f"[{status_style}]{session.status}[/{status_style}]",
+            duration_str,
+            steps_str,
+            error_str,
+        )
+
+    console.print(table)
+
+
+def _display_session_summary_v2(session) -> None:
+    """Display detailed SessionSummary."""
+    # Session header
+    console.print(
+        Panel(
+            f"[bold cyan]Session: {session.session_id}[/bold cyan]\n"
+            f"[dim]Pipeline: {session.pipeline_name or 'unknown'}[/dim]",
+            title="Session Details",
+        )
+    )
+
+    # Session stats
+    duration_str = (
+        _format_duration(session.duration_ms / 1000) if session.duration_ms else "unknown"
+    )
+    success_rate_str = f"{session.success_rate:.1%}" if session.steps_total else "N/A"
+
+    stats_text = f"""
+[bold]Status:[/bold] {session.status}
+[bold]Start Time:[/bold] {session.started_at or 'unknown'}
+[bold]End Time:[/bold] {session.finished_at or 'unknown'}
+[bold]Duration:[/bold] {duration_str}
+[bold]Steps:[/bold] {session.steps_ok}/{session.steps_total} (Success rate: {success_rate_str})
+[bold]Data Flow:[/bold] {session.rows_in:,} rows in → {session.rows_out:,} rows out
+[bold]Errors:[/bold] {session.errors}
+[bold]Warnings:[/bold] {session.warnings}
+"""
+    console.print(Panel(stats_text.strip(), title="Statistics"))
+
+    # Tables accessed
+    if session.tables:
+        console.print(Panel("\n".join(session.tables), title="Tables Accessed"))
+
+    # Labels
+    if session.labels:
+        console.print(Panel(", ".join(session.labels), title="Labels"))
+
+
+def _display_sessions_table(sessions: List[Dict[str, Any]], no_wrap: bool = False) -> None:
+    """Display sessions in a Rich table.
+
+    Args:
+        sessions: List of session information dictionaries.
+        no_wrap: If True, session IDs will be on one line (may truncate).
+                 If False (default), session IDs will wrap to show full value.
+    """
+    if not sessions:
+        console.print("No sessions found.")
+        return
+
+    table = Table(title="Session Directories")
+
+    # Configure Session ID column based on wrap preference
+    if no_wrap:
+        table.add_column("Session ID", style="cyan")
+    else:
+        table.add_column("Session ID", style="cyan", overflow="fold", no_wrap=False, min_width=20)
+
+    table.add_column("Command", style="magenta")  # New column for command type
     table.add_column("Start Time", style="dim")
     table.add_column("Status", style="bold")
     table.add_column("Duration", style="green")
@@ -646,8 +833,24 @@ def _display_sessions_table(sessions: List[Dict[str, Any]]) -> None:
             "unknown": "dim",
         }.get(session["status"], "dim")
 
+        # Determine command type from session ID
+        session_id = session["session_id"]
+        if session_id.startswith("compile_"):
+            command = "compile"
+        elif session_id.startswith("run_"):
+            command = "run"
+        elif session_id.startswith("execute_"):
+            command = "execute"  # Legacy
+        elif session_id.startswith("ephemeral_"):
+            # Extract command from ephemeral session
+            parts = session_id.split("_")
+            command = parts[1] if len(parts) > 1 else "ephemeral"
+        else:
+            command = "unknown"
+
         table.add_row(
             session["session_id"],
+            command,
             session["start_time"][:19].replace("T", " ") if session["start_time"] else "unknown",
             f"[{status_style}]{session['status']}[/{status_style}]",
             _format_duration(session["duration_seconds"]),
@@ -816,3 +1019,239 @@ def _tail_session_log(log_file: Path) -> None:
         console.print("\n👋 Stopped following log file")
     except Exception as e:
         console.print(f"\n❌ Error following log file: {e}")
+
+
+def html_report(args: list) -> None:
+    """Generate static HTML report from session logs."""
+    import sys
+    import webbrowser
+
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+    def show_html_help():
+        """Show help for logs html subcommand."""
+        console.print()
+        console.print("[bold green]osiris logs html - Generate HTML Logs Browser[/bold green]")
+        console.print("🌐 Generate a static HTML report for viewing logs in a browser")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris logs html [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Optional Arguments[/bold blue]")
+        console.print("  [cyan]--out DIR[/cyan]             Output directory (default: dist/logs)")
+        console.print("  [cyan]--open[/cyan]                Open browser after generation")
+        console.print("  [cyan]--sessions N[/cyan]          Limit to N sessions")
+        console.print("  [cyan]--since ISO[/cyan]           Sessions since ISO timestamp")
+        console.print("  [cyan]--label NAME[/cyan]          Filter by label")
+        console.print(
+            "  [cyan]--status STATUS[/cyan]       Filter by status (success|failed|running)"
+        )
+        console.print("  [cyan]--logs-dir DIR[/cyan]        Base logs directory (default: logs)")
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print(
+            "  [green]osiris logs html --sessions 5 --open[/green]     # Generate and open browser"
+        )
+        console.print(
+            "  [green]osiris logs html --since 2025-01-01T00:00:00Z[/green]  # Recent sessions"
+        )
+        console.print(
+            "  [green]osiris logs html --status failed[/green]         # Failed sessions only"
+        )
+        console.print()
+
+    if args and args[0] in ["--help", "-h"]:
+        show_html_help()
+        return
+
+    # Get default logs directory from config
+    default_logs_dir = _get_logs_dir_from_config()
+
+    parser = argparse.ArgumentParser(description="Generate HTML logs browser", add_help=False)
+    parser.add_argument("--out", default="dist/logs", help="Output directory")
+    parser.add_argument("--open", action="store_true", help="Open browser after generation")
+    parser.add_argument("--sessions", type=int, help="Limit to N sessions")
+    parser.add_argument("--since", help="Sessions since ISO timestamp")
+    parser.add_argument("--label", help="Filter by label")
+    parser.add_argument(
+        "--status", choices=["success", "failed", "running"], help="Filter by status"
+    )
+    parser.add_argument(
+        "--logs-dir",
+        default=default_logs_dir,
+        help=f"Base logs directory (default: {default_logs_dir})",
+    )
+
+    try:
+        parsed_args = parser.parse_args(args)
+    except SystemExit:
+        console.print("❌ Invalid arguments. Use 'osiris logs html --help' for usage information.")
+        return
+
+    try:
+        from tools.logs_report.generate import generate_html_report
+
+        console.print(f"🔨 Generating HTML report in {parsed_args.out}...")
+        generate_html_report(
+            logs_dir=parsed_args.logs_dir,
+            output_dir=parsed_args.out,
+            status_filter=parsed_args.status,
+            label_filter=parsed_args.label,
+            since_filter=parsed_args.since,
+            limit=parsed_args.sessions,
+        )
+
+        index_path = Path(parsed_args.out) / "index.html"
+        console.print(f"✅ HTML report generated: {index_path}")
+
+        if parsed_args.open:
+            url = f"file://{index_path.absolute()}"
+            console.print(f"🌐 Opening browser: {url}")
+            webbrowser.open(url)
+
+    except Exception as e:
+        console.print(f"❌ Error generating HTML report: {e}")
+
+
+def open_session(args: list) -> None:
+    """Generate and open a single-session HTML report."""
+    import sys
+    import webbrowser
+
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+    def show_open_help():
+        """Show help for logs open subcommand."""
+        console.print()
+        console.print("[bold green]osiris logs open - Open Session in Browser[/bold green]")
+        console.print("🌐 Generate and open a single-session HTML report")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris logs open <session_id|last> [OPTIONS]")
+        console.print("       osiris logs open --label NAME [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Arguments[/bold blue]")
+        console.print("  [cyan]session_id[/cyan]            Session ID to open")
+        console.print("  [cyan]last[/cyan]                  Open the most recent session")
+        console.print()
+        console.print("[bold blue]Optional Arguments[/bold blue]")
+        console.print("  [cyan]--label NAME[/cyan]          Open session with this label")
+        console.print("  [cyan]--out DIR[/cyan]             Output directory (default: dist/logs)")
+        console.print("  [cyan]--logs-dir DIR[/cyan]        Base logs directory (default: logs)")
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print(
+            "  [green]osiris logs open last[/green]                    # Open most recent session"
+        )
+        console.print(
+            "  [green]osiris logs open session_001[/green]             # Open specific session"
+        )
+        console.print(
+            "  [green]osiris logs open --label production[/green]      # Open session with label"
+        )
+        console.print()
+
+    if not args or args[0] in ["--help", "-h"]:
+        show_open_help()
+        return
+
+    # Get default logs directory from config
+    default_logs_dir = _get_logs_dir_from_config()
+
+    # Parse arguments
+    session_id = None
+    label_filter = None
+    output_dir = "dist/logs"
+    logs_dir = default_logs_dir
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--label" and i + 1 < len(args):
+            label_filter = args[i + 1]
+            i += 2
+        elif arg == "--out" and i + 1 < len(args):
+            output_dir = args[i + 1]
+            i += 2
+        elif arg == "--logs-dir" and i + 1 < len(args):
+            logs_dir = args[i + 1]
+            i += 2
+        elif not arg.startswith("--"):
+            session_id = arg
+            i += 1
+        else:
+            console.print(f"❌ Unknown argument: {arg}")
+            return
+
+    # Determine which session to open
+    if label_filter:
+        # Find session with label
+        reader = SessionReader(logs_dir)
+        sessions = reader.list_sessions()
+        for session in sessions:
+            if label_filter in session.labels:
+                session_id = session.session_id
+                break
+        if not session_id:
+            console.print(f"❌ No session found with label: {label_filter}")
+            return
+    elif not session_id:
+        console.print("❌ Please specify a session ID, 'last', or use --label")
+        return
+
+    try:
+        from tools.logs_report.generate import generate_single_session_html
+
+        console.print(f"🔨 Generating HTML report for session: {session_id}...")
+        html_path = generate_single_session_html(session_id, logs_dir, output_dir)
+        console.print(f"✅ HTML report generated: {html_path}")
+
+        url = f"file://{html_path}"
+        console.print(f"🌐 Opening browser: {url}")
+        webbrowser.open(url)
+
+    except Exception as e:
+        console.print(f"❌ Error: {e}")
+
+
+# ============================================================================
+# DEPRECATION SHIMS FOR LEGACY "runs" COMMANDS (per ADR-0025)
+# ============================================================================
+
+
+def runs_list(args: list) -> None:
+    """Deprecated: Legacy shim for 'osiris runs list'."""
+    console.print("[yellow]⚠️  Warning: 'osiris runs list' is deprecated.[/yellow]")
+    console.print("[yellow]   Please use 'osiris logs list' instead.[/yellow]")
+    console.print()
+    list_sessions(args)
+
+
+def runs_show(args: list) -> None:
+    """Deprecated: Legacy shim for 'osiris runs show'."""
+    console.print("[yellow]⚠️  Warning: 'osiris runs show' is deprecated.[/yellow]")
+    console.print("[yellow]   Please use 'osiris logs show' instead.[/yellow]")
+    console.print()
+    show_session(args)
+
+
+def runs_last(args: list) -> None:
+    """Deprecated: Legacy shim for 'osiris runs last'."""
+    console.print("[yellow]⚠️  Warning: 'osiris runs last' is deprecated.[/yellow]")
+    console.print("[yellow]   Please use 'osiris logs last' instead.[/yellow]")
+    console.print()
+    last_session(args)
+
+
+def runs_bundle(args: list) -> None:
+    """Deprecated: Legacy shim for 'osiris runs bundle'."""
+    console.print("[yellow]⚠️  Warning: 'osiris runs bundle' is deprecated.[/yellow]")
+    console.print("[yellow]   Please use 'osiris logs bundle' instead.[/yellow]")
+    console.print()
+    bundle_session(args)
+
+
+def runs_gc(args: list) -> None:
+    """Deprecated: Legacy shim for 'osiris runs gc'."""
+    console.print("[yellow]⚠️  Warning: 'osiris runs gc' is deprecated.[/yellow]")
+    console.print("[yellow]   Please use 'osiris logs gc' instead.[/yellow]")
+    console.print()
+    gc_sessions(args)

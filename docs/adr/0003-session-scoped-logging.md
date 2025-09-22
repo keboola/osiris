@@ -1,7 +1,7 @@
 # ADR 0003: Session-Scoped Logging & Artifacts
 
 ## Status
-Accepted
+Implemented
 
 ## Context
 The existing global logging approach in Osiris has led to several challenges. Debugging issues is difficult due to intertwined logs from multiple sessions, and there is a lack of per-session traceability. This makes it hard to audit and analyze individual runs or user interactions. Additionally, without session-scoped artifacts, it is cumbersome to bundle and review the outputs, metrics, and logs specific to a particular session.

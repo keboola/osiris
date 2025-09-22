@@ -14,10 +14,18 @@
 
 """Configuration management for Osiris v2."""
 
+import os
+import re
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml
+
+
+class ConfigError(Exception):
+    """Configuration-related errors."""
+
+    pass
 
 
 def load_config(config_path: str = ".osiris.yaml") -> Dict[str, Any]:
@@ -167,6 +175,21 @@ discovery:
 # ============================================================================
 llm:
   provider: openai      # Primary LLM: openai, claude, gemini
+
+  # OpenAI models (active by default)
+  model: gpt-5-mini           # Primary OpenAI model
+  fallback_model: gpt-5       # Fallback OpenAI model
+
+  # For Claude (uncomment below and comment OpenAI models above):
+  # provider: claude
+  # model: claude-sonnet-4-20250514       # Primary Claude model
+  # fallback_model: claude-opus-4-1-20250805  # Fallback Claude model
+
+  # For Gemini (uncomment below and comment other models above):
+  # provider: gemini
+  # model: gemini-2.5-flash               # Primary Gemini model
+  # fallback_model: gemini-2.5-pro        # Fallback Gemini model
+
   temperature: 0.1      # Low temperature = deterministic SQL generation
   max_tokens: 2000      # Maximum response length from AI
   timeout_seconds: 30   # API request timeout
@@ -194,6 +217,17 @@ validate:
   mode: warn            # Validation mode: strict, warn, off
   json: false           # Output validation results in JSON format
   show_effective: true  # Show effective configuration values and their sources
+
+# ============================================================================
+# VALIDATION RETRY CONFIGURATION
+# Pipeline validation retry settings (M1b.3 per ADR-0013)
+# ============================================================================
+validation:
+  retry:
+    max_attempts: 2           # Maximum retry attempts (0-5, 0 = strict mode)
+    include_history_in_hitl: true  # Show retry history in HITL prompts
+    history_limit: 3          # Max attempts to show in HITL history
+    diff_format: patch        # Diff format: "patch" or "summary"
 """
         )
 
@@ -261,3 +295,261 @@ class ConfigManager:
                 "dangerous_keywords": ["DROP", "DELETE", "TRUNCATE", "ALTER"],
             },
         }
+
+
+def load_connections_yaml(substitute_env: bool = True) -> Dict[str, Any]:
+    """Load connections configuration with optional ${VAR} substitution from environment.
+
+    Args:
+        substitute_env: If True, substitute ${VAR} with environment values.
+                       If False, return raw config with ${VAR} patterns intact.
+
+    Searches for osiris_connections.yaml in:
+    1. Current working directory
+    2. Repository root (parent directories)
+
+    Returns:
+        Dict structure {family: {alias: {fields}}}
+        Returns empty dict if no connections file found
+    """
+    # Search for connections file
+    search_paths = [
+        Path.cwd() / "osiris_connections.yaml",
+        Path.cwd().parent / "osiris_connections.yaml",
+        Path(__file__).parent.parent.parent
+        / "osiris_connections.yaml",  # Repo root from osiris/core/
+    ]
+
+    connections_file = None
+    for path in search_paths:
+        if path.exists():
+            connections_file = path
+            break
+
+    if not connections_file:
+        return {}
+
+    # Load YAML
+    with open(connections_file) as f:
+        data = yaml.safe_load(f) or {}
+
+    if "connections" not in data:
+        return {}
+
+    connections = data["connections"]
+
+    if not substitute_env:
+        # Return raw config without substitution
+        return connections
+
+    # Perform environment variable substitution
+    def substitute_env_vars(obj):
+        """Recursively substitute ${VAR} with environment variable values."""
+        if isinstance(obj, str):
+            # Find all ${VAR} patterns
+            pattern = r"\$\{([^}]+)\}"
+
+            def replacer(match):
+                var_name = match.group(1)
+                value = os.environ.get(var_name)
+                if value is None or value == "":
+                    # Keep original if not found or empty (will error later if required)
+                    return match.group(0)
+                return value
+
+            return re.sub(pattern, replacer, obj)
+        elif isinstance(obj, dict):
+            return {k: substitute_env_vars(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [substitute_env_vars(item) for item in obj]
+        else:
+            return obj
+
+    return substitute_env_vars(connections)
+
+
+def parse_connection_ref(ref: str) -> tuple[Optional[str], Optional[str]]:
+    """Parse a connection reference string like '@family.alias'.
+
+    Args:
+        ref: Connection reference string (e.g., '@mysql.primary')
+
+    Returns:
+        Tuple of (family, alias) or (None, None) if invalid format
+
+    Examples:
+        parse_connection_ref('@mysql.primary') -> ('mysql', 'primary')
+        parse_connection_ref('@mysql') -> Error
+        parse_connection_ref('mysql.primary') -> (None, None)
+    """
+    if not ref or not ref.startswith("@"):
+        return None, None
+
+    # Strip @ and split
+    ref = ref[1:]  # Remove @
+    if "." not in ref:
+        raise ValueError(f"Invalid connection reference format: '@{ref}'. Expected '@family.alias'")
+
+    parts = ref.split(".", 1)
+    if len(parts) != 2:
+        raise ValueError(f"Invalid connection reference format: '@{ref}'. Expected '@family.alias'")
+
+    family, alias = parts
+    if not family or not alias:
+        raise ValueError(
+            f"Invalid connection reference format: '@{ref}'. Family and alias cannot be empty"
+        )
+
+    return family, alias
+
+
+def resolve_connection(family: str, alias: Optional[str] = None) -> Dict[str, Any]:
+    """Resolve connection by family and optional alias.
+
+    Args:
+        family: Connection family (e.g., "mysql", "supabase", "duckdb")
+        alias: Optional alias name. Can be:
+            - None: Apply default selection precedence
+            - "@family.alias": Parse and resolve specific alias
+            - "alias_name": Direct alias name
+
+    Returns:
+        Resolved dict with secrets substituted
+
+    Raises:
+        ValueError: If connection cannot be resolved
+    """
+    # Parse @family.alias format if provided
+    if alias and alias.startswith("@"):
+        # Parse @family.alias format
+        parts = alias[1:].split(".", 1)
+        if len(parts) == 2:
+            parsed_family, parsed_alias = parts
+            # Override family if specified in @ format
+            if parsed_family:
+                family = parsed_family
+            alias = parsed_alias
+        else:
+            raise ValueError(
+                f"Invalid connection reference format: {alias}. Expected @family.alias"
+            )
+
+    # Load connections
+    connections = load_connections_yaml()
+
+    # Check if family exists
+    if family not in connections:
+        available = list(connections.keys())
+        if not available:
+            raise ValueError(
+                f"No connections configured. Create osiris_connections.yaml with {family} connections."
+            )
+        raise ValueError(
+            f"Connection family '{family}' not found. Available families: {', '.join(available)}"
+        )
+
+    family_connections = connections[family]
+
+    if not family_connections:
+        raise ValueError(f"No connections defined for family '{family}'")
+
+    # If specific alias requested, return it
+    if alias:
+        if alias not in family_connections:
+            available_aliases = list(family_connections.keys())
+            raise ValueError(
+                f"Connection alias '{alias}' not found in family '{family}'. "
+                f"Available aliases: {', '.join(available_aliases)}"
+            )
+        connection = family_connections[alias].copy()
+        # Remove the 'default' flag if present (not needed in resolved connection)
+        connection.pop("default", None)
+
+        # Check for unresolved environment variables
+        def check_unresolved_vars(obj, path=""):
+            """Check for any remaining ${VAR} patterns."""
+            if isinstance(obj, str):
+                pattern = r"\$\{([^}]+)\}"
+                matches = re.findall(pattern, obj)
+                if matches:
+                    for var in matches:
+                        field_name = path.split(".")[-1] if path else "field"
+                        raise ConfigError(
+                            f"Environment variable '{var}' not set for {field_name} in {family}.{alias}"
+                        )
+            elif isinstance(obj, dict):
+                for k, v in obj.items():
+                    new_path = f"{path}.{k}" if path else k
+                    check_unresolved_vars(v, new_path)
+            elif isinstance(obj, list):
+                for i, item in enumerate(obj):
+                    check_unresolved_vars(item, f"{path}[{i}]")
+
+        check_unresolved_vars(connection)
+        return connection
+
+    # Apply default selection precedence
+
+    # 1. Look for alias with default: true
+    for alias_name, conn_data in family_connections.items():
+        if conn_data.get("default") is True:
+            connection = conn_data.copy()
+            connection.pop("default", None)
+
+            # Check for unresolved vars
+            def check_unresolved_vars(obj, path="", current_alias=alias_name):
+                if isinstance(obj, str):
+                    pattern = r"\$\{([^}]+)\}"
+                    matches = re.findall(pattern, obj)
+                    if matches:
+                        for var in matches:
+                            field_name = path.split(".")[-1] if path else "field"
+                            raise ConfigError(
+                                f"Environment variable '{var}' not set for {field_name} in {family}.{current_alias}"
+                            )
+                elif isinstance(obj, dict):
+                    for k, v in obj.items():
+                        new_path = f"{path}.{k}" if path else k
+                        check_unresolved_vars(v, new_path, current_alias)
+                elif isinstance(obj, list):
+                    for i, item in enumerate(obj):
+                        check_unresolved_vars(item, f"{path}[{i}]", current_alias)
+
+            check_unresolved_vars(connection)
+            return connection
+
+    # 2. Look for alias named "default"
+    if "default" in family_connections:
+        connection = family_connections["default"].copy()
+        connection.pop("default", None)
+
+        # Check for unresolved vars
+        def check_unresolved_vars(obj, path=""):
+            if isinstance(obj, str):
+                pattern = r"\$\{([^}]+)\}"
+                matches = re.findall(pattern, obj)
+                if matches:
+                    for var in matches:
+                        field_name = path.split(".")[-1] if path else "field"
+                        raise ValueError(
+                            f"Environment variable '{var}' not set for {field_name} in {family}.default"
+                        )
+            elif isinstance(obj, dict):
+                for k, v in obj.items():
+                    new_path = f"{path}.{k}" if path else k
+                    check_unresolved_vars(v, new_path)
+            elif isinstance(obj, list):
+                for i, item in enumerate(obj):
+                    check_unresolved_vars(item, f"{path}[{i}]")
+
+        check_unresolved_vars(connection)
+        return connection
+
+    # 3. Error with available aliases
+    available_aliases = list(family_connections.keys())
+    raise ValueError(
+        f"No default connection for family '{family}'. "
+        f"Available aliases: {', '.join(available_aliases)}. "
+        f"Either: 1) Set 'default: true' on an alias, 2) Name an alias 'default', "
+        f"or 3) Specify an alias explicitly."
+    )
