@@ -106,28 +106,61 @@ Package Format: 1.0
 - **Integration**: Third-party tools will need to adapt to the new format.
 - **Storage**: Organizations must manage retention and storage of AIOPs.
 
+## Implementation
+
+### Configuration & Precedence
+
+Configuration follows this precedence order:
+```
+Precedence: CLI > Environment variables ($OSIRIS_AIOP_*) > Osiris.yaml > built-in defaults
+```
+
+Environment variables use the prefix `OSIRIS_AIOP_` for all AIOP-related settings. See Milestone M2a for the full list of Osiris.yaml keys, ENV mappings, and CLI interactions.
+
+### Canonical Rules
+
+**Core vs Annex Stratification:**
+- Core: Size ≤ max_core_bytes with deterministic truncation and explicit markers
+- Annex: Optional NDJSON shards with full data; includes annex_ref pointers from Core
+
+**URI Scheme (no trailing slashes):**
+- Run: `osiris://run/@<session_id>`
+- Pipeline: `osiris://pipeline/<name>@<manifest_hash>`
+- Step: `osiris://pipeline/<name>@<manifest_hash>/step/<step_id>`
+- Artifact: `osiris://run/@<session_id>/artifact/<repo_rel_path>`
+- Evidence: `osiris://run/@<session_id>/evidence/<evidence_id>`
+
+**Run Fingerprint:**
+Computed for reproducibility as `SHA-256({version}:{env}:{manifest}:{session}:{timestamp})` but not used in URIs (URIs use session_id directly).
+
+**Evidence IDs:**
+Format: `ev.<type>.<step_id>.<name>.<ts_ms>`
+- Name charset: `[a-z0-9_]` only (spaces and dashes converted to underscores)
+- Timestamps: UTC milliseconds since epoch
+
+**Delta Behavior:**
+- Comparison by `pipeline@manifest_hash` to find previous run
+- First runs set `delta.first_run: true` instead of comparison values
+
+### GraphRAG Preparation
+
+The JSON-LD @context is stabilized and versioned with terms for DAG relationships:
+- `produces`, `consumes`, `depends_on`: Step relationships
+- `materializes`, `verifies`, `remediates`: Run-level relationships
+
+Graph index included in Core with:
+- Node/edge counts, context version, canonical hash
+- 1-to-1 mapping between evidence_id and @id
+
+Annex NDJSON ingestion follows one record per line with required back-references to run_session_id.
+
+### Context Hosting
+
+For M2a, the @context will be hosted at `docs/reference/aiop.context.jsonld` in the repository (or via raw GitHub URL). Future production deployments may use a custom domain alias.
+
 ## Implementation Plan
 
-TODO: Implementation phases:
-
-### Phase 1: MVP (Week 1)
-- Basic AIOP generation with Narrative, Semantic, and Evidence layers
-- CLI command implementation (`osiris logs aiop`)
-- Secret redaction and stable ID assignment
-
-### Phase 2: Enhanced Context (Week 2)
-- Full semantic ontology integration
-- Execution timeline and detailed evidence
-- AI analysis hints and narrative enrichment
-
-### Phase 3: Control Layer (Week 3)
-- Define and implement Control Layer interfaces
-- Enable AI-driven operational commands
-
-### Phase 4: Integration and Optimization (Week 4)
-- AI model testing and feedback incorporation
-- Performance tuning and compression support
-- Documentation and tooling
+Implementation is phased as described in Milestone M2a; see docs/milestones/m2a-aiop.md for the current slicing and execution sequence.
 
 ## Graph Export Hints for Future GraphRAG
 

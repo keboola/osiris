@@ -46,22 +46,97 @@ The AI Operation Package (AIOP) is a model-agnostic, JSON-LD based, deterministi
   - `discovery.ndjson`: Schema catalogs (future M3+, placeholder only in M2a)
 - **Size**: Unbounded (with optional compression)
 
-### Configuration Knobs
+### Configuration via Osiris.yaml & ENV
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--policy` | `core` | Export policy: `core`, `full`, `custom` |
-| `--max-core-bytes` | `300000` | Maximum Core package size |
-| `--annex-dir` | None | Directory for Annex shards |
-| `--timeline-density` | `low` | Event detail: `low`, `medium`, `high` |
-| `--metrics-topk` | `10` | Top K metrics per category |
-| `--schema-mode` | `summary` | Schema detail: `summary`, `detailed` |
-| `--compress` | `none` | Annex compression: `none`, `gzip`, `zstd` |
+Configuration follows this precedence order:
+```
+Precedence: CLI > Environment variables ($OSIRIS_AIOP_*) > Osiris.yaml > built-in defaults
+```
 
-### Truncation Order
-1. Preserve: Run summary, critical errors, step totals
-2. Truncate: Mid-timeline events, detailed metrics, large artifacts
-3. Mark: Truncation markers appear at the level of the truncated object (e.g., `timeline.truncated: true`, `timeline.dropped_events: 47`)
+**Option Reference:**
+- `aiop.enabled` (bool, default true) — auto-export AIOP after each run (even on failure)
+- `aiop.policy` (core|annex|custom, default core) — size/stratification strategy
+- `aiop.max_core_bytes` (e.g. 300k) — hard cap for Core; deterministic truncation + markers
+- `aiop.timeline_density` (low|medium|high, default medium) — how many events go into Core
+  - low: key events; medium: + aggregated per-step metrics; high: all incl. debug
+- `aiop.metrics_topk` (int, default 100) — keep top-K important metrics/steps in Core
+- `aiop.schema_mode` (summary|detailed, default summary) — detail level for Semantic layer (no secrets)
+- `aiop.delta` (previous|none, default previous) — comparison with last run of the same pipeline@manifest_hash; first run sets first_run:true
+- `aiop.run_card` (bool, default true) — emit Markdown run-card
+- `aiop.output.core_path` (path, default logs/aiop/aiop.json)
+- `aiop.output.run_card_path` (path, default logs/aiop/run-card.md)
+- `aiop.annex.enabled` (bool, default false for core, true for annex) — NDJSON Annex on/off
+- `aiop.annex.dir` (path, default logs/aiop/annex)
+- `aiop.annex.compress` (none|gzip|zstd, default none) — compression applies to Annex only; Core stays uncompressed
+- `aiop.retention.keep_runs` (int, optional) — keep last N Core files
+- `aiop.retention.annex_keep_days` (int, optional) — delete Annex shards older than N days
+
+**Environment Variable Mapping:**
+- `OSIRIS_AIOP_ENABLED=false`
+- `OSIRIS_AIOP_POLICY=annex`
+- `OSIRIS_AIOP_MAX_CORE_BYTES=500000`
+- `OSIRIS_AIOP_TIMELINE_DENSITY=high`
+- `OSIRIS_AIOP_METRICS_TOPK=200`
+- `OSIRIS_AIOP_SCHEMA_MODE=detailed`
+- `OSIRIS_AIOP_DELTA=none`
+- `OSIRIS_AIOP_RUN_CARD=false`
+- `OSIRIS_AIOP_OUTPUT_CORE_PATH=/tmp/aiop.json`
+- `OSIRIS_AIOP_OUTPUT_RUN_CARD_PATH=/tmp/run-card.md`
+- `OSIRIS_AIOP_ANNEX_ENABLED=true`
+- `OSIRIS_AIOP_ANNEX_DIR=/tmp/annex`
+- `OSIRIS_AIOP_ANNEX_COMPRESS=gzip`
+- `OSIRIS_AIOP_RETENTION_KEEP_RUNS=20`
+- `OSIRIS_AIOP_RETENTION_ANNEX_KEEP_DAYS=7`
+
+### Truncation Markers & Annex Files
+
+**Truncation markers** appear at the truncated object level:
+- `timeline.truncated: true`, `timeline.dropped_events: <n>`, `timeline.annex_ref: "<path>"`
+- `metrics.truncated: true`, `metrics.dropped_series: <n>`
+
+**Annex NDJSON files:**
+- `timeline.ndjson`: 1 event/line with @id, run_session_id, step_id, ts_ms
+- `metrics.ndjson`: 1 metric/line with @id, run_session_id, step_id, ts_ms
+- `errors.ndjson`: 1 error/line with @id, run_session_id, step_id, ts_ms
+
+### Planned CLI: osiris init (spec only)
+
+**Purpose:** Generate or merge a commented Osiris.yaml with AIOP defaults.
+
+**Behavior:**
+- Non-destructive merge by default; preserve existing values; add only missing aiop keys
+- Flags (for later implementation): `--force` (backup + overwrite), `--no-comments`, `--aiop-policy {core,annex,custom}`, `--stdout`, `--path <file>`
+
+**Template to be generated:**
+```yaml
+# Osiris configuration
+# Precedence of settings: CLI > Environment ($OSIRIS_AIOP_*) > Osiris.yaml > built-in defaults
+# AIOP: AI Operation Package — structured export for LLMs (Narrative, Semantic, Evidence; Control in future)
+aiop:
+  enabled: true            # Auto-generate AIOP after each run (even on failure)
+  policy: core             # core = Core only (LLM-friendly); annex = Core + NDJSON Annex; custom = Core + fine-tuning knobs
+  max_core_bytes: 300k     # Hard cap for Core size; deterministic truncation with markers when exceeded
+
+  # How many timeline events go into Core (Annex can still contain all)
+  timeline_density: medium # low = key events only; medium = + aggregated per-step metrics (default); high = all incl. debug
+  metrics_topk: 100        # Keep top-K metrics/steps in Core (errors/checks prioritized)
+  schema_mode: summary     # summary = names/relations/fingerprints; detailed = adds small schema/config excerpts (no secrets)
+  delta: previous          # previous = compare to last run of same pipeline@manifest_hash (first_run:true if none); none = disable
+  run_card: true           # Also write Markdown run-card for PR/Slack
+
+  output:
+    core_path: logs/aiop/aiop.json         # Where to write Core JSON
+    run_card_path: logs/aiop/run-card.md   # Where to write Markdown run-card
+
+  annex:
+    enabled: false         # Enable NDJSON Annex (timeline/metrics/errors shards)
+    dir: logs/aiop/annex   # Directory for Annex shards
+    compress: none         # none|gzip|zstd (applies to Annex only; Core is always uncompressed for readability)
+
+  retention:
+    keep_runs: 50          # Keep last N Core files (optional)
+    annex_keep_days: 14    # Delete Annex shards older than N days (optional)
+```
 
 ## Architecture & Data Model
 
@@ -557,9 +632,11 @@ TRUNCATION_RULES = {
 }
 ```
 
-## PR Slicing Plan
+## Execution Sequence (Lightning Mode)
 
-### PR 1: Schema & CLI Foundation
+Target: complete within a day (subject to review cycles)
+
+### PR 1: Schema & CLI Foundation (start immediately)
 - `docs/reference/aiop.context.jsonld`
 - `docs/reference/aiop.schema.json`
 - `osiris/cli/logs.py` (stub command)
@@ -575,17 +652,17 @@ TRUNCATION_RULES = {
 - JSON-LD validation
 - Component relationship mapping
 
-### PR 4: Narrative Layer
+### PR 4: Narrative Layer + Run-card
 - Narrative generation from templates
 - Markdown run-card renderer
 - Citation linking
 
-### PR 5: Quality & Security
+### PR 5: Parity & Truncation & Redaction
 - Parity tests (Local vs E2B)
 - Size/truncation handling
 - Secret redaction validation
 
-### PR 6: Documentation & Polish
+### PR 6: Docs & Polish
 - Examples and tutorials
 - Performance optimization
 - Integration tests
@@ -602,6 +679,13 @@ TRUNCATION_RULES = {
 8. ✅ CLI returns appropriate exit codes
 9. ✅ `--policy annex` generates NDJSON shard files correctly
 10. ✅ Delta calculation works correctly for first run (no previous), subsequent runs, and missing previous runs
+11. ✅ Precedence documented exactly as: CLI > Environment ($OSIRIS_AIOP_*) > Osiris.yaml > built-in defaults
+12. ✅ Each AIOP option has a one-line description (timeline_density, schema_mode, metrics_topk, etc.)
+13. ✅ ENV mappings listed and unambiguous
+14. ✅ Truncation marker format documented at object level; Annex files and compression default (none) are explicit
+15. ✅ Delta behavior: first runs set first_run:true; lookup by pipeline@manifest_hash
+16. ✅ Evidence ID charset ([a-z0-9_]), UTC ms timestamps, and URI canonical forms are spelled out
+17. ✅ Planned osiris init is specified with flags, behavior, and the exact YAML template block
 
 ## Examples
 
