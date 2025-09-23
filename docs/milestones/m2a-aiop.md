@@ -87,6 +87,11 @@ Precedence: CLI > Environment variables ($OSIRIS_AIOP_*) > Osiris.yaml > built-i
 - `OSIRIS_AIOP_ANNEX_COMPRESS=gzip`
 - `OSIRIS_AIOP_RETENTION_KEEP_RUNS=20`
 - `OSIRIS_AIOP_RETENTION_ANNEX_KEEP_DAYS=7`
+- `OSIRIS_AIOP_NARRATIVE_SOURCES=manifest,repo_readme,commit_message,discovery`
+- `OSIRIS_AIOP_NARRATIVE_SESSION_CHAT_ENABLED=false`
+- `OSIRIS_AIOP_NARRATIVE_SESSION_CHAT_MODE=masked`
+- `OSIRIS_AIOP_NARRATIVE_SESSION_CHAT_MAX_CHARS=2000`
+- `OSIRIS_AIOP_NARRATIVE_SESSION_CHAT_REDACT_PII=true`
 
 ### Truncation Markers & Annex Files
 
@@ -136,6 +141,15 @@ aiop:
   retention:
     keep_runs: 50          # Keep last N Core files (optional)
     annex_keep_days: 14    # Delete Annex shards older than N days (optional)
+
+  # Narrative layer configuration
+  narrative:
+    sources: [manifest, repo_readme, commit_message, discovery]  # default source list
+    session_chat:
+      enabled: false       # opt-in for chat logs (default: false)
+      mode: masked         # masked|quotes|off
+      max_chars: 2000      # truncation limit for chat logs
+      redact_pii: true     # PII removal before Annex inclusion
 ```
 
 ## Architecture & Data Model
@@ -522,17 +536,48 @@ def test_aiop_redacts_secrets():
 
 ## Narrative Layer Content Policy
 
-### Source Material
-- **Osiris Overview**: Extract from `docs/overview.md`
-- **OML Glossary**: Component descriptions from registry
-- **Manifest Summary**: Pipeline name, steps, connections
-- **Run Outcome**: Success/failure, row counts, duration
+### Context Sources (Precedence Order)
+1. **Manifest/OML metadata** - Including optional `metadata.intent` field (trust: high)
+2. **Repository context** - README.md, PIPELINE.md, Osiris.yaml, commit/PR messages (trust: medium)
+3. **Run facts** - Metrics, DAG structure, artifacts, delta analysis (trust: high)
+4. **Discovery summaries** - Aggregate statistics only, no raw data (trust: medium)
+5. **Session chat logs** - Optional, opt-in only, appears in Annex NDJSON, never in Core (trust: low)
+
+**Default behavior**: Chat logs are NOT included unless explicitly enabled via configuration.
+
+### Intent Discovery & Provenance
+The narrative tracks intent with explicit provenance:
+
+```json
+{
+  "intent_known": true,
+  "intent": "Extract customer data for quarterly reporting",
+  "intent_provenance": [
+    {"source": "manifest.metadata.intent", "trust": "high"},
+    {"source": "commit.message.intent_line", "trust": "medium", "ref": "abc123"}
+  ],
+  "inferred_from": ["dag", "artifacts"],  // only when intent_known:false
+  "narrative": {
+    "inputs": ["manifest", "repo_readme", "metrics", "dag"],
+    "citations": ["ev.metric.total.rows_processed", "ev.artifact.export.csv"]
+  }
+}
+```
+
+**Commit/PR Convention**: Lines matching `intent: <text>` are extracted with medium trust.
+
+### Annex Policy for Sensitive Content
+- **Core narrative**: Always ≤5 paragraphs, neutral tone, deterministic, no free-text
+- **Annex-only content**: Session chat logs, commit/PR snippets, discovery details
+- **Never in Core**: Any user-generated free text, chat transcripts, or non-deterministic content
+- **Redaction**: All PII and secrets removed before Annex inclusion
 
 ### Generation Rules
 - **Tone**: Neutral, factual, no marketing language
-- **Length**: 3-5 paragraphs maximum
+- **Length**: 3-5 paragraphs maximum (Core), unlimited in Annex
 - **Structure**: Context → Intent → Execution → Outcome
-- **Citations**: Link to evidence IDs inline
+- **Citations**: All claims must cite evidence IDs (ev.*)
+- **Transparency**: narrative.inputs[] array lists all contributing sources
 
 ### Example Narrative
 ```
@@ -811,10 +856,10 @@ def generate_graph_hints(manifest: dict, run_data: dict) -> dict:
 
 ### 📝 PR4 — Narrative Layer + Run-card
 
-**Scope:** Generate natural language narratives and Markdown run-cards with evidence citations.
+**Scope:** Generate natural language narratives with intent discovery, provenance tracking, and Markdown run-cards with evidence citations.
 
 **Files to Modify:**
-- `osiris/core/run_export_v2.py` - Add narrative generation
+- `osiris/core/run_export_v2.py` - Add narrative generation with provenance
 
 **Function Stubs:**
 ```python
@@ -822,33 +867,57 @@ def generate_graph_hints(manifest: dict, run_data: dict) -> dict:
 def build_narrative_layer(
     manifest: dict,
     run_summary: dict,
-    evidence_refs: dict
+    evidence_refs: dict,
+    repo_context: dict,
+    config: dict
 ) -> dict:
-    """Generate natural language narrative."""
+    """Generate natural language narrative with intent tracking."""
+
+def discover_intent(
+    manifest: dict,
+    repo_context: dict,
+    commit_messages: list[str]
+) -> tuple[bool, str, list[dict]]:
+    """Discover intent with provenance tracking.
+    Returns: (intent_known, intent_text, provenance_list)"""
+
+def extract_commit_intent(message: str) -> Optional[str]:
+    """Extract intent from commit message (pattern: 'intent: <text>')."""
+
+def build_narrative_inputs(sources: list[str]) -> list[str]:
+    """Build transparent list of narrative input sources."""
 
 def generate_markdown_runcard(aiop: dict) -> str:
     """Generate Markdown run-card from AIOP."""
 
-def format_duration(ms: int) -> str:
-    """Format milliseconds as human-readable duration."""
-
-def generate_intent_summary(manifest: dict) -> str:
-    """Extract pipeline intent from manifest."""
+def prepare_annex_chat_logs(
+    session_logs: list[dict],
+    config: dict
+) -> Optional[dict]:
+    """Prepare redacted chat logs for Annex (never Core)."""
 ```
 
 **Tests to Add:**
-- Test narrative generation from templates
+- Test intent discovery from multiple sources
+- Test intent_known true/false determination
+- Test provenance tracking with trust levels
+- Test commit message intent extraction
+- Test narrative.inputs transparency array
+- Test chat logs appear only in Annex when enabled
+- Test PII redaction in chat logs
 - Test evidence citation linking
 - Test Markdown run-card formatting
-- Test duration formatting
-- Test intent extraction
 
 **Acceptance Checks:**
-- Narrative is 3-5 paragraphs, neutral tone
-- Evidence citations use correct IDs
-- Markdown run-card includes all required sections
-- Run-card links use osiris:// URIs
-- No marketing language or superlatives
+- Narrative sets `intent_known: true/false` deterministically
+- Intent provenance includes trust levels (high/medium/low)
+- Session chat logs appear only in Annex when explicitly enabled
+- All narrative claims cite evidence IDs (ev.*)
+- Narrative.inputs array lists all contributing sources
+- Secrets and PII never leak into narrative
+- Core narrative remains ≤5 paragraphs
+- Commit/PR intent lines extracted with medium trust
+- No free-text content in Core
 
 ### 🔒 PR5 — Parity, Truncation & Redaction
 
@@ -936,7 +1005,7 @@ def calculate_delta(
 **Acceptance Checks:**
 - Generation time <2 seconds for typical run
 - Memory usage <50MB during generation
-- All 17 acceptance criteria from milestone pass
+- All 24 acceptance criteria from milestone pass
 - Examples are complete and valid
 - Documentation includes troubleshooting section
 
@@ -959,6 +1028,13 @@ def calculate_delta(
 15. ✅ Delta behavior: first runs set first_run:true; lookup by pipeline@manifest_hash
 16. ✅ Evidence ID charset ([a-z0-9_]), UTC ms timestamps, and URI canonical forms are spelled out
 17. ✅ Planned osiris init is specified with flags, behavior, and the exact YAML template block
+18. ✅ Narrative sets `intent_known: true/false` deterministically based on source availability
+19. ✅ Intent provenance tracked with trust levels (high/medium/low)
+20. ✅ Session chat logs appear only in Annex when explicitly enabled (opt-in)
+21. ✅ All narrative claims cite evidence IDs (ev.*)
+22. ✅ Narrative.inputs array provides transparency on contributing sources
+23. ✅ Secrets and PII never leak into narrative (Core or Annex)
+24. ✅ Core narrative remains ≤5 paragraphs, neutral tone, deterministic
 
 ## Examples
 

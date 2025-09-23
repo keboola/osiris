@@ -26,6 +26,42 @@ We will replace the concept of a simple "run export bundle" with a richer, multi
 ### 1. Narrative Layer
 A human- and machine-readable narrative describing the pipeline run in natural language, including intent, causality, and high-level explanations. This layer contextualizes the execution, summarizing why steps were taken, what business rules apply, and how outcomes relate to expectations.
 
+#### Narrative Context Sources (Precedence Order)
+1. **Manifest/OML metadata** - Including optional `metadata.intent` field (trust: high)
+2. **Repository context** - README.md, PIPELINE.md, Osiris.yaml, commit/PR messages (trust: medium)
+3. **Run facts** - Metrics, DAG structure, artifacts, delta analysis (trust: high)
+4. **Discovery summaries** - Aggregate statistics only, no raw data (trust: medium)
+5. **Session chat logs** - Optional, opt-in only, appears in Annex NDJSON, never in Core (trust: low)
+
+#### Intent Discovery & Provenance
+The narrative layer tracks intent provenance with explicit trust levels:
+
+```json
+{
+  "intent_known": true,
+  "intent": "Extract customer data for quarterly reporting",
+  "intent_provenance": [
+    {"source": "manifest.metadata.intent", "trust": "high"},
+    {"source": "commit.message.intent_line", "trust": "medium", "ref": "abc123"}
+  ],
+  "narrative": {
+    "inputs": ["manifest", "repo_readme", "metrics", "dag"],
+    "citations": ["ev.metric.total.rows_processed", "ev.artifact.export.csv"]
+  }
+}
+```
+
+- **intent_known**: Boolean flag indicating if explicit intent was found
+- **intent_provenance**: Array tracking all intent sources with trust levels
+- **Commit/PR convention**: Lines matching `intent: <text>` are extracted with medium trust
+- **Fallback**: When intent_known:false, may include `inferred_from: ["dag", "artifacts"]`
+
+#### Annex Policy for Sensitive Content
+- **Core narrative**: Always ≤5 paragraphs, neutral tone, deterministic, no free-text
+- **Annex-only content**: Session chat logs, commit/PR snippets, discovery details
+- **Redaction**: All PII and secrets removed before Annex inclusion
+- **Size limits**: Chat logs truncated to configured max_chars (default 2000)
+
 ### 2. Semantic / Ontology Layer
 A formal semantic model of the pipeline manifest, OML definitions, component capabilities, and configuration metadata. This includes ontologies that define relationships between data, components, and execution semantics, enabling AI to reason about pipeline structure and intent.
 
@@ -116,6 +152,25 @@ Precedence: CLI > Environment variables ($OSIRIS_AIOP_*) > Osiris.yaml > built-i
 ```
 
 Environment variables use the prefix `OSIRIS_AIOP_` for all AIOP-related settings. See Milestone M2a for the full list of Osiris.yaml keys, ENV mappings, and CLI interactions.
+
+**Narrative-specific configuration:**
+```yaml
+aiop:
+  narrative:
+    sources: [manifest, repo_readme, commit_message, discovery]  # default
+    session_chat:
+      enabled: false      # opt-in for chat logs
+      mode: masked        # masked|quotes|off
+      max_chars: 2000     # truncation limit
+      redact_pii: true    # PII removal before Annex
+```
+
+Environment variable mappings for narrative:
+- `OSIRIS_AIOP_NARRATIVE_SOURCES` - Comma-separated list of sources
+- `OSIRIS_AIOP_NARRATIVE_SESSION_CHAT_ENABLED` - true/false
+- `OSIRIS_AIOP_NARRATIVE_SESSION_CHAT_MODE` - masked/quotes/off
+- `OSIRIS_AIOP_NARRATIVE_SESSION_CHAT_MAX_CHARS` - Integer limit
+- `OSIRIS_AIOP_NARRATIVE_SESSION_CHAT_REDACT_PII` - true/false
 
 ### Canonical Rules
 
@@ -263,6 +318,15 @@ The full AI Operation Package feature is postponed to Milestone M2 for implement
 - [ ] All three layers present: Narrative, Semantic, Evidence
 - [ ] Deterministic output for same input (stable IDs and ordering)
 - [ ] NO secrets in output (comprehensive redaction)
+
+### Narrative Layer Requirements
+- [ ] Narrative sets `intent_known: true/false` deterministically
+- [ ] Intent provenance tracked with trust levels (high/medium/low)
+- [ ] Session chat logs appear only in Annex when explicitly enabled
+- [ ] All narrative claims cite evidence IDs (ev.*)
+- [ ] Narrative.inputs array lists contributing sources
+- [ ] Secrets and PII never leak into narrative
+- [ ] Core narrative remains ≤5 paragraphs
 
 ### GraphRAG Preparation
 - [ ] Graph hints section includes valid RDF triples
