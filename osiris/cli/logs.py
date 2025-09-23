@@ -18,6 +18,7 @@
 import argparse
 import json
 import shutil
+import sys
 import time
 import zipfile
 from datetime import datetime, timedelta
@@ -1255,3 +1256,121 @@ def runs_gc(args: list) -> None:
     console.print("[yellow]   Please use 'osiris logs gc' instead.[/yellow]")
     console.print()
     gc_sessions(args)
+
+
+def aiop_export(args: list) -> None:
+    """Export AI Operation Package (AIOP) from session logs."""
+
+    def show_aiop_help():
+        """Show help for logs aiop subcommand."""
+        console.print()
+        console.print("[bold green]osiris logs aiop - Export AI Operation Package[/bold green]")
+        console.print("🤖 Generate a structured JSON-LD package for LLM consumption")
+        console.print()
+        console.print(
+            "[bold]Usage:[/bold] osiris logs aiop [--session SESSION_ID | --last] [OPTIONS]"
+        )
+        console.print()
+        console.print("[bold blue]Required Arguments (one of)[/bold blue]")
+        console.print("  [cyan]--session SESSION_ID[/cyan]  Session ID to export")
+        console.print("  [cyan]--last[/cyan]                Export the most recent session")
+        console.print()
+        console.print("[bold blue]Optional Arguments[/bold blue]")
+        console.print("  [cyan]--output PATH[/cyan]         Output file path (default: stdout)")
+        console.print(
+            "  [cyan]--format FORMAT[/cyan]       Output format: json or md (default: json)"
+        )
+        console.print(
+            "  [cyan]--policy POLICY[/cyan]       Export policy: core or annex (default: core)"
+        )
+        console.print(
+            "  [cyan]--max-core-bytes N[/cyan]    Max bytes for core package (default: 300000)"
+        )
+        console.print(
+            "  [cyan]--annex-dir DIR[/cyan]       Directory for annex files (policy=annex)"
+        )
+        console.print(
+            "  [cyan]--timeline-density D[/cyan]  Timeline detail: low/medium/high (default: medium)"
+        )
+        console.print(
+            "  [cyan]--metrics-topk N[/cyan]      Top K metrics to include (default: 100)"
+        )
+        console.print(
+            "  [cyan]--schema-mode MODE[/cyan]    Schema detail: summary/detailed (default: summary)"
+        )
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print(
+            "  [green]osiris logs aiop --last[/green]                          # Export latest session"
+        )
+        console.print(
+            "  [green]osiris logs aiop --session run_123[/green]               # Export specific session"
+        )
+        console.print(
+            "  [green]osiris logs aiop --last --output aiop.json[/green]       # Save to file"
+        )
+        console.print(
+            "  [green]osiris logs aiop --last --policy annex[/green]           # Generate with annex"
+        )
+        console.print()
+        console.print("[bold yellow]Note:[/bold yellow] This is a stub implementation in PR1.")
+        console.print("      Actual AIOP export will be implemented in PR2+.")
+        console.print()
+
+    if args and args[0] in ["--help", "-h"]:
+        show_aiop_help()
+        return
+
+    parser = argparse.ArgumentParser(description="Export AI Operation Package", add_help=False)
+    parser.add_argument("--session", help="Session ID to export")
+    parser.add_argument("--last", action="store_true", help="Export most recent session")
+    parser.add_argument("--output", help="Output file path (default: stdout)")
+    parser.add_argument(
+        "--format", choices=["json", "md"], default="json", help="Output format (default: json)"
+    )
+    parser.add_argument(
+        "--policy", choices=["core", "annex"], default="core", help="Export policy (default: core)"
+    )
+    parser.add_argument(
+        "--max-core-bytes",
+        type=int,
+        default=300000,
+        help="Max bytes for core package (default: 300000)",
+    )
+    parser.add_argument("--annex-dir", help="Directory for annex files")
+    parser.add_argument(
+        "--timeline-density",
+        choices=["low", "medium", "high"],
+        default="medium",
+        help="Timeline detail level (default: medium)",
+    )
+    parser.add_argument(
+        "--metrics-topk", type=int, default=100, help="Top K metrics to include (default: 100)"
+    )
+    parser.add_argument(
+        "--schema-mode",
+        choices=["summary", "detailed"],
+        default="summary",
+        help="Schema detail level (default: summary)",
+    )
+
+    try:
+        parsed_args = parser.parse_args(args)
+    except SystemExit:
+        console.print("❌ Invalid arguments. Use 'osiris logs aiop --help' for usage information.")
+        return
+
+    # PR1 stub behavior
+    if parsed_args.last:
+        console.print("AIOP export not implemented yet (PR2).")
+        return  # Exit code 0
+    elif parsed_args.session:
+        if parsed_args.session.strip():  # Non-empty session ID
+            console.print("AIOP export not implemented yet (PR2).")
+            return  # Exit code 0
+        else:
+            console.print("Error: session id required")
+            sys.exit(2)
+    else:
+        console.print("Error: Either --session or --last is required")
+        sys.exit(2)
