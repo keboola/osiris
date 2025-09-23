@@ -1353,6 +1353,11 @@ def aiop_export(args: list) -> None:
         default="summary",
         help="Schema detail level (default: summary)",
     )
+    parser.add_argument(
+        "--logs-dir",
+        default=None,
+        help="Base logs directory (default: from config or 'logs')",
+    )
 
     try:
         parsed_args = parser.parse_args(args)
@@ -1360,17 +1365,11 @@ def aiop_export(args: list) -> None:
         console.print("❌ Invalid arguments. Use 'osiris logs aiop --help' for usage information.")
         return
 
-    # PR1 stub behavior
-    if parsed_args.last:
+    # PR2 stub implementation - parse flags and print placeholder message
+    if parsed_args.last or parsed_args.session:
         console.print("AIOP export not implemented yet (PR2).")
-        return  # Exit code 0
-    elif parsed_args.session:
-        if parsed_args.session.strip():  # Non-empty session ID
-            console.print("AIOP export not implemented yet (PR2).")
-            return  # Exit code 0
-        else:
-            console.print("Error: session id required")
-            sys.exit(2)
+        # Exit with code 0 as specified in milestone
+        return
     else:
         console.print("Error: Either --session or --last is required")
         sys.exit(2)
