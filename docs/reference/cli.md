@@ -204,6 +204,32 @@ Options:
 - `--keep-recent N`: Keep N most recent sessions (default: 10)
 - `--older-than DAYS`: Remove sessions older than DAYS
 
+### logs aiop - Export AI Operation Package
+
+Generate a structured JSON-LD package for LLM consumption (STUB in PR1):
+
+```bash
+osiris logs aiop [--session SESSION_ID | --last] [OPTIONS]
+```
+
+Required (one of):
+- `--session SESSION_ID`: Session ID to export
+- `--last`: Export the most recent session
+
+Options:
+- `--output PATH`: Output file path (default: stdout)
+- `--format FORMAT`: Output format: json or md (default: json)
+- `--policy POLICY`: Export policy: core or annex (default: core)
+- `--max-core-bytes N`: Max bytes for core package (default: 300000)
+- `--annex-dir DIR`: Directory for annex files (when policy=annex)
+- `--timeline-density D`: Timeline detail: low/medium/high (default: medium)
+- `--metrics-topk N`: Top K metrics to include (default: 100)
+- `--schema-mode MODE`: Schema detail: summary/detailed (default: summary)
+
+**Note**: This is a stub implementation in PR1. Actual AIOP export will be implemented in PR2+.
+
+Configuration precedence: CLI > Environment variables ($OSIRIS_AIOP_*) > osiris.yaml > defaults
+
 ## Pro Mode Commands
 
 ### dump-prompts - Export LLM Prompts

@@ -1400,8 +1400,9 @@ def connections_command(args: list) -> None:
 
 
 def logs_command(args: list) -> None:
-    """Manage session logs (list, show, bundle, gc, html, open)."""
+    """Manage session logs (list, show, bundle, gc, html, open, aiop)."""
     from .logs import (
+        aiop_export,
         bundle_session,
         gc_sessions,
         html_report,
@@ -1429,6 +1430,7 @@ def logs_command(args: list) -> None:
         console.print("  [cyan]gc[/cyan]                     Garbage collect old sessions")
         console.print("  [cyan]html[/cyan]                   Generate static HTML report")
         console.print("  [cyan]open <session>[/cyan]        Generate and open single-session HTML")
+        console.print("  [cyan]aiop[/cyan]                   Export AI Operation Package (AIOP)")
         console.print()
         console.print("[bold blue]Examples[/bold blue]")
         console.print(
@@ -1481,9 +1483,11 @@ def logs_command(args: list) -> None:
         html_report(subcommand_args)
     elif subcommand == "open":
         open_session(subcommand_args)
+    elif subcommand == "aiop":
+        aiop_export(subcommand_args)
     else:
         console.print(f"❌ Unknown subcommand: {subcommand}")
-        console.print("Available subcommands: list, last, show, bundle, gc, html, open")
+        console.print("Available subcommands: list, last, show, bundle, gc, html, open, aiop")
         console.print("Use 'osiris logs --help' for detailed help.")
 
 

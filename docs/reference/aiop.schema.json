@@ -1,0 +1,347 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://osiris.dev/schemas/aiop.schema.json",
+  "title": "AIOP (AI Operation Package)",
+  "description": "Schema for Osiris AI Operation Package - a JSON-LD based structured export for LLMs",
+  "type": "object",
+  "required": ["@context", "@type", "@id", "run", "pipeline", "narrative", "semantic", "evidence", "metadata"],
+
+  "properties": {
+    "@context": {
+      "description": "JSON-LD context URL or inline context",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "object" }
+      ]
+    },
+    "@type": {
+      "description": "RDF type of this document",
+      "const": "AIOperationPackage"
+    },
+    "@id": {
+      "description": "Unique identifier for this AIOP instance",
+      "type": "string",
+      "pattern": "^osiris://run/@[a-zA-Z0-9_-]+$"
+    },
+
+    "run": {
+      "type": "object",
+      "required": ["session_id", "status", "start_time", "end_time"],
+      "properties": {
+        "session_id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]+$"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["completed", "failed", "partial"]
+        },
+        "start_time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end_time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "environment": {
+          "type": "string",
+          "enum": ["local", "e2b"]
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+
+    "pipeline": {
+      "type": "object",
+      "required": ["name", "manifest_hash"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "manifest_hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "oml_version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        }
+      }
+    },
+
+    "narrative": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "intent_known": {
+          "type": "boolean"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "intent_provenance": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["source", "trust"],
+            "properties": {
+              "source": {
+                "type": "string"
+              },
+              "trust": {
+                "type": "string",
+                "enum": ["high", "medium", "low"]
+              },
+              "ref": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "citations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^ev\\."
+          }
+        }
+      }
+    },
+
+    "semantic": {
+      "type": "object",
+      "properties": {
+        "manifest": {
+          "type": "object"
+        },
+        "oml": {
+          "type": "object"
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "graph_hints": {
+          "type": "object",
+          "properties": {
+            "triples": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/event"
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["number", "string", "boolean"]
+          }
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/error"
+          }
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        }
+      }
+    },
+
+    "metadata": {
+      "type": "object",
+      "required": ["osiris_version", "aiop_format", "generated", "size_bytes"],
+      "properties": {
+        "osiris_version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "aiop_format": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+$"
+        },
+        "generated": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "annex_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "event": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^ev\\.[a-z]+\\.[a-z0-9_]+\\.[a-z0-9_]+\\.[0-9]+$"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "type": {
+          "type": "string"
+        },
+        "data": {
+          "type": "object"
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^ev\\.error\\."
+        },
+        "step_id": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["warning", "error", "critical"]
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "properties": {
+        "uri": {
+          "type": "string",
+          "pattern": "^osiris://run/@[^/]+/artifact/"
+        },
+        "path": {
+          "type": "string"
+        },
+        "size_bytes": {
+          "type": "integer"
+        },
+        "hash": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      }
+    },
+    "timeline": {
+      "type": "object",
+      "description": "Placeholder for timeline events (PR2+)"
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Placeholder for metrics aggregation (PR2+)"
+    }
+  },
+
+  "examples": [
+    {
+      "@context": "https://osiris.dev/ontology/v1/aiop.context.jsonld",
+      "@type": "AIOperationPackage",
+      "@id": "osiris://run/@session_123",
+      "run": {
+        "session_id": "session_123",
+        "status": "completed",
+        "start_time": "2024-01-15T10:00:00Z",
+        "end_time": "2024-01-15T10:05:00Z",
+        "environment": "local",
+        "duration_ms": 300000
+      },
+      "pipeline": {
+        "name": "customer_etl",
+        "manifest_hash": "abc123def456abc123def456abc123def456abc123def456abc123def456abcd",
+        "oml_version": "0.1.0"
+      },
+      "narrative": {
+        "summary": "Executed customer ETL pipeline successfully",
+        "intent_known": true,
+        "intent": "Extract customer data for quarterly reporting",
+        "intent_provenance": [
+          {
+            "source": "manifest.metadata.intent",
+            "trust": "high"
+          }
+        ],
+        "inputs": ["manifest", "metrics"],
+        "citations": ["ev.metric.total.rows_processed"]
+      },
+      "semantic": {
+        "manifest": {},
+        "oml": {},
+        "components": []
+      },
+      "evidence": {
+        "events": [],
+        "metrics": {
+          "total_rows_processed": 10234
+        },
+        "errors": [],
+        "artifacts": []
+      },
+      "metadata": {
+        "osiris_version": "0.2.0",
+        "aiop_format": "1.0",
+        "generated": "2024-01-15T10:06:00Z",
+        "truncated": false,
+        "size_bytes": 4567
+      }
+    }
+  ]
+}
