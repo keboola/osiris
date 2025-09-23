@@ -17,10 +17,13 @@
 
 import copy
 import gzip
+import io
 import json
 import re
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
+from typing import Generator
 from urllib.parse import urlparse, urlunparse
 
 
@@ -261,6 +264,28 @@ def canonicalize_json(data: dict) -> str:
         Deterministic JSON string with sorted keys
     """
     return json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False, separators=(",", ": "))
+
+
+def stream_json_chunks(data: dict, chunk_size: int = 8192) -> Generator[str, None, None]:
+    """Stream JSON output in chunks to reduce memory usage.
+
+    Args:
+        data: Dictionary to serialize
+        chunk_size: Size of each chunk in bytes
+
+    Yields:
+        JSON string chunks
+    """
+    # Use StringIO to simulate streaming
+    buffer = io.StringIO()
+    json.dump(data, buffer, indent=2, sort_keys=True, ensure_ascii=False, separators=(",", ": "))
+    buffer.seek(0)
+
+    while True:
+        chunk = buffer.read(chunk_size)
+        if not chunk:
+            break
+        yield chunk
 
 
 def apply_truncation(data: dict, max_bytes: int) -> tuple[dict, bool]:
@@ -671,8 +696,38 @@ def extract_dag_structure(manifest: dict) -> dict:
     return {"nodes": nodes, "edges": edges, "counts": {"nodes": len(nodes), "edges": len(edges)}}
 
 
+@lru_cache(maxsize=32)
+def build_component_ontology_cached(components_str: str, mode: str = "summary") -> dict:
+    """Cached version of build_component_ontology using JSON string key.
+
+    Args:
+        components_str: JSON string of component definitions
+        mode: "summary" or "detailed"
+
+    Returns:
+        Component ontology dictionary
+    """
+    components = json.loads(components_str)
+    return _build_component_ontology_impl(components, mode)
+
+
 def build_component_ontology(components: dict, mode: str = "summary") -> dict:
     """Map components to ontology (types, capabilities, optional schema snippets based on mode).
+
+    Args:
+        components: Dictionary of component definitions
+        mode: "summary" or "detailed"
+
+    Returns:
+        Component ontology dictionary
+    """
+    # Use cached version for performance
+    components_str = json.dumps(components, sort_keys=True)
+    return build_component_ontology_cached(components_str, mode)
+
+
+def _build_component_ontology_impl(components: dict, mode: str = "summary") -> dict:
+    """Implementation of component ontology building.
 
     Args:
         components: Dictionary of component definitions
@@ -1529,6 +1584,7 @@ def build_aiop(
     metrics: list[dict],
     artifacts: list,
     config: dict,
+    show_progress: bool = False,
 ) -> dict:
     """Compose full AIOP Core package.
 
@@ -1547,15 +1603,43 @@ def build_aiop(
         metrics: List of metric dictionaries
         artifacts: List of artifact paths or dicts
         config: Configuration dictionary with max_core_bytes, timeline_density, etc.
+        show_progress: Whether to show progress indicators
 
     Returns:
         Complete AIOP Core package dictionary
     """
-    # Redact secrets from all inputs first
-    session_data = redact_secrets(session_data)
-    manifest = redact_secrets(manifest)
-    events = [redact_secrets(event) for event in events]
-    metrics = [redact_secrets(metric) for metric in metrics]
+    # Import Rich locally to avoid circular imports
+    if show_progress:
+        try:
+            from rich.console import Console
+            from rich.progress import Progress, SpinnerColumn, TextColumn
+
+            console = Console(stderr=True)
+            progress = Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+                transient=True,
+            )
+        except ImportError:
+            show_progress = False
+
+    # Create progress context manager
+    if show_progress:
+        with progress:
+            task_id = progress.add_task("Redacting secrets...", total=None)
+            # Redact secrets from all inputs first
+            session_data = redact_secrets(session_data)
+            manifest = redact_secrets(manifest)
+            events = [redact_secrets(event) for event in events]
+            metrics = [redact_secrets(metric) for metric in metrics]
+            progress.update(task_id, description="Secrets redacted")
+    else:
+        # Redact secrets from all inputs first
+        session_data = redact_secrets(session_data)
+        manifest = redact_secrets(manifest)
+        events = [redact_secrets(event) for event in events]
+        metrics = [redact_secrets(metric) for metric in metrics]
 
     # Convert artifact paths to Path objects if needed
     artifact_paths = []
@@ -1576,58 +1660,121 @@ def build_aiop(
     metrics_topk = config.get("metrics_topk", 10)
     schema_mode = config.get("schema_mode", "summary")
 
-    # Build evidence layer (PR2)
-    timeline = build_timeline(events, density=timeline_density)
-    aggregated_metrics = aggregate_metrics(metrics, topk=metrics_topk)
-    errors = _extract_errors(events)
-    artifact_list = _build_artifact_list(artifact_paths)
+    # Build layers with progress tracking
+    if show_progress:
+        with progress:
+            # Build evidence layer (PR2)
+            task_id = progress.add_task("Building evidence layer...", total=None)
+            timeline = build_timeline(events, density=timeline_density)
+            aggregated_metrics = aggregate_metrics(metrics, topk=metrics_topk)
+            errors = _extract_errors(events)
+            artifact_list = _build_artifact_list(artifact_paths)
 
-    evidence = {
-        "timeline": timeline,
-        "metrics": aggregated_metrics,
-        "errors": errors,
-        "artifacts": artifact_list,
-    }
+            evidence = {
+                "timeline": timeline,
+                "metrics": aggregated_metrics,
+                "errors": errors,
+                "artifacts": artifact_list,
+            }
+            progress.update(task_id, description="Evidence layer complete")
 
-    # Build semantic layer (PR3)
-    # Create a minimal component registry if not provided
-    component_registry = {}
-    for step in manifest.get("steps", []):
-        comp_name = step.get("component", "")
-        if comp_name and comp_name not in component_registry:
-            component_registry[comp_name] = {
-                "version": "1.0",
-                "capabilities": ["extract", "transform", "write"],
+            # Build semantic layer (PR3)
+            progress.update(task_id, description="Building semantic layer...")
+            # Create a minimal component registry if not provided
+            component_registry = {}
+            for step in manifest.get("steps", []):
+                comp_name = step.get("component", "")
+                if comp_name and comp_name not in component_registry:
+                    component_registry[comp_name] = {
+                        "version": "1.0",
+                        "capabilities": ["extract", "transform", "write"],
+                    }
+
+            semantic = build_semantic_layer(
+                manifest=manifest,
+                oml_spec={"oml_version": manifest.get("oml_version", "0.1.0")},
+                component_registry=component_registry,
+                schema_mode=schema_mode,
+            )
+            progress.update(task_id, description="Semantic layer complete")
+
+            # Build run summary
+            progress.update(task_id, description="Building run summary...")
+            run_summary = {
+                "session_id": session_data.get("session_id"),
+                "status": session_data.get("status", "unknown"),
+                "started_at": session_data.get("started_at"),
+                "completed_at": session_data.get("completed_at"),
+                "duration_ms": aggregated_metrics.get("total_duration_ms", 0),
+                "total_rows": aggregated_metrics.get("total_rows", 0),
+                "environment": session_data.get("environment", "unknown"),
             }
 
-    semantic = build_semantic_layer(
-        manifest=manifest,
-        oml_spec={"oml_version": manifest.get("oml_version", "0.1.0")},
-        component_registry=component_registry,
-        schema_mode=schema_mode,
-    )
+            # Calculate delta
+            manifest_hash = manifest.get("manifest_hash", "")
+            delta = calculate_delta({"metrics": aggregated_metrics}, manifest_hash)
 
-    # Build run summary
-    run_summary = {
-        "session_id": session_data.get("session_id"),
-        "status": session_data.get("status", "unknown"),
-        "started_at": session_data.get("started_at"),
-        "completed_at": session_data.get("completed_at"),
-        "duration_ms": aggregated_metrics.get("total_duration_ms", 0),
-        "total_rows": aggregated_metrics.get("total_rows", 0),
-        "environment": session_data.get("environment", "unknown"),
-    }
+            # Build narrative layer (PR4)
+            progress.update(task_id, description="Building narrative layer...")
+            evidence_refs = {
+                "timeline_ids": [e.get("@id") for e in timeline[:3] if "@id" in e],
+                "metrics": aggregated_metrics,
+            }
+            narrative = build_narrative_layer(manifest, run_summary, evidence_refs)
+            progress.update(task_id, description="Narrative layer complete")
+    else:
+        # Build evidence layer (PR2)
+        timeline = build_timeline(events, density=timeline_density)
+        aggregated_metrics = aggregate_metrics(metrics, topk=metrics_topk)
+        errors = _extract_errors(events)
+        artifact_list = _build_artifact_list(artifact_paths)
 
-    # Calculate delta
-    manifest_hash = manifest.get("manifest_hash", "")
-    delta = calculate_delta({"metrics": aggregated_metrics}, manifest_hash)
+        evidence = {
+            "timeline": timeline,
+            "metrics": aggregated_metrics,
+            "errors": errors,
+            "artifacts": artifact_list,
+        }
 
-    # Build narrative layer (PR4)
-    evidence_refs = {
-        "timeline_ids": [e.get("@id") for e in timeline[:3] if "@id" in e],
-        "metrics": aggregated_metrics,
-    }
-    narrative = build_narrative_layer(manifest, run_summary, evidence_refs)
+        # Build semantic layer (PR3)
+        # Create a minimal component registry if not provided
+        component_registry = {}
+        for step in manifest.get("steps", []):
+            comp_name = step.get("component", "")
+            if comp_name and comp_name not in component_registry:
+                component_registry[comp_name] = {
+                    "version": "1.0",
+                    "capabilities": ["extract", "transform", "write"],
+                }
+
+        semantic = build_semantic_layer(
+            manifest=manifest,
+            oml_spec={"oml_version": manifest.get("oml_version", "0.1.0")},
+            component_registry=component_registry,
+            schema_mode=schema_mode,
+        )
+
+        # Build run summary
+        run_summary = {
+            "session_id": session_data.get("session_id"),
+            "status": session_data.get("status", "unknown"),
+            "started_at": session_data.get("started_at"),
+            "completed_at": session_data.get("completed_at"),
+            "duration_ms": aggregated_metrics.get("total_duration_ms", 0),
+            "total_rows": aggregated_metrics.get("total_rows", 0),
+            "environment": session_data.get("environment", "unknown"),
+        }
+
+        # Calculate delta
+        manifest_hash = manifest.get("manifest_hash", "")
+        delta = calculate_delta({"metrics": aggregated_metrics}, manifest_hash)
+
+        # Build narrative layer (PR4)
+        evidence_refs = {
+            "timeline_ids": [e.get("@id") for e in timeline[:3] if "@id" in e],
+            "metrics": aggregated_metrics,
+        }
+        narrative = build_narrative_layer(manifest, run_summary, evidence_refs)
 
     # Compose AIOP
     aiop = {

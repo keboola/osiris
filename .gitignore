@@ -24,6 +24,7 @@ mempack-*.txt
 .osiris_sessions/
 .osiris_prompts/
 output/
+.aiop-annex/*
 
 # Test artifacts that shouldn't be in repo root
 *MagicMock*

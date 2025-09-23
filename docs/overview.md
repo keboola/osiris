@@ -103,5 +103,67 @@ graph TB
     LCL --> OBS[Events • Metrics • Artifacts]
     E2B --> OBS
     OBS --> HTML[HTML Report]
-    OBS --> AIB[AI‑ready Run Bundle]
+    OBS --> AIOP[AI Operation Package]
 ```
+
+---
+
+## 10) AI Operation Package (AIOP)
+
+### What is AIOP?
+
+The **AI Operation Package (AIOP)** is a comprehensive, structured export of pipeline execution data designed for AI consumption. Unlike traditional logs or simple JSON dumps, AIOP provides a multi-layered context that enables AI systems to deeply understand and reason about pipeline runs.
+
+### AIOP Layers
+
+1. **Evidence Layer** - Timestamped, citeable records of what happened
+   - Timeline of events with stable IDs (`ev.event.run_start.run.123`)
+   - Aggregated metrics (rows processed, duration, errors)
+   - Artifact references and data lineage
+
+2. **Semantic Layer** - Formal model of pipeline structure and relationships
+   - DAG representation with nodes and edges
+   - Component capabilities and configurations
+   - OML version and manifest fingerprint
+
+3. **Narrative Layer** - Natural language description with citations
+   - Intent and business context
+   - Causal explanations of execution flow
+   - Cross-references to evidence IDs
+
+4. **Metadata Layer** - Package metadata and controls
+   - Size hints for LLM chunking
+   - Truncation markers when size-limited
+   - Delta comparisons with previous runs
+
+### Using AIOP
+
+```bash
+# Export AIOP for last run (JSON format)
+osiris logs aiop --last --format json
+
+# Generate Markdown run-card for human review
+osiris logs aiop --last --format md --output runcard.md
+
+# Export with annex shards for large runs
+osiris logs aiop --last --policy annex --compress gzip
+
+# Control package size (default 300KB)
+osiris logs aiop --last --max-core-bytes 500000
+```
+
+### Key Features
+
+- **Deterministic**: Same input produces identical AIOP (stable IDs, sorted keys)
+- **Secret-free**: All credentials and PII automatically redacted
+- **Size-controlled**: Automatic truncation with explicit markers
+- **LLM-optimized**: JSON-LD format with semantic annotations
+- **Parity**: Identical structure for local and E2B runs
+
+### Use Cases
+
+- **AI Debugging**: Feed AIOP to LLMs for root cause analysis
+- **Automated Monitoring**: AI agents can detect anomalies and suggest fixes
+- **Documentation**: Markdown run-cards provide executive summaries
+- **Compliance**: Evidence layer provides audit trail with citations
+- **Knowledge Base**: Build organizational memory from run patterns
