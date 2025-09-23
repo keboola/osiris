@@ -1354,6 +1354,12 @@ def aiop_export(args: list) -> None:
         help="Schema detail level (default: summary)",
     )
     parser.add_argument(
+        "--compress",
+        choices=["none", "gzip"],
+        default="none",
+        help="Compression for annex files (default: none)",
+    )
+    parser.add_argument(
         "--logs-dir",
         default=None,
         help="Base logs directory (default: from config or 'logs')",
@@ -1365,11 +1371,184 @@ def aiop_export(args: list) -> None:
         console.print("❌ Invalid arguments. Use 'osiris logs aiop --help' for usage information.")
         return
 
-    # PR2 stub implementation - parse flags and print placeholder message
-    if parsed_args.last or parsed_args.session:
-        console.print("AIOP export not implemented yet (PR2).")
-        # Exit with code 0 as specified in milestone
-        return
-    else:
-        console.print("Error: Either --session or --last is required")
+    # Import here to avoid circular imports
+    import os
+
+    from osiris.core.run_export_v2 import (
+        build_aiop,
+        canonicalize_json,
+        export_annex_shards,
+        generate_markdown_runcard,
+    )
+
+    # Validate required arguments
+    if not (parsed_args.last or parsed_args.session):
+        console.print("❌ Error: Either --session or --last is required")
         sys.exit(2)
+
+    # Get logs directory
+    logs_dir = parsed_args.logs_dir or _get_logs_dir_from_config()
+    logs_path = Path(logs_dir)
+
+    if not logs_path.exists():
+        console.print(f"❌ Logs directory not found: {logs_path}")
+        sys.exit(2)
+
+    # Find session directory
+    if parsed_args.last:
+        # Get most recent session
+        sessions = []
+        for session_dir in logs_path.iterdir():
+            if session_dir.is_dir() and (session_dir / "events.jsonl").exists():
+                sessions.append((session_dir.stat().st_mtime, session_dir))
+
+        if not sessions:
+            console.print("❌ No sessions found")
+            sys.exit(2)
+
+        sessions.sort(reverse=True)
+        session_path = sessions[0][1]
+        session_id = session_path.name
+    else:
+        # Use specified session
+        session_id = parsed_args.session
+        session_path = logs_path / session_id
+
+        if not session_path.exists():
+            console.print(f"❌ Session not found: {session_id}")
+            sys.exit(2)
+
+    # Read session data
+    reader = SessionReader(str(logs_path))
+    session_summary = reader.read_session(session_id)
+
+    # Load events and metrics
+    events = []
+    metrics = []
+    errors = []
+
+    events_file = session_path / "events.jsonl"
+    if events_file.exists():
+        with open(events_file) as f:
+            for line in f:
+                if line.strip():
+                    event = json.loads(line)
+                    events.append(event)
+                    # Extract errors
+                    if "error" in event.get("event", "").lower() or event.get("level") == "ERROR":
+                        errors.append(event)
+
+    metrics_file = session_path / "metrics.jsonl"
+    if metrics_file.exists():
+        with open(metrics_file) as f:
+            for line in f:
+                if line.strip():
+                    metrics.append(json.loads(line))
+
+    # Get artifacts
+    artifacts = []
+    artifacts_dir = session_path / "artifacts"
+    if artifacts_dir.exists():
+        for artifact_file in artifacts_dir.iterdir():
+            if artifact_file.is_file():
+                artifacts.append(artifact_file)
+
+    # Get manifest
+    manifest = {}
+    manifest_file = artifacts_dir / "manifest.yaml" if artifacts_dir.exists() else None
+    if manifest_file and manifest_file.exists():
+        import yaml
+
+        with open(manifest_file) as f:
+            manifest = yaml.safe_load(f) or {}
+
+    # Get session data
+    session_data = {
+        "session_id": session_id,
+        "started_at": session_summary.started_at,
+        "completed_at": session_summary.finished_at,
+        "status": session_summary.status,
+        "environment": "e2b" if session_summary.adapter_type == "E2B" else "local",
+    }
+
+    # Get config with precedence: CLI > ENV > YAML > defaults
+    config = {
+        "max_core_bytes": parsed_args.max_core_bytes,
+        "timeline_density": parsed_args.timeline_density,
+        "metrics_topk": parsed_args.metrics_topk,
+        "schema_mode": parsed_args.schema_mode,
+    }
+
+    # Check environment variables
+    for env_key, config_key in [
+        ("OSIRIS_AIOP_MAX_CORE_BYTES", "max_core_bytes"),
+        ("OSIRIS_AIOP_TIMELINE_DENSITY", "timeline_density"),
+        ("OSIRIS_AIOP_METRICS_TOPK", "metrics_topk"),
+        ("OSIRIS_AIOP_SCHEMA_MODE", "schema_mode"),
+    ]:
+        env_value = os.environ.get(env_key)
+        if env_value:
+            if config_key in ["max_core_bytes", "metrics_topk"]:
+                config[config_key] = int(env_value)
+            else:
+                config[config_key] = env_value
+
+    # Build AIOP
+    try:
+        aiop = build_aiop(
+            session_data=session_data,
+            manifest=manifest,
+            events=events,
+            metrics=metrics,
+            artifacts=artifacts,
+            config=config,
+        )
+    except Exception as e:
+        console.print(f"❌ Failed to build AIOP: {e}")
+        sys.exit(1)
+
+    # Handle policy
+    exit_code = 0
+
+    if parsed_args.policy == "annex":
+        # Export annex shards
+        annex_dir = Path(parsed_args.annex_dir) if parsed_args.annex_dir else Path(".aiop-annex")
+        annex_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            annex_manifest = export_annex_shards(
+                events=events,
+                metrics=metrics,
+                errors=errors,
+                annex_dir=annex_dir,
+                compress=parsed_args.compress,
+            )
+            # Add annex reference to AIOP
+            aiop["metadata"]["annex"] = annex_manifest
+        except Exception as e:
+            console.print(f"❌ Failed to export annex: {e}")
+            sys.exit(1)
+
+    # Check if truncated (exit code 4)
+    if aiop.get("metadata", {}).get("truncated", False):
+        # Write warning to stderr directly (Rich Console doesn't support file= parameter)
+        sys.stderr.write("⚠️ AIOP was truncated due to size limits\n")
+        exit_code = 4
+
+    # Generate output
+    if parsed_args.format == "md":
+        output = generate_markdown_runcard(aiop)
+    else:
+        output = canonicalize_json(aiop)
+
+    # Write output
+    if parsed_args.output:
+        output_path = Path(parsed_args.output)
+        with open(output_path, "w") as f:
+            f.write(output)
+        console.print(f"✅ AIOP exported to {output_path}")
+    else:
+        # Print to stdout (without Rich formatting)
+        print(output)
+
+    sys.exit(exit_code)
