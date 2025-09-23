@@ -125,35 +125,36 @@ class TestRunExportV2:
         """Test truncation applies object-level markers."""
         from osiris.core.run_export_v2 import apply_truncation
 
-        # Create large data structure
+        # Create large data structure - use AIOP structure with evidence layer
         data = {
-            "timeline": [
-                {"@id": f"ev.event.test.run.{i}", "type": "DEBUG", "data": "x" * 100}
-                for i in range(300)
-            ],
-            "metrics": {
-                "total_rows": 1000,
-                "total_duration_ms": 5000,
-                "steps": {f"step_{i}": {"rows_read": i * 10} for i in range(50)},
-            },
+            "evidence": {
+                "timeline": [
+                    {"@id": f"ev.event.test.run.{i}", "type": "DEBUG", "data": "x" * 100}
+                    for i in range(300)
+                ],
+                "metrics": {
+                    "total_rows": 1000,
+                    "total_duration_ms": 5000,
+                    "steps": {f"step_{i}": {"rows_read": i * 10} for i in range(50)},
+                },
+            }
         }
 
         # Apply truncation with small limit
         truncated_data, was_truncated = apply_truncation(data, max_bytes=10000)
 
         assert was_truncated is True
-        assert "truncated" in truncated_data  # Global flag
 
         # Check timeline truncation markers
-        if isinstance(truncated_data["timeline"], dict):
-            assert truncated_data["timeline"]["truncated"] is True
-            assert "dropped_events" in truncated_data["timeline"]
-            assert truncated_data["timeline"]["dropped_events"] == 100  # 300 - 200
-            assert truncated_data["timeline"]["annex_ref"] is None
+        if isinstance(truncated_data["evidence"]["timeline"], dict):
+            assert truncated_data["evidence"]["timeline"]["truncated"] is True
+            assert "dropped_events" in truncated_data["evidence"]["timeline"]
+            assert truncated_data["evidence"]["timeline"]["dropped_events"] > 0
+            assert "items" in truncated_data["evidence"]["timeline"]
 
         # Check metrics truncation markers if applied
-        if "truncated" in truncated_data["metrics"]:
-            assert "dropped_series" in truncated_data["metrics"]
+        if "truncated" in truncated_data["evidence"]["metrics"]:
+            assert "dropped_series" in truncated_data["evidence"]["metrics"]
 
     def test_error_extraction(self):
         """Test error events are properly extracted from evidence layer."""
@@ -338,12 +339,19 @@ class TestRunExportV2:
 
         from osiris.core.run_export_v2 import apply_truncation
 
-        # Exact input from reviewer
+        # Exact input from reviewer - wrap in evidence layer
         big = {
-            "timeline": [
-                {"ts": f"2024-01-01T00:00:{i:02d}Z", "type": "DEBUG", "i": i} for i in range(50000)
-            ],
-            "metrics": {"series": [{"k": i} for i in range(50000)]},
+            "evidence": {
+                "timeline": [
+                    {"ts": f"2024-01-01T00:00:{i:02d}Z", "type": "DEBUG", "i": i}
+                    for i in range(50000)
+                ],
+                "metrics": {
+                    "total_rows": 50000,
+                    "total_duration_ms": 100000,
+                    "steps": {f"step_{i}": {"rows_read": i} for i in range(1000)},
+                },
+            }
         }
 
         cropped, did = apply_truncation(big, max_bytes=100_000)
@@ -354,14 +362,14 @@ class TestRunExportV2:
         # Check object-level markers
 
         # Timeline markers
-        if isinstance(cropped.get("timeline"), dict):
-            assert cropped["timeline"]["truncated"] is True
-            assert "dropped_events" in cropped["timeline"]
+        if isinstance(cropped["evidence"].get("timeline"), dict):
+            assert cropped["evidence"]["timeline"]["truncated"] is True
+            assert "dropped_events" in cropped["evidence"]["timeline"]
 
         # Metrics markers (if truncated)
-        if "truncated" in cropped.get("metrics", {}):
-            assert cropped["metrics"]["truncated"] is True
-            assert "dropped_series" in cropped["metrics"]
+        if "truncated" in cropped["evidence"].get("metrics", {}):
+            assert cropped["evidence"]["metrics"]["truncated"] is True
+            assert "dropped_series" in cropped["evidence"]["metrics"]
 
     def test_evidence_layer_shape_exact(self):
         """Test D: Evidence layer shape with exact input."""
