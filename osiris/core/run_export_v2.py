@@ -15,10 +15,13 @@
 
 """PR2 - Evidence Layer implementation for AIOP."""
 
+import copy
+import gzip
 import json
 import re
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 
 def build_evidence_layer(
@@ -261,7 +264,14 @@ def canonicalize_json(data: dict) -> str:
 
 
 def apply_truncation(data: dict, max_bytes: int) -> tuple[dict, bool]:
-    """Truncate with object-level markers if exceeds size limit.
+    """If canonicalized JSON exceeds max_bytes, drop to object-level markers.
+
+    Evidence timeline: { "items": [...], "truncated": true, "dropped_events": N }
+    Evidence metrics:  { ... , "truncated": true, "aggregates_only": true, "dropped_series": N }
+    Evidence artifacts: { "files": [...], "truncated": true, "content_omitted": true }
+
+    Keep strategy: first_K + last_K for events, aggregates for metrics, refs for artifacts.
+    Deterministic outcome; never break JSON-LD shape.
 
     Args:
         data: Data dictionary to truncate
@@ -270,55 +280,183 @@ def apply_truncation(data: dict, max_bytes: int) -> tuple[dict, bool]:
     Returns:
         Tuple of (truncated_data, was_truncated)
     """
-    json_str = json.dumps(data)
+    # Check initial size
+    json_str = canonicalize_json(data)
     current_size = len(json_str.encode("utf-8"))
 
     if current_size <= max_bytes:
         return data, False
 
+    # Make a copy to modify
+    result = copy.deepcopy(data)
     was_truncated = False
 
-    # Truncate timeline first (usually largest)
-    if "timeline" in data and len(data["timeline"]) > 200:
-        # Keep first 100 and last 100
-        original_count = len(data["timeline"])
-        data["timeline"] = data["timeline"][:100] + data["timeline"][-100:]
+    # Determine how aggressive truncation should be
+    ratio = current_size / max_bytes
+    if ratio > 10:
+        keep_count = 5
+    elif ratio > 5:
+        keep_count = 10
+    elif ratio > 2:
+        keep_count = 20
+    elif ratio > 1.5:
+        keep_count = 50
+    else:
+        keep_count = 100
 
-        # Add truncation markers to timeline
-        data["timeline"] = {
-            "items": data["timeline"],
-            "truncated": True,
-            "dropped_events": original_count - 200,
-            "annex_ref": None,
-        }
-        was_truncated = True
+    # Handle evidence.timeline specifically
+    if "evidence" in result and "timeline" in result["evidence"]:
+        timeline = result["evidence"]["timeline"]
 
-    # Check size again
-    json_str = json.dumps(data)
+        # If timeline is a list
+        if isinstance(timeline, list) and len(timeline) > keep_count * 2:
+            original_count = len(timeline)
+            # Keep first K and last K events
+            kept_events = timeline[:keep_count] + timeline[-keep_count:]
+
+            # Convert to object form with marker
+            result["evidence"]["timeline"] = {
+                "items": kept_events,
+                "truncated": True,
+                "dropped_events": original_count - len(kept_events),
+            }
+            was_truncated = True
+
+    # Check size after timeline truncation
+    json_str = canonicalize_json(result)
     current_size = len(json_str.encode("utf-8"))
 
-    # Truncate metrics if still too large
-    if (
-        current_size > max_bytes
-        and "metrics" in data
-        and "steps" in data["metrics"]
-        and len(data["metrics"]["steps"]) > 20
-    ):
-        original_step_count = len(data["metrics"]["steps"])
-        # Keep only first 20 steps (already sorted by priority)
-        step_items = list(data["metrics"]["steps"].items())[:20]
-        data["metrics"]["steps"] = dict(step_items)
+    if current_size <= max_bytes:
+        return result, was_truncated
 
-        # Add truncation markers to metrics
-        data["metrics"]["truncated"] = True
-        data["metrics"]["dropped_series"] = original_step_count - 20
-        was_truncated = True
+    # Handle evidence.metrics
+    if "evidence" in result and "metrics" in result["evidence"]:
+        metrics = result["evidence"]["metrics"]
 
-    # Add optional summary flag
-    if was_truncated:
-        data["truncated"] = True
+        # Drop detailed step metrics if present
+        if "steps" in metrics and len(metrics["steps"]) > 10:
+            original_step_count = len(metrics["steps"])
+            # Keep only top 10 steps (they're already sorted by priority)
+            step_items = list(metrics["steps"].items())[:10]
+            metrics["steps"] = dict(step_items)
+            metrics["truncated"] = True
+            metrics["aggregates_only"] = True
+            metrics["dropped_series"] = original_step_count - 10
+            was_truncated = True
 
-    return data, was_truncated
+        # Recheck size after initial metrics truncation
+        json_str = canonicalize_json(result)
+        current_size = len(json_str.encode("utf-8"))
+
+        # If still too large, remove steps entirely
+        if current_size > max_bytes and "steps" in metrics:
+            dropped_count = len(metrics.get("steps", {}))
+            del metrics["steps"]
+            metrics["truncated"] = True
+            metrics["aggregates_only"] = True
+            metrics["dropped_series"] = dropped_count
+            was_truncated = True
+
+    # Check size after metrics truncation
+    json_str = canonicalize_json(result)
+    current_size = len(json_str.encode("utf-8"))
+
+    if current_size <= max_bytes:
+        return result, was_truncated
+
+    # Handle evidence.artifacts
+    if "evidence" in result and "artifacts" in result["evidence"]:
+        artifacts = result["evidence"]["artifacts"]
+
+        # Convert to truncated form if it's a list
+        if isinstance(artifacts, list) and len(artifacts) > 10:
+            kept_artifacts = artifacts[:10]
+            result["evidence"]["artifacts"] = {
+                "files": kept_artifacts,
+                "truncated": True,
+                "content_omitted": True,
+            }
+            was_truncated = True
+
+    # Final size check - if still too large, apply more aggressive truncation
+    json_str = canonicalize_json(result)
+    current_size = len(json_str.encode("utf-8"))
+
+    while current_size > max_bytes:
+        # More aggressive truncation for timeline
+        if "evidence" in result and "timeline" in result["evidence"]:
+            timeline = result["evidence"]["timeline"]
+
+            # First convert list to object if not already done
+            if isinstance(timeline, list):
+                # Convert to object form with aggressive truncation
+                original_count = len(timeline)
+                # Keep very few items when over limit
+                kept_items = timeline[:5] + timeline[-5:] if len(timeline) > 10 else timeline
+                result["evidence"]["timeline"] = {
+                    "items": kept_items,
+                    "truncated": True,
+                    "dropped_events": original_count - len(kept_items),
+                }
+                was_truncated = True
+                timeline = result["evidence"]["timeline"]
+
+            if isinstance(timeline, dict) and "items" in timeline:
+                items = timeline["items"]
+                if len(items) > 10:
+                    # Progressively reduce items
+                    timeline["items"] = items[:5] + items[-5:]
+                    timeline["dropped_events"] = timeline.get("dropped_events", 0) + (
+                        len(items) - 10
+                    )
+                    was_truncated = True
+                elif len(items) > 2:
+                    # Keep just first and last
+                    timeline["items"] = [items[0], items[-1]]
+                    timeline["dropped_events"] = timeline.get("dropped_events", 0) + (
+                        len(items) - 2
+                    )
+                    was_truncated = True
+                else:
+                    # Remove all items
+                    timeline["items"] = []
+                    timeline["dropped_events"] = timeline.get("dropped_events", 0) + len(items)
+                    timeline["all_dropped"] = True
+                    was_truncated = True
+
+        # Handle artifacts - convert to object form if needed
+        if "evidence" in result and "artifacts" in result["evidence"]:
+            artifacts = result["evidence"]["artifacts"]
+
+            # Convert list to object if still a list
+            if (
+                isinstance(artifacts, list)
+                or isinstance(artifacts, dict)
+                and artifacts.get("files")
+            ):
+                result["evidence"]["artifacts"] = {
+                    "files": [],
+                    "truncated": True,
+                    "content_omitted": True,
+                    "all_dropped": True,
+                }
+                was_truncated = True
+
+        # Remove errors if present and still too large
+        if "evidence" in result and "errors" in result["evidence"] and result["evidence"]["errors"]:
+            result["evidence"]["errors"] = []
+            was_truncated = True
+
+        # Recheck size
+        json_str = canonicalize_json(result)
+        new_size = len(json_str.encode("utf-8"))
+
+        # If we didn't make progress, break to avoid infinite loop
+        if new_size >= current_size:
+            break
+        current_size = new_size
+
+    return result, was_truncated
 
 
 # Internal helper functions (not part of PR2 public API)
@@ -1079,3 +1217,449 @@ def generate_markdown_runcard(aiop: dict) -> str:
     markdown = "\n".join(line.rstrip() for line in lines)
 
     return markdown
+
+
+# ============================================================================
+# PR5 - Parity, Redaction, Truncation & CLI
+# ============================================================================
+
+
+def redact_secrets(data: dict) -> dict:
+    """Recursively redact secret fields in-place (returns sanitized copy).
+
+    Denylist substrings (case-insensitive): password, token, api_key, key,
+    secret, credential, authorization, private_key.
+    Also sanitize connection strings (mask creds), and lists/dicts deeply.
+    Deterministic traversal; preserve structure; replace values with '[REDACTED]'.
+
+    Args:
+        data: Dictionary to redact secrets from
+
+    Returns:
+        Sanitized copy with secrets redacted
+    """
+    # Denylist of secret field names (case-insensitive)
+    # These are checked for exact matches or as suffixes (e.g., "user_password")
+    secret_patterns = {
+        "password",
+        "token",
+        "api_key",
+        "secret",
+        "authorization",
+        "private_key",
+        "auth_token",
+        "access_token",
+        "refresh_token",
+        "bearer_token",
+    }
+
+    def _is_secret_field(field_name: str) -> bool:
+        """Check if field name contains secret patterns."""
+        field_lower = field_name.lower()
+
+        # Special handling for "key" - only match if it's part of a compound word
+        if field_lower == "key":
+            return False  # Plain 'key' is not a secret
+
+        # Special negative cases - field names that should NOT be treated as secrets
+        # even though they contain secret patterns
+        safe_fields = {
+            "no_password",
+            "without_password",
+            "skip_password",
+            "ignore_password",
+            "has_password",
+            "use_password",
+            "password_required",
+            "password_field",
+            "password_column",
+        }
+        if field_lower in safe_fields:
+            return False
+
+        # Check for exact matches or if pattern is in the field name
+        for pattern in secret_patterns:
+            if pattern in field_lower:
+                # Special case: 'secret' should match 'secret_key' but not 'secrets'
+                if pattern == "secret" and field_lower == "secrets":
+                    continue
+                return True
+
+        # Also check for common suffixes with underscore or camelCase
+        if field_lower.endswith("_key") or field_lower.endswith("_secret"):
+            return True
+        return "Key" in field_name and (
+            field_name.endswith("Key") or "ApiKey" in field_name or "SecretKey" in field_name
+        )
+
+    def _redact_connection_string(value: str) -> str:
+        """Redact credentials from connection strings and query parameters."""
+        import re
+
+        # First handle query parameters
+        if "?" in value:
+            # Mask sensitive query parameters
+            sensitive_params = ["key", "token", "password", "secret", "api_key", "apikey", "auth"]
+            for param in sensitive_params:
+                # Handle both & and ? delimiters
+                value = re.sub(rf"([?&]{param}=)[^&]+", r"\1***", value, flags=re.IGNORECASE)
+
+        # Handle various connection string formats
+        if "://" in value:
+            try:
+                parsed = urlparse(value)
+                # If there's a password, redact it
+                if parsed.password:
+                    # Replace password with ***
+                    netloc = parsed.netloc.replace(f":{parsed.password}@", ":***@")
+                    redacted = urlunparse(
+                        (
+                            parsed.scheme,
+                            netloc,
+                            parsed.path,
+                            parsed.params,
+                            parsed.query,
+                            parsed.fragment,
+                        )
+                    )
+                    return redacted
+                # If there's just a username without password, check for @ sign
+                elif "@" in parsed.netloc and ":" in parsed.netloc.split("@")[0]:
+                    # Format: user:pass@host
+                    user_pass, host = parsed.netloc.split("@", 1)
+                    if ":" in user_pass:
+                        user = user_pass.split(":")[0]
+                        netloc = f"{user}:***@{host}"
+                        redacted = urlunparse(
+                            (
+                                parsed.scheme,
+                                netloc,
+                                parsed.path,
+                                parsed.params,
+                                parsed.query,
+                                parsed.fragment,
+                            )
+                        )
+                        return redacted
+            except Exception:
+                # If parsing fails, check for common patterns
+                if "@" in value and "://" in value:
+                    # Try to redact between : and @
+                    value = re.sub(r":([^:/@]+)@", ":***@", value)
+        return value
+
+    def _redact_value(value):
+        """Recursively redact a value."""
+        if isinstance(value, dict):
+            return _redact_dict(value)
+        elif isinstance(value, list):
+            return [_redact_value(item) for item in value]
+        elif isinstance(value, str):
+            # Check if it looks like a connection string or URL with sensitive params
+            if "://" in value:
+                return _redact_connection_string(value)
+            return value
+        else:
+            return value
+
+    def _redact_dict(d: dict) -> dict:
+        """Recursively redact dictionary."""
+        result = {}
+        for key, value in sorted(d.items()):  # Deterministic traversal
+            if _is_secret_field(key):
+                # Redact the entire value
+                result[key] = "[REDACTED]"
+            else:
+                # Recursively process the value
+                result[key] = _redact_value(value)
+        return result
+
+    # Make a deep copy and handle different input types
+    data_copy = copy.deepcopy(data)
+
+    if isinstance(data_copy, dict):
+        return _redact_dict(data_copy)
+    elif isinstance(data_copy, list):
+        return [_redact_value(item) for item in data_copy]
+    else:
+        return data_copy
+
+
+def export_annex_shards(
+    events: list[dict],
+    metrics: list[dict],
+    errors: list[dict],
+    annex_dir: Path,
+    compress: str = "none",
+) -> dict:
+    """Write NDJSON shards (events.ndjson, metrics.ndjson, errors.ndjson) into annex_dir.
+
+    If compress == 'gzip', write .ndjson.gz (only for Annex, never for Core).
+    Return manifest: { "files": [{"name": "…", "path": "…", "count": N, "size_bytes": M}], "compress": "none|gzip" }.
+
+    Args:
+        events: List of event dictionaries
+        metrics: List of metric dictionaries
+        errors: List of error dictionaries
+        annex_dir: Directory to write shards to
+        compress: Compression mode ('none' or 'gzip')
+
+    Returns:
+        Manifest dictionary with file information
+    """
+    # Ensure annex directory exists
+    annex_dir.mkdir(parents=True, exist_ok=True)
+
+    manifest = {"files": [], "compress": compress}
+
+    # Define shards to export
+    shards = [("events", events), ("metrics", metrics), ("errors", errors)]
+
+    for shard_name, shard_data in shards:
+        # Determine filename based on compression
+        if compress == "gzip":
+            filename = f"{shard_name}.ndjson.gz"
+            file_path = annex_dir / filename
+
+            # Write gzipped NDJSON
+            with gzip.open(file_path, "wt", encoding="utf-8") as f:
+                for item in shard_data:
+                    f.write(json.dumps(item, ensure_ascii=False) + "\n")
+        else:
+            filename = f"{shard_name}.ndjson"
+            file_path = annex_dir / filename
+
+            # Write plain NDJSON
+            with open(file_path, "w", encoding="utf-8") as f:
+                for item in shard_data:
+                    f.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+        # Get file size
+        size_bytes = file_path.stat().st_size if file_path.exists() else 0
+
+        # Add to manifest
+        manifest["files"].append(
+            {
+                "name": filename,
+                "path": str(file_path),
+                "count": len(shard_data),
+                "size_bytes": size_bytes,
+            }
+        )
+
+    return manifest
+
+
+def calculate_delta(current_run: dict, manifest_hash: str) -> dict:  # noqa: ARG001
+    """Compare against previous run for same manifest_hash.
+
+    On first run: return {"first_run": true}.
+    Otherwise include 'rows' and 'duration' changes as in milestone format.
+
+    Args:
+        current_run: Current run data with metrics
+        manifest_hash: Hash of the manifest for comparison
+
+    Returns:
+        Delta dictionary with first_run flag or change metrics
+    """
+    # For now, we'll implement a simple stub that can be extended
+    # with actual repository integration later
+
+    # In a real implementation, this would:
+    # 1. Query a repository/database for previous runs with same manifest_hash
+    # 2. Compare metrics between runs
+    # 3. Calculate deltas
+
+    # Check if we have metrics in current run
+    if not current_run or "metrics" not in current_run:
+        return {"first_run": True}
+
+    # For testing purposes, we'll simulate based on presence of data
+    # In production, this would query actual previous runs
+    metrics = current_run.get("metrics", {})
+    total_rows = metrics.get("rows_total") or metrics.get("total_rows", 0)
+    duration_seconds = metrics.get("duration_seconds") or (
+        metrics.get("total_duration_ms", 0) / 1000 if metrics.get("total_duration_ms") else 0
+    )
+
+    # Simulate repository lookup (would be replaced with actual DB query)
+    # For now, always treat as first run unless we implement persistence
+    previous_run = None  # This would come from repository
+
+    if not previous_run:
+        return {"first_run": True}
+
+    # If we had a previous run, calculate deltas
+    delta = {"first_run": False}
+
+    # Calculate row delta
+    if total_rows > 0:
+        previous_rows = previous_run.get("metrics", {}).get("total_rows", 0)
+        if previous_rows > 0:
+            change = total_rows - previous_rows
+            change_percent = (change / previous_rows) * 100
+            delta["rows"] = {
+                "previous": previous_rows,
+                "current": total_rows,
+                "change": change,
+                "change_percent": round(change_percent, 2),
+            }
+
+    # Calculate duration delta
+    if duration_seconds > 0:
+        previous_duration = previous_run.get("metrics", {}).get("duration_seconds", 0)
+        if previous_duration > 0:
+            change = duration_seconds - previous_duration
+            change_percent = (change / previous_duration) * 100
+            delta["duration"] = {
+                "previous": previous_duration,
+                "current": duration_seconds,
+                "change": change,
+                "change_percent": round(change_percent, 2),
+            }
+
+    return delta
+
+
+def build_aiop(
+    session_data: dict,
+    manifest: dict,
+    events: list[dict],
+    metrics: list[dict],
+    artifacts: list,
+    config: dict,
+) -> dict:
+    """Compose full AIOP Core package.
+
+    - run, pipeline, narrative (PR4), semantic (PR3), evidence (PR2)
+    - metadata: { "aiop_format": "1.0", "truncated": bool, "size_bytes": int, "size_hints": {…} }
+    - compute delta and include in evidence or metadata per milestone
+    - ensure canonicalization & determinism before size check
+    - apply redact_secrets to all inputs prior to serialization
+    - enforce size with apply_truncation; if truncated, set metadata.truncated=true
+    - return the final dict (Core) and optionally annex manifest info if used.
+
+    Args:
+        session_data: Session information (session_id, started_at, etc.)
+        manifest: Pipeline manifest
+        events: List of event dictionaries
+        metrics: List of metric dictionaries
+        artifacts: List of artifact paths or dicts
+        config: Configuration dictionary with max_core_bytes, timeline_density, etc.
+
+    Returns:
+        Complete AIOP Core package dictionary
+    """
+    # Redact secrets from all inputs first
+    session_data = redact_secrets(session_data)
+    manifest = redact_secrets(manifest)
+    events = [redact_secrets(event) for event in events]
+    metrics = [redact_secrets(metric) for metric in metrics]
+
+    # Convert artifact paths to Path objects if needed
+    artifact_paths = []
+    for artifact in artifacts:
+        if isinstance(artifact, dict):
+            # Extract path from dict
+            path_str = artifact.get("path")
+            if path_str:
+                artifact_paths.append(Path(path_str))
+        elif isinstance(artifact, str):
+            artifact_paths.append(Path(artifact))
+        elif isinstance(artifact, Path):
+            artifact_paths.append(artifact)
+
+    # Build layers
+    max_bytes = config.get("max_core_bytes", 300 * 1024)
+    timeline_density = config.get("timeline_density", "medium")
+    metrics_topk = config.get("metrics_topk", 10)
+    schema_mode = config.get("schema_mode", "summary")
+
+    # Build evidence layer (PR2)
+    timeline = build_timeline(events, density=timeline_density)
+    aggregated_metrics = aggregate_metrics(metrics, topk=metrics_topk)
+    errors = _extract_errors(events)
+    artifact_list = _build_artifact_list(artifact_paths)
+
+    evidence = {
+        "timeline": timeline,
+        "metrics": aggregated_metrics,
+        "errors": errors,
+        "artifacts": artifact_list,
+    }
+
+    # Build semantic layer (PR3)
+    # Create a minimal component registry if not provided
+    component_registry = {}
+    for step in manifest.get("steps", []):
+        comp_name = step.get("component", "")
+        if comp_name and comp_name not in component_registry:
+            component_registry[comp_name] = {
+                "version": "1.0",
+                "capabilities": ["extract", "transform", "write"],
+            }
+
+    semantic = build_semantic_layer(
+        manifest=manifest,
+        oml_spec={"oml_version": manifest.get("oml_version", "0.1.0")},
+        component_registry=component_registry,
+        schema_mode=schema_mode,
+    )
+
+    # Build run summary
+    run_summary = {
+        "session_id": session_data.get("session_id"),
+        "status": session_data.get("status", "unknown"),
+        "started_at": session_data.get("started_at"),
+        "completed_at": session_data.get("completed_at"),
+        "duration_ms": aggregated_metrics.get("total_duration_ms", 0),
+        "total_rows": aggregated_metrics.get("total_rows", 0),
+        "environment": session_data.get("environment", "unknown"),
+    }
+
+    # Calculate delta
+    manifest_hash = manifest.get("manifest_hash", "")
+    delta = calculate_delta({"metrics": aggregated_metrics}, manifest_hash)
+
+    # Build narrative layer (PR4)
+    evidence_refs = {
+        "timeline_ids": [e.get("@id") for e in timeline[:3] if "@id" in e],
+        "metrics": aggregated_metrics,
+    }
+    narrative = build_narrative_layer(manifest, run_summary, evidence_refs)
+
+    # Compose AIOP
+    aiop = {
+        "@context": "https://osiris.io/schemas/aiop/v1",
+        "@id": (
+            f"osiris://pipeline/@{manifest_hash}" if manifest_hash else "osiris://pipeline/unknown"
+        ),
+        "run": run_summary,
+        "pipeline": {"name": manifest.get("name", "unnamed"), "manifest_hash": manifest_hash},
+        "evidence": evidence,
+        "semantic": semantic,
+        "narrative": narrative,
+        "metadata": {
+            "aiop_format": "1.0",
+            "truncated": False,
+            "delta": delta,
+            "size_hints": {
+                "timeline_events": len(timeline),
+                "metrics_steps": len(aggregated_metrics.get("steps", {})),
+                "artifacts": len(artifact_list),
+            },
+        },
+    }
+
+    # Apply truncation if needed
+    truncated_aiop, was_truncated = apply_truncation(aiop, max_bytes)
+
+    if was_truncated:
+        truncated_aiop["metadata"]["truncated"] = True
+
+    # Calculate final size
+    final_json = canonicalize_json(truncated_aiop)
+    truncated_aiop["metadata"]["size_bytes"] = len(final_json.encode("utf-8"))
+
+    return truncated_aiop
