@@ -443,3 +443,212 @@ def _get_canonical_event_type(event_type: str) -> str:
     else:
         # Default mapping for known types
         return event_type.upper()
+
+
+# ============================================================================
+# PR3 - Semantic/Ontology Layer
+# ============================================================================
+
+
+def build_semantic_layer(
+    manifest: dict, oml_spec: dict, component_registry: dict, schema_mode: str = "summary"
+) -> dict:
+    """Build JSON-LD semantic representation (deterministic).
+
+    Args:
+        manifest: Compiled manifest dictionary
+        oml_spec: OML specification dictionary
+        component_registry: Component registry with schemas and capabilities
+        schema_mode: "summary" or "detailed" for component schema inclusion
+
+    Returns:
+        Semantic layer dictionary with @type, components, DAG, etc.
+    """
+    # Extract DAG structure
+    dag = extract_dag_structure(manifest)
+
+    # Build component ontology
+    components = build_component_ontology(component_registry, mode=schema_mode)
+
+    # Create semantic layer dictionary
+    semantic = {}
+
+    # Add pipeline URI if we have manifest hash
+    if "manifest_hash" in manifest:
+        manifest_hash = manifest["manifest_hash"]
+        semantic["@id"] = f"osiris://pipeline/@{manifest_hash}"
+
+    semantic["@type"] = "SemanticLayer"
+    semantic["components"] = components
+    semantic["dag"] = dag
+    semantic["oml_version"] = oml_spec.get("oml_version", "0.1.0")
+
+    # Return with sorted keys for determinism
+    return dict(sorted(semantic.items()))
+
+
+def extract_dag_structure(manifest: dict) -> dict:
+    """Return {'nodes': [...], 'edges': [{'from': 'stepA','to':'stepB','relation': 'produces'|...}], 'counts': {...}}
+
+    Args:
+        manifest: Compiled manifest with steps
+
+    Returns:
+        DAG structure with nodes, edges, and counts
+    """
+    steps = manifest.get("steps", [])
+
+    # Extract nodes (step IDs)
+    nodes = []
+    step_outputs = {}  # Map output names to step IDs
+
+    for step in steps:
+        step_id = step.get("id", "")
+        if step_id:
+            nodes.append(step_id)
+            # Track outputs from this step
+            for output in step.get("outputs", []):
+                step_outputs[output] = step_id
+
+    # Build edges based on input/output dependencies AND depends_on
+    edges = []
+    for step in steps:
+        step_id = step.get("id", "")
+        if not step_id:
+            continue
+
+        # Check inputs to determine dependencies (produces relation)
+        for input_name in step.get("inputs", []):
+            if input_name in step_outputs:
+                from_step = step_outputs[input_name]
+                edges.append({"from": from_step, "to": step_id, "relation": "produces"})
+
+        # Check explicit depends_on field (depends_on relation)
+        for dep_step in step.get("depends_on", []):
+            edges.append({"from": dep_step, "to": step_id, "relation": "depends_on"})
+
+    # Sort for determinism
+    edges.sort(key=lambda e: (e["from"], e["to"], e["relation"]))
+
+    return {"nodes": nodes, "edges": edges, "counts": {"nodes": len(nodes), "edges": len(edges)}}
+
+
+def build_component_ontology(components: dict, mode: str = "summary") -> dict:
+    """Map components to ontology (types, capabilities, optional schema snippets based on mode).
+
+    Args:
+        components: Dictionary of component definitions
+        mode: "summary" or "detailed"
+
+    Returns:
+        Component ontology dictionary
+    """
+    ontology = {}
+
+    # Secret field names to exclude
+    secret_fields = {"password", "token", "api_key", "secret", "credential", "key"}
+
+    for comp_name, comp_def in components.items():
+        comp_ont = {"@id": f"osiris://component/{comp_name}"}
+
+        # Add version if present
+        if "version" in comp_def:
+            comp_ont["version"] = comp_def["version"]
+
+        # Add capabilities
+        if "capabilities" in comp_def:
+            comp_ont["capabilities"] = comp_def["capabilities"]
+
+        # In detailed mode, include schema snippet (without secrets)
+        if mode == "detailed" and "schema" in comp_def:
+            schema = comp_def["schema"].copy()
+
+            # Filter out secret properties
+            if "properties" in schema:
+                filtered_props = {}
+                for prop_name, prop_def in schema.get("properties", {}).items():
+                    # Skip if name matches secret patterns or marked as secret
+                    if (
+                        prop_name.lower() not in secret_fields
+                        and not prop_def.get("secret", False)
+                        and not any(secret in prop_name.lower() for secret in secret_fields)
+                    ):
+                        filtered_props[prop_name] = prop_def
+
+                if filtered_props:
+                    schema["properties"] = filtered_props
+                else:
+                    schema.pop("properties", None)
+
+            comp_ont["schema"] = schema
+
+        ontology[comp_name] = comp_ont
+
+    # Sort for determinism
+    return dict(sorted(ontology.items()))
+
+
+def generate_graph_hints(manifest: dict, run_data: dict | None = None) -> dict:  # noqa: ARG001
+    """Prepare GraphRAG-friendly triples: {'triples': [{'s':'osiris://...','p':'osiris:depends_on','o':'osiris://...'}, ...], 'counts': {...}}
+
+    Args:
+        manifest: Compiled manifest
+        run_data: Optional run data with session_id, status, etc.
+
+    Returns:
+        Graph hints dictionary with triples and counts
+    """
+    triples = []
+
+    # Generate pipeline URI (using correct format)
+    manifest_hash = manifest.get("manifest_hash", "unknown")
+    pipeline_uri = f"osiris://pipeline/@{manifest_hash}"
+
+    steps = manifest.get("steps", [])
+    step_outputs = {}  # Map output names to step IDs (not URIs)
+
+    # First pass: track outputs
+    for step in steps:
+        step_id = step.get("id", "")
+        if step_id:
+            # Track what this step produces
+            for output in step.get("outputs", []):
+                step_outputs[output] = step_id
+
+    # Second pass: create triples for dependencies
+    for step in steps:
+        step_id = step.get("id", "")
+        if not step_id:
+            continue
+
+        step_uri = f"{pipeline_uri}/step/{step_id}"
+
+        # Create triples for inputs (produces and consumes relationships)
+        for input_name in step.get("inputs", []):
+            if input_name in step_outputs:
+                producer_id = step_outputs[input_name]
+                producer_uri = f"{pipeline_uri}/step/{producer_id}"
+
+                # Producer produces data that this step consumes
+                triples.append({"s": producer_uri, "p": "osiris:produces", "o": step_uri})
+
+                # This step consumes from producer
+                triples.append({"s": step_uri, "p": "osiris:consumes", "o": producer_uri})
+
+        # Create triples for explicit depends_on relationships
+        for dep_step_id in step.get("depends_on", []):
+            dep_step_uri = f"{pipeline_uri}/step/{dep_step_id}"
+
+            # This step depends on dep_step
+            triples.append({"s": step_uri, "p": "osiris:depends_on", "o": dep_step_uri})
+
+        # Create produces relationships for outputs
+        for _ in step.get("outputs", []):
+            # Step produces data (using step URI as both subject and object for now)
+            # This could be refined to use data URIs in the future
+            triples.append({"s": step_uri, "p": "osiris:produces", "o": step_uri})
+
+    # Sort for determinism
+    triples.sort(key=lambda t: (t["s"], t["p"], t["o"]))
+
+    return {"triples": triples, "counts": {"triple_count": len(triples)}}
