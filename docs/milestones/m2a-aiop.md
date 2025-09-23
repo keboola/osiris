@@ -667,6 +667,279 @@ Target: complete within a day (subject to review cycles)
 - Performance optimization
 - Integration tests
 
+## Execution Plan (Lightning Mode)
+
+### 🚀 PR1 — Schema & CLI Foundation
+
+**Scope:** Create JSON-LD context, JSON Schema, and CLI stub for AIOP export command.
+
+**Files to Create:**
+- `docs/reference/aiop.context.jsonld` - JSON-LD context definition
+- `docs/reference/aiop.schema.json` - JSON Schema for AIOP validation
+- `docs/reference/aiop.control.contract.yaml` - Control layer stub (future)
+
+**Files to Modify:**
+- `osiris/cli/logs.py` - Add `aiop` subcommand with stub implementation
+- `docs/reference/cli.md` - Document new `osiris logs aiop` command
+
+**Function Stubs:**
+```python
+# osiris/cli/logs.py
+def cmd_aiop(args):
+    """Export AI Operation Package for a pipeline run."""
+    # Stub: parse args, validate session exists, return not implemented
+
+def _parse_aiop_args(args):
+    """Parse AIOP command arguments."""
+    # --session, --last, --output, --format, --policy
+    # --max-core-bytes, --timeline-density, --compress
+    # --annex-dir, --metrics-topk, --schema-mode
+```
+
+**CLI Commands & Flags:**
+- `osiris logs aiop --session <id>`
+- `osiris logs aiop --last`
+- `osiris logs aiop --format json|md`
+- `osiris logs aiop --policy core|annex`
+- `osiris logs aiop --output <path>`
+- `osiris logs aiop --max-core-bytes <n>`
+- `osiris logs aiop --annex-dir <path>`
+
+**Tests to Add:**
+- `tests/cli/test_logs_aiop.py` - CLI argument parsing tests
+- `tests/reference/test_aiop_schemas.py` - Schema validation tests
+
+**Acceptance Checks:**
+- JSON-LD context validates against JSON-LD spec
+- JSON Schema is valid JSON Schema Draft 7
+- CLI returns "not implemented" error gracefully
+- Documentation complete with examples
+
+### 📊 PR2 — Evidence Layer
+
+**Scope:** Implement evidence layer with timeline, metrics aggregation, and deterministic JSON output.
+
+**Files to Create:**
+- `osiris/core/run_export_v2.py` - AIOP builder core module
+- `tests/core/test_run_export_v2.py` - Evidence layer tests
+
+**Function Stubs:**
+```python
+# osiris/core/run_export_v2.py
+def build_evidence_layer(
+    events: list[dict],
+    metrics: list[dict],
+    artifacts: list[Path],
+    max_bytes: int = 300_000
+) -> dict:
+    """Compile evidence with stable IDs."""
+
+def generate_evidence_id(type: str, step_id: str, name: str, ts_ms: int) -> str:
+    """Generate canonical evidence ID: ev.<type>.<step_id>.<name>.<ts_ms>"""
+
+def build_timeline(events: list[dict], density: str = "medium") -> list[dict]:
+    """Build chronologically sorted timeline."""
+
+def aggregate_metrics(metrics: list[dict], topk: int = 100) -> dict:
+    """Aggregate and prioritize metrics."""
+
+def canonicalize_json(data: dict) -> str:
+    """Produce deterministic JSON with sorted keys."""
+
+def apply_truncation(data: dict, max_bytes: int) -> tuple[dict, bool]:
+    """Truncate with markers if exceeds size limit."""
+```
+
+**Files to Modify:**
+- `osiris/core/session_reader.py` - Add AIOP data extraction helpers
+
+**Tests to Add:**
+- Test evidence ID generation (charset validation)
+- Test timeline chronological ordering
+- Test metrics aggregation and topk selection
+- Test deterministic JSON canonicalization
+- Test truncation with markers
+
+**Acceptance Checks:**
+- Evidence IDs follow `ev.<type>.<step_id>.<name>.<ts_ms>` format
+- Timeline events sorted chronologically
+- Metrics aggregated correctly with topk filtering
+- Truncation markers appear at object level
+- Deterministic output (same input → same output)
+
+### 🧬 PR3 — Semantic/Ontology Layer
+
+**Scope:** Build semantic layer with JSON-LD representation, DAG extraction, and graph hints.
+
+**Files to Modify:**
+- `osiris/core/run_export_v2.py` - Add semantic layer builder
+
+**Function Stubs:**
+```python
+# osiris/core/run_export_v2.py
+def build_semantic_layer(
+    manifest: dict,
+    oml_spec: dict,
+    component_registry: dict,
+    schema_mode: str = "summary"
+) -> dict:
+    """Build JSON-LD semantic representation."""
+
+def extract_dag_structure(manifest: dict) -> dict:
+    """Extract DAG nodes and edges with relationships."""
+
+def build_component_ontology(components: dict) -> dict:
+    """Map components to semantic types."""
+
+def generate_graph_hints(manifest: dict, run_data: dict) -> dict:
+    """Generate RDF triples for future GraphRAG."""
+```
+
+**Tests to Add:**
+- Test DAG extraction and relationship mapping
+- Test component ontology generation
+- Test graph hints triple generation
+- Test JSON-LD @context application
+- Test schema_mode filtering (summary vs detailed)
+
+**Acceptance Checks:**
+- Semantic layer includes OML version and component specs
+- DAG relationships use correct predicates (produces, consumes, depends_on)
+- Component capabilities mapped correctly
+- Graph hints include valid RDF triples
+- No secrets in semantic layer
+
+### 📝 PR4 — Narrative Layer + Run-card
+
+**Scope:** Generate natural language narratives and Markdown run-cards with evidence citations.
+
+**Files to Modify:**
+- `osiris/core/run_export_v2.py` - Add narrative generation
+
+**Function Stubs:**
+```python
+# osiris/core/run_export_v2.py
+def build_narrative_layer(
+    manifest: dict,
+    run_summary: dict,
+    evidence_refs: dict
+) -> dict:
+    """Generate natural language narrative."""
+
+def generate_markdown_runcard(aiop: dict) -> str:
+    """Generate Markdown run-card from AIOP."""
+
+def format_duration(ms: int) -> str:
+    """Format milliseconds as human-readable duration."""
+
+def generate_intent_summary(manifest: dict) -> str:
+    """Extract pipeline intent from manifest."""
+```
+
+**Tests to Add:**
+- Test narrative generation from templates
+- Test evidence citation linking
+- Test Markdown run-card formatting
+- Test duration formatting
+- Test intent extraction
+
+**Acceptance Checks:**
+- Narrative is 3-5 paragraphs, neutral tone
+- Evidence citations use correct IDs
+- Markdown run-card includes all required sections
+- Run-card links use osiris:// URIs
+- No marketing language or superlatives
+
+### 🔒 PR5 — Parity, Truncation & Redaction
+
+**Scope:** Implement security controls, size limits, delta analysis, and annex sharding.
+
+**Files to Modify:**
+- `osiris/core/run_export_v2.py` - Add security and size controls
+- `osiris/cli/logs.py` - Complete AIOP command implementation
+
+**Function Stubs:**
+```python
+# osiris/core/run_export_v2.py
+def redact_secrets(data: dict) -> dict:
+    """Recursively redact secret fields."""
+
+def build_aiop(
+    session_data: dict,
+    manifest: dict,
+    events: list[dict],
+    metrics: list[dict],
+    artifacts: list[Path],
+    config: dict
+) -> dict:
+    """Build complete AIOP with all layers."""
+
+def export_annex_shards(
+    events: list[dict],
+    metrics: list[dict],
+    errors: list[dict],
+    annex_dir: Path,
+    compress: str = "none"
+) -> dict:
+    """Export NDJSON annex files."""
+
+def calculate_delta(
+    current_run: dict,
+    manifest_hash: str
+) -> dict:
+    """Calculate delta from previous run."""
+```
+
+**Tests to Add:**
+- Test secret redaction (password, key, token, etc.)
+- Test local vs E2B parity
+- Test size limits and truncation
+- Test annex shard generation
+- Test delta calculation (first run, subsequent, missing)
+- Test compression options
+
+**Acceptance Checks:**
+- No secrets in output (comprehensive test)
+- Local and E2B runs produce identical AIOPs
+- Core package ≤300KB for typical run
+- Annex files are valid NDJSON
+- Delta shows `first_run: true` for initial runs
+- Compression works for annex files
+
+### 📚 PR6 — Docs & Polish
+
+**Scope:** Add examples, integration tests, performance optimizations, and complete documentation.
+
+**Files to Create:**
+- `docs/examples/aiop-sample.json` - Example AIOP output
+- `docs/examples/run-card-sample.md` - Example Markdown run-card
+- `tests/integration/test_aiop_e2e.py` - End-to-end integration tests
+
+**Files to Modify:**
+- `docs/overview.md` - Add AIOP section
+- `docs/reference/cli.md` - Complete AIOP command docs
+- `osiris/cli/logs.py` - Performance optimizations
+
+**Performance Optimizations:**
+- Implement streaming JSON generation for large exports
+- Add progress indicators using Rich
+- Optimize memory usage for large session data
+- Add caching for component registry lookups
+
+**Integration Tests:**
+- Test full pipeline: run → export → validate
+- Test with various pipeline sizes
+- Test error handling for missing sessions
+- Test configuration precedence (CLI > ENV > YAML)
+- Test `osiris init` YAML generation (stub)
+
+**Acceptance Checks:**
+- Generation time <2 seconds for typical run
+- Memory usage <50MB during generation
+- All 17 acceptance criteria from milestone pass
+- Examples are complete and valid
+- Documentation includes troubleshooting section
+
 ## Acceptance Criteria
 
 1. ✅ AIOP validates against `aiop.schema.json` and `aiop.context.jsonld`
