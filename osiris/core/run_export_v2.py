@@ -652,3 +652,430 @@ def generate_graph_hints(manifest: dict, run_data: dict | None = None) -> dict: 
     triples.sort(key=lambda t: (t["s"], t["p"], t["o"]))
 
     return {"triples": triples, "counts": {"triple_count": len(triples)}}
+
+
+# ============================================================================
+# PR4 - Narrative Layer and Markdown Run-card
+# ============================================================================
+
+
+def format_duration(ms: int | None) -> str:
+    """Format milliseconds as human-readable duration.
+
+    Args:
+        ms: Duration in milliseconds
+
+    Returns:
+        Human-readable duration string (e.g., "5m 23s")
+    """
+    if ms is None or ms < 0:
+        return "0s"
+
+    seconds = ms // 1000
+    if seconds == 0:
+        return "0s"
+
+    days = seconds // 86400
+    hours = (seconds % 86400) // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+
+    parts = []
+    if days > 0:
+        parts.append(f"{days}d")
+    if hours > 0:
+        parts.append(f"{hours}h")
+    if minutes > 0:
+        parts.append(f"{minutes}m")
+    if secs > 0 or not parts:
+        parts.append(f"{secs}s")
+
+    return " ".join(parts)
+
+
+def generate_intent_summary(manifest: dict) -> str:
+    """Extract pipeline intent from manifest.
+
+    Args:
+        manifest: Pipeline manifest
+
+    Returns:
+        Brief summary of pipeline intent/purpose
+    """
+    # Try to get description first
+    if "description" in manifest and manifest["description"]:
+        return manifest["description"].strip()
+
+    # Try to infer from steps
+    steps = manifest.get("steps", [])
+    if steps:
+        # Look at step IDs or types to determine operations
+        has_extract = False
+        has_transform = False
+        has_export = False
+
+        for step in steps:
+            step_id = step.get("id", "").lower()
+            step_type = step.get("type", "").lower()
+            step_component = step.get("component", "").lower()
+
+            # Check all fields for operation keywords
+            combined = f"{step_id} {step_type} {step_component}"
+
+            if "extract" in combined or "read" in combined or "fetch" in combined:
+                has_extract = True
+            if "transform" in combined or "process" in combined or "aggregate" in combined:
+                has_transform = True
+            if (
+                "export" in combined
+                or "write" in combined
+                or "load" in combined
+                or "save" in combined
+            ):
+                has_export = True
+
+        # Build intent based on detected operations
+        operations = []
+        if has_extract:
+            operations.append("Extract")
+        if has_transform:
+            operations.append("transform")
+        if has_export:
+            operations.append("export")
+
+        if operations:
+            # Format: "Extract and export data" or "Extract, transform and export data"
+            if len(operations) == 1:
+                intent = f"{operations[0]} data"
+            elif len(operations) == 2:
+                intent = f"{operations[0]} and {operations[1]} data"
+            else:
+                intent = f"{operations[0]}, {' and '.join(operations[1:])} data"
+
+            # Add pipeline name if present
+            pipeline_name = manifest.get("pipeline") or manifest.get("name")
+            if pipeline_name:
+                intent += f" with pipeline {pipeline_name}"
+            else:
+                intent += " with an unnamed pipeline"
+
+            return intent
+
+    # Default fallback
+    pipeline_name = manifest.get("pipeline") or manifest.get("name")
+    if pipeline_name:
+        return f"Execute pipeline {pipeline_name}"
+    else:
+        return "Execute an unnamed pipeline"
+
+
+def _collect_evidence_ids(evidence_refs: dict) -> list[str]:
+    """Collect and sanitize evidence IDs from evidence_refs.
+
+    Args:
+        evidence_refs: Dictionary containing evidence references
+
+    Returns:
+        List of unique, sanitized evidence IDs
+    """
+    collected_ids = []
+    secret_patterns = {"password", "token", "api_key", "key", "secret", "credential"}
+
+    # Priority order for known keys (lowercase for case-insensitive matching)
+    priority_keys = [
+        "rows_metric_id",
+        "timeline_id",
+        "timeline_ids",
+        "evidence_id",
+        "evidence_ids",
+        "metrics",
+        "events",
+    ]
+
+    # Create lowercase map of actual keys for case-insensitive matching
+    key_map = {k.lower(): k for k in evidence_refs}
+
+    # First check priority keys with case-insensitive matching
+    for priority_key in priority_keys:
+        # Find actual key that matches (case-insensitive)
+        actual_key = None
+        for lower_key, original_key in key_map.items():
+            if lower_key == priority_key.lower():
+                actual_key = original_key
+                break
+
+        if actual_key:
+            value = evidence_refs[actual_key]
+            if isinstance(value, str):
+                value = [value]
+            if isinstance(value, list):
+                for item in value:
+                    if isinstance(item, str):
+                        item = item.strip()
+                        if (
+                            item
+                            and (item.startswith("ev.") or item.startswith("osiris://"))
+                            and not any(secret in item.lower() for secret in secret_patterns)
+                        ):
+                            collected_ids.append(item)
+
+    # Then check any key ending with _id or _ids (case-insensitive)
+    for key, value in evidence_refs.items():
+        key_lower = key.lower()
+        # Skip if already processed as priority key
+        is_priority = any(key_lower == pk.lower() for pk in priority_keys)
+        if not is_priority and (key_lower.endswith("_id") or key_lower.endswith("_ids")):
+            if isinstance(value, str):
+                value = [value]
+            if isinstance(value, list):
+                for item in value:
+                    if isinstance(item, str):
+                        item = item.strip()
+                        if (
+                            item
+                            and (item.startswith("ev.") or item.startswith("osiris://"))
+                            and not any(secret in item.lower() for secret in secret_patterns)
+                        ):
+                            collected_ids.append(item)
+
+    # Deduplicate while preserving order
+    seen = set()
+    unique_ids = []
+    for id_val in collected_ids:
+        if id_val not in seen:
+            seen.add(id_val)
+            unique_ids.append(id_val)
+            if len(unique_ids) >= 3:  # Limit to 3 citations
+                break
+
+    return unique_ids
+
+
+def build_narrative_layer(manifest: dict, run_summary: dict, evidence_refs: dict) -> dict:
+    """Generate natural language narrative (3-5 paragraphs).
+
+    Args:
+        manifest: Pipeline manifest
+        run_summary: Run execution summary with status, duration, etc.
+        evidence_refs: Dictionary of evidence references (metrics, events, etc.)
+
+    Returns:
+        Dictionary with paragraphs list
+    """
+    # Extract key information - use "name" field for pipeline name
+    pipeline_name = manifest.get("name", manifest.get("pipeline", "unnamed pipeline"))
+    intent = generate_intent_summary(manifest)
+    status = run_summary.get("status", "unknown")
+    duration_ms = run_summary.get("duration_ms")
+    duration_str = format_duration(duration_ms) if duration_ms else "unknown duration"
+    total_rows = run_summary.get("total_rows", 0)
+    started_at = run_summary.get("started_at", "")
+    completed_at = run_summary.get("completed_at", "")
+
+    # Collect evidence IDs for citation
+    evidence_ids = _collect_evidence_ids(evidence_refs)
+
+    # Build narrative paragraphs
+    paragraphs = []
+
+    # Paragraph 1: Context and Intent
+    context_para = f"The pipeline execution for {pipeline_name} was initiated"
+    if started_at:
+        context_para += f" at {started_at}"
+    context_para += f". {intent}."
+    paragraphs.append(context_para)
+
+    # Paragraph 2: Execution details
+    exec_para = "The pipeline executed"
+    steps = manifest.get("steps", [])
+    if steps:
+        exec_para += f" {len(steps)} steps"
+        step_names = [s.get("id", "unnamed") for s in steps[:3]]  # First 3 steps
+        if step_names:
+            exec_para += f" including {', '.join(step_names)}"
+            if len(steps) > 3:
+                exec_para += f" and {len(steps) - 3} more"
+    exec_para += f". The execution took {duration_str} to complete."
+    if total_rows > 0:
+        exec_para += f" During execution, {total_rows:,} rows were processed."
+    # Include evidence citations if available
+    if evidence_ids:
+        citations = ", ".join(f"[{id_val}]" for id_val in evidence_ids)
+        exec_para += f" Supporting evidence: {citations}."
+    paragraphs.append(exec_para)
+
+    # Paragraph 3: Outcome
+    if status == "success":
+        outcome_para = "The pipeline completed successfully"
+        if completed_at:
+            outcome_para += f" at {completed_at}"
+        outcome_para += ". All configured steps executed without errors"
+        if total_rows > 0:
+            outcome_para += ", successfully processing the entire dataset"
+        outcome_para += "."
+    elif status == "failure":
+        outcome_para = "The pipeline execution failed"
+        if completed_at:
+            outcome_para += f" at {completed_at}"
+        outcome_para += ". The execution encountered errors that prevented successful completion."
+    else:
+        outcome_para = f"The pipeline execution ended with status: {status}."
+
+    paragraphs.append(outcome_para)
+
+    # Paragraph 4: Summary (if we have enough detail)
+    if len(steps) > 1 and (evidence_ids or total_rows > 0):
+        summary_para = "In summary, the pipeline "
+        if status == "success":
+            summary_para += "successfully "
+        summary_para += "executed its configured data processing workflow"
+        if total_rows > 0:
+            summary_para += f", handling {total_rows:,} records"
+        summary_para += f" in {duration_str}."
+        paragraphs.append(summary_para)
+
+    narrative = "\n\n".join(paragraphs)
+
+    # Return both formats for compatibility
+    return {"narrative": narrative, "paragraphs": paragraphs}
+
+
+def generate_markdown_runcard(aiop: dict) -> str:
+    """Generate Markdown run-card from AIOP.
+
+    Args:
+        aiop: AIOP dictionary with evidence, metrics, etc.
+
+    Returns:
+        Markdown-formatted run card
+    """
+    lines = []
+
+    # Extract pipeline name from correct location
+    pipeline_data = aiop.get("pipeline", {})
+    pipeline_name = pipeline_data.get("name") if isinstance(pipeline_data, dict) else None
+
+    # Fallback to pipeline_name at root level (for backward compatibility)
+    if not pipeline_name:
+        pipeline_name = aiop.get("pipeline_name")
+
+    # Fallback to pipeline URI if available
+    if not pipeline_name and "@id" in aiop:
+        pipeline_uri = aiop["@id"]
+        if "pipeline/" in pipeline_uri:
+            # Try to extract name from URI
+            pipeline_name = (
+                pipeline_uri.split("/")[-1].split("@")[0] if "@" in pipeline_uri else "Pipeline"
+            )
+
+    # Final fallback
+    if not pipeline_name:
+        pipeline_name = "Unknown Pipeline"
+
+    # Extract status from run section
+    run_data = aiop.get("run", {})
+    status = run_data.get("status") if isinstance(run_data, dict) else aiop.get("status", "unknown")
+
+    # Map status to icon
+    if status in ["completed", "success"]:
+        status_icon = "✅"
+    elif status in ["failed", "failure"]:
+        status_icon = "❌"
+    else:
+        status_icon = "⚠️"
+
+    lines.append(f"## {pipeline_name} {status_icon}")
+    lines.append("")
+
+    # Summary info
+    duration_ms = (
+        run_data.get("duration_ms") if isinstance(run_data, dict) else aiop.get("duration_ms", 0)
+    )
+    duration = format_duration(duration_ms)
+    lines.append(f"**Status:** {status}")
+    lines.append(f"**Duration:** {duration}")
+
+    # Metrics summary
+    evidence = aiop.get("evidence", {})
+    metrics = evidence.get("metrics", {})
+
+    total_rows = metrics.get("total_rows")
+    if total_rows:
+        lines.append(f"**Total Rows:** {total_rows:,}")
+
+    lines.append("")
+
+    # Step metrics
+    steps = metrics.get("steps", {})
+    if steps:
+        lines.append("### Step Metrics")
+        lines.append("")
+        for step_name, step_metrics in steps.items():
+            lines.append(f"**{step_name}:**")
+            for metric_name, metric_value in step_metrics.items():
+                if metric_name == "error":
+                    lines.append(f"  - ❌ Error: {metric_value}")
+                elif isinstance(metric_value, (int, float)):
+                    if "duration" in metric_name:
+                        lines.append(f"  - {metric_name}: {format_duration(metric_value)}")
+                    else:
+                        lines.append(f"  - {metric_name}: {metric_value:,}")
+                else:
+                    lines.append(f"  - {metric_name}: {metric_value}")
+        lines.append("")
+
+    # Errors if any
+    errors = evidence.get("errors", [])
+    if errors:
+        lines.append("### Errors")
+        lines.append("")
+        for error in errors:
+            error_id = error.get("@id", "")
+            message = error.get("message", "Unknown error")
+            if error_id:
+                lines.append(f"- [{error_id}]: {message}")
+            else:
+                lines.append(f"- {message}")
+        lines.append("")
+
+    # Artifacts
+    artifacts = evidence.get("artifacts", [])
+    if artifacts:
+        lines.append("### Artifacts")
+        lines.append("")
+        for artifact in artifacts:
+            art_id = artifact.get("@id", "")
+            path = artifact.get("path", "")
+            size = artifact.get("size_bytes", 0)
+
+            # Format size
+            if size > 1024 * 1024:
+                size_str = f"{size / (1024 * 1024):.1f} MB"
+            elif size > 1024:
+                size_str = f"{size / 1024:.1f} KB"
+            else:
+                size_str = f"{size} bytes"
+
+            # Extract filename from path
+            filename = path.split("/")[-1] if "/" in path else path
+
+            if art_id:
+                lines.append(f"- {filename} ({size_str}) [{art_id}]")
+            else:
+                lines.append(f"- {filename} ({size_str})")
+        lines.append("")
+    elif not steps and not errors:
+        # Handle empty evidence case
+        lines.append("*No metrics available*")
+        lines.append("")
+
+    # Evidence trail
+    pipeline_uri = aiop.get("@id", "")
+    if pipeline_uri:
+        lines.append("### Evidence Trail")
+        lines.append(f"`{pipeline_uri}`")
+
+    # Join lines and ensure no trailing whitespace
+    markdown = "\n".join(line.rstrip() for line in lines)
+
+    return markdown
