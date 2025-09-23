@@ -1495,6 +1495,8 @@ def aiop_export(args: list) -> None:
 
     # Build AIOP
     try:
+        # Show progress if outputting to file (stderr available for progress)
+        show_progress = bool(parsed_args.output)
         aiop = build_aiop(
             session_data=session_data,
             manifest=manifest,
@@ -1502,6 +1504,7 @@ def aiop_export(args: list) -> None:
             metrics=metrics,
             artifacts=artifacts,
             config=config,
+            show_progress=show_progress,
         )
     except Exception as e:
         console.print(f"❌ Failed to build AIOP: {e}")

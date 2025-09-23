@@ -1,0 +1,111 @@
+{
+  "@context": "https://osiris.io/schemas/aiop/v1",
+  "@id": "osiris://pipeline/unnamed@",
+  "evidence": {
+    "artifacts": [],
+    "errors": [],
+    "metrics": {
+      "steps": {},
+      "total_duration_ms": 0,
+      "total_rows": 0
+    },
+    "timeline": [
+      {
+        "@id": "ev.event.run_start.run.1758631443925",
+        "data": {
+          "fallback_used": false,
+          "session_dir": "logs/test_validation_valid_20250923_144403",
+          "session_id": "test_validation_valid_20250923_144403"
+        },
+        "event": "run_start",
+        "level": "INFO",
+        "step": "run",
+        "timestamp": "2025-09-23T12:44:03.925264+00:00"
+      },
+      {
+        "@id": "ev.event.test_scenario_start.run.1758631443925",
+        "data": {
+          "context": "Validation mode: strict",
+          "scenario": "valid"
+        },
+        "event": "test_scenario_start",
+        "level": "INFO",
+        "step": "run",
+        "timestamp": "2025-09-23T12:44:03.925383+00:00"
+      },
+      {
+        "@id": "ev.event.validation_attempt_start.run.1758631443925",
+        "data": {
+          "config": {
+            "driver": "filesystem_csv_writer",
+            "output_dir": "/tmp/test_valid2/attempt_1",
+            "output_file": "valid_output.csv"
+          }
+        },
+        "event": "validation_attempt_start",
+        "level": "INFO",
+        "step": "run",
+        "timestamp": "2025-09-23T12:44:03.925462+00:00"
+      },
+      {
+        "@id": "ev.event.run_end.run.1758631443937",
+        "data": {
+          "duration_ms": 12,
+          "session_id": "test_validation_valid_20250923_144403",
+          "status": "success"
+        },
+        "event": "run_end",
+        "level": "INFO",
+        "step": "run",
+        "timestamp": "2025-09-23T12:44:03.937726+00:00"
+      }
+    ]
+  },
+  "metadata": {
+    "aiop_format": "1.0",
+    "delta": {
+      "first_run": true
+    },
+    "size_bytes": 3234,
+    "size_hints": {
+      "artifacts": 0,
+      "metrics_steps": 0,
+      "timeline_events": 4
+    },
+    "truncated": false
+  },
+  "narrative": {
+    "narrative": "The pipeline execution for unnamed pipeline was initiated at 2025-09-23T12:44:03.925264+00:00. Execute an unnamed pipeline.\n\nThe pipeline executed with validation mode: strict for scenario: valid. The execution took 12ms to complete. Supporting evidence: [ev.event.run_start.run.1758631443925], [ev.event.test_scenario_start.run.1758631443925], [ev.event.validation_attempt_start.run.1758631443925].\n\nThe pipeline completed successfully at 2025-09-23T12:44:03.937726+00:00. All configured steps executed without errors.",
+    "paragraphs": [
+      "The pipeline execution for unnamed pipeline was initiated at 2025-09-23T12:44:03.925264+00:00. Execute an unnamed pipeline.",
+      "The pipeline executed with validation mode: strict for scenario: valid. The execution took 12ms to complete. Supporting evidence: [ev.event.run_start.run.1758631443925], [ev.event.test_scenario_start.run.1758631443925], [ev.event.validation_attempt_start.run.1758631443925].",
+      "The pipeline completed successfully at 2025-09-23T12:44:03.937726+00:00. All configured steps executed without errors."
+    ]
+  },
+  "pipeline": {
+    "manifest_hash": "",
+    "name": "unnamed"
+  },
+  "run": {
+    "completed_at": "2025-09-23T12:44:03.939559+00:00",
+    "duration_ms": 0,
+    "environment": "local",
+    "session_id": "test_validation_valid_20250923_144403",
+    "started_at": "2025-09-23T12:44:03.925264+00:00",
+    "status": "success",
+    "total_rows": 0
+  },
+  "semantic": {
+    "@type": "SemanticLayer",
+    "components": {},
+    "dag": {
+      "counts": {
+        "edges": 0,
+        "nodes": 0
+      },
+      "edges": [],
+      "nodes": []
+    },
+    "oml_version": "0.1.0"
+  }
+}

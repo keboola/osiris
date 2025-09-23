@@ -206,29 +206,82 @@ Options:
 
 ### logs aiop - Export AI Operation Package
 
-Generate a structured JSON-LD package for LLM consumption (STUB in PR1):
+Generate a structured, multi-layered AI Operation Package (AIOP) for LLM consumption:
 
 ```bash
 osiris logs aiop [--session SESSION_ID | --last] [OPTIONS]
 ```
 
-Required (one of):
-- `--session SESSION_ID`: Session ID to export
+**Required Arguments** (one of):
+- `--session SESSION_ID`: Export specific session by ID
 - `--last`: Export the most recent session
 
-Options:
-- `--output PATH`: Output file path (default: stdout)
-- `--format FORMAT`: Output format: json or md (default: json)
-- `--policy POLICY`: Export policy: core or annex (default: core)
-- `--max-core-bytes N`: Max bytes for core package (default: 300000)
-- `--annex-dir DIR`: Directory for annex files (when policy=annex)
-- `--timeline-density D`: Timeline detail: low/medium/high (default: medium)
-- `--metrics-topk N`: Top K metrics to include (default: 100)
-- `--schema-mode MODE`: Schema detail: summary/detailed (default: summary)
+**Output Options**:
+- `--output PATH`: Write to file instead of stdout
+- `--format {json|md}`: Output format (default: json)
+  - `json`: Full AIOP in JSON-LD format with all layers
+  - `md`: Human-readable Markdown run-card summary
 
-**Note**: This is a stub implementation in PR1. Actual AIOP export will be implemented in PR2+.
+**Size Control**:
+- `--max-core-bytes N`: Maximum size for Core package (default: 300000)
+- `--timeline-density {minimal|medium|verbose}`: Event filtering (default: medium)
+  - `minimal`: Key events only (start, end, errors)
+  - `medium`: Important events and step transitions
+  - `verbose`: All events including debug
+- `--metrics-topk N`: Keep top N metrics per step (default: 10)
+- `--schema-mode {summary|detailed}`: Schema detail level (default: summary)
 
-Configuration precedence: CLI > Environment variables ($OSIRIS_AIOP_*) > osiris.yaml > defaults
+**Annex Policy** (for large runs):
+- `--policy {core|annex}`: Export policy (default: core)
+  - `core`: Single package with truncation if needed
+  - `annex`: Core + NDJSON shard files for full data
+- `--annex-dir DIR`: Directory for annex files (default: .aiop-annex)
+- `--compress {none|gzip}`: Compression for annex files (default: none)
+
+**Configuration Precedence**:
+```
+CLI flags > $OSIRIS_AIOP_* environment > osiris.yaml > defaults
+```
+
+**Environment Variables**:
+- `OSIRIS_AIOP_MAX_CORE_BYTES`: Maximum Core size in bytes
+- `OSIRIS_AIOP_TIMELINE_DENSITY`: Timeline filtering level
+- `OSIRIS_AIOP_METRICS_TOPK`: Number of top metrics to keep
+- `OSIRIS_AIOP_SCHEMA_MODE`: Schema detail level
+
+**Exit Codes**:
+- `0`: Success - AIOP generated successfully
+- `1`: General error (e.g., I/O failure)
+- `2`: Invalid arguments or session not found
+- `4`: AIOP was truncated due to size limits (warning)
+
+**Examples**:
+
+```bash
+# Export last run as JSON
+osiris logs aiop --last
+
+# Generate Markdown run-card to file
+osiris logs aiop --last --format md --output runcard.md
+
+# Export with annex shards and compression
+osiris logs aiop --session run_123 --policy annex --compress gzip
+
+# Control package size with aggressive truncation
+osiris logs aiop --last --max-core-bytes 50000 --timeline-density minimal
+
+# Check if truncation occurred
+osiris logs aiop --last --format json | jq '.metadata.truncated'
+```
+
+**AIOP Structure**:
+The exported package contains four layers:
+1. **Evidence Layer**: Timeline, metrics, errors, artifacts
+2. **Semantic Layer**: DAG, components, OML specification
+3. **Narrative Layer**: Natural language description with citations
+4. **Metadata Layer**: Package metadata, size hints, truncation markers
+
+See [AIOP Examples](../examples/aiop-sample.json) for complete structure.
 
 ## Pro Mode Commands
 
