@@ -1,10 +1,10 @@
-# Pipeline Report
-Run ID: 30e55062572e
-Status: Complete
-Duration: 12 minutes
+# Pipeline Run Report
 
-## Summary
-- Sources: 5
-- Identities: 185,000
-- Segments: 3 (54,700 total)
-- DQ: 3 pass, 1 warn
+**Pipeline:** Lapsed Customer Reactivation
+**Run ID:** 8a40bf88
+**Sources:** Supabase, Stripe, Mixpanel, Shopify, Zendesk (5 total)
+**Identity Keys:** email (primary), phone (secondary), fuzzy email matching enabled
+**Segments:** lapsed_90 (42K), lapsed_vip (4.2K), high_churn_risk (8.5K)
+**DQ Rules:** 4 validations (null ratio, uniqueness, schema drift, business logic)
+**Activation:** Google Ads (10% holdout), ESP campaigns (A/B test enabled)
+**Output:** demo/out/OML.yaml
