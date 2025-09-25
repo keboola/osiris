@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Osiris MVP is an **LLM-first conversational ETL pipeline generator**. It uses AI conversation to understand user intent, discover database schemas, generate SQL, and create YAML pipelines. This is an **agentic AI system** that replaces traditional template-based approaches with intelligent conversation.
 
 ### Project Status (January 2025)
+- **✅ v0.3.0 Released**: Complete M2a AIOP implementation for LLM-friendly debugging
 - **✅ v0.2.0 Released**: Complete M1 implementation with all features production-ready
 - **✅ E2B Integration**: Full parity with local execution, <1% overhead
 - **✅ Component Registry**: Self-describing components with JSON Schema validation
@@ -21,8 +22,9 @@ Osiris MVP is an **LLM-first conversational ETL pipeline generator**. It uses AI
   - JSON and Markdown export formats
   - Truncation and annex policies for large runs
   - Secret redaction and deterministic output
+  - CLI command: `osiris logs aiop`
 - **📊 Implementation**: 33 ADRs documenting all design decisions
-- **🧪 Testing**: 700+ tests passing (including AIOP integration tests)
+- **🧪 Testing**: 793+ tests passing (including AIOP integration tests)
 - **🚀 Next**: M2 (Scheduling), M3 (Scale), M4 (DWH Agent)
 
 ## Quick Setup
@@ -60,10 +62,11 @@ make init
 # Validate configuration
 make validate
 
-# Session log management  
+# Session log management
 osiris logs list           # List all sessions
 osiris logs show --session <id>  # Show session details
 osiris logs gc             # Cleanup old sessions
+osiris logs aiop --last    # Export latest run as AIOP for LLM analysis
 
 # Run sample pipeline
 make run-sample
@@ -91,9 +94,10 @@ python osiris.py init
 python osiris.py validate
 
 # Session log management
-python osiris.py logs list              # List all sessions  
+python osiris.py logs list              # List all sessions
 python osiris.py logs show --session <id>  # Show session details
 python osiris.py logs gc                # Cleanup old sessions
+python osiris.py logs aiop --last       # Export latest run as AIOP
 
 # Export system prompts for customization (pro mode)
 python osiris.py dump-prompts --export
@@ -412,8 +416,8 @@ python osiris.py chat --pro-mode
 
 ## Version Management
 
-**Current Version**: v0.2.0 (Milestone M1 - Component Registry and Runner)
-**Branch**: milestone-m1 (ready to merge to main)
+**Current Version**: v0.3.0 (Milestone M2a - AI Operation Package)
+**Branch**: feature/m2a-aiop-context (ready to merge to main)
 
 ### Release Process
 1. **Complete milestone** in feature branch
@@ -425,13 +429,13 @@ python osiris.py chat --pro-mode
 
 ## Project Version
 
-**Current Version**: v0.2.0 (Released 2025-09-22)
-**Status**: Production-ready for core features
-**Branch**: main
+**Current Version**: v0.3.0 (Released 2025-01-25)
+**Status**: Production-ready with AIOP for LLM-friendly debugging
+**Branch**: feature/m2a-aiop-context
 
 ## MVP Status
 
-Osiris v0.2.0 is a **production-ready system** for LLM-first pipeline generation. Core conversational AI, database discovery, component registry, and both local/E2B execution are fully functional and tested.
+Osiris v0.3.0 is a **production-ready system** for LLM-first pipeline generation with comprehensive debugging capabilities. Core conversational AI, database discovery, component registry, both local/E2B execution, and AIOP export for LLM analysis are fully functional and tested.
 
 ## Current Development Context
 

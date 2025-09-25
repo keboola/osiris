@@ -7,13 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-01-25
+
+**Major Release: Milestone M2a - AI Operation Package (AIOP)**
+
+This release introduces the AI Operation Package (AIOP), a comprehensive JSON-LD based export format designed for LLM consumption and debugging. The AIOP provides structured, deterministic exports of pipeline runs with four semantic layers, enabling AI systems to analyze, debug, and learn from Osiris executions.
+
 ### Added
-- **Milestone M2a - AI Operation Package (AIOP)** planning document
-  - Comprehensive implementation plan for ADR-0027
-  - JSON-LD based semantic export format for LLM consumption
-  - Three-layer architecture: Narrative, Semantic, Evidence
-  - CLI command specification: `osiris logs aiop`
-  - Deterministic, secret-free export with size controls
+- **AI Operation Package (AIOP) Implementation** (ADR-0027)
+  - Four-layer semantic architecture: Evidence, Semantic, Narrative, and Metadata layers
+  - CLI command: `osiris logs aiop` with JSON and Markdown export formats
+  - JSON-LD context for semantic web compatibility
+  - Deterministic output with stable IDs for reproducible analysis
+  - Size-controlled exports with object-level truncation markers
+  - Annex policy for large runs with NDJSON shards (.aiop-annex/)
+  - Automatic secret redaction with DSN masking (postgres://user:***@host/db)
+  - Rich progress indicators during export
+  - Exit code 4 for truncated exports
+
+- **Evidence Layer** (PR1-PR2)
+  - Timeline with chronological events and configurable density (low/medium/high)
+  - Metrics aggregation with step-level and total statistics
+  - Error collection with stack traces and context
+  - Artifact tracking with SHA-256 hashes and sizes
+
+- **Semantic Layer** (PR3)
+  - DAG representation with nodes and edges
+  - Component registry integration
+  - OML specification embedding
+  - Pipeline manifest with fingerprinting
+
+- **Narrative Layer** (PR4)
+  - Natural language descriptions of pipeline execution
+  - Evidence citations linking to timeline events
+  - Paragraph-based structure for readability
+  - Markdown run-card generation for human review
+
+- **CLI Features** (PR5)
+  - Configuration precedence: CLI > ENV > YAML > defaults
+  - Environment variables: OSIRIS_AIOP_MAX_CORE_BYTES, OSIRIS_AIOP_TIMELINE_DENSITY, etc.
+  - Policy options: core (default) or annex for large exports
+  - Compression support for annex files (gzip)
+  - Output to file or stdout
+  - JSON and Markdown format options
+
+- **Performance Optimizations** (PR6)
+  - LRU caching for component registry lookups
+  - Streaming JSON generation (stream_json_chunks)
+  - Memory footprint <50MB on typical runs
+  - Lazy evaluation of expensive computations
+
+### Changed
+- **Configuration Management**
+  - Added metadata.config_effective showing resolved configuration after precedence
+  - Annex manifest standardized under metadata.annex with files array
+  - Markdown run-card enhanced with fallbacks to never return empty
+
+### Fixed
+- **Test Stability**
+  - Fixed AIOP tests failing due to truncation by increasing max-core-bytes limit
+  - Corrected config precedence to properly prioritize CLI over environment variables
+  - Fixed annex manifest structure to exclude full paths for privacy
+
+### Security
+- **Secret Protection**
+  - Enhanced redaction in AIOP exports
+  - DSN passwords automatically masked
+  - No file paths exposed in annex manifests
+  - Deterministic redaction for reproducible debugging
 
 ## [0.2.0] - 2025-01-23
 
