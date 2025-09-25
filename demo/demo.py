@@ -8,19 +8,16 @@ import hashlib
 import random
 import sys
 import time
-import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from rich.console import Console
+from rich.live import Live
+from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
-from rich.layout import Layout
-from rich.panel import Panel
-from rich.live import Live
 from rich.text import Text
-from rich.align import Align
 
 # Deterministic setup
 random.seed(42)
@@ -39,7 +36,7 @@ status_data = {
     "sources_ready": "0/5",
     "pii_masked": 0,
     "ir_merge": 0,
-    "segments": 0
+    "segments": 0,
 }
 
 
@@ -153,7 +150,11 @@ def user_say(message: str, output_console: Optional[Console] = None):
     time.sleep(random.uniform(0.3, 0.5))
 
 
-def thinking_line(output_console: Optional[Console] = None, label: str = "agent: thinking", duration_range: tuple = (1.2, 1.8)):
+def thinking_line(
+    output_console: Optional[Console] = None,
+    label: str = "agent: thinking",
+    duration_range: tuple = (1.2, 1.8),
+):
     """Show thinking animation on a single line then clear it."""
     if output_console is None:
         output_console = console
@@ -172,7 +173,12 @@ def thinking_line(output_console: Optional[Console] = None, label: str = "agent:
         live.update("")
 
 
-def spinner_task(message: str, duration: float = None, spinner_type: str = "dots", output_console: Optional[Console] = None):
+def spinner_task(
+    message: str,
+    duration: float = None,
+    spinner_type: str = "dots",
+    output_console: Optional[Console] = None,
+):
     """Show a spinner for a task with different styles."""
     if duration is None:
         duration = random.uniform(0.6, 1.1)
@@ -194,7 +200,11 @@ def spinner_task(message: str, duration: float = None, spinner_type: str = "dots
     output_console.print(f"{message} [green]OK[/]")
 
 
-def auto_approve(prompt: str = "Press Enter to approve", delay: float = 1.2, output_console: Optional[Console] = None):
+def auto_approve(
+    prompt: str = "Press Enter to approve",
+    delay: float = 1.2,
+    output_console: Optional[Console] = None,
+):
     """Simulate approval prompt that auto-advances."""
     if output_console is None:
         output_console = console
@@ -216,7 +226,12 @@ def show_connections_table_live(output_console: Optional[Console] = None):
 
     def build_table():
         """Build the table with current row data."""
-        table = Table(title="Data Source Connections", show_header=True, header_style="bold cyan", show_lines=False)
+        table = Table(
+            title="Data Source Connections",
+            show_header=True,
+            header_style="bold cyan",
+            show_lines=False,
+        )
         table.add_column("Source", style="dim", width=12)
         table.add_column("Status", justify="center")
         table.add_column("Notes", style="dim")
@@ -245,8 +260,6 @@ def show_connections_table_live(output_console: Optional[Console] = None):
         time.sleep(0.5)
 
     output_console.print()  # Add spacing after table
-
-
 
 
 def render_oml():
@@ -429,10 +442,6 @@ agents:
     return oml_path, run_hash
 
 
-
-
-
-
 def generate_run_report(run_hash: str):
     """Generate a summary RunReport.md."""
     report_content = f"""# Pipeline Run Report
@@ -468,17 +477,26 @@ def run_session(layout_console: Console):
     time.sleep(0.2)
     agent_say(
         "Sub-agents: Connector Builder, Discovery, Identity Resolution, Feature Lab, DQ Guardian, Activation Planner.",
-        output_console=layout_console
+        output_console=layout_console,
     )
     agent_say("How can I help you today?", output_console=layout_console)
     time.sleep(0.4)
 
     # User intent - with slow typing effect (blank lines handled by user_say)
-    user_say("I need to reactivate customers who haven't purchased for 90+ days.", output_console=layout_console)
+    user_say(
+        "I need to reactivate customers who haven't purchased for 90+ days.",
+        output_console=layout_console,
+    )
 
     # Agent clarification
-    agent_say("I understand you want to reactivate lapsed customers (90+ days inactive).", output_console=layout_console)
-    agent_say("To maximize effectiveness, I'll need access to these data sources:", output_console=layout_console)
+    agent_say(
+        "I understand you want to reactivate lapsed customers (90+ days inactive).",
+        output_console=layout_console,
+    )
+    agent_say(
+        "To maximize effectiveness, I'll need access to these data sources:",
+        output_console=layout_console,
+    )
 
     # Staggered bullet list rendering
     sources = [
@@ -496,7 +514,10 @@ def run_session(layout_console: Console):
             time.sleep(random.uniform(0.35, 0.50))
 
     time.sleep(0.5)
-    agent_say("This will enable identity resolution, RFM scoring, and targeted segmentation.", output_console=layout_console)
+    agent_say(
+        "This will enable identity resolution, RFM scoring, and targeted segmentation.",
+        output_console=layout_console,
+    )
     agent_say("Shall we proceed with these sources?", output_console=layout_console)
 
     # User confirmation - with typing effect (pause is now in user_say)
@@ -514,26 +535,46 @@ def run_session(layout_console: Console):
     layout_console.print()
 
     # Discovery phase
-    spinner_task("Running discovery (schema+sample) with privacy guard (PII masked)...", random.uniform(1.6, 2.2), spinner_type="aesthetic", output_console=layout_console)
+    spinner_task(
+        "Running discovery (schema+sample) with privacy guard (PII masked)...",
+        random.uniform(1.6, 2.2),
+        spinner_type="aesthetic",
+        output_console=layout_console,
+    )
     status_data["pii_masked"] = 2
 
     time.sleep(random.uniform(0.12, 0.18))
 
     # Thinking animation before identity alignment
     thinking_line(output_console=layout_console, label="agent: thinking", duration_range=(1.2, 1.8))
-    spinner_task("Identity alignment on keys: email, phone; fuzzy normalization: enabled...", random.uniform(1.2, 1.6), spinner_type="dots2", output_console=layout_console)
+    spinner_task(
+        "Identity alignment on keys: email, phone; fuzzy normalization: enabled...",
+        random.uniform(1.2, 1.6),
+        spinner_type="dots2",
+        output_console=layout_console,
+    )
     status_data["ir_merge"] = 92
 
     time.sleep(random.uniform(0.12, 0.18))
 
-    spinner_task("Feature sketch: RFM, churn_score; Support reasons from Zendesk topics...", random.uniform(1.4, 1.8), spinner_type="dots", output_console=layout_console)
+    spinner_task(
+        "Feature sketch: RFM, churn_score; Support reasons from Zendesk topics...",
+        random.uniform(1.4, 1.8),
+        spinner_type="dots",
+        output_console=layout_console,
+    )
     status_data["segments"] = 3
 
     time.sleep(random.uniform(0.12, 0.18))
     layout_console.print()
 
     # Simple DAG evaluation (no ASCII art)
-    spinner_task("Evaluating DAG...", random.uniform(0.9, 1.1), spinner_type="bouncingBar", output_console=layout_console)
+    spinner_task(
+        "Evaluating DAG...",
+        random.uniform(0.9, 1.1),
+        spinner_type="bouncingBar",
+        output_console=layout_console,
+    )
     layout_console.print("[green]DAG validation: OK[/]\n")
 
     time.sleep(random.uniform(0.12, 0.18))
@@ -542,27 +583,37 @@ def run_session(layout_console: Console):
     thinking_line(output_console=layout_console, label="agent: thinking", duration_range=(1.2, 1.8))
     agent_say(
         "Designing OML plan for multi-source ingest → IR → features → segments → dq → activation → publish...",
-        output_console=layout_console
+        output_console=layout_console,
     )
 
     time.sleep(random.uniform(0.12, 0.18))
 
-    spinner_task("Generating OML structure...", random.uniform(0.9, 1.2), spinner_type="bouncingBar", output_console=layout_console)
+    spinner_task(
+        "Generating OML structure...",
+        random.uniform(0.9, 1.2),
+        spinner_type="bouncingBar",
+        output_console=layout_console,
+    )
 
     # Save OML
     oml_path, _ = render_oml()
-    spinner_task(f"Writing OML to {oml_path.relative_to(Path.cwd())}...", random.uniform(1.0, 1.4), spinner_type="arrow3", output_console=layout_console)
+    spinner_task(
+        f"Writing OML to {oml_path.relative_to(Path.cwd())}...",
+        random.uniform(1.0, 1.4),
+        spinner_type="arrow3",
+        output_console=layout_console,
+    )
 
     time.sleep(random.uniform(0.12, 0.18))
 
     # Show only OML header teaser
     layout_console.print("\n[dim cyan]OML Header Preview:[/]")
-    with open(oml_path, 'r') as f:
+    with open(oml_path) as f:
         lines = f.readlines()[:5]  # First 5 lines only
         for line in lines:
             if line.strip():
                 # Style comments with grey46
-                if line.strip().startswith('#'):
+                if line.strip().startswith("#"):
                     layout_console.print(f"  [grey46]{line.rstrip()}[/]")
                 else:
                     layout_console.print(f"  [dim]{line.rstrip()}[/]")
@@ -584,7 +635,10 @@ def run_session(layout_console: Console):
     time.sleep(0.8)
 
     # Final message
-    agent_say("Done. Next steps: open the OML in your editor or push to Git.", output_console=layout_console)
+    agent_say(
+        "Done. Next steps: open the OML in your editor or push to Git.",
+        output_console=layout_console,
+    )
     layout_console.print()
 
     # LLM usage table (simulated)
@@ -613,7 +667,9 @@ def run_session(layout_console: Console):
 
     # Add separator row
     tbl.add_section()
-    tbl.add_row("[bold]Total[/]", f"[bold]{total_calls}[/]", f"[bold]{total_in}[/]", f"[bold]{total_out}[/]")
+    tbl.add_row(
+        "[bold]Total[/]", f"[bold]{total_calls}[/]", f"[bold]{total_in}[/]", f"[bold]{total_out}[/]"
+    )
 
     layout_console.print(tbl)
     layout_console.print("\n")
