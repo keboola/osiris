@@ -1,6 +1,0 @@
-event_id,event_name,user_id,timestamp,properties,utm_campaign
-evt_2001,page_view,1,2024-01-15T10:00:00,{"page":"/home"},summer_sale
-evt_2002,add_to_cart,1,2024-01-15T10:05:00,{"product_id":"prod_123"},summer_sale
-evt_2003,purchase,1,2024-01-15T10:10:00,{"amount":99.99},summer_sale
-evt_2004,page_view,2,2024-01-20T14:00:00,{"page":"/products"},winter_promo
-evt_2005,purchase,2,2024-01-20T14:15:00,{"amount":149.99},winter_promo

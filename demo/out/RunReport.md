@@ -1,7 +1,7 @@
 # Pipeline Run Report
 
 **Pipeline:** Lapsed Customer Reactivation
-**Run ID:** 8a40bf88
+**Run ID:** 785ce7de
 **Sources:** Supabase, Stripe, Mixpanel, Shopify, Zendesk (5 total)
 **Identity Keys:** email (primary), phone (secondary), fuzzy email matching enabled
 **Segments:** lapsed_90 (42K), lapsed_vip (4.2K), high_churn_risk (8.5K)
