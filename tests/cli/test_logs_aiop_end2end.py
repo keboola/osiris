@@ -161,10 +161,11 @@ def test_annex_manifest_present(tmp_path):
     assert "files" in aiop["metadata"]["annex"]
     assert len(aiop["metadata"]["annex"]["files"]) >= 2
 
-    # Verify annex files exist
+    # Verify annex files exist (files have name, not path)
+    # Use the annex_dir we created in tmp_path, not default
     for file_info in aiop["metadata"]["annex"]["files"]:
-        file_path = Path(file_info["path"])
-        assert file_path.exists()
+        file_path = annex_dir / file_info["name"]
+        assert file_path.exists(), f"File {file_path} does not exist"
         assert file_path.suffix == ".gz"
 
 
@@ -199,3 +200,32 @@ def test_console_stderr_no_typeerror(tmp_path, capsys):
     assert "truncated" in result.stderr.lower()
     assert "TypeError" not in result.stderr
     assert "file=" not in result.stderr  # Rich Console file= would cause TypeError
+
+
+def test_md_export_non_empty(tmp_path):
+    """Test that Markdown export is never empty."""
+    # Create test session
+    logs_dir = tmp_path / "logs"
+    session_id = create_test_session(logs_dir)
+
+    # Run CLI with MD format
+    cmd = [
+        sys.executable,
+        "osiris.py",
+        "logs",
+        "aiop",
+        "--session",
+        session_id,
+        "--format",
+        "md",
+        "--logs-dir",
+        str(logs_dir),
+    ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    # Check MD output is not empty
+    assert result.returncode == 0
+    assert len(result.stdout.strip()) > 0
+    assert "##" in result.stdout  # Should have markdown headers
+    assert "Status:" in result.stdout  # Should have status line

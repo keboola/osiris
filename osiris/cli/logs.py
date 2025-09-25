@@ -1472,26 +1472,30 @@ def aiop_export(args: list) -> None:
     }
 
     # Get config with precedence: CLI > ENV > YAML > defaults
+    # First set defaults from parsed args
     config = {
         "max_core_bytes": parsed_args.max_core_bytes,
         "timeline_density": parsed_args.timeline_density,
         "metrics_topk": parsed_args.metrics_topk,
         "schema_mode": parsed_args.schema_mode,
+        "policy": parsed_args.policy,
+        "compress": parsed_args.compress,
+        "annex_dir": parsed_args.annex_dir if parsed_args.annex_dir else ".aiop-annex",
     }
 
-    # Check environment variables
-    for env_key, config_key in [
-        ("OSIRIS_AIOP_MAX_CORE_BYTES", "max_core_bytes"),
-        ("OSIRIS_AIOP_TIMELINE_DENSITY", "timeline_density"),
-        ("OSIRIS_AIOP_METRICS_TOPK", "metrics_topk"),
-        ("OSIRIS_AIOP_SCHEMA_MODE", "schema_mode"),
-    ]:
+    # Check environment variables (only if CLI arg is the default)
+    env_mappings = [
+        ("OSIRIS_AIOP_MAX_CORE_BYTES", "max_core_bytes", 300000, int),
+        ("OSIRIS_AIOP_TIMELINE_DENSITY", "timeline_density", "medium", str),
+        ("OSIRIS_AIOP_METRICS_TOPK", "metrics_topk", 100, int),
+        ("OSIRIS_AIOP_SCHEMA_MODE", "schema_mode", "summary", str),
+    ]
+
+    for env_key, config_key, default_value, converter in env_mappings:
         env_value = os.environ.get(env_key)
-        if env_value:
-            if config_key in ["max_core_bytes", "metrics_topk"]:
-                config[config_key] = int(env_value)
-            else:
-                config[config_key] = env_value
+        # Only use env if CLI arg is still the default
+        if env_value and config[config_key] == default_value:
+            config[config_key] = converter(env_value)
 
     # Build AIOP
     try:
@@ -1526,8 +1530,15 @@ def aiop_export(args: list) -> None:
                 annex_dir=annex_dir,
                 compress=parsed_args.compress,
             )
-            # Add annex reference to AIOP
-            aiop["metadata"]["annex"] = annex_manifest
+            # Add annex reference to AIOP (remove full path for privacy)
+            clean_manifest = {
+                "compress": annex_manifest["compress"],
+                "files": [
+                    {"name": f["name"], "count": f["count"], "bytes": f["size_bytes"]}
+                    for f in annex_manifest["files"]
+                ],
+            }
+            aiop["metadata"]["annex"] = clean_manifest
         except Exception as e:
             console.print(f"❌ Failed to export annex: {e}")
             sys.exit(1)

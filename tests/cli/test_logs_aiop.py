@@ -39,28 +39,38 @@ def test_aiop_help():
         assert "--policy" in calls
 
 
-def test_aiop_last_flag():
-    """Test that --last prints stub message for PR2."""
+def test_aiop_last_flag(tmp_path):
+    """Test that --last works with proper logs directory."""
     from osiris.cli.logs import aiop_export
 
-    with patch("osiris.cli.logs.console") as mock_console:
-        # Test with --last
-        aiop_export(["--last"])
+    # Create empty logs dir
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
 
-        # Verify stub message was printed
-        mock_console.print.assert_called_with("AIOP export not implemented yet (PR2).")
+    with patch("osiris.cli.logs.console"):
+        # Test with --last but no sessions in logs directory
+        with pytest.raises(SystemExit) as exc_info:
+            aiop_export(["--last", "--logs-dir", str(logs_dir)])
+
+        # Should exit with code 2 (no sessions found)
+        assert exc_info.value.code == 2
 
 
-def test_aiop_session_with_id():
-    """Test that --session with valid ID prints stub message for PR2."""
+def test_aiop_session_with_id(tmp_path):
+    """Test that --session with valid ID exits with error when session not found."""
     from osiris.cli.logs import aiop_export
 
-    with patch("osiris.cli.logs.console") as mock_console:
-        # Test with specific session
-        aiop_export(["--session", "run_123456"])
+    # Create empty logs dir
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
 
-        # Verify stub message was printed
-        mock_console.print.assert_called_with("AIOP export not implemented yet (PR2).")
+    with patch("osiris.cli.logs.console"):
+        # Test with specific session that doesn't exist
+        with pytest.raises(SystemExit) as exc_info:
+            aiop_export(["--session", "run_123456", "--logs-dir", str(logs_dir)])
+
+        # Should exit with code 2 (session not found)
+        assert exc_info.value.code == 2
 
 
 def test_aiop_session_empty():
@@ -98,36 +108,43 @@ def test_aiop_missing_required():
         assert "Either --session or --last is required" in calls
 
 
-def test_aiop_parse_all_flags():
-    """Test that all flags are parsed correctly in stub."""
+def test_aiop_parse_all_flags(tmp_path):
+    """Test that all flags are parsed correctly."""
     from osiris.cli.logs import aiop_export
 
-    with patch("osiris.cli.logs.console") as mock_console:
-        # Test with all optional flags
-        aiop_export(
-            [
-                "--last",
-                "--output",
-                "aiop.json",
-                "--format",
-                "json",
-                "--policy",
-                "annex",
-                "--max-core-bytes",
-                "500000",
-                "--annex-dir",
-                "/tmp/annex",
-                "--timeline-density",
-                "high",
-                "--metrics-topk",
-                "50",
-                "--schema-mode",
-                "detailed",
-            ]
-        )
+    # Create empty logs dir
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
 
-        # Verify stub message printed (flags parsed but nothing done)
-        mock_console.print.assert_called_with("AIOP export not implemented yet (PR2).")
+    with patch("osiris.cli.logs.console"):
+        # Test with all optional flags
+        with pytest.raises(SystemExit) as exc_info:
+            aiop_export(
+                [
+                    "--last",
+                    "--logs-dir",
+                    str(logs_dir),
+                    "--output",
+                    "aiop.json",
+                    "--format",
+                    "json",
+                    "--policy",
+                    "annex",
+                    "--max-core-bytes",
+                    "500000",
+                    "--annex-dir",
+                    "/tmp/annex",
+                    "--timeline-density",
+                    "high",
+                    "--metrics-topk",
+                    "50",
+                    "--schema-mode",
+                    "detailed",
+                ]
+            )
+
+        # Should exit with code 2 (no sessions found)
+        assert exc_info.value.code == 2
 
 
 def test_aiop_invalid_format():

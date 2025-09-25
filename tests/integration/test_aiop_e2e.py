@@ -413,3 +413,103 @@ class TestAIOPEndToEnd:
         # Should fail with exit code 2
         assert result.returncode == 2
         assert "not found" in result.stderr.lower() or "not found" in result.stdout.lower()
+
+    def test_config_precedence_echo(self, sample_session):
+        """Test that config_effective echoes final configuration after precedence."""
+        session_id, logs_dir = sample_session
+
+        # Set environment variable
+        import os
+
+        os.environ["OSIRIS_AIOP_TIMELINE_DENSITY"] = "high"
+
+        # Run with CLI override
+        cmd = [
+            sys.executable,
+            "osiris.py",
+            "logs",
+            "aiop",
+            "--session",
+            session_id,
+            "--timeline-density",
+            "low",  # CLI should win
+            "--logs-dir",
+            str(logs_dir),
+            "--format",
+            "json",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        # Parse JSON output
+        aiop = json.loads(result.stdout)
+
+        # Check config_effective exists and has correct values
+        assert "metadata" in aiop
+        assert "config_effective" in aiop["metadata"]
+        config = aiop["metadata"]["config_effective"]
+
+        # CLI should override ENV
+        assert config["timeline_density"] == "low"
+
+        # Check other defaults are present
+        assert config["policy"] == "core"
+        assert config["max_core_bytes"] == 300000
+        assert config["compress"] == "none"
+        assert config["metrics_topk"] == 100
+        assert config["schema_mode"] == "summary"
+
+        # Clean up env
+        del os.environ["OSIRIS_AIOP_TIMELINE_DENSITY"]
+
+    def test_annex_manifest_in_core(self, sample_session, tmp_path):
+        """Test that annex policy includes manifest in Core JSON."""
+        session_id, logs_dir = sample_session
+        annex_dir = tmp_path / ".aiop-annex"
+
+        # Run with annex policy
+        cmd = [
+            sys.executable,
+            "osiris.py",
+            "logs",
+            "aiop",
+            "--session",
+            session_id,
+            "--policy",
+            "annex",
+            "--annex-dir",
+            str(annex_dir),
+            "--compress",
+            "gzip",
+            "--logs-dir",
+            str(logs_dir),
+            "--format",
+            "json",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        # Parse JSON output
+        aiop = json.loads(result.stdout)
+
+        # Check annex manifest exists
+        assert "metadata" in aiop
+        assert "annex" in aiop["metadata"]
+        annex = aiop["metadata"]["annex"]
+
+        # Check structure
+        assert annex["compress"] == "gzip"
+        assert "files" in annex
+        assert isinstance(annex["files"], list)
+        assert len(annex["files"]) > 0
+
+        # Check each file entry
+        for f in annex["files"]:
+            assert "name" in f
+            assert "count" in f
+            assert "bytes" in f
+            assert f["name"].endswith(".ndjson.gz")  # Should be gzipped
+
+        # Check annex files actually exist
+        assert annex_dir.exists()
+        for f in annex["files"]:
+            file_path = annex_dir / f["name"]
+            assert file_path.exists()

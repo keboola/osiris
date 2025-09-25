@@ -1,0 +1,190 @@
+{
+  "@context": "https://osiris.io/schemas/aiop/v1",
+  "@id": "osiris://pipeline/unknown",
+  "evidence": {
+    "artifacts": [],
+    "errors": [],
+    "metrics": {
+      "steps": {},
+      "total_duration_ms": 0,
+      "total_rows": 0
+    },
+    "timeline": [
+      {
+        "@id": "ev.event.run_start.run.1758812124897",
+        "data": {
+          "fallback_used": false,
+          "session_dir": "logs/connections_1758812124897",
+          "session_id": "connections_1758812124897"
+        },
+        "step_id": null,
+        "ts": "2025-09-25T14:55:24.897292+00:00",
+        "type": "START"
+      },
+      {
+        "@id": "ev.event.session_start.run.1758812124897",
+        "data": {
+          "args": [],
+          "command": "connections",
+          "subcommand": "doctor"
+        },
+        "step_id": null,
+        "ts": "2025-09-25T14:55:24.897589+00:00",
+        "type": "START"
+      },
+      {
+        "@id": "ev.event.connections_doctor_start.run.1758812124897",
+        "data": {},
+        "step_id": null,
+        "ts": "2025-09-25T14:55:24.897833+00:00",
+        "type": "START"
+      },
+      {
+        "@id": "ev.event.connection_test_start.run.1758812124898",
+        "data": {
+          "alias": "test",
+          "family": "mysql"
+        },
+        "step_id": null,
+        "ts": "2025-09-25T14:55:24.898233+00:00",
+        "type": "START"
+      },
+      {
+        "@id": "ev.event.connection_test_result.run.1758812124898",
+        "data": {
+          "alias": "test",
+          "category": "unknown",
+          "family": "mysql",
+          "latency_ms": null,
+          "message": "Environment variable 'MISSING_VAR' not set for password in mysql.test",
+          "ok": false
+        },
+        "step_id": null,
+        "ts": "2025-09-25T14:55:24.898534+00:00",
+        "type": "CONNECTION_TEST_RESULT"
+      },
+      {
+        "@id": "ev.event.connections_doctor_complete.run.1758812124898",
+        "data": {
+          "test_count": 1
+        },
+        "step_id": null,
+        "ts": "2025-09-25T14:55:24.898876+00:00",
+        "type": "COMPLETE"
+      },
+      {
+        "@id": "ev.event.session_complete.run.1758812124898",
+        "data": {},
+        "step_id": null,
+        "ts": "2025-09-25T14:55:24.898917+00:00",
+        "type": "COMPLETE"
+      },
+      {
+        "@id": "ev.event.run_end.run.1758812124898",
+        "data": {
+          "duration_seconds": 0.001837,
+          "end_time": "2025-09-25T14:55:24.898950+00:00"
+        },
+        "step_id": null,
+        "ts": "2025-09-25T14:55:24.898952+00:00",
+        "type": "COMPLETE"
+      },
+      {
+        "@id": "ev.event.state_transition.run.1758812125301",
+        "data": {
+          "from_state": "init",
+          "intent": "test query",
+          "to_state": "intent_captured"
+        },
+        "step_id": null,
+        "ts": "2025-09-25T14:55:25.301439+00:00",
+        "type": "STATE_TRANSITION"
+      },
+      {
+        "@id": "ev.event.intent_captured.run.1758812125301",
+        "data": {
+          "message_preview": "test query"
+        },
+        "step_id": null,
+        "ts": "2025-09-25T14:55:25.301525+00:00",
+        "type": "INTENT_CAPTURED"
+      }
+    ]
+  },
+  "metadata": {
+    "aiop_format": "1.0",
+    "annex": {
+      "compress": "none",
+      "files": [
+        {
+          "bytes": 1725,
+          "count": 10,
+          "name": "events.ndjson"
+        },
+        {
+          "bytes": 140,
+          "count": 1,
+          "name": "metrics.ndjson"
+        },
+        {
+          "bytes": 0,
+          "count": 0,
+          "name": "errors.ndjson"
+        }
+      ]
+    },
+    "config_effective": {
+      "annex_dir": ".aiop-annex",
+      "compress": "none",
+      "max_core_bytes": 500000,
+      "metrics_topk": 50,
+      "policy": "core",
+      "schema_mode": "detailed",
+      "timeline_density": "high"
+    },
+    "delta": {
+      "first_run": true
+    },
+    "size_bytes": 5244,
+    "size_hints": {
+      "artifacts": 0,
+      "metrics_steps": 0,
+      "timeline_events": 10
+    },
+    "truncated": false
+  },
+  "narrative": {
+    "narrative": "The pipeline execution for unnamed pipeline was initiated at 2025-09-25T14:55:24.897292+00:00. Execute an unnamed pipeline.\n\nThe pipeline executed. The execution took unknown duration to complete. Supporting evidence: [ev.event.run_start.run.1758812124897], [ev.event.session_start.run.1758812124897], [ev.event.connections_doctor_start.run.1758812124897].\n\nThe pipeline completed successfully at 2025-09-25T14:55:24.898952+00:00. All configured steps executed without errors.",
+    "paragraphs": [
+      "The pipeline execution for unnamed pipeline was initiated at 2025-09-25T14:55:24.897292+00:00. Execute an unnamed pipeline.",
+      "The pipeline executed. The execution took unknown duration to complete. Supporting evidence: [ev.event.run_start.run.1758812124897], [ev.event.session_start.run.1758812124897], [ev.event.connections_doctor_start.run.1758812124897].",
+      "The pipeline completed successfully at 2025-09-25T14:55:24.898952+00:00. All configured steps executed without errors."
+    ]
+  },
+  "pipeline": {
+    "manifest_hash": "",
+    "name": "unnamed"
+  },
+  "run": {
+    "completed_at": "2025-09-25T14:55:24.898952+00:00",
+    "duration_ms": 0,
+    "environment": "local",
+    "session_id": "connections_1758812124897",
+    "started_at": "2025-09-25T14:55:24.897292+00:00",
+    "status": "success",
+    "total_rows": 0
+  },
+  "semantic": {
+    "@type": "SemanticLayer",
+    "components": {},
+    "dag": {
+      "counts": {
+        "edges": 0,
+        "nodes": 0
+      },
+      "edges": [],
+      "nodes": []
+    },
+    "oml_version": "0.1.0"
+  }
+}

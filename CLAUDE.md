@@ -16,8 +16,13 @@ Osiris MVP is an **LLM-first conversational ETL pipeline generator**. It uses AI
   - Developer guide covering all 7 core modules
   - LLM contracts for AI-assisted development
   - Architecture diagrams with layered detail levels
+- **✅ M2a AIOP Complete**: AI Operation Package for LLM consumption
+  - Evidence, Semantic, Narrative, and Metadata layers
+  - JSON and Markdown export formats
+  - Truncation and annex policies for large runs
+  - Secret redaction and deterministic output
 - **📊 Implementation**: 33 ADRs documenting all design decisions
-- **🧪 Testing**: 679+ tests passing
+- **🧪 Testing**: 700+ tests passing (including AIOP integration tests)
 - **🚀 Next**: M2 (Scheduling), M3 (Scale), M4 (DWH Agent)
 
 ## Quick Setup
@@ -183,6 +188,7 @@ The project has comprehensive documentation organized as follows:
   - `config.py` - Configuration management and sample config generation
   - `execution_adapter.py` - Abstract base class for execution environments
   - `adapter_factory.py` - Factory for selecting local vs E2B execution
+  - `run_export_v2.py` - AIOP export with Evidence, Semantic, Narrative, Metadata layers
 
 - **`osiris/connectors/`** - Database adapters
   - `mysql/` - MySQL extractor + writer with connection pooling
@@ -200,7 +206,7 @@ The project has comprehensive documentation organized as follows:
 - **`osiris/cli/`** - Command-line interface (Rich-powered)
   - `chat.py` - Interactive conversational mode with Rich formatting
   - `main.py` - CLI entry point and command routing with Rich terminal output
-  - `logs.py` - Session log management commands (list, show, cleanup)
+  - `logs.py` - Session log management commands (list, show, cleanup, aiop export)
 
 ### Key Principles
 
@@ -428,6 +434,25 @@ python osiris.py chat --pro-mode
 Osiris v0.2.0 is a **production-ready system** for LLM-first pipeline generation. Core conversational AI, database discovery, component registry, and both local/E2B execution are fully functional and tested.
 
 ## Current Development Context
+
+### M2a AIOP Milestone (January 2025) - COMPLETED ✅
+- **✅ AI Operation Package Implementation**:
+  - PR1-PR2: Evidence Layer with timeline, metrics, errors, artifacts
+  - PR3: Semantic/Ontology Layer with DAG, components, OML spec
+  - PR4: Narrative Layer with natural language descriptions and citations
+  - PR5: CLI Parity & Hardening with truncation, redaction, exit codes
+  - PR6: Documentation & Polish with examples, tests, and optimizations
+  - **Result**: Complete AIOP export functionality for AI debugging and analysis
+
+- **✅ Key AIOP Features Delivered**:
+  - Deterministic JSON-LD output with stable IDs
+  - Automatic secret redaction (DSN masking with ***)
+  - Size-controlled exports with object-level truncation markers
+  - Annex policy for large runs with NDJSON shards
+  - Configuration precedence: CLI > ENV > YAML > defaults
+  - Markdown run-cards for human review
+  - Rich progress indicators during export
+  - LRU caching and streaming JSON for performance
 
 ### Documentation Completion (January 2025) - COMPLETED ✅
 - **✅ Comprehensive Documentation Structure**:
