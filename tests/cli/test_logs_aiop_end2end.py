@@ -143,6 +143,8 @@ def test_annex_manifest_present(tmp_path):
         "gzip",
         "--format",
         "json",
+        "--max-core-bytes",
+        "1000000",  # Increase limit to avoid truncation
         "--logs-dir",
         str(logs_dir),
     ]
@@ -218,6 +220,8 @@ def test_md_export_non_empty(tmp_path):
         session_id,
         "--format",
         "md",
+        "--max-core-bytes",
+        "1000000",  # Increase limit to avoid truncation
         "--logs-dir",
         str(logs_dir),
     ]
