@@ -1142,6 +1142,10 @@ def generate_markdown_runcard(aiop: dict) -> str:
     Returns:
         Markdown-formatted run card
     """
+    # Guard against empty or None input
+    if not aiop:
+        return "## Unknown Pipeline ⚠️\n\n*No data available*\n"
+
     lines = []
 
     # Extract pipeline name from correct location
@@ -1161,13 +1165,17 @@ def generate_markdown_runcard(aiop: dict) -> str:
                 pipeline_uri.split("/")[-1].split("@")[0] if "@" in pipeline_uri else "Pipeline"
             )
 
-    # Final fallback
+    # Final fallback - ensure never empty
     if not pipeline_name:
         pipeline_name = "Unknown Pipeline"
 
-    # Extract status from run section
+    # Extract status from run section - ensure never None
     run_data = aiop.get("run", {})
     status = run_data.get("status") if isinstance(run_data, dict) else aiop.get("status", "unknown")
+
+    # Ensure status is never None or empty
+    if not status:
+        status = "unknown"
 
     # Map status to icon
     if status in ["completed", "success"]:
@@ -1200,7 +1208,7 @@ def generate_markdown_runcard(aiop: dict) -> str:
 
     # Step metrics
     steps = metrics.get("steps", {})
-    if steps:
+    if steps and isinstance(steps, dict):
         lines.append("### Step Metrics")
         lines.append("")
         for step_name, step_metrics in steps.items():
@@ -1270,6 +1278,10 @@ def generate_markdown_runcard(aiop: dict) -> str:
 
     # Join lines and ensure no trailing whitespace
     markdown = "\n".join(line.rstrip() for line in lines)
+
+    # Ensure never returns empty string
+    if not markdown or not markdown.strip():
+        return f"## {pipeline_name} ⚠️\n\n**Status:** {status}\n\n*No additional data available*\n"
 
     return markdown
 
@@ -1795,6 +1807,15 @@ def build_aiop(
                 "timeline_events": len(timeline),
                 "metrics_steps": len(aggregated_metrics.get("steps", {})),
                 "artifacts": len(artifact_list),
+            },
+            "config_effective": {
+                "annex_dir": config.get("annex_dir", ".aiop-annex"),
+                "compress": config.get("compress", "none"),
+                "max_core_bytes": config.get("max_core_bytes", 300000),
+                "metrics_topk": config.get("metrics_topk", 100),
+                "policy": config.get("policy", "core"),
+                "schema_mode": config.get("schema_mode", "summary"),
+                "timeline_density": config.get("timeline_density", "medium"),
             },
         },
     }

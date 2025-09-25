@@ -486,3 +486,45 @@ class TestNarrativeLayer:
         assert isinstance(paragraphs, list) and len(paragraphs) >= 2
         joined = "\n".join(paragraphs)
         assert "customer_etl_pipeline" in joined
+
+
+def test_markdown_not_empty():
+    """Test that generate_markdown_runcard never returns an empty string."""
+    from osiris.core.run_export_v2 import generate_markdown_runcard
+
+    # Test with minimal AIOP
+    minimal_aiop = {
+        "pipeline": {"name": "test_pipeline"},
+        "run": {"status": "completed", "duration_ms": 1000},
+    }
+    md = generate_markdown_runcard(minimal_aiop)
+    assert len(md.strip()) > 0
+    assert "test_pipeline" in md
+
+    # Test with None/empty AIOP
+    md = generate_markdown_runcard({})
+    assert len(md.strip()) > 0
+    assert "Unknown Pipeline" in md
+
+    # Test with missing pipeline name
+    aiop_no_name = {"run": {"status": "failed"}}
+    md = generate_markdown_runcard(aiop_no_name)
+    assert len(md.strip()) > 0
+    assert "Unknown Pipeline" in md
+
+    # Test with missing status
+    aiop_no_status = {"pipeline": {"name": "my_pipeline"}}
+    md = generate_markdown_runcard(aiop_no_status)
+    assert len(md.strip()) > 0
+    assert "my_pipeline" in md
+    assert "unknown" in md.lower()
+
+    # Test with empty metrics
+    aiop_empty_metrics = {
+        "pipeline": {"name": "empty_metrics_pipeline"},
+        "run": {"status": "success"},
+        "evidence": {"metrics": {}},
+    }
+    md = generate_markdown_runcard(aiop_empty_metrics)
+    assert len(md.strip()) > 0
+    assert "empty_metrics_pipeline" in md
