@@ -290,6 +290,8 @@ def init_command(args: list):
                 "usage": "osiris init [OPTIONS]",
                 "options": {
                     "--json": "Output in JSON format for programmatic use",
+                    "--no-comments": "Generate config without comments",
+                    "--stdout": "Output config to stdout instead of file",
                     "--help": "Show this help message",
                 },
                 "creates": [
@@ -313,8 +315,12 @@ def init_command(args: list):
             console.print("[bold]Usage:[/bold] osiris init [OPTIONS]")
             console.print()
             console.print("[bold blue]Options[/bold blue]")
-            console.print("  [cyan]--json[/cyan]  Output in JSON format for programmatic use")
-            console.print("  [cyan]--help[/cyan]  Show this help message")
+            console.print(
+                "  [cyan]--json[/cyan]         Output in JSON format for programmatic use"
+            )
+            console.print("  [cyan]--no-comments[/cyan]  Generate config without comments")
+            console.print("  [cyan]--stdout[/cyan]       Output config to stdout instead of file")
+            console.print("  [cyan]--help[/cyan]         Show this help message")
             console.print()
             console.print("[bold blue]What this creates[/bold blue]")
             console.print("  • osiris.yaml - Main configuration file")
@@ -331,6 +337,12 @@ def init_command(args: list):
     # Parse init-specific arguments
     parser = argparse.ArgumentParser(description="Initialize Osiris project", add_help=False)
     parser.add_argument("--json", action="store_true", help="Output in JSON format")
+    parser.add_argument(
+        "--no-comments", action="store_true", help="Generate config without comments"
+    )
+    parser.add_argument(
+        "--stdout", action="store_true", help="Output config to stdout instead of file"
+    )
 
     try:
         parsed_args = parser.parse_args(args)
@@ -350,7 +362,15 @@ def init_command(args: list):
         # Check if config already exists
         config_exists = Path("osiris.yaml").exists()
 
-        create_sample_config()
+        # Generate config with options
+        config_content = create_sample_config(
+            no_comments=parsed_args.no_comments, to_stdout=parsed_args.stdout
+        )
+
+        if parsed_args.stdout:
+            # Output to stdout
+            print(config_content)
+            return
 
         if use_json:
             result = {

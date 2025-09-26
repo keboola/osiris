@@ -18,12 +18,48 @@ osiris [--help] [--version] <command> [options]
 Initialize Osiris configuration files:
 
 ```bash
-osiris init
+osiris init [OPTIONS]
 ```
 
-Creates:
-- `.env` file for secrets (if not exists)
-- `osiris_connections.yaml` for connection definitions
+**Options**:
+- `--no-comments`: Generate configuration without comment lines
+- `--stdout`: Output configuration to stdout instead of creating file
+- `--json`: Output initialization results in JSON format
+
+**Creates/Updates**:
+- `osiris.yaml` - Main configuration file including:
+  - Logging and session settings
+  - LLM configuration
+  - **AIOP configuration** with defaults for export settings
+  - Pipeline and discovery settings
+- Creates backup as `osiris.yaml.backup` if file exists
+
+**AIOP Configuration**:
+The init command generates a complete AIOP configuration section with defaults:
+```yaml
+aiop:
+  enabled: true            # Auto-generate AIOP after each run
+  policy: core             # core|annex|custom
+  max_core_bytes: 300000   # Size limit for Core package
+  timeline_density: medium # Event filtering level
+  metrics_topk: 100        # Top metrics to keep
+  # ... additional settings
+```
+
+**Examples**:
+```bash
+# Standard initialization
+osiris init
+
+# Generate config without comments for production
+osiris init --no-comments
+
+# Preview config without creating file
+osiris init --stdout
+
+# Get JSON output for automation
+osiris init --json
+```
 
 ### chat - Conversational Pipeline Creation
 
@@ -274,12 +310,37 @@ osiris logs aiop --last --max-core-bytes 50000 --timeline-density minimal
 osiris logs aiop --last --format json | jq '.metadata.truncated'
 ```
 
+**Configuration Precedence**:
+AIOP settings follow this precedence order:
+1. **CLI flags** (highest priority) - Command line arguments
+2. **Environment variables** - `OSIRIS_AIOP_*` prefixed variables
+3. **YAML configuration** - Settings in `osiris.yaml` under `aiop:` section
+4. **Built-in defaults** (lowest priority)
+
+Example:
+```bash
+# YAML sets timeline_density: high
+# ENV sets OSIRIS_AIOP_TIMELINE_DENSITY=low
+# CLI sets --timeline-density medium
+# Result: medium (CLI wins)
+```
+
 **AIOP Structure**:
 The exported package contains four layers:
 1. **Evidence Layer**: Timeline, metrics, errors, artifacts
 2. **Semantic Layer**: DAG, components, OML specification
 3. **Narrative Layer**: Natural language description with citations
-4. **Metadata Layer**: Package metadata, size hints, truncation markers
+4. **Metadata Layer**: Package metadata, size hints, truncation markers, config_effective
+
+The `metadata.config_effective` field shows the actual configuration used and its source:
+```json
+{
+  "timeline_density": {
+    "value": "medium",
+    "source": "CLI"  // or "ENV", "YAML", "DEFAULT"
+  }
+}
+```
 
 See [AIOP Examples](../examples/aiop-sample.json) for complete structure.
 

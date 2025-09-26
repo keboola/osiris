@@ -1597,6 +1597,7 @@ def build_aiop(
     artifacts: list,
     config: dict,
     show_progress: bool = False,
+    config_sources: dict = None,
 ) -> dict:
     """Compose full AIOP Core package.
 
@@ -1803,14 +1804,11 @@ def build_aiop(
             "aiop_format": "1.0",
             "truncated": False,
             "delta": delta,
+            "config_effective": _build_config_effective(config, config_sources),
             "size_hints": {
                 "timeline_events": len(timeline),
                 "metrics_steps": len(aggregated_metrics.get("steps", {})),
                 "artifacts": len(artifact_list),
-            },
-            "config_effective": {
-                "annex_dir": config.get("annex_dir", ".aiop-annex"),
-                "compress": config.get("compress", "none"),
                 "max_core_bytes": config.get("max_core_bytes", 300000),
                 "metrics_topk": config.get("metrics_topk", 100),
                 "policy": config.get("policy", "core"),
@@ -1831,3 +1829,36 @@ def build_aiop(
     truncated_aiop["metadata"]["size_bytes"] = len(final_json.encode("utf-8"))
 
     return truncated_aiop
+
+
+def _build_config_effective(config: dict, config_sources: dict = None) -> dict:
+    """Build config_effective with source annotations.
+
+    Args:
+        config: Effective configuration dictionary
+        config_sources: Map of config key to source ("DEFAULT", "YAML", "ENV", "CLI")
+
+    Returns:
+        Config with source annotations
+    """
+    if not config_sources:
+        # If no sources provided, just return config values
+        return config
+
+    # Build annotated config
+    result = {}
+    for key, value in config.items():
+        if isinstance(value, dict):
+            # Handle nested config
+            nested_result = {}
+            for nested_key, nested_value in value.items():
+                full_key = f"{key}.{nested_key}"
+                source = config_sources.get(full_key, "DEFAULT")
+                nested_result[nested_key] = {"value": nested_value, "source": source}
+            result[key] = nested_result
+        else:
+            # Handle top-level config
+            source = config_sources.get(key, "DEFAULT")
+            result[key] = {"value": value, "source": source}
+
+    return result

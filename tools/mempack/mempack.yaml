@@ -29,9 +29,14 @@ include:
 - docs/roadmap/*.md
 - docs/*.md
 - docs/examples/*.yaml
+- docs/reference/aiop.*.json*
+- docs/examples/aiop-*.json
+- docs/examples/run-card-sample.md
 
 # Tests (unit+integration+chat)
 - tests/**/**/*.py
+- tests/core/test_run_export_v2_*.py
+- tests/integration/test_aiop_e2e.py
 
 # Tools needed for context
 - tools/mempack/*
@@ -67,6 +72,10 @@ exclude:
 - "output/**"
 - "testing_env/dist/**"
 - "osiris/tmp/**/artifacts/**"
+
+- ".aiop-annex/**"
+- "**/*.ndjson"
+- "**/*.ndjson.gz"
 
 # Repo internals not in .gitignore
 - .git/**
@@ -216,3 +225,71 @@ commands:
   shell: bash
   timeout: 30s
   on_error: keep # Keep output even if it fails (might not have connections configured)
+
+- output_path: tools/mempack/gen/osiris-logs-aiop.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    python ../osiris.py logs aiop --help
+  with_cmd: true
+  shell: bash
+  timeout: 30s
+  on_error: keep
+
+# AIOP Core JSON (typický výstup)
+- output_path: tools/mempack/gen/aiop.core.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    python ../osiris.py logs aiop --last --format json > ../tools/mempack/gen/aiop.core.json
+  with_cmd: true
+  shell: bash
+  timeout: 45s
+  on_error: keep
+
+# AIOP Markdown run-card
+- output_path: tools/mempack/gen/aiop.runcard.md
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    python ../osiris.py logs aiop --last --format md > ../tools/mempack/gen/aiop.runcard.md
+  with_cmd: true
+  shell: bash
+  timeout: 45s
+  on_error: keep
+
+# AIOP Core s truncation (ověření markerů + exit=4; necháme keep, ať máme případně částečný výstup)
+- output_path: tools/mempack/gen/aiop.core.small.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    (python ../osiris.py logs aiop --last --format json --max-core-bytes 1500 > ../tools/mempack/gen/aiop.core.small.json) || true
+  with_cmd: true
+  shell: bash
+  timeout: 45s
+  on_error: keep
+
+# AIOP Annex (manifest v Core; vlastní NDJSON/GZ shards nechceme do mempacku tahat)
+- output_path: tools/mempack/gen/aiop.annex.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    rm -rf .aiop-annex
+    python ../osiris.py logs aiop --last --format json --policy annex --annex-dir .aiop-annex --compress gzip > ../tools/mempack/gen/aiop.annex.json
+  with_cmd: true
+  shell: bash
+  timeout: 60s
+  on_error: keep
+
+# AIOP config precedence echo (CLI > ENV > YAML > defaults)
+- output_path: tools/mempack/gen/aiop.config_effective.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    export OSIRIS_AIOP_TIMELINE_DENSITY=high
+    python ../osiris.py logs aiop --last --format json --timeline-density low > ../tools/mempack/gen/aiop.config_effective.json
+    unset OSIRIS_AIOP_TIMELINE_DENSITY
+  with_cmd: true
+  shell: bash
+  timeout: 45s
+  on_error: keep

@@ -1372,7 +1372,6 @@ def aiop_export(args: list) -> None:
         return
 
     # Import here to avoid circular imports
-    import os
 
     from osiris.core.run_export_v2 import (
         build_aiop,
@@ -1472,30 +1471,29 @@ def aiop_export(args: list) -> None:
     }
 
     # Get config with precedence: CLI > ENV > YAML > defaults
-    # First set defaults from parsed args
-    config = {
-        "max_core_bytes": parsed_args.max_core_bytes,
-        "timeline_density": parsed_args.timeline_density,
-        "metrics_topk": parsed_args.metrics_topk,
-        "schema_mode": parsed_args.schema_mode,
-        "policy": parsed_args.policy,
-        "compress": parsed_args.compress,
-        "annex_dir": parsed_args.annex_dir if parsed_args.annex_dir else ".aiop-annex",
-    }
+    from osiris.core.config import resolve_aiop_config
 
-    # Check environment variables (only if CLI arg is the default)
-    env_mappings = [
-        ("OSIRIS_AIOP_MAX_CORE_BYTES", "max_core_bytes", 300000, int),
-        ("OSIRIS_AIOP_TIMELINE_DENSITY", "timeline_density", "medium", str),
-        ("OSIRIS_AIOP_METRICS_TOPK", "metrics_topk", 100, int),
-        ("OSIRIS_AIOP_SCHEMA_MODE", "schema_mode", "summary", str),
-    ]
+    # Build CLI args dictionary (only non-default values)
+    cli_args = {}
 
-    for env_key, config_key, default_value, converter in env_mappings:
-        env_value = os.environ.get(env_key)
-        # Only use env if CLI arg is still the default
-        if env_value and config[config_key] == default_value:
-            config[config_key] = converter(env_value)
+    # Check if CLI values differ from defaults
+    if parsed_args.max_core_bytes != 300000:
+        cli_args["max_core_bytes"] = parsed_args.max_core_bytes
+    if parsed_args.timeline_density != "medium":
+        cli_args["timeline_density"] = parsed_args.timeline_density
+    if parsed_args.metrics_topk != 100:
+        cli_args["metrics_topk"] = parsed_args.metrics_topk
+    if parsed_args.schema_mode != "summary":
+        cli_args["schema_mode"] = parsed_args.schema_mode
+    if parsed_args.policy != "core":
+        cli_args["policy"] = parsed_args.policy
+    if parsed_args.compress != "none":
+        cli_args["compress"] = parsed_args.compress
+    if parsed_args.annex_dir and parsed_args.annex_dir != ".aiop-annex":
+        cli_args["annex_dir"] = parsed_args.annex_dir
+
+    # Resolve configuration with full precedence
+    config, config_sources = resolve_aiop_config(cli_args)
 
     # Build AIOP
     try:
@@ -1509,6 +1507,7 @@ def aiop_export(args: list) -> None:
             artifacts=artifacts,
             config=config,
             show_progress=show_progress,
+            config_sources=config_sources,
         )
     except Exception as e:
         console.print(f"❌ Failed to build AIOP: {e}")
