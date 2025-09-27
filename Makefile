@@ -54,6 +54,54 @@ test-coverage: ## Run tests with coverage report
 	@echo "📊 Running tests with coverage..."
 	python -m pytest tests/ --cov=osiris --cov-report=html --cov-report=term-missing
 
+cov: ## Run pytest with coverage to terminal
+	@echo "📊 Running tests with coverage..."
+	python -m pytest tests/ --cov=osiris --cov-report=term-missing
+
+cov-html: ## Generate HTML coverage report
+	@echo "📊 Generating HTML coverage report..."
+	@COVERAGE_DIR="docs/testing/research/coverage-$$(date +%Y%m%d)/html"; \
+	mkdir -p $$COVERAGE_DIR && \
+	python -m pytest tests/ --cov=osiris --cov-report=html:$$COVERAGE_DIR -q && \
+	echo "✅ HTML report generated in $$COVERAGE_DIR"
+
+cov-json: ## Generate JSON coverage report
+	@echo "📊 Generating JSON coverage report..."
+	@COVERAGE_DIR="docs/testing/research/coverage-$$(date +%Y%m%d)"; \
+	mkdir -p $$COVERAGE_DIR && \
+	python -m pytest tests/ --cov=osiris --cov-report=json:$$COVERAGE_DIR/coverage.json -q && \
+	echo "✅ JSON report generated in $$COVERAGE_DIR/coverage.json"
+
+cov-md: ## Generate markdown coverage report from JSON
+	@echo "📊 Generating markdown coverage report..."
+	@LATEST_JSON=$$(ls -d docs/testing/research/coverage-*/coverage.json 2>/dev/null | tail -1); \
+	if [ -z "$$LATEST_JSON" ]; then \
+		echo "❌ No coverage JSON found. Run 'make cov-json' first."; \
+		exit 1; \
+	fi; \
+	COVERAGE_DIR=$$(dirname $$LATEST_JSON); \
+	python tools/validation/coverage_summary.py $$LATEST_JSON \
+		--format markdown \
+		--output $$COVERAGE_DIR/coverage.md && \
+	echo "✅ Markdown report generated in $$COVERAGE_DIR/coverage.md"
+
+coverage: cov-json cov-html cov-md ## Run full coverage analysis (json + html + md)
+	@echo "✅ Full coverage analysis complete!"
+
+coverage-check: ## Check coverage against thresholds (non-blocking for now)
+	@echo "📊 Checking coverage thresholds..."
+	@LATEST_JSON=$$(ls -d docs/testing/research/coverage-*/coverage.json 2>/dev/null | tail -1); \
+	if [ -z "$$LATEST_JSON" ]; then \
+		echo "❌ No coverage data found. Run 'make cov-json' first."; \
+		exit 1; \
+	fi; \
+	python tools/validation/coverage_summary.py $$LATEST_JSON \
+		--overall-min 0.4 \
+		--remote-min 0.5 \
+		--cli-min 0.5 \
+		--core-min 0.6 \
+		--format markdown || true
+
 # Code Quality
 lint: ## Run all linting checks
 	@echo "🔍 Running linting checks..."
