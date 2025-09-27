@@ -7,7 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-*No unreleased changes*
+### Added
+
+#### Test Coverage Research
+- **Test Coverage Research Package** - Comprehensive baseline analysis at 22.87% coverage
+  - Reports: coverage.md, coverage.json, HTML report, tests-inventory.md, gaps-matrix.md
+  - Executive summary with actionable recommendations for +15% quick wins
+  - Module-specific targets: remote ≥60%, cli ≥70%, overall ≥70%
+
+#### Testing Infrastructure
+- **pytest markers** - Comprehensive test categorization
+  - `e2b`, `e2b_live`, `e2b_smoke` - E2B execution tests
+  - `llm`, `slow`, `cli` - Component-specific tests
+  - `unit`, `integration`, `smoke` - Test scope markers
+  - Configuration in pytest.ini with strict marker enforcement
+
+- **Makefile coverage targets** - Simplified coverage workflow
+  - `cov` - Terminal coverage report
+  - `cov-html` - HTML report generation
+  - `cov-json` - JSON data export
+  - `cov-md` - Markdown report from JSON
+  - `coverage` - Full analysis (all formats)
+  - `coverage-check` - Threshold validation (non-blocking)
+
+### CI/CD
+- **Non-blocking Research workflow** (.github/workflows/research.yml)
+  - Runs on all PRs without blocking merge
+  - Uploads coverage artifacts (HTML, JSON, markdown)
+  - Optional PR comment with coverage summary
+  - Continuous visibility without disrupting development
+
+### Tooling
+- **Coverage summary tool** (tools/validation/coverage_summary.py)
+  - Per-folder coverage analysis with customizable thresholds
+  - Multiple output formats (markdown, JSON, text)
+  - CLI flags for module-specific minimum coverage requirements
+  - Exit codes for CI integration (advisory only)
+
+### Documentation
+- **Mempack configuration updates**
+  - Includes research docs (excluding HTML reports to manage size)
+  - Added coverage_summary.py and pytest.ini for assistant context
+  - Tuned includes/excludes for optimal LLM consumption
 
 ## [0.3.0] - 2025-09-27
 
