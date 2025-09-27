@@ -7,13 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+*No unreleased changes*
+
+## [0.3.1] - 2025-09-27
+
+**AIOP M2a Complete: Production-Ready AI Operation Package**
+
+This release completes Milestone M2a with comprehensive stabilization work (WU7a/b/c), delivering a production-ready AI Operation Package system. All 24 acceptance criteria met with 921 tests passing.
+
 ### Added
+- **AIOP System Stabilization** (WU7a/b/c)
+  - Delta analysis with "Since last run" comparisons using by-pipeline index
+  - Intent discovery with multi-source provenance (manifest, README, commits, chat logs)
+  - Active duration metrics in aggregated statistics
+  - Comprehensive DSN redaction for Redis, MongoDB, PostgreSQL connection strings
+  - LLM affordances: metadata.llm_primer with glossary and controls.examples
+  - Platform-safe symlink implementation with Windows fallback
+  - Robust error handling for missing sessions and corrupted indexes
+
+### Enhanced
 - **AIOP Configuration Layer** (Work Unit 1)
-  - YAML configuration layer implemented with full precedence resolution
+  - YAML configuration layer with full precedence resolution
   - `osiris init` enhanced with AIOP scaffold, `--no-comments` and `--stdout` flags
   - Configuration precedence: CLI > ENV ($OSIRIS_AIOP_*) > Osiris.yaml > defaults
-  - Effective config echoed in `metadata.config_effective` with per-key source tracking
-  - Integration with `resolve_aiop_config()` for unified configuration handling
+  - Effective config tracking in `metadata.config_effective` with per-key source
+  - Auto-export after every run with templated paths and retention policies
+
+### Quality
+- **Test Suite Stabilization**: 921 tests passing, 29 skipped (E2B live tests)
+- **Parity Verification**: Local vs E2B execution produces identical AIOP exports
+- **Security Validation**: Comprehensive secret redaction with zero-leak guarantee
+- **Deterministic Output**: Stable IDs, sorted keys, canonical JSON-LD format
+
+### Documentation
+- Complete user guides with quickstart, troubleshooting, and examples
+- Technical architecture documentation for AIOP system design
+- Updated ADR-0027 and M2a milestone marked as fully implemented
 
 ## [0.3.0] - 2025-01-25
 

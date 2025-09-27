@@ -2,7 +2,8 @@
 
 *Implementation plan for ADR-0027: AI Operation Package*
 *Date: 2025-01-23*
-*Status: In Progress*
+*Status: ✅ **COMPLETED** (September 2025)*
+*Final commits: WU7a/b/c stabilization and quality pass*
 
 ## Status & Evidence (to date)
 

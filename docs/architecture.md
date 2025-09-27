@@ -99,6 +99,27 @@ logs/<session>/
 
 `osiris logs html --open` renders an interactive report with **rows processed, durations, per‑step details**, and environment badges (Local / E2B).
 
+### AI Operation Package (AIOP)
+Every run automatically generates a comprehensive AI Operation Package designed for LLM consumption and debugging:
+
+```
+logs/<session>/aiop/
+  ├─ <session>_aiop.json     # Multi-layered AI export
+  ├─ <session>_runcard.md    # Human-readable summary
+  ├─ latest.json             # Symlink to newest
+  └─ index/                  # Run catalog for deltas
+```
+
+AIOP provides four semantic layers:
+- **Evidence**: Timestamped events, metrics, artifacts with stable IDs
+- **Semantic**: DAG structure, component specs, OML metadata
+- **Narrative**: Intent discovery, natural language descriptions with citations
+- **Metadata**: LLM primer, configuration effective, size controls
+
+**Key Features**: Deterministic output, comprehensive secret redaction, size-controlled exports (≤300KB core), delta analysis with previous runs, and full parity between local/E2B execution.
+
+See [AIOP Architecture](architecture/aiop.md) for detailed technical documentation.
+
 ### Security Boundaries
 - **SQL Safety**: Context-aware validation - read-only for extractors, controlled writes for loaders. See [SQL safety rules](reference/sql-safety.md).
 - **Secrets Isolation**: Never stored in OML or compiled manifests, resolved at runtime only.

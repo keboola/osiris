@@ -1,7 +1,9 @@
 # ADR-0027: AI Operation Package (AIOP)
 
 ## Status
-Partially Accepted
+✅ **IMPLEMENTED** (September 2025)
+
+*Milestone M2a completed with WU7a/b/c stabilization work. All 24 acceptance criteria met. Full production-ready AIOP system operational.*
 
 ## Context
 
@@ -282,9 +284,59 @@ Annex NDJSON ingestion follows one record per line with required back-references
 
 For M2a, the @context will be hosted at `docs/reference/aiop.context.jsonld` in the repository (or via raw GitHub URL). Future production deployments may use a custom domain alias.
 
-## Implementation Plan
+## Implementation Status
 
-Implementation is phased as described in Milestone M2a; see docs/milestones/m2a-aiop.md for the current slicing and execution sequence.
+**✅ COMPLETE**: Full implementation delivered in Milestone M2a (September 2025).
+
+### Architecture Delivered
+
+The production AIOP system implements a four-layer architecture with deterministic, secret-free exports:
+
+1. **Evidence Layer**: Timestamped events, metrics aggregation, artifact tracking with stable IDs
+2. **Semantic Layer**: DAG representation, component registry, OML specification embedding
+3. **Narrative Layer**: Intent discovery with provenance, natural language descriptions, evidence citations
+4. **Metadata Layer**: LLM primer, configuration effective, size hints, delta analysis
+
+### Key Features Operational
+
+- **Autopilot Export**: Automatic AIOP generation after every run (success/failure)
+- **CLI Integration**: `osiris logs aiop` command with JSON/Markdown formats
+- **Size Control**: Core/Annex policies with configurable truncation
+- **Security**: Comprehensive DSN redaction and secret masking
+- **Determinism**: Stable output for reproducible analysis
+- **Configuration**: Full precedence (CLI > ENV > YAML > defaults)
+- **Parity**: Identical structure for local and E2B execution
+
+### Quality Assurance
+
+- **921 tests passing** with comprehensive coverage
+- **Parity validation** between execution environments
+- **Secret detection** with redaction guarantees
+- **Performance optimized** for LLM consumption
+- **Delta analysis** with run-over-run comparison
+- **Intent discovery** with multi-source provenance
+
+### APIs & Stability
+
+**Stable public APIs** for M2a completion:
+- `osiris logs aiop` CLI interface
+- AIOP JSON-LD structure and @context
+- Configuration schema in osiris.yaml
+- Environment variable mappings
+
+**Internal APIs** (subject to evolution):
+- `build_aiop()` function signatures
+- Evidence ID generation schemes
+- Truncation algorithms
+
+### Future Roadmap
+
+While M2a is complete, the following enhancements are planned:
+
+- **M2b**: Real-time AIOP streaming during execution
+- **M3**: Full discovery ingestion and catalog storage (ADR-0029)
+- **M4**: Control Layer implementation for AI-driven operations
+- **GraphRAG**: Enhanced triple generation and embedding support
 
 ## Graph Export Hints for Future GraphRAG
 
