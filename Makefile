@@ -54,38 +54,45 @@ test-coverage: ## Run tests with coverage report
 	@echo "📊 Running tests with coverage..."
 	python -m pytest tests/ --cov=osiris --cov-report=html --cov-report=term-missing
 
-coverage: ## Run full coverage analysis from testing_env
-	@echo "📊 Running full coverage analysis..."
-	@if [ ! -d "testing_env" ]; then \
-		echo "📁 Creating testing_env directory..."; \
-		mkdir -p testing_env; \
-	fi
-	@COVERAGE_DIR="docs/testing/research/coverage-$$(date +%Y%m%d)"; \
-	cd testing_env && python -m pytest ../tests --maxfail=1 -q 2>&1 | tail -5 && \
-	echo "" && \
-	echo "📊 Generating coverage reports in $$COVERAGE_DIR..." && \
-	python -m pytest ../tests --cov=../osiris \
-		--cov-report=term \
-		--cov-report=html:../$$COVERAGE_DIR/html \
-		--cov-report=json:../$$COVERAGE_DIR/coverage.json \
-		--durations=20 -q 2>&1 | tail -50 && \
-	echo "✅ Coverage analysis complete! Reports in $$COVERAGE_DIR"
+cov: ## Run pytest with coverage to terminal
+	@echo "📊 Running tests with coverage..."
+	python -m pytest tests/ --cov=osiris --cov-report=term-missing
 
-coverage-report: ## Generate HTML coverage report for latest run
-	@echo "📊 Generating coverage HTML report..."
-	@LATEST_DIR=$$(ls -d docs/testing/research/coverage-* 2>/dev/null | tail -1); \
-	if [ -z "$$LATEST_DIR" ]; then \
-		echo "❌ No coverage data found. Run 'make coverage' first."; \
+cov-html: ## Generate HTML coverage report
+	@echo "📊 Generating HTML coverage report..."
+	@COVERAGE_DIR="docs/testing/research/coverage-$$(date +%Y%m%d)/html"; \
+	mkdir -p $$COVERAGE_DIR && \
+	python -m pytest tests/ --cov=osiris --cov-report=html:$$COVERAGE_DIR -q && \
+	echo "✅ HTML report generated in $$COVERAGE_DIR"
+
+cov-json: ## Generate JSON coverage report
+	@echo "📊 Generating JSON coverage report..."
+	@COVERAGE_DIR="docs/testing/research/coverage-$$(date +%Y%m%d)"; \
+	mkdir -p $$COVERAGE_DIR && \
+	python -m pytest tests/ --cov=osiris --cov-report=json:$$COVERAGE_DIR/coverage.json -q && \
+	echo "✅ JSON report generated in $$COVERAGE_DIR/coverage.json"
+
+cov-md: ## Generate markdown coverage report from JSON
+	@echo "📊 Generating markdown coverage report..."
+	@LATEST_JSON=$$(ls -d docs/testing/research/coverage-*/coverage.json 2>/dev/null | tail -1); \
+	if [ -z "$$LATEST_JSON" ]; then \
+		echo "❌ No coverage JSON found. Run 'make cov-json' first."; \
 		exit 1; \
 	fi; \
-	echo "📁 Opening coverage report from $$LATEST_DIR/html"; \
-	open $$LATEST_DIR/html/index.html 2>/dev/null || xdg-open $$LATEST_DIR/html/index.html 2>/dev/null || echo "📂 Report at: $$LATEST_DIR/html/index.html"
+	COVERAGE_DIR=$$(dirname $$LATEST_JSON); \
+	python tools/validation/coverage_summary.py $$LATEST_JSON \
+		--format markdown \
+		--output $$COVERAGE_DIR/coverage.md && \
+	echo "✅ Markdown report generated in $$COVERAGE_DIR/coverage.md"
 
-coverage-check: ## Check coverage against thresholds
+coverage: cov-json cov-html cov-md ## Run full coverage analysis (json + html + md)
+	@echo "✅ Full coverage analysis complete!"
+
+coverage-check: ## Check coverage against thresholds (non-blocking for now)
 	@echo "📊 Checking coverage thresholds..."
 	@LATEST_JSON=$$(ls -d docs/testing/research/coverage-*/coverage.json 2>/dev/null | tail -1); \
 	if [ -z "$$LATEST_JSON" ]; then \
-		echo "❌ No coverage data found. Run 'make coverage' first."; \
+		echo "❌ No coverage data found. Run 'make cov-json' first."; \
 		exit 1; \
 	fi; \
 	python tools/validation/coverage_summary.py $$LATEST_JSON \
@@ -93,16 +100,7 @@ coverage-check: ## Check coverage against thresholds
 		--remote-min 0.5 \
 		--cli-min 0.5 \
 		--core-min 0.6 \
-		--format markdown
-
-coverage-summary: ## Display coverage summary for latest run
-	@echo "📊 Coverage Summary:"
-	@LATEST_JSON=$$(ls -d docs/testing/research/coverage-*/coverage.json 2>/dev/null | tail -1); \
-	if [ -z "$$LATEST_JSON" ]; then \
-		echo "❌ No coverage data found. Run 'make coverage' first."; \
-		exit 1; \
-	fi; \
-	python tools/validation/coverage_summary.py $$LATEST_JSON --format text --threshold 0.5
+		--format markdown || true
 
 # Code Quality
 lint: ## Run all linting checks

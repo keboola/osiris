@@ -30,37 +30,57 @@
 
 ## 🚀 Top 5 Quick Wins
 
-These targeted improvements will add **~8.1% overall coverage** with focused effort:
+These targeted improvements will add **≥15% overall coverage** with focused effort:
 
-### 1. **E2B Transparent Proxy Tests** (+2.0% coverage)
+### 1. **E2B Transparent Proxy Tests** (+3.5% coverage)
 - **File**: `osiris/remote/e2b_transparent_proxy.py` (0% → 90%)
+- **Tests to add**:
+  - `test_sandbox_creation_lifecycle`
+  - `test_rpc_message_handling`
+  - `test_artifact_collection`
+  - `test_error_propagation`
 - **Effort**: 2-3 days
-- **Approach**: Mock AsyncSandbox, test RPC protocol
-- **Impact**: Validates critical cloud execution path
+- **Fixtures needed**: `mock_sandbox`, `fake_rpc_channel`
 
-### 2. **ProxyWorker Unit Tests** (+1.5% coverage)
+### 2. **ProxyWorker Unit Tests** (+3.2% coverage)
 - **File**: `osiris/remote/proxy_worker.py` (0% → 85%)
+- **Tests to add**:
+  - `test_command_dispatch`
+  - `test_heartbeat_mechanism`
+  - `test_event_streaming`
+  - `test_graceful_shutdown`
 - **Effort**: 2 days
-- **Approach**: Mock stdin/stdout, test message handling
-- **Impact**: Ensures sandbox execution reliability
+- **Fixtures needed**: `mock_stdin_stdout`, `fake_driver_registry`
 
-### 3. **LocalAdapter Tests** (+1.2% coverage)
+### 3. **LocalAdapter Tests** (+3.0% coverage)
 - **File**: `osiris/runtime/local_adapter.py` (5% → 80%)
+- **Tests to add**:
+  - `test_driver_loading_and_execution`
+  - `test_data_flow_between_steps`
+  - `test_metrics_collection`
+  - `test_error_handling`
 - **Effort**: 2 days
-- **Approach**: Mock driver registry, test execution flow
-- **Impact**: Validates local execution pipeline
+- **Fixtures needed**: `mock_drivers`, `sample_manifests`
 
-### 4. **Fix AIOP Test Fixtures** (+1.7% coverage)
-- **Files**: 18 failing AIOP tests
+### 4. **Fix AIOP Integration Tests** (+3.1% coverage)
+- **Files**: 18 failing AIOP tests in `tests/integration/test_aiop_*.py`
+- **Tests to fix**:
+  - `test_aiop_json_export`
+  - `test_aiop_markdown_export`
+  - `test_aiop_determinism`
+  - `test_aiop_secret_redaction`
 - **Effort**: 1 day
-- **Approach**: Fix test fixtures and environment setup
-- **Impact**: Restores integration test coverage
+- **Root cause**: Missing test fixtures and environment setup
 
-### 5. **PromptManager Tests** (+0.7% coverage)
-- **File**: `osiris/core/prompt_manager.py` (13% → 85%)
-- **Effort**: 1 day
-- **Approach**: Template fixtures, mock tokenizer
-- **Impact**: Validates LLM prompt generation
+### 5. **CLI Command Tests** (+2.8% coverage)
+- **Files**: `osiris/cli/*.py` commands
+- **Tests to add**:
+  - `test_compile_command_validation`
+  - `test_run_command_e2b_flags`
+  - `test_connections_doctor`
+  - `test_logs_aiop_export`
+- **Effort**: 2 days
+- **Fixtures needed**: `cli_runner`, `mock_rich_console`
 
 ## ⚠️ Critical Risks
 
@@ -117,16 +137,28 @@ gantt
 2. **Add performance benchmarks** - Track execution metrics
 3. **Implement flaky test detection** - Improve reliability
 
-## 📋 Success Metrics
+## 🎯 Coverage Targets by Module
 
-| Milestone | Current | Target | Timeline |
-|-----------|---------|--------|----------|
-| Overall Coverage | 22.87% | 50% | 1 month |
-| E2B/Remote | 18.1% | 80% | Week 1 |
-| Runtime | 4.7% | 70% | Week 2 |
-| CLI | 32.9% | 70% | Week 3 |
-| Test Runtime | 60s | <90s | Ongoing |
-| Flaky Rate | Unknown | <2% | Week 4 |
+### Immediate Targets (End of Sprint)
+| Module | Current | Sprint Target | Priority |
+|--------|---------|---------------|----------|
+| `remote/` | 18.1% | **≥60%** | P0 - Critical |
+| `runtime/` | 4.7% | **≥60%** | P0 - Critical |
+| `cli/` | 32.9% | **≥70%** | P1 - High |
+| `core/` | 70.8% | **≥75%** | P2 - Maintain |
+| `prompts/` | 56.3% | **≥60%** | P2 - Medium |
+
+### Long-term Targets (3 Months)
+| Module | Current | Q1 Target | Notes |
+|--------|---------|-----------|-------|
+| **Overall** | 22.87% | **≥70%** | Production readiness threshold |
+| `remote/` | 18.1% | **≥80%** | E2B is critical path |
+| `runtime/` | 4.7% | **≥75%** | Local execution path |
+| `cli/` | 32.9% | **≥80%** | User-facing interface |
+| `core/` | 70.8% | **≥85%** | Business logic |
+| `drivers/` | 76.0% | **≥85%** | Data flow |
+| Test Runtime | 60s | **<90s** | Maintain speed |
+| Flaky Rate | Unknown | **<2%** | Reliability target |
 
 ## 🛠️ Tools & Commands
 

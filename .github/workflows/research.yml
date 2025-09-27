@@ -1,0 +1,109 @@
+name: Research & Coverage Analysis
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  coverage:
+    name: Test Coverage Analysis
+    runs-on: ubuntu-latest
+    continue-on-error: true  # Never fail the PR
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest-cov
+
+    - name: Run tests with coverage
+      id: coverage
+      continue-on-error: true
+      run: |
+        # Create output directory
+        mkdir -p docs/testing/research/coverage-$(date +%Y%m%d)
+
+        # Run pytest with coverage (allow failures)
+        python -m pytest tests/ \
+          --cov=osiris \
+          --cov-report=term-missing \
+          --cov-report=html:docs/testing/research/coverage-$(date +%Y%m%d)/html \
+          --cov-report=json:docs/testing/research/coverage-$(date +%Y%m%d)/coverage.json \
+          --tb=short \
+          -q || true
+
+        # Generate markdown report (if script exists)
+        if [ -f tools/validation/coverage_summary.py ]; then
+          python tools/validation/coverage_summary.py \
+            docs/testing/research/coverage-$(date +%Y%m%d)/coverage.json \
+            --format markdown \
+            --output docs/testing/research/coverage-$(date +%Y%m%d)/coverage.md || true
+        fi
+
+        # Always succeed to not block PR
+        exit 0
+
+    - name: Upload coverage HTML report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: coverage-html-report
+        path: docs/testing/research/coverage-*/html/
+        retention-days: 30
+
+    - name: Upload coverage JSON
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: coverage-json
+        path: docs/testing/research/coverage-*/coverage.json
+        retention-days: 30
+
+    - name: Upload coverage markdown
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: coverage-markdown
+        path: docs/testing/research/coverage-*/coverage.md
+        retention-days: 30
+
+    - name: Comment PR with coverage summary
+      uses: actions/github-script@v7
+      if: github.event_name == 'pull_request'
+      continue-on-error: true
+      with:
+        script: |
+          const fs = require('fs');
+          const glob = require('glob');
+
+          // Find the coverage markdown file
+          const files = glob.sync('docs/testing/research/coverage-*/coverage.md');
+          if (files.length > 0) {
+            const coverage = fs.readFileSync(files[0], 'utf8');
+
+            // Extract just the summary section
+            const lines = coverage.split('\n');
+            const summaryStart = lines.findIndex(line => line.includes('Overall Coverage'));
+            const summaryEnd = lines.findIndex((line, idx) => idx > summaryStart && line.startsWith('##'));
+            const summary = lines.slice(summaryStart, summaryEnd > 0 ? summaryEnd : summaryStart + 20).join('\n');
+
+            // Create comment
+            const comment = `## 📊 Test Coverage Report\n\n${summary}\n\n[View full report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+          }

@@ -33,6 +33,13 @@ include:
 - docs/examples/aiop-*.json
 - docs/examples/run-card-sample.md
 
+# Test coverage research (exclude HTML)
+- docs/testing/research/coverage-*/README.md
+- docs/testing/research/coverage-*/coverage.md
+- docs/testing/research/coverage-*/gaps-matrix.md
+- docs/testing/research/coverage-*/tests-inventory.md
+- docs/testing/research/coverage-*/coverage.json
+
 # Tests (unit+integration+chat)
 - tests/**/**/*.py
 - tests/core/test_run_export_v2_*.py
@@ -42,6 +49,7 @@ include:
 - tools/mempack/*
 - tools/validation/*.py
 - tools/validation/README.md
+- tools/validation/coverage_summary.py
 
 # System prompts (prompt dumps from manual runs)
 - testing_env/.osiris_prompts/**
@@ -53,8 +61,12 @@ include:
 - LICENSE
 - Makefile
 - README.md
+- pytest.ini
 
 exclude:
+# Coverage HTML reports (too large)
+- "docs/testing/research/coverage-*/html/**"
+
 # Python noise (still needed since .gitignore doesn't have these)
 - "**/__pycache__/**"
 - "**/*.pyc"
