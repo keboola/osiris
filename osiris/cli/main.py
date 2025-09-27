@@ -72,6 +72,7 @@ def show_main_help():
     console.print("  [cyan]compile[/cyan]      Compile OML pipeline to deterministic manifest")
     console.print("  [cyan]run[/cyan]          Execute pipeline (OML or compiled manifest)")
     console.print("  [cyan]logs[/cyan]         Manage session logs (list, show, bundle, gc)")
+    console.print("  [cyan]aiop[/cyan]         Manage AI Operation Package (prune)")
     console.print("  [cyan]test[/cyan]         Run automated test scenarios")
     console.print("  [cyan]components[/cyan]   Manage and inspect Osiris components")
     console.print("  [cyan]connections[/cyan]  Manage database connections")
@@ -107,6 +108,7 @@ def parse_main_args():
             "chat",
             "run",
             "runs",  # deprecated but still supported
+            "aiop",
             "compile",
             "logs",
             "test",
@@ -223,6 +225,8 @@ def main():
         dump_prompts_command(command_args)
     elif args.command == "prompts":
         prompts_command(command_args)
+    elif args.command == "aiop":
+        aiop_command(command_args)
     elif args.command == "chat":
         # This case is now handled early in main() to preserve argument order
         pass
@@ -239,6 +243,7 @@ def main():
                             "compile",
                             "run",
                             "logs",
+                            "aiop",
                             "components",
                             "connections",
                             "oml",
@@ -263,6 +268,7 @@ def main():
                             "compile",
                             "run",
                             "logs",
+                            "aiop",
                             "components",
                             "connections",
                             "oml",
@@ -290,6 +296,8 @@ def init_command(args: list):
                 "usage": "osiris init [OPTIONS]",
                 "options": {
                     "--json": "Output in JSON format for programmatic use",
+                    "--no-comments": "Generate config without comments",
+                    "--stdout": "Output config to stdout instead of file",
                     "--help": "Show this help message",
                 },
                 "creates": [
@@ -313,8 +321,12 @@ def init_command(args: list):
             console.print("[bold]Usage:[/bold] osiris init [OPTIONS]")
             console.print()
             console.print("[bold blue]Options[/bold blue]")
-            console.print("  [cyan]--json[/cyan]  Output in JSON format for programmatic use")
-            console.print("  [cyan]--help[/cyan]  Show this help message")
+            console.print(
+                "  [cyan]--json[/cyan]         Output in JSON format for programmatic use"
+            )
+            console.print("  [cyan]--no-comments[/cyan]  Generate config without comments")
+            console.print("  [cyan]--stdout[/cyan]       Output config to stdout instead of file")
+            console.print("  [cyan]--help[/cyan]         Show this help message")
             console.print()
             console.print("[bold blue]What this creates[/bold blue]")
             console.print("  • osiris.yaml - Main configuration file")
@@ -331,6 +343,12 @@ def init_command(args: list):
     # Parse init-specific arguments
     parser = argparse.ArgumentParser(description="Initialize Osiris project", add_help=False)
     parser.add_argument("--json", action="store_true", help="Output in JSON format")
+    parser.add_argument(
+        "--no-comments", action="store_true", help="Generate config without comments"
+    )
+    parser.add_argument(
+        "--stdout", action="store_true", help="Output config to stdout instead of file"
+    )
 
     try:
         parsed_args = parser.parse_args(args)
@@ -350,7 +368,15 @@ def init_command(args: list):
         # Check if config already exists
         config_exists = Path("osiris.yaml").exists()
 
-        create_sample_config()
+        # Generate config with options
+        config_content = create_sample_config(
+            no_comments=parsed_args.no_comments, to_stdout=parsed_args.stdout
+        )
+
+        if parsed_args.stdout:
+            # Output to stdout
+            print(config_content)
+            return
 
         if use_json:
             result = {
@@ -1400,8 +1426,9 @@ def connections_command(args: list) -> None:
 
 
 def logs_command(args: list) -> None:
-    """Manage session logs (list, show, bundle, gc, html, open)."""
+    """Manage session logs (list, show, bundle, gc, html, open, aiop)."""
     from .logs import (
+        aiop_export,
         bundle_session,
         gc_sessions,
         html_report,
@@ -1429,6 +1456,7 @@ def logs_command(args: list) -> None:
         console.print("  [cyan]gc[/cyan]                     Garbage collect old sessions")
         console.print("  [cyan]html[/cyan]                   Generate static HTML report")
         console.print("  [cyan]open <session>[/cyan]        Generate and open single-session HTML")
+        console.print("  [cyan]aiop[/cyan]                   Export AI Operation Package (AIOP)")
         console.print()
         console.print("[bold blue]Examples[/bold blue]")
         console.print(
@@ -1481,9 +1509,11 @@ def logs_command(args: list) -> None:
         html_report(subcommand_args)
     elif subcommand == "open":
         open_session(subcommand_args)
+    elif subcommand == "aiop":
+        aiop_export(subcommand_args)
     else:
         console.print(f"❌ Unknown subcommand: {subcommand}")
-        console.print("Available subcommands: list, last, show, bundle, gc, html, open")
+        console.print("Available subcommands: list, last, show, bundle, gc, html, open, aiop")
         console.print("Use 'osiris logs --help' for detailed help.")
 
 
@@ -1992,6 +2022,51 @@ def oml_command(args: list) -> None:
             console.print(f"❌ Unknown subcommand: {subcommand}")
             console.print("Available subcommands: validate")
             console.print("Use 'osiris oml --help' for detailed help.")
+
+
+def aiop_command(args: list) -> None:
+    """Manage AIOP (AI Operation Package) - retention and pruning."""
+    console = Console()
+
+    def show_aiop_help():
+        console.print()
+        console.print("[bold green]osiris aiop - AIOP Management[/bold green]")
+        console.print("🤖 Manage AI Operation Package exports and retention")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris aiop [SUBCOMMAND] [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Subcommands[/bold blue]")
+        console.print(
+            "  [cyan]prune[/cyan]                  Apply retention policies to AIOP outputs"
+        )
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print(
+            "  [green]osiris aiop prune[/green]                        # Apply configured retention"
+        )
+        console.print()
+
+    if not args or args[0] in ["--help", "-h"]:
+        show_aiop_help()
+        return
+
+    subcommand = args[0]
+    args[1:]
+
+    if subcommand == "prune":
+        from ..core.aiop_export import prune_aiop
+
+        success, error = prune_aiop()
+        if success:
+            console.print("[green]✓[/green] AIOP retention policies applied successfully")
+        else:
+            console.print(f"[red]✗[/red] Failed to apply retention: {error}")
+            sys.exit(1)
+    else:
+        console.print(f"❌ Unknown subcommand: {subcommand}")
+        console.print("Available subcommands: prune")
+        console.print("Use 'osiris aiop --help' for detailed help.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

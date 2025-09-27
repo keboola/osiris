@@ -1,0 +1,97 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "@base": "osiris://",
+    "osiris": "https://osiris.dev/ontology/v1#",
+    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+
+    "_comment": "This context is currently hosted in the repository at docs/reference/aiop.context.jsonld. Future production deployments may use a custom domain alias.",
+
+    "AIOperationPackage": "osiris:AIOperationPackage",
+    "Pipeline": "osiris:Pipeline",
+    "Run": "osiris:Run",
+    "Step": "osiris:Step",
+    "Artifact": "osiris:Artifact",
+    "Metric": "osiris:Metric",
+    "Issue": "osiris:Issue",
+    "Intent": "osiris:Intent",
+    "OMLSpec": "osiris:OMLSpec",
+    "Manifest": "osiris:Manifest",
+
+    "produces": {
+      "@id": "osiris:produces",
+      "@type": "@id"
+    },
+    "consumes": {
+      "@id": "osiris:consumes",
+      "@type": "@id"
+    },
+    "depends_on": {
+      "@id": "osiris:depends_on",
+      "@type": "@id"
+    },
+    "materializes": {
+      "@id": "osiris:materializes",
+      "@type": "@id"
+    },
+    "verifies": {
+      "@id": "osiris:verifies",
+      "@type": "@id"
+    },
+    "remediates": {
+      "@id": "osiris:remediates",
+      "@type": "@id"
+    },
+
+    "session_id": {
+      "@id": "osiris:session_id",
+      "@type": "xsd:string"
+    },
+    "status": {
+      "@id": "osiris:status",
+      "@type": "xsd:string"
+    },
+    "start_time": {
+      "@id": "osiris:start_time",
+      "@type": "xsd:dateTime"
+    },
+    "end_time": {
+      "@id": "osiris:end_time",
+      "@type": "xsd:dateTime"
+    },
+    "manifest_hash": {
+      "@id": "osiris:manifest_hash",
+      "@type": "xsd:string"
+    },
+    "pipeline_name": {
+      "@id": "osiris:pipeline_name",
+      "@type": "xsd:string"
+    },
+    "rows_processed": {
+      "@id": "osiris:rows_processed",
+      "@type": "xsd:integer"
+    },
+    "duration_ms": {
+      "@id": "osiris:duration_ms",
+      "@type": "xsd:integer"
+    },
+    "error_message": {
+      "@id": "osiris:error_message",
+      "@type": "xsd:string"
+    },
+    "intent_known": {
+      "@id": "osiris:intent_known",
+      "@type": "xsd:boolean"
+    },
+    "intent_text": {
+      "@id": "osiris:intent_text",
+      "@type": "xsd:string"
+    },
+    "trust_level": {
+      "@id": "osiris:trust_level",
+      "@type": "xsd:string"
+    }
+  }
+}

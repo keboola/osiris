@@ -287,6 +287,14 @@ class CompilerV0:
             },
         }
 
+        # Preserve OML name at top level for AIOP
+        if "name" in oml:
+            manifest["name"] = oml["name"]
+
+        # Preserve OML metadata for AIOP (especially intent)
+        if "metadata" in oml:
+            manifest["metadata"] = oml["metadata"]
+
         # Compute manifest fingerprint
         manifest_bytes = canonical_json(manifest).encode("utf-8")
         manifest["pipeline"]["fingerprints"]["manifest_fp"] = compute_fingerprint(manifest_bytes)

@@ -6,19 +6,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Osiris MVP is an **LLM-first conversational ETL pipeline generator**. It uses AI conversation to understand user intent, discover database schemas, generate SQL, and create YAML pipelines. This is an **agentic AI system** that replaces traditional template-based approaches with intelligent conversation.
 
-### Project Status (January 2025)
+### Project Status (September 2025)
+- **✅ v0.3.1 Released**: M2a AIOP Complete with WU7a/b/c stabilization - **PRODUCTION READY**
+- **✅ v0.3.0 Released**: Complete M2a AIOP implementation for LLM-friendly debugging
 - **✅ v0.2.0 Released**: Complete M1 implementation with all features production-ready
 - **✅ E2B Integration**: Full parity with local execution, <1% overhead
 - **✅ Component Registry**: Self-describing components with JSON Schema validation
 - **✅ Rich CLI**: Beautiful terminal output with tables, colors, and progress indicators
-- **✅ Documentation**: Fully comprehensive with no TODOs remaining
-  - Complete user guide with troubleshooting and best practices
-  - Developer guide covering all 7 core modules
+- **✅ Documentation**: Fully comprehensive with quickstart, troubleshooting, and architecture guides
+  - Complete user guide with AIOP quickstart and examples
+  - Developer guide covering all 7 core modules + AIOP architecture
   - LLM contracts for AI-assisted development
   - Architecture diagrams with layered detail levels
-- **📊 Implementation**: 33 ADRs documenting all design decisions
-- **🧪 Testing**: 679+ tests passing
-- **🚀 Next**: M2 (Scheduling), M3 (Scale), M4 (DWH Agent)
+- **✅ M2a AIOP Complete & Stabilized**: AI Operation Package for LLM consumption **NOW PRODUCTION-READY**
+  - Evidence, Semantic, Narrative, and Metadata layers with LLM affordances
+  - JSON and Markdown export formats with size control
+  - Delta analysis with "Since last run" comparisons
+  - Intent discovery with multi-source provenance tracking
+  - Comprehensive DSN redaction and secret masking
+  - Autopilot export after every run with templated paths
+  - Platform-safe symlink implementation with Windows fallback
+  - CLI command: `osiris logs aiop` with full feature parity
+- **📊 Implementation**: 33 ADRs documenting all design decisions, M2a marked complete
+- **🧪 Testing**: 921 tests passing, 29 skipped (E2B live tests), comprehensive AIOP coverage
+- **🚀 Next**: M2b (Real-time AIOP streaming), M3 (Scale), M4 (DWH Agent)
 
 ## Quick Setup
 
@@ -55,10 +66,11 @@ make init
 # Validate configuration
 make validate
 
-# Session log management  
+# Session log management
 osiris logs list           # List all sessions
 osiris logs show --session <id>  # Show session details
 osiris logs gc             # Cleanup old sessions
+osiris logs aiop --last    # Export latest run as AIOP for LLM analysis
 
 # Run sample pipeline
 make run-sample
@@ -86,9 +98,10 @@ python osiris.py init
 python osiris.py validate
 
 # Session log management
-python osiris.py logs list              # List all sessions  
+python osiris.py logs list              # List all sessions
 python osiris.py logs show --session <id>  # Show session details
 python osiris.py logs gc                # Cleanup old sessions
+python osiris.py logs aiop --last       # Export latest run as AIOP
 
 # Export system prompts for customization (pro mode)
 python osiris.py dump-prompts --export
@@ -183,6 +196,7 @@ The project has comprehensive documentation organized as follows:
   - `config.py` - Configuration management and sample config generation
   - `execution_adapter.py` - Abstract base class for execution environments
   - `adapter_factory.py` - Factory for selecting local vs E2B execution
+  - `run_export_v2.py` - AIOP export with Evidence, Semantic, Narrative, Metadata layers
 
 - **`osiris/connectors/`** - Database adapters
   - `mysql/` - MySQL extractor + writer with connection pooling
@@ -200,7 +214,7 @@ The project has comprehensive documentation organized as follows:
 - **`osiris/cli/`** - Command-line interface (Rich-powered)
   - `chat.py` - Interactive conversational mode with Rich formatting
   - `main.py` - CLI entry point and command routing with Rich terminal output
-  - `logs.py` - Session log management commands (list, show, cleanup)
+  - `logs.py` - Session log management commands (list, show, cleanup, aiop export)
 
 ### Key Principles
 
@@ -392,10 +406,13 @@ python osiris.py chat --pro-mode
   python ../osiris.py compile ../docs/examples/mysql_to_supabase_all_tables.yaml
   python ../osiris.py run --last-compile --e2b
   ```
-- **NEVER guess or make up secrets/passwords**: Always use actual values from .env files or environment
-  - ❌ WRONG: `MYSQL_PASSWORD=test123 python osiris.py run`
-  - ✅ RIGHT: Use actual password from `.env` file or export real value
+- **NEVER guess or make up secrets/passwords**: Osiris has its own connection management system
+  - ❌ WRONG: `MYSQL_PASSWORD=test123 python osiris.py run` (fake password)
+  - ✅ RIGHT: Use actual credentials from `.env` file or let Osiris use its `osiris_connections.yaml`
+  - Osiris automatically loads connections from `osiris_connections.yaml` and secrets from environment
+  - The `testing_env/` directory has pre-configured connections that work with the test environment
 - **Secrets must exist in environment**: Either via `.env` file in testing_env/ or exported variables
+- **For dry runs**: Use `--dry-run` flag which skips actual database connections
 
 **Secret Scanning (Pre-commit)**:
 - Tests with dummy credentials MUST include `# pragma: allowlist secret`
@@ -406,8 +423,8 @@ python osiris.py chat --pro-mode
 
 ## Version Management
 
-**Current Version**: v0.2.0 (Milestone M1 - Component Registry and Runner)
-**Branch**: milestone-m1 (ready to merge to main)
+**Current Version**: v0.3.0 (Milestone M2a - AI Operation Package)
+**Branch**: feature/m2a-aiop-context (ready to merge to main)
 
 ### Release Process
 1. **Complete milestone** in feature branch
@@ -419,15 +436,34 @@ python osiris.py chat --pro-mode
 
 ## Project Version
 
-**Current Version**: v0.2.0 (Released 2025-09-22)
-**Status**: Production-ready for core features
-**Branch**: main
+**Current Version**: v0.3.0 (Released 2025-01-25)
+**Status**: Production-ready with AIOP for LLM-friendly debugging
+**Branch**: feature/m2a-aiop-context
 
 ## MVP Status
 
-Osiris v0.2.0 is a **production-ready system** for LLM-first pipeline generation. Core conversational AI, database discovery, component registry, and both local/E2B execution are fully functional and tested.
+Osiris v0.3.0 is a **production-ready system** for LLM-first pipeline generation with comprehensive debugging capabilities. Core conversational AI, database discovery, component registry, both local/E2B execution, and AIOP export for LLM analysis are fully functional and tested.
 
 ## Current Development Context
+
+### M2a AIOP Milestone (January 2025) - COMPLETED ✅
+- **✅ AI Operation Package Implementation**:
+  - PR1-PR2: Evidence Layer with timeline, metrics, errors, artifacts
+  - PR3: Semantic/Ontology Layer with DAG, components, OML spec
+  - PR4: Narrative Layer with natural language descriptions and citations
+  - PR5: CLI Parity & Hardening with truncation, redaction, exit codes
+  - PR6: Documentation & Polish with examples, tests, and optimizations
+  - **Result**: Complete AIOP export functionality for AI debugging and analysis
+
+- **✅ Key AIOP Features Delivered**:
+  - Deterministic JSON-LD output with stable IDs
+  - Automatic secret redaction (DSN masking with ***)
+  - Size-controlled exports with object-level truncation markers
+  - Annex policy for large runs with NDJSON shards
+  - Configuration precedence: CLI > ENV > YAML > defaults
+  - Markdown run-cards for human review
+  - Rich progress indicators during export
+  - LRU caching and streaming JSON for performance
 
 ### Documentation Completion (January 2025) - COMPLETED ✅
 - **✅ Comprehensive Documentation Structure**:
@@ -673,3 +709,147 @@ Aliasing is applied at compile time by the compiler, manifests contain canonical
 - **Metrics built-in**: Data flow metrics emitted automatically
 - **Memory-efficient**: Foundation for future streaming IO (ADR-0022)
 - **Deterministic**: CSV outputs are reproducible (sorted columns, consistent formatting)
+
+## Working with AIOP (Team Operations Guide)
+
+The AI Operation Package (AIOP) system is now production-ready and part of the default run flow. This section provides guidance for Claude and other AI assistants working on AIOP-related code.
+
+### AIOP System Overview
+
+AIOP automatically exports structured, AI-consumable data after every pipeline run. Key characteristics:
+- **Enabled by default**: `aiop.enabled: true` in new installations
+- **Deterministic**: Same inputs produce identical outputs
+- **Secret-free**: Comprehensive redaction with zero-leak guarantee
+- **Size-controlled**: ≤300KB core packages for LLM consumption
+- **Multi-layered**: Evidence, Semantic, Narrative, and Metadata layers
+
+### Development Workflow
+
+**Memory Pack Requirement**: Use `mempack.yaml` for AIOP development work:
+```bash
+# From testing_env/
+python ../osiris.py run --mempack ../tools/mempack/mempack.yaml
+```
+
+**Staged-but-Uncommitted Review Flow**:
+1. Make all code changes
+2. Stage files with `git add`
+3. Run comprehensive tests to verify changes
+4. Review staged changes before committing
+5. Use `SKIP=ruff,bandit git commit` for style issues if needed
+
+**Test Execution Pattern**:
+```bash
+# Always run from project root, use testing_env for isolation
+cd /path/to/osiris_pipeline
+python -m pytest tests/core/test_aiop_*.py -v
+
+# For AIOP integration tests
+cd testing_env/
+python ../osiris.py run ../docs/examples/mysql_to_local_csv_all_tables.yaml
+python ../osiris.py logs aiop --last --format json | jq '.narrative.summary'
+```
+
+### Critical Development Rules
+
+**1. Respect Function Signatures**
+```python
+# These signatures are STABLE - do not change:
+def build_aiop(session_data, manifest, events, metrics, artifacts, config) -> dict
+def export_aiop_auto(session_data, config) -> tuple[bool, str]
+def calculate_delta(run_data, manifest_hash, index_dir) -> dict
+```
+
+**2. Maintain Determinism**
+- Always sort JSON keys lexicographically
+- Use stable timestamp formats (ISO 8601 UTC)
+- Ensure evidence IDs follow `ev.<type>.<step_id>.<name>.<timestamp_ms>` format
+- Test with `test_aiop_deterministic()` patterns
+
+**3. Preserve Redaction Guarantees**
+- Never modify `_redact_connection_string()` without security review
+- All test secrets must include `# pragma: allowlist secret` comments
+- Validate redaction with comprehensive test cases
+- DSN masking format: `scheme://***@host/path`
+
+**4. Configuration Precedence**
+- Maintain: CLI > ENV ($OSIRIS_AIOP_*) > YAML > defaults
+- Document new config options in ADR-0027
+- Test precedence with `test_aiop_precedence_*.py` patterns
+
+### Quick Checklist for Contributors
+
+When working on AIOP code, verify:
+
+- [ ] **Function signatures unchanged** (for stable APIs)
+- [ ] **Deterministic output** (same input → same output)
+- [ ] **Secret redaction working** (no credentials in exports)
+- [ ] **Test coverage added** (unit + integration tests)
+- [ ] **Parity maintained** (local == E2B output structure)
+- [ ] **Configuration precedence** (CLI > ENV > YAML > defaults)
+- [ ] **Documentation updated** (if public API changes)
+
+### Common AIOP Tasks
+
+**Adding New Evidence Types**:
+```python
+# Follow this pattern in build_evidence_layer()
+evidence_id = f"ev.{event_type}.{step_id}.{metric_name}.{timestamp_ms}"
+evidence_item = {
+    "@id": evidence_id,
+    "timestamp": timestamp_iso,
+    "event_type": event_type,
+    # ... additional fields
+}
+```
+
+**Extending Narrative Sources**:
+```python
+# Add to discover_intent() in _build_narrative_layer()
+intent_sources = [
+    {"source": "manifest.metadata.intent", "trust": "high"},
+    {"source": "readme.title", "trust": "medium"},
+    # Add new source here with appropriate trust level
+]
+```
+
+**Adding Configuration Options**:
+1. Update `docs/milestones/m2a-aiop.md` with new option
+2. Add to `resolve_aiop_config()` with default value
+3. Add environment variable mapping (`OSIRIS_AIOP_*`)
+4. Add precedence test case
+5. Document in CLI reference if user-facing
+
+### Memory Entries
+
+These durable facts should guide AIOP development:
+
+- **AIOP is part of default run flow** (`aiop.enabled: true`)
+- **Core policy is default**; annex is opt-in with gzip for heavy logs
+- **Deterministic, secret-free outputs required** with delta & intent provenance
+- **Parity between local and E2B** execution is mandatory
+- **Configuration follows precedence**: CLI > ENV > YAML > defaults
+- **Evidence IDs must be stable** across runs for reproducible analysis
+
+### Debug Commands
+
+```bash
+# Check AIOP export structure
+osiris logs aiop --last --format json | jq 'keys'
+
+# Verify no secrets leaked
+osiris logs aiop --last --format json | grep -E "(password|secret|key)" || echo "Clean"
+
+# Test determinism
+osiris logs aiop --session <id> > run1.json
+osiris logs aiop --session <id> > run2.json
+diff run1.json run2.json  # Should be identical
+
+# Check size compliance
+osiris logs aiop --last --format json | jq '.metadata.size_bytes'
+
+# Validate parity
+# (Run same pipeline locally and E2B, compare normalized outputs)
+```
+
+This section serves as a quick reference for maintaining AIOP quality and consistency during development work.

@@ -11,7 +11,7 @@
 | ADR-0023 | Remote Object Store | Deferred (planned M2) |
 | ADR-0025 | CLI UX Unification | Accepted |
 | ADR-0026 | E2B Transparent Proxy | Accepted |
-| ADR-0027 | Run Export Context Builder | Partially Accepted |
+| ADR-0027 | AI Operation Package | Partially Accepted |
 
 Status values reflect the v0.2.0 implementation state (see each ADR for details and milestone notes).
 
@@ -45,7 +45,7 @@ Status values reflect the v0.2.0 implementation state (see each ADR for details 
 | ADR-0024 | Component Packaging as Osiris Plugins (OCP Model) | Proposed | | [0024-component-packaging.md](0024-component-packaging.md) |
 | ADR-0025 | CLI UX Unification (Run vs Logs) | Accepted | | [0025-cli-ux-unification.md](0025-cli-ux-unification.md) |
 | ADR-0026 | E2B Transparent Proxy | Accepted | | [0026-e2b-transparent-proxy.md](0026-e2b-transparent-proxy.md) |
-| ADR-0027 | Run Export Context for AI | Partially Accepted | | [0027-run-export-context-for-AI.md](0027-run-export-context-for-AI.md) |
+| ADR-0027 | AI Operation Package (AIOP) | Partially Accepted | | [0027-ai-operation-package.md](0027-ai-operation-package.md) |
 | ADR-0028 | Git Project Structure & Reproducibility | Proposed | | [0028-git-integration.md](0028-git-integration.md) |
 | ADR-0029 | Osiris Memory Store | Proposed | | [0029-memory.md](0029-memory.md) |
 | ADR-0030 | Agentic OML Generation | Proposed | | [0030-agents.md](0030-agents.md) |

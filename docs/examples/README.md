@@ -1,15 +1,22 @@
-# Osiris MVP Examples
+# Osiris Examples
 
-Example pipeline files demonstrating the OML (Osiris Markup Language) format.
+Example pipeline files and AI Operation Package (AIOP) exports demonstrating Osiris capabilities.
 
-## Files
+## Pipeline Examples (OML Format)
 
-- **`sample_pipeline.yaml`** - MySQL pipeline example
-- **`top_customers_revenue.yaml`** - Supabase pipeline example
+- **`mysql_to_local_csv_all_tables.yaml`** - MySQL to CSV export pipeline
+- **`mysql_to_supabase_all_tables.yaml`** - MySQL to Supabase migration pipeline
+
+## AIOP Examples
+
+- **`aiop-sample.json`** - Complete AI Operation Package with all layers
+- **`run-card-sample.md`** - Human-readable run summary in Markdown
 
 ## Usage
 
-These files show the OML v1.0-MVP format. To generate your own pipelines:
+### Pipeline Examples
+
+These files show the OML v0.1.0 format. To generate your own pipelines:
 
 ```bash
 # Activate virtual environment first
@@ -22,7 +29,50 @@ python osiris.py init
 python osiris.py chat
 
 # Run example pipeline with dry-run
-python osiris.py run examples/sample_pipeline.yaml --dry-run
+python osiris.py run examples/mysql_to_local_csv_all_tables.yaml --dry-run
 ```
+
+### AIOP Examples
+
+After running any pipeline, explore the AI Operation Package:
+
+```bash
+# Run a pipeline to generate AIOP
+python osiris.py run examples/mysql_to_local_csv_all_tables.yaml
+
+# View the generated AIOP
+cat logs/aiop/latest.json | jq '.narrative.summary'
+
+# Export specific run as Markdown
+python osiris.py logs aiop --last --format md
+
+# Compare with sample AIOP structure
+jq 'keys' docs/examples/aiop-sample.json
+```
+
+### Quick AIOP Walkthrough
+
+1. **Enable AIOP** (default in new installs):
+   ```bash
+   python osiris.py init
+   # Ensure aiop.enabled: true in osiris.yaml
+   ```
+
+2. **Run any pipeline**:
+   ```bash
+   python osiris.py run examples/mysql_to_local_csv_all_tables.yaml
+   ```
+
+3. **Explore exports**:
+   ```bash
+   # AI-friendly JSON export
+   ls logs/aiop/
+
+   # Human-readable summary
+   cat logs/aiop/*_runcard.md
+
+   # Check for truncation
+   jq '.metadata.truncated' logs/aiop/latest.json
+   ```
 
 See the main README.md for complete setup instructions.

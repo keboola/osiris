@@ -1,0 +1,109 @@
+# AIOP Control Contract (Stub - PR1)
+# This file defines machine-actionable capabilities for AI-driven pipeline operations
+# Note: This is a draft specification; no runtime enforcement in PR1
+
+version: "1.0"
+dry_run: true  # All operations are simulated in PR1
+
+capabilities:
+  - id: rerun_step
+    type: action
+    description: Rerun a specific step in the pipeline
+    parameters:
+      step_id:
+        type: string
+        required: true
+      force:
+        type: boolean
+        default: false
+    preconditions:
+      - step_status: [failed, partial]
+    postconditions:
+      - step_status: running
+
+  - id: retry_failed_pipeline
+    type: action
+    description: Retry entire pipeline from last checkpoint
+    parameters:
+      session_id:
+        type: string
+        required: true
+      checkpoint:
+        type: string
+        default: last_successful
+    preconditions:
+      - pipeline_status: [failed, partial]
+
+  - id: adjust_config
+    type: action
+    description: Modify pipeline configuration parameter
+    parameters:
+      path:
+        type: string
+        required: true
+        pattern: "^[a-zA-Z0-9._-]+$"
+      value:
+        type: any
+        required: true
+    constraints:
+      - no_secrets: true
+      - validation_required: true
+
+  - id: create_alert
+    type: action
+    description: Create operational alert for monitoring
+    parameters:
+      severity:
+        type: string
+        enum: [info, warning, error, critical]
+      message:
+        type: string
+        required: true
+      context:
+        type: object
+
+  - id: propose_optimization
+    type: suggestion
+    description: Suggest pipeline optimization based on evidence
+    parameters:
+      evidence_refs:
+        type: array
+        items: string
+      optimization_type:
+        type: string
+        enum: [performance, resource, quality, cost]
+
+  - id: validate_data_quality
+    type: check
+    description: Run data quality validation checks
+    parameters:
+      step_id:
+        type: string
+      rules:
+        type: array
+        items:
+          type: object
+          properties:
+            type:
+              enum: [completeness, uniqueness, consistency, validity]
+            threshold:
+              type: number
+
+constraints:
+  - id: no_production_changes
+    description: AI cannot modify production pipelines without approval
+    applies_to: [adjust_config, rerun_step]
+
+  - id: secret_protection
+    description: AI cannot access or modify secrets
+    applies_to: all
+
+  - id: audit_required
+    description: All actions must be logged with actor and timestamp
+    applies_to: all
+
+metadata:
+  schema_version: "1.0"
+  status: draft
+  created: "2025-01-23"
+  note: "Stub implementation for PR1. No runtime enforcement or validation."

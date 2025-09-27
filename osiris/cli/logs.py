@@ -18,6 +18,7 @@
 import argparse
 import json
 import shutil
+import sys
 import time
 import zipfile
 from datetime import datetime, timedelta
@@ -1255,3 +1256,317 @@ def runs_gc(args: list) -> None:
     console.print("[yellow]   Please use 'osiris logs gc' instead.[/yellow]")
     console.print()
     gc_sessions(args)
+
+
+def aiop_export(args: list) -> None:
+    """Export AI Operation Package (AIOP) from session logs."""
+
+    def show_aiop_help():
+        """Show help for logs aiop subcommand."""
+        console.print()
+        console.print("[bold green]osiris logs aiop - Export AI Operation Package[/bold green]")
+        console.print("🤖 Generate a structured JSON-LD package for LLM consumption")
+        console.print()
+        console.print(
+            "[bold]Usage:[/bold] osiris logs aiop [--session SESSION_ID | --last] [OPTIONS]"
+        )
+        console.print()
+        console.print("[bold blue]Required Arguments (one of)[/bold blue]")
+        console.print("  [cyan]--session SESSION_ID[/cyan]  Session ID to export")
+        console.print("  [cyan]--last[/cyan]                Export the most recent session")
+        console.print()
+        console.print("[bold blue]Optional Arguments[/bold blue]")
+        console.print("  [cyan]--output PATH[/cyan]         Output file path (default: stdout)")
+        console.print(
+            "  [cyan]--format FORMAT[/cyan]       Output format: json or md (default: json)"
+        )
+        console.print(
+            "  [cyan]--policy POLICY[/cyan]       Export policy: core or annex (default: core)"
+        )
+        console.print(
+            "  [cyan]--max-core-bytes N[/cyan]    Max bytes for core package (default: 300000)"
+        )
+        console.print(
+            "  [cyan]--annex-dir DIR[/cyan]       Directory for annex files (policy=annex)"
+        )
+        console.print(
+            "  [cyan]--timeline-density D[/cyan]  Timeline detail: low/medium/high (default: medium)"
+        )
+        console.print(
+            "  [cyan]--metrics-topk N[/cyan]      Top K metrics to include (default: 100)"
+        )
+        console.print(
+            "  [cyan]--schema-mode MODE[/cyan]    Schema detail: summary/detailed (default: summary)"
+        )
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print(
+            "  [green]osiris logs aiop --last[/green]                          # Export latest session"
+        )
+        console.print(
+            "  [green]osiris logs aiop --session run_123[/green]               # Export specific session"
+        )
+        console.print(
+            "  [green]osiris logs aiop --last --output aiop.json[/green]       # Save to file"
+        )
+        console.print(
+            "  [green]osiris logs aiop --last --policy annex[/green]           # Generate with annex"
+        )
+        console.print()
+        console.print("[bold yellow]Note:[/bold yellow] This is a stub implementation in PR1.")
+        console.print("      Actual AIOP export will be implemented in PR2+.")
+        console.print()
+
+    if args and args[0] in ["--help", "-h"]:
+        show_aiop_help()
+        return
+
+    parser = argparse.ArgumentParser(description="Export AI Operation Package", add_help=False)
+    parser.add_argument("--session", help="Session ID to export")
+    parser.add_argument("--last", action="store_true", help="Export most recent session")
+    parser.add_argument("--output", help="Output file path (default: stdout)")
+    parser.add_argument(
+        "--format", choices=["json", "md"], default="json", help="Output format (default: json)"
+    )
+    parser.add_argument(
+        "--policy", choices=["core", "annex"], default="core", help="Export policy (default: core)"
+    )
+    parser.add_argument(
+        "--max-core-bytes",
+        type=int,
+        default=300000,
+        help="Max bytes for core package (default: 300000)",
+    )
+    parser.add_argument("--annex-dir", help="Directory for annex files")
+    parser.add_argument(
+        "--timeline-density",
+        choices=["low", "medium", "high"],
+        default="medium",
+        help="Timeline detail level (default: medium)",
+    )
+    parser.add_argument(
+        "--metrics-topk", type=int, default=100, help="Top K metrics to include (default: 100)"
+    )
+    parser.add_argument(
+        "--schema-mode",
+        choices=["summary", "detailed"],
+        default="summary",
+        help="Schema detail level (default: summary)",
+    )
+    parser.add_argument(
+        "--compress",
+        choices=["none", "gzip"],
+        default="none",
+        help="Compression for annex files (default: none)",
+    )
+    parser.add_argument(
+        "--logs-dir",
+        default=None,
+        help="Base logs directory (default: from config or 'logs')",
+    )
+
+    try:
+        parsed_args = parser.parse_args(args)
+    except SystemExit:
+        console.print("❌ Invalid arguments. Use 'osiris logs aiop --help' for usage information.")
+        return
+
+    # Import here to avoid circular imports
+
+    from osiris.core.run_export_v2 import (
+        build_aiop,
+        canonicalize_json,
+        export_annex_shards,
+        generate_markdown_runcard,
+    )
+
+    # Validate required arguments
+    if not (parsed_args.last or parsed_args.session):
+        console.print("❌ Error: Either --session or --last is required")
+        sys.exit(2)
+
+    # Get logs directory
+    logs_dir = parsed_args.logs_dir or _get_logs_dir_from_config()
+    logs_path = Path(logs_dir)
+
+    if not logs_path.exists():
+        console.print(f"❌ Logs directory not found: {logs_path}")
+        sys.exit(2)
+
+    # Find session directory
+    if parsed_args.last:
+        # Get most recent session
+        sessions = []
+        for session_dir in logs_path.iterdir():
+            if session_dir.is_dir() and (session_dir / "events.jsonl").exists():
+                sessions.append((session_dir.stat().st_mtime, session_dir))
+
+        if not sessions:
+            console.print("❌ No sessions found")
+            sys.exit(2)
+
+        sessions.sort(reverse=True)
+        session_path = sessions[0][1]
+        session_id = session_path.name
+    else:
+        # Use specified session
+        session_id = parsed_args.session
+        session_path = logs_path / session_id
+
+        if not session_path.exists():
+            console.print(f"❌ Session not found: {session_id}")
+            sys.exit(2)
+
+    # Read session data
+    reader = SessionReader(str(logs_path))
+    session_summary = reader.read_session(session_id)
+
+    # Load events and metrics
+    events = []
+    metrics = []
+    errors = []
+
+    events_file = session_path / "events.jsonl"
+    if events_file.exists():
+        with open(events_file) as f:
+            for line in f:
+                if line.strip():
+                    event = json.loads(line)
+                    events.append(event)
+                    # Extract errors
+                    if "error" in event.get("event", "").lower() or event.get("level") == "ERROR":
+                        errors.append(event)
+
+    metrics_file = session_path / "metrics.jsonl"
+    if metrics_file.exists():
+        with open(metrics_file) as f:
+            for line in f:
+                if line.strip():
+                    metrics.append(json.loads(line))
+
+    # Get artifacts
+    artifacts = []
+    artifacts_dir = session_path / "artifacts"
+    if artifacts_dir.exists():
+        for artifact_file in artifacts_dir.iterdir():
+            if artifact_file.is_file():
+                artifacts.append(artifact_file)
+
+    # Get manifest (check session root first, then artifacts)
+    manifest = {}
+    # First try session root (where it actually is)
+    manifest_file = session_path / "manifest.yaml"
+    if not manifest_file.exists():
+        # Fallback to artifacts dir for backward compatibility
+        manifest_file = artifacts_dir / "manifest.yaml" if artifacts_dir.exists() else None
+
+    if manifest_file and manifest_file.exists():
+        import yaml
+
+        with open(manifest_file) as f:
+            manifest = yaml.safe_load(f) or {}
+
+    # Get session data
+    session_data = {
+        "session_id": session_id,
+        "started_at": session_summary.started_at,
+        "completed_at": session_summary.finished_at,
+        "status": session_summary.status,
+        "environment": "e2b" if session_summary.adapter_type == "E2B" else "local",
+    }
+
+    # Get config with precedence: CLI > ENV > YAML > defaults
+    from osiris.core.config import resolve_aiop_config
+
+    # Build CLI args dictionary (only non-default values)
+    cli_args = {}
+
+    # Check if CLI values differ from defaults
+    if parsed_args.max_core_bytes != 300000:
+        cli_args["max_core_bytes"] = parsed_args.max_core_bytes
+    if parsed_args.timeline_density != "medium":
+        cli_args["timeline_density"] = parsed_args.timeline_density
+    if parsed_args.metrics_topk != 100:
+        cli_args["metrics_topk"] = parsed_args.metrics_topk
+    if parsed_args.schema_mode != "summary":
+        cli_args["schema_mode"] = parsed_args.schema_mode
+    if parsed_args.policy != "core":
+        cli_args["policy"] = parsed_args.policy
+    if parsed_args.compress != "none":
+        cli_args["compress"] = parsed_args.compress
+    if parsed_args.annex_dir and parsed_args.annex_dir != ".aiop-annex":
+        cli_args["annex_dir"] = parsed_args.annex_dir
+
+    # Resolve configuration with full precedence
+    config, config_sources = resolve_aiop_config(cli_args)
+
+    # Build AIOP
+    try:
+        # Show progress if outputting to file (stderr available for progress)
+        show_progress = bool(parsed_args.output)
+        aiop = build_aiop(
+            session_data=session_data,
+            manifest=manifest,
+            events=events,
+            metrics=metrics,
+            artifacts=artifacts,
+            config=config,
+            show_progress=show_progress,
+            config_sources=config_sources,
+        )
+    except Exception as e:
+        console.print(f"❌ Failed to build AIOP: {e}")
+        sys.exit(1)
+
+    # Handle policy
+    exit_code = 0
+
+    if parsed_args.policy == "annex":
+        # Export annex shards
+        annex_dir = Path(parsed_args.annex_dir) if parsed_args.annex_dir else Path(".aiop-annex")
+        annex_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            annex_manifest = export_annex_shards(
+                events=events,
+                metrics=metrics,
+                errors=errors,
+                annex_dir=annex_dir,
+                compress=parsed_args.compress,
+            )
+            # Add annex reference to AIOP (remove full path for privacy)
+            clean_manifest = {
+                "compress": annex_manifest["compress"],
+                "files": [
+                    {"name": f["name"], "count": f["count"], "bytes": f["size_bytes"]}
+                    for f in annex_manifest["files"]
+                ],
+            }
+            aiop["metadata"]["annex"] = clean_manifest
+        except Exception as e:
+            console.print(f"❌ Failed to export annex: {e}")
+            sys.exit(1)
+
+    # Check if truncated (exit code 4)
+    if aiop.get("metadata", {}).get("truncated", False):
+        # Write warning to stderr directly (Rich Console doesn't support file= parameter)
+        sys.stderr.write("⚠️ AIOP was truncated due to size limits\n")
+        exit_code = 4
+
+    # Generate output
+    if parsed_args.format == "md":
+        output = generate_markdown_runcard(aiop)
+    else:
+        output = canonicalize_json(aiop)
+
+    # Write output
+    if parsed_args.output:
+        output_path = Path(parsed_args.output)
+        with open(output_path, "w") as f:
+            f.write(output)
+        console.print(f"✅ AIOP exported to {output_path}")
+    else:
+        # Print to stdout (without Rich formatting)
+        print(output)
+
+    sys.exit(exit_code)

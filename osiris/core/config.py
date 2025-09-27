@@ -14,10 +14,12 @@
 
 """Configuration management for Osiris v2."""
 
+import contextlib
+import datetime
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import yaml
 
@@ -52,22 +54,20 @@ def load_config(config_path: str = ".osiris.yaml") -> Dict[str, Any]:
     return config or {}
 
 
-def create_sample_config(config_path: str = "osiris.yaml") -> None:
+def create_sample_config(
+    config_path: str = "osiris.yaml", no_comments: bool = False, to_stdout: bool = False
+) -> str:
     """Create a sample configuration file.
 
     Args:
         config_path: Path where to create the config file
+        no_comments: If True, remove comment lines
+        to_stdout: If True, return content instead of writing to file
+
+    Returns:
+        Generated config content if to_stdout is True, else empty string
     """
-    config_file = Path(config_path)
-
-    if config_file.exists():
-        backup_path = f"{config_path}.backup"
-        config_file.rename(backup_path)
-
-    # Write config with comments (yaml.dump strips comments, so write manually)
-    with open(config_file, "w") as f:
-        f.write(
-            """version: '2.0'
+    config_content = """version: '2.0'
 
 # ============================================================================
 # LOGGING CONFIGURATION
@@ -228,8 +228,93 @@ validation:
     include_history_in_hitl: true  # Show retry history in HITL prompts
     history_limit: 3          # Max attempts to show in HITL history
     diff_format: patch        # Diff format: "patch" or "summary"
+
+# ============================================================================
+# AIOP (AI Operation Package) CONFIGURATION
+# Precedence: CLI > Environment ($OSIRIS_AIOP_*) > Osiris.yaml > built-in defaults
+# AIOP: Structured export for LLMs (Narrative, Semantic, Evidence; Control in future)
+# ============================================================================
+aiop:
+  enabled: true            # Auto-generate AIOP after each run (even on failure)
+  policy: core             # core = Core only (LLM-friendly); annex = Core + NDJSON Annex; custom = Core + fine-tuning knobs
+  max_core_bytes: 300000   # Hard cap for Core size; deterministic truncation with markers when exceeded
+
+  # How many timeline events go into Core (Annex can still contain all)
+  timeline_density: medium # low = key events only; medium = + aggregated per-step metrics (default); high = all incl. debug
+  metrics_topk: 100        # Keep top-K metrics/steps in Core (errors/checks prioritized)
+  schema_mode: summary     # summary = names/relations/fingerprints; detailed = adds small schema/config excerpts (no secrets)
+  delta: previous          # previous = compare to last run of same pipeline@manifest_hash (first_run:true if none); none = disable
+  run_card: true           # Also write Markdown run-card for PR/Slack
+
+  output:
+    core_path: "logs/aiop/{session_id}/aiop.json"         # Where to write Core JSON
+    run_card_path: "logs/aiop/{session_id}/run-card.md"   # Where to write Markdown run-card
+
+  annex:
+    enabled: false         # Enable NDJSON Annex (timeline/metrics/errors shards)
+    dir: logs/aiop/annex   # Directory for Annex shards
+    compress: none         # none|gzip|zstd (applies to Annex only; Core is always uncompressed for readability)
+
+  # Path variable templating (for output paths)
+  path_vars:
+    ts_format: "%Y%m%d_%H%M%S"  # Timestamp format for {ts} variable
+    # Available variables in paths:
+    # {session_id} - Full session ID
+    # {ts} - Timestamp formatted with ts_format
+    # {manifest_hash} - Pipeline manifest hash
+    # {status} - Run status (success/failure)
+
+  # Index configuration (tracks all runs for delta analysis)
+  index:
+    enabled: true          # Enable index updates after each run
+    runs_jsonl: "logs/aiop/index/runs.jsonl"        # All runs chronologically
+    by_pipeline_dir: "logs/aiop/index/by_pipeline"  # Per-pipeline run history
+    latest_symlink: "logs/aiop/latest"              # Symlink to latest run
+
+  retention:
+    keep_runs: 50          # Keep last N Core files (optional)
+    annex_keep_days: 14    # Delete Annex shards older than N days (optional)
+
+  # Narrative layer configuration
+  narrative:
+    sources: [manifest, repo_readme, commit_message, discovery]  # default source list
+    session_chat:
+      enabled: false       # opt-in for chat logs (default: false)
+      mode: masked         # masked|quotes|off
+      max_chars: 2000      # truncation limit for chat logs
+      redact_pii: true     # PII removal before Annex inclusion
 """
-        )
+
+    # Process content based on flags
+    if no_comments:
+        # Remove lines starting with # (comments) but keep YAML comments after values
+        lines = config_content.split("\n")
+        filtered_lines = []
+        for line in lines:
+            # Keep empty lines and lines that don't start with #
+            # Also keep lines where # appears after content (inline comments)
+            stripped = line.lstrip()
+            if not stripped.startswith("#") or not stripped[1:].lstrip():
+                filtered_lines.append(line)
+            elif line.strip() == "#":
+                # Keep separator lines that are just #
+                pass
+            # Skip other comment lines
+        config_content = "\n".join(filtered_lines)
+
+    if to_stdout:
+        return config_content
+
+    # Write to file (with backup if exists)
+    config_file = Path(config_path)
+    if config_file.exists():
+        backup_path = f"{config_path}.backup"
+        config_file.rename(backup_path)
+
+    with open(config_file, "w") as f:
+        f.write(config_content)
+
+    return ""
 
 
 class ConfigManager:
@@ -553,3 +638,351 @@ def resolve_connection(family: str, alias: Optional[str] = None) -> Dict[str, An
         f"Either: 1) Set 'default: true' on an alias, 2) Name an alias 'default', "
         f"or 3) Specify an alias explicitly."
     )
+
+
+# ============================================================================
+# AIOP Configuration Functions
+# ============================================================================
+
+# Define AIOP defaults
+AIOP_DEFAULTS = {
+    "enabled": True,
+    "policy": "core",
+    "max_core_bytes": 300000,
+    "timeline_density": "medium",
+    "metrics_topk": 100,
+    "schema_mode": "summary",
+    "delta": "previous",
+    "run_card": True,
+    "path_vars": {
+        "ts_format": "%Y%m%d-%H%M%S",
+    },
+    "output": {
+        "core_path": "logs/aiop/{session_id}/aiop.json",
+        "run_card_path": "logs/aiop/{session_id}/run-card.md",
+    },
+    "annex": {
+        "enabled": False,
+        "dir": "logs/aiop/{session_id}/annex",
+        "compress": "none",
+    },
+    "index": {
+        "enabled": True,
+        "runs_jsonl": "logs/aiop/index/runs.jsonl",
+        "by_pipeline_dir": "logs/aiop/index/by_pipeline",
+        "latest_symlink": "logs/aiop/latest",
+    },
+    "retention": {
+        "keep_runs": 50,
+        "annex_keep_days": 14,
+    },
+    "narrative": {
+        "sources": ["manifest", "repo_readme", "commit_message", "discovery"],
+        "session_chat": {
+            "enabled": False,
+            "mode": "masked",
+            "max_chars": 2000,
+            "redact_pii": True,
+        },
+    },
+}
+
+
+def load_osiris_yaml(path: Optional[str] = None) -> Dict[str, Any]:
+    """Load Osiris YAML configuration file.
+
+    Args:
+        path: Path to osiris.yaml (defaults to "osiris.yaml")
+
+    Returns:
+        Loaded configuration dict or empty dict if file doesn't exist
+    """
+    yaml_path = Path(path or "osiris.yaml")
+    if not yaml_path.exists():
+        return {}
+
+    try:
+        with open(yaml_path) as f:
+            config = yaml.safe_load(f) or {}
+        return config
+    except Exception:
+        # If file exists but can't be parsed, return empty dict
+        return {}
+
+
+def load_aiop_env() -> Dict[str, Any]:
+    """Load AIOP configuration from environment variables.
+
+    Returns:
+        Dictionary of AIOP configuration from environment
+    """
+    config = {}
+
+    # Simple mappings
+    env_mappings = [
+        ("OSIRIS_AIOP_ENABLED", "enabled", lambda x: x.lower() == "true"),
+        ("OSIRIS_AIOP_POLICY", "policy", str),
+        ("OSIRIS_AIOP_MAX_CORE_BYTES", "max_core_bytes", int),
+        ("OSIRIS_AIOP_TIMELINE_DENSITY", "timeline_density", str),
+        ("OSIRIS_AIOP_METRICS_TOPK", "metrics_topk", int),
+        ("OSIRIS_AIOP_SCHEMA_MODE", "schema_mode", str),
+        ("OSIRIS_AIOP_DELTA", "delta", str),
+        ("OSIRIS_AIOP_RUN_CARD", "run_card", lambda x: x.lower() == "true"),
+    ]
+
+    for env_key, config_key, converter in env_mappings:
+        value = os.environ.get(env_key)
+        if value is not None:
+            with contextlib.suppress(ValueError, TypeError):
+                config[config_key] = converter(value)
+                # Skip invalid values
+
+    # Nested mappings
+    if "OSIRIS_AIOP_OUTPUT_CORE_PATH" in os.environ:
+        config.setdefault("output", {})["core_path"] = os.environ["OSIRIS_AIOP_OUTPUT_CORE_PATH"]
+
+    if "OSIRIS_AIOP_OUTPUT_RUN_CARD_PATH" in os.environ:
+        config.setdefault("output", {})["run_card_path"] = os.environ[
+            "OSIRIS_AIOP_OUTPUT_RUN_CARD_PATH"
+        ]
+
+    if "OSIRIS_AIOP_ANNEX_ENABLED" in os.environ:
+        config.setdefault("annex", {})["enabled"] = (
+            os.environ["OSIRIS_AIOP_ANNEX_ENABLED"].lower() == "true"
+        )
+
+    if "OSIRIS_AIOP_ANNEX_DIR" in os.environ:
+        config.setdefault("annex", {})["dir"] = os.environ["OSIRIS_AIOP_ANNEX_DIR"]
+
+    if "OSIRIS_AIOP_ANNEX_COMPRESS" in os.environ:
+        config.setdefault("annex", {})["compress"] = os.environ["OSIRIS_AIOP_ANNEX_COMPRESS"]
+
+    if "OSIRIS_AIOP_RETENTION_KEEP_RUNS" in os.environ:
+        config.setdefault("retention", {})["keep_runs"] = int(
+            os.environ["OSIRIS_AIOP_RETENTION_KEEP_RUNS"]
+        )
+
+    if "OSIRIS_AIOP_RETENTION_ANNEX_KEEP_DAYS" in os.environ:
+        config.setdefault("retention", {})["annex_keep_days"] = int(
+            os.environ["OSIRIS_AIOP_RETENTION_ANNEX_KEEP_DAYS"]
+        )
+
+    # Narrative sources (comma-separated list)
+    if "OSIRIS_AIOP_NARRATIVE_SOURCES" in os.environ:
+        sources_str = os.environ["OSIRIS_AIOP_NARRATIVE_SOURCES"]
+        config.setdefault("narrative", {})["sources"] = [s.strip() for s in sources_str.split(",")]
+
+    # Session chat
+    if "OSIRIS_AIOP_NARRATIVE_SESSION_CHAT_ENABLED" in os.environ:
+        config.setdefault("narrative", {}).setdefault("session_chat", {})["enabled"] = (
+            os.environ["OSIRIS_AIOP_NARRATIVE_SESSION_CHAT_ENABLED"].lower() == "true"
+        )
+
+    if "OSIRIS_AIOP_NARRATIVE_SESSION_CHAT_MODE" in os.environ:
+        config.setdefault("narrative", {}).setdefault("session_chat", {})["mode"] = os.environ[
+            "OSIRIS_AIOP_NARRATIVE_SESSION_CHAT_MODE"
+        ]
+
+    if "OSIRIS_AIOP_NARRATIVE_SESSION_CHAT_MAX_CHARS" in os.environ:
+        config.setdefault("narrative", {}).setdefault("session_chat", {})["max_chars"] = int(
+            os.environ["OSIRIS_AIOP_NARRATIVE_SESSION_CHAT_MAX_CHARS"]
+        )
+
+    if "OSIRIS_AIOP_NARRATIVE_SESSION_CHAT_REDACT_PII" in os.environ:
+        config.setdefault("narrative", {}).setdefault("session_chat", {})["redact_pii"] = (
+            os.environ["OSIRIS_AIOP_NARRATIVE_SESSION_CHAT_REDACT_PII"].lower() == "true"
+        )
+
+    # Path vars
+    if "OSIRIS_AIOP_PATH_VARS_TS_FORMAT" in os.environ:
+        config.setdefault("path_vars", {})["ts_format"] = os.environ[
+            "OSIRIS_AIOP_PATH_VARS_TS_FORMAT"
+        ]
+
+    # Index configuration
+    if "OSIRIS_AIOP_INDEX_ENABLED" in os.environ:
+        config.setdefault("index", {})["enabled"] = (
+            os.environ["OSIRIS_AIOP_INDEX_ENABLED"].lower() == "true"
+        )
+
+    if "OSIRIS_AIOP_INDEX_RUNS_JSONL" in os.environ:
+        config.setdefault("index", {})["runs_jsonl"] = os.environ["OSIRIS_AIOP_INDEX_RUNS_JSONL"]
+
+    if "OSIRIS_AIOP_INDEX_BY_PIPELINE_DIR" in os.environ:
+        config.setdefault("index", {})["by_pipeline_dir"] = os.environ[
+            "OSIRIS_AIOP_INDEX_BY_PIPELINE_DIR"
+        ]
+
+    if "OSIRIS_AIOP_INDEX_LATEST_SYMLINK" in os.environ:
+        config.setdefault("index", {})["latest_symlink"] = os.environ[
+            "OSIRIS_AIOP_INDEX_LATEST_SYMLINK"
+        ]
+
+    return config
+
+
+def _deep_merge(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
+    """Deep merge two dictionaries, with overlay taking precedence.
+
+    Args:
+        base: Base dictionary
+        overlay: Dictionary to overlay on top
+
+    Returns:
+        Merged dictionary
+    """
+    result = base.copy()
+
+    for key, value in overlay.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+
+    return result
+
+
+def resolve_aiop_config(
+    cli_args: Optional[Dict[str, Any]] = None,
+) -> Tuple[Dict[str, Any], Dict[str, str]]:
+    """Resolve AIOP configuration with precedence: CLI > ENV > YAML > defaults.
+
+    Args:
+        cli_args: CLI arguments dictionary (optional)
+
+    Returns:
+        Tuple of (effective_config, sources_map)
+        - effective_config: Final resolved configuration
+        - sources_map: Map of config key to source ("DEFAULT", "YAML", "ENV", "CLI")
+    """
+    # Start with defaults
+    effective = AIOP_DEFAULTS.copy()
+    sources = {_flatten_key(k, v): "DEFAULT" for k, v in _flatten_dict(AIOP_DEFAULTS).items()}
+
+    # Layer 2: YAML
+    yaml_config = load_osiris_yaml()
+    if yaml_config and "aiop" in yaml_config:
+        aiop_yaml = yaml_config["aiop"]
+        effective = _deep_merge(effective, aiop_yaml)
+        for k, v in _flatten_dict(aiop_yaml).items():
+            sources[_flatten_key(k, v)] = "YAML"
+
+    # Layer 3: Environment
+    env_config = load_aiop_env()
+    if env_config:
+        effective = _deep_merge(effective, env_config)
+        for k, v in _flatten_dict(env_config).items():
+            sources[_flatten_key(k, v)] = "ENV"
+
+    # Layer 4: CLI
+    if cli_args:
+        # Map CLI args to config keys
+        cli_config = {}
+
+        # Direct mappings
+        if "max_core_bytes" in cli_args and cli_args["max_core_bytes"] is not None:
+            cli_config["max_core_bytes"] = cli_args["max_core_bytes"]
+        if "timeline_density" in cli_args and cli_args["timeline_density"] is not None:
+            cli_config["timeline_density"] = cli_args["timeline_density"]
+        if "metrics_topk" in cli_args and cli_args["metrics_topk"] is not None:
+            cli_config["metrics_topk"] = cli_args["metrics_topk"]
+        if "schema_mode" in cli_args and cli_args["schema_mode"] is not None:
+            cli_config["schema_mode"] = cli_args["schema_mode"]
+        if "policy" in cli_args and cli_args["policy"] is not None:
+            cli_config["policy"] = cli_args["policy"]
+        if "compress" in cli_args and cli_args["compress"] is not None:
+            cli_config.setdefault("annex", {})["compress"] = cli_args["compress"]
+        if "annex_dir" in cli_args and cli_args["annex_dir"] is not None:
+            cli_config.setdefault("annex", {})["dir"] = cli_args["annex_dir"]
+
+        if cli_config:
+            effective = _deep_merge(effective, cli_config)
+            for k, v in _flatten_dict(cli_config).items():
+                sources[_flatten_key(k, v)] = "CLI"
+
+    return effective, sources
+
+
+def _flatten_dict(d: Dict[str, Any], parent_key: str = "") -> Dict[str, Any]:
+    """Flatten a nested dictionary.
+
+    Args:
+        d: Dictionary to flatten
+        parent_key: Parent key for recursion
+
+    Returns:
+        Flattened dictionary
+    """
+    items = []
+    for k, v in d.items():
+        new_key = f"{parent_key}.{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.extend(_flatten_dict(v, new_key).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
+
+
+def _flatten_key(key: str, value: Any) -> str:
+    """Create a flattened key suitable for sources map."""
+    _ = value  # Unused but required for signature compatibility
+    return key
+
+
+def render_path(template: str, ctx: dict, ts_format: str = "%Y%m%d-%H%M%S") -> str:
+    """Render {session_id},{ts},{manifest_hash},{status} into an FS-safe relative path.
+
+    Args:
+        template: Path template with {var} placeholders
+        ctx: Context dict with session_id, ts (datetime), manifest_hash, status
+        ts_format: Format string for timestamp formatting
+
+    Returns:
+        Rendered path with variables substituted
+
+    Raises:
+        ValueError: If template contains unsafe path components
+    """
+    from pathlib import Path
+
+    # Check if template contains any variables
+    has_variables = "{" in template and "}" in template
+
+    # Format timestamp if present
+    render_ctx = ctx.copy()
+    if "ts" in render_ctx and isinstance(render_ctx["ts"], datetime.datetime):
+        render_ctx["ts"] = render_ctx["ts"].strftime(ts_format)
+
+    # Simple string format substitution
+    try:
+        rendered = template.format(**render_ctx)
+    except KeyError as e:
+        # Provide default empty string for missing keys
+        missing_key = str(e).strip("'")
+        render_ctx[missing_key] = ""
+        rendered = template.format(**render_ctx)
+
+    # If template had no variables and file already exists, auto-suffix with session_id
+    if not has_variables and Path(rendered).exists():
+        # Insert session_id before the file extension
+        path = Path(rendered)
+        session_id = ctx.get("session_id", "unknown")
+        if path.suffix:
+            # Has extension: file.json -> file.run_123.json
+            rendered = str(path.with_suffix(f".{session_id}{path.suffix}"))
+        else:
+            # No extension: file -> file.run_123
+            rendered = f"{rendered}.{session_id}"
+
+    # Security: ensure no parent directory escapes
+    if ".." in rendered:
+        raise ValueError(f"Path template resolved to unsafe path with '..': {rendered}")
+
+    # Normalize path separators
+    rendered = os.path.normpath(rendered)
+
+    # Ensure relative path (remove leading slash if present)
+    if rendered.startswith(os.sep):
+        rendered = rendered[1:]
+
+    return rendered

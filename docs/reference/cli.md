@@ -18,12 +18,48 @@ osiris [--help] [--version] <command> [options]
 Initialize Osiris configuration files:
 
 ```bash
-osiris init
+osiris init [OPTIONS]
 ```
 
-Creates:
-- `.env` file for secrets (if not exists)
-- `osiris_connections.yaml` for connection definitions
+**Options**:
+- `--no-comments`: Generate configuration without comment lines
+- `--stdout`: Output configuration to stdout instead of creating file
+- `--json`: Output initialization results in JSON format
+
+**Creates/Updates**:
+- `osiris.yaml` - Main configuration file including:
+  - Logging and session settings
+  - LLM configuration
+  - **AIOP configuration** with defaults for export settings
+  - Pipeline and discovery settings
+- Creates backup as `osiris.yaml.backup` if file exists
+
+**AIOP Configuration**:
+The init command generates a complete AIOP configuration section with defaults:
+```yaml
+aiop:
+  enabled: true            # Auto-generate AIOP after each run
+  policy: core             # core|annex|custom
+  max_core_bytes: 300000   # Size limit for Core package
+  timeline_density: medium # Event filtering level
+  metrics_topk: 100        # Top metrics to keep
+  # ... additional settings
+```
+
+**Examples**:
+```bash
+# Standard initialization
+osiris init
+
+# Generate config without comments for production
+osiris init --no-comments
+
+# Preview config without creating file
+osiris init --stdout
+
+# Get JSON output for automation
+osiris init --json
+```
 
 ### chat - Conversational Pipeline Creation
 
@@ -203,6 +239,110 @@ osiris logs gc [--keep-recent N] [--older-than DAYS]
 Options:
 - `--keep-recent N`: Keep N most recent sessions (default: 10)
 - `--older-than DAYS`: Remove sessions older than DAYS
+
+### logs aiop - Export AI Operation Package
+
+Generate a structured, multi-layered AI Operation Package (AIOP) for LLM consumption:
+
+```bash
+osiris logs aiop [--session SESSION_ID | --last] [OPTIONS]
+```
+
+**Required Arguments** (one of):
+- `--session SESSION_ID`: Export specific session by ID
+- `--last`: Export the most recent session
+
+**Output Options**:
+- `--output PATH`: Write to file instead of stdout
+- `--format {json|md}`: Output format (default: json)
+  - `json`: Full AIOP in JSON-LD format with all layers
+  - `md`: Human-readable Markdown run-card summary
+
+**Size Control**:
+- `--max-core-bytes N`: Maximum size for Core package (default: 300000)
+- `--timeline-density {minimal|medium|verbose}`: Event filtering (default: medium)
+  - `minimal`: Key events only (start, end, errors)
+  - `medium`: Important events and step transitions
+  - `verbose`: All events including debug
+- `--metrics-topk N`: Keep top N metrics per step (default: 10)
+- `--schema-mode {summary|detailed}`: Schema detail level (default: summary)
+
+**Annex Policy** (for large runs):
+- `--policy {core|annex}`: Export policy (default: core)
+  - `core`: Single package with truncation if needed
+  - `annex`: Core + NDJSON shard files for full data
+- `--annex-dir DIR`: Directory for annex files (default: .aiop-annex)
+- `--compress {none|gzip}`: Compression for annex files (default: none)
+
+**Configuration Precedence**:
+```
+CLI flags > $OSIRIS_AIOP_* environment > osiris.yaml > defaults
+```
+
+**Environment Variables**:
+- `OSIRIS_AIOP_MAX_CORE_BYTES`: Maximum Core size in bytes
+- `OSIRIS_AIOP_TIMELINE_DENSITY`: Timeline filtering level
+- `OSIRIS_AIOP_METRICS_TOPK`: Number of top metrics to keep
+- `OSIRIS_AIOP_SCHEMA_MODE`: Schema detail level
+
+**Exit Codes**:
+- `0`: Success - AIOP generated successfully
+- `1`: General error (e.g., I/O failure)
+- `2`: Invalid arguments or session not found
+- `4`: AIOP was truncated due to size limits (warning)
+
+**Examples**:
+
+```bash
+# Export last run as JSON
+osiris logs aiop --last
+
+# Generate Markdown run-card to file
+osiris logs aiop --last --format md --output runcard.md
+
+# Export with annex shards and compression
+osiris logs aiop --session run_123 --policy annex --compress gzip
+
+# Control package size with aggressive truncation
+osiris logs aiop --last --max-core-bytes 50000 --timeline-density minimal
+
+# Check if truncation occurred
+osiris logs aiop --last --format json | jq '.metadata.truncated'
+```
+
+**Configuration Precedence**:
+AIOP settings follow this precedence order:
+1. **CLI flags** (highest priority) - Command line arguments
+2. **Environment variables** - `OSIRIS_AIOP_*` prefixed variables
+3. **YAML configuration** - Settings in `osiris.yaml` under `aiop:` section
+4. **Built-in defaults** (lowest priority)
+
+Example:
+```bash
+# YAML sets timeline_density: high
+# ENV sets OSIRIS_AIOP_TIMELINE_DENSITY=low
+# CLI sets --timeline-density medium
+# Result: medium (CLI wins)
+```
+
+**AIOP Structure**:
+The exported package contains four layers:
+1. **Evidence Layer**: Timeline, metrics, errors, artifacts
+2. **Semantic Layer**: DAG, components, OML specification
+3. **Narrative Layer**: Natural language description with citations
+4. **Metadata Layer**: Package metadata, size hints, truncation markers, config_effective
+
+The `metadata.config_effective` field shows the actual configuration used and its source:
+```json
+{
+  "timeline_density": {
+    "value": "medium",
+    "source": "CLI"  // or "ENV", "YAML", "DEFAULT"
+  }
+}
+```
+
+See [AIOP Examples](../examples/aiop-sample.json) for complete structure.
 
 ## Pro Mode Commands
 
