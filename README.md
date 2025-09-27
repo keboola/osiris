@@ -1,4 +1,4 @@
-# Osiris Pipeline v0.2.0
+# Osiris Pipeline v0.3.0
 
 **The deterministic compiler for AI-native data pipelines.**
 You describe outcomes in plain English; Osiris compiles them into **reproducible, production-ready manifests** that run with the **same behavior everywhere** (local or cloud).
@@ -70,6 +70,7 @@ Osiris: ✓ Pipeline compiled (manifest hash: a3f2b1c4)
 - **Deterministic compilation** with fingerprinted, reproducible manifests
 - **Run anywhere** with identical behavior (local or E2B cloud)
 - **Interactive HTML reports** with comprehensive observability
+- **AI Operation Package (AIOP)** for LLM-friendly debugging and analysis
 - **LLM-friendly** with machine-readable documentation for AI assistants
 
 ## 🤖 LLM-Friendly Documentation
@@ -94,6 +95,31 @@ osiris run pipeline.yaml --e2b --e2b-cpu 4 --e2b-mem 8
 
 See the [User Guide](docs/user-guide/user-guide.md#2-running-pipelines) for complete E2B documentation.
 
+## 🤖 AI Operation Package (AIOP)
+
+Every pipeline run automatically generates a comprehensive AI Operation Package for LLM analysis:
+
+```bash
+# View AIOP export after any run
+osiris logs aiop --last
+
+# Generate human-readable summary
+osiris logs aiop --last --format md
+
+# Configure in osiris.yaml
+aiop:
+  enabled: true  # Auto-export after each run
+  policy: core   # ≤300KB for LLM consumption
+```
+
+AIOP provides four semantic layers for AI understanding:
+- **Evidence Layer**: Timestamped events, metrics, and artifacts
+- **Semantic Layer**: DAG structure and component relationships
+- **Narrative Layer**: Natural language descriptions with citations
+- **Metadata Layer**: LLM primer and configuration
+
+See [AIOP Architecture](docs/architecture/aiop.md) for details.
+
 ## 📚 Documentation
 
 For comprehensive documentation, visit the **[Documentation Hub](docs/README.md)**:
@@ -106,7 +132,8 @@ For comprehensive documentation, visit the **[Documentation Hub](docs/README.md)
 
 ## 🚦 Roadmap
 
-- **v0.2.0 (Current)** ✅ - Conversational agent, deterministic compiler, E2B parity
+- **v0.2.0** ✅ - Conversational agent, deterministic compiler, E2B parity
+- **v0.3.0 (Current)** ✅ - AI Operation Package (AIOP) for LLM-friendly debugging
 - **M2** - Production workflows, approvals, orchestrator integration
 - **M3** - Streaming, parallelism, enterprise scale
 - **M4** - Iceberg tables, intelligent DWH agent
