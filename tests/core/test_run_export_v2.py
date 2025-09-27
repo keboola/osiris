@@ -87,8 +87,8 @@ class TestRunExportV2:
         assert "total_duration_ms" in aggregated
         assert "steps" in aggregated
 
-        # Verify totals
-        assert aggregated["total_rows"] == 550  # 300 read + 250 written
+        # Verify totals - should use last writer
+        assert aggregated["total_rows"] == 250  # Last writer (priority logic)
         assert aggregated["total_duration_ms"] == 2000  # 1500 + 500
 
         # Verify steps structure
@@ -330,7 +330,7 @@ class TestRunExportV2:
         # Test topk=3
         result_3 = aggregate_metrics(metrics, topk=3)
         assert result_3["total_rows"] is not None
-        assert result_3["total_rows"] == 30702  # 10234 * 3
+        assert result_3["total_rows"] == 10234  # Export step (priority logic)
         assert result_3["total_duration_ms"] is not None
         assert result_3["total_duration_ms"] == 305000  # 5000 + 180000 + 120000
 

@@ -15,6 +15,8 @@
 
 """PR2 - Evidence Layer implementation for AIOP."""
 
+import builtins
+import contextlib
 import copy
 import gzip
 import io
@@ -24,7 +26,6 @@ from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Generator
-from urllib.parse import urlparse, urlunparse
 
 
 def build_evidence_layer(
@@ -44,8 +45,8 @@ def build_evidence_layer(
     # Build timeline from events
     timeline = build_timeline(events, density="medium")
 
-    # Aggregate metrics
-    aggregated_metrics = aggregate_metrics(metrics, topk=100)
+    # Aggregate metrics (pass events to look for cleanup_complete)
+    aggregated_metrics = aggregate_metrics(metrics, topk=100, events=events)
 
     # Extract errors from events
     errors = _extract_errors(events)
@@ -155,20 +156,80 @@ def build_timeline(events: list[dict], density: str = "medium") -> list[dict]:
     return timeline
 
 
-def aggregate_metrics(metrics: list[dict], topk: int = 100) -> dict:
+def aggregate_metrics(metrics: list[dict], topk: int = 100, events: list[dict] = None) -> dict:
     """Aggregate and prioritize metrics.
 
     Args:
         metrics: List of metric dictionaries
         topk: Maximum number of step metrics to return
+        events: Optional list of event dictionaries (for calculating durations)
 
     Returns:
-        Dictionary with total_rows, total_duration_ms, and steps
+        Dictionary with total_rows, total_duration_ms, steps, and rows_source.
+        If events provided, also includes durations.wall_ms and durations.active_ms
     """
     # Track totals and per-step metrics
     total_rows = 0
     total_duration_ms = 0
+    active_duration_ms = 0
     step_metrics = {}
+    rows_source = "calculated"  # Track how we determined total_rows
+
+    # Calculate total wall time from RUN_START/RUN_COMPLETE events
+    run_start_time = None
+    run_complete_time = None
+    step_timings = {}  # Track STEP_START/COMPLETE pairs
+    cleanup_total_rows = None  # Initialize here
+
+    # Process events for timing information
+    if events:
+        for event in events:
+            event_type = event.get("event_type") or event.get("event", "")
+            timestamp = event.get("timestamp", "")
+
+            # Track RUN_START/RUN_COMPLETE for wall time
+            if event_type == "RUN_START":
+                if timestamp:
+                    with contextlib.suppress(builtins.BaseException):
+                        run_start_time = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            elif event_type == "RUN_COMPLETE":
+                if timestamp:
+                    with contextlib.suppress(builtins.BaseException):
+                        run_complete_time = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+
+            # Track STEP_START/STEP_COMPLETE for active duration
+            elif event_type == "STEP_START":
+                step_id = event.get("step_id", "")
+                if step_id and timestamp:
+                    with contextlib.suppress(builtins.BaseException):
+                        step_timings[step_id] = {
+                            "start": datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                        }
+            elif event_type == "STEP_COMPLETE":
+                step_id = event.get("step_id", "")
+                if step_id and timestamp and step_id in step_timings:
+                    try:
+                        end_time = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                        if "start" in step_timings[step_id]:
+                            duration = (
+                                end_time - step_timings[step_id]["start"]
+                            ).total_seconds() * 1000
+                            step_timings[step_id]["duration_ms"] = int(duration)
+                    except Exception:
+                        pass
+
+            # Check for cleanup_complete event (highest authority for rows)
+            if event.get("event") == "cleanup_complete" and "total_rows" in event:
+                cleanup_total_rows = event["total_rows"]
+                rows_source = "cleanup_complete"
+
+    # Calculate wall time if we have both start and complete
+    if run_start_time and run_complete_time:
+        total_duration_ms = int((run_complete_time - run_start_time).total_seconds() * 1000)
+
+    # Track the last write operation's rows for total_rows
+    last_writer_rows = 0
+    export_step_rows = 0
 
     for metric in metrics:
         step_id = metric.get("step_id", "")
@@ -192,13 +253,12 @@ def aggregate_metrics(metrics: list[dict], topk: int = 100) -> dict:
         elif name == "duration_ms":
             duration_ms = value
 
-        # Aggregate totals
-        if isinstance(rows_read, (int, float)) and rows_read > 0:
-            total_rows += rows_read
-        if isinstance(rows_written, (int, float)) and rows_written > 0:
-            total_rows += rows_written
-        if isinstance(rows_out, (int, float)) and rows_out > 0:
-            total_rows += rows_out
+        # Track export step and last writer for total_rows calculation
+        # Use the export step if present, otherwise the last writer
+        if step_id and "export" in step_id.lower() and rows_written > 0:
+            export_step_rows = rows_written
+        elif rows_written > 0:
+            last_writer_rows = rows_written
         if isinstance(duration_ms, (int, float)) and duration_ms > 0:
             total_duration_ms += duration_ms
 
@@ -234,6 +294,26 @@ def aggregate_metrics(metrics: list[dict], topk: int = 100) -> dict:
                 else:
                     step_metrics[step_id]["duration_ms"] += duration_ms
 
+    # Merge duration data from events if not in metrics
+    for step_id, timing_data in step_timings.items():
+        if "duration_ms" in timing_data:
+            if step_id not in step_metrics:
+                step_metrics[step_id] = {
+                    "rows_read": None,
+                    "rows_written": None,
+                    "rows_out": None,
+                    "duration_ms": timing_data["duration_ms"],
+                }
+            elif step_metrics[step_id].get("duration_ms") is None:
+                # Use event-based duration if no metric duration
+                step_metrics[step_id]["duration_ms"] = timing_data["duration_ms"]
+
+    # Calculate active duration as sum of all step durations
+    active_duration_ms = 0
+    for step_data in step_metrics.values():
+        if step_data.get("duration_ms"):
+            active_duration_ms += step_data["duration_ms"]
+
     # Sort steps by duration desc, then rows desc, then step_id asc
     sorted_steps = sorted(
         step_metrics.items(),
@@ -247,10 +327,35 @@ def aggregate_metrics(metrics: list[dict], topk: int = 100) -> dict:
     # Apply topk limit to steps
     limited_steps = dict(sorted_steps[:topk])
 
+    # Determine total_rows using deterministic rule:
+    # 1. Use cleanup_complete.total_rows if available (highest authority)
+    # 2. Otherwise use export step if present
+    # 3. Otherwise use last writer's rows
+    # 4. Otherwise sum all terminal writers (if no single last writer)
+    if cleanup_total_rows is not None:
+        total_rows = cleanup_total_rows
+        rows_source = "cleanup_complete"
+    elif export_step_rows > 0:
+        total_rows = export_step_rows
+        rows_source = "export_step"
+    elif last_writer_rows > 0:
+        total_rows = last_writer_rows
+        rows_source = "last_writer"
+    else:
+        # Sum rows_written from all steps (fallback)
+        total_rows = sum(
+            step.get("rows_written", 0)
+            for step in step_metrics.values()
+            if isinstance(step.get("rows_written"), (int, float))
+        )
+        rows_source = "sum_writers"
+
     return {
         "total_rows": total_rows if total_rows > 0 else 0,
         "total_duration_ms": total_duration_ms if total_duration_ms > 0 else 0,
+        "active_duration_ms": active_duration_ms if active_duration_ms > 0 else 0,
         "steps": limited_steps,
+        "rows_source": rows_source,  # Track how we determined total_rows
     }
 
 
@@ -637,11 +742,27 @@ def build_semantic_layer(
     semantic = {}
 
     # Add pipeline URI if we have manifest hash
+    # Try to get manifest hash from the correct location
+    manifest_hash = None
     if "manifest_hash" in manifest:
         manifest_hash = manifest["manifest_hash"]
+    elif manifest.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp"):
+        manifest_hash = manifest["pipeline"]["fingerprints"]["manifest_fp"]
+
+    if manifest_hash:
         semantic["@id"] = f"osiris://pipeline/@{manifest_hash}"
 
     semantic["@type"] = "SemanticLayer"
+
+    # Add pipeline name from manifest
+    if "name" in manifest:
+        semantic["pipeline_name"] = manifest["name"]
+    else:
+        # Check if pipeline is a dict with id field
+        pipeline_data = manifest.get("pipeline")
+        if isinstance(pipeline_data, dict) and "id" in pipeline_data:
+            semantic["pipeline_name"] = pipeline_data["id"]
+
     semantic["components"] = components
     semantic["dag"] = dag
     semantic["oml_version"] = oml_spec.get("oml_version", "0.1.0")
@@ -673,7 +794,7 @@ def extract_dag_structure(manifest: dict) -> dict:
             for output in step.get("outputs", []):
                 step_outputs[output] = step_id
 
-    # Build edges based on input/output dependencies AND depends_on
+    # Build edges based on input/output dependencies, depends_on, and needs
     edges = []
     for step in steps:
         step_id = step.get("id", "")
@@ -689,6 +810,10 @@ def extract_dag_structure(manifest: dict) -> dict:
         # Check explicit depends_on field (depends_on relation)
         for dep_step in step.get("depends_on", []):
             edges.append({"from": dep_step, "to": step_id, "relation": "depends_on"})
+
+        # Check needs field (needs relation) - common in OML
+        for need_step in step.get("needs", []):
+            edges.append({"from": need_step, "to": step_id, "relation": "needs"})
 
     # Sort for determinism
     edges.sort(key=lambda e: (e["from"], e["to"], e["relation"]))
@@ -794,7 +919,13 @@ def generate_graph_hints(manifest: dict, run_data: dict | None = None) -> dict: 
     triples = []
 
     # Generate pipeline URI (using correct format)
+    # Try to get manifest hash from pipeline.fingerprints.manifest_fp
     manifest_hash = manifest.get("manifest_hash", "unknown")
+    if manifest_hash == "unknown" and manifest:
+        # Extract from the correct location: pipeline.fingerprints.manifest_fp
+        manifest_hash = (
+            manifest.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp", "unknown")
+        )
     pipeline_uri = f"osiris://pipeline/@{manifest_hash}"
 
     steps = manifest.get("steps", [])
@@ -884,6 +1015,134 @@ def format_duration(ms: int | None) -> str:
         parts.append(f"{secs}s")
 
     return " ".join(parts)
+
+
+def discover_intent(
+    manifest: dict,
+    repo_readme: str | None = None,
+    commits: list[dict] | None = None,
+    chat_logs: list[dict] | None = None,
+    config: dict | None = None,
+) -> tuple[str, bool, list[dict]]:
+    """Discover pipeline intent from multiple sources with provenance tracking.
+
+    Args:
+        manifest: Pipeline manifest (highest trust)
+        repo_readme: README.md content from repo root (medium trust)
+        commits: List of commit messages (medium trust)
+        chat_logs: Session chat logs if enabled (low trust)
+        config: AIOP configuration for redaction settings
+
+    Returns:
+        Tuple of (intent_summary, intent_known, intent_provenance)
+        intent_provenance contains exactly one item - the winning source
+    """
+    intent_summary = ""
+    intent_known = False
+    winning_source = None
+
+    # Helper to create provenance entry with excerpt
+    def make_provenance(source: str, value: str, trust: str, location: str = None) -> dict:
+        excerpt = value[:160] if len(value) > 160 else value
+        prov = {"source": source, "trust": trust, "excerpt": excerpt}
+        if location:
+            prov["location"] = location
+        return prov
+
+    # 1. Check manifest.metadata.intent (highest trust) - if found, stop here
+    if manifest and manifest.get("metadata", {}).get("intent"):
+        intent_text = manifest["metadata"]["intent"].strip()
+        if intent_text:
+            intent_summary = intent_text
+            intent_known = True
+            winning_source = make_provenance(
+                "manifest", intent_text, "high", "manifest.metadata.intent"
+            )
+            return intent_summary, intent_known, [winning_source]
+
+    # 2. Check pipeline description (high trust) - if found, stop here
+    if manifest and manifest.get("description"):
+        description = manifest["description"].strip()
+        if description:
+            intent_summary = description
+            intent_known = True
+            winning_source = make_provenance(
+                "manifest_description", description, "high", "manifest.description"
+            )
+            return intent_summary, intent_known, [winning_source]
+
+    # 3. Check README.md for intent line (medium trust) - take first match
+    if repo_readme and not intent_known:
+        import re
+
+        intent_pattern = re.compile(
+            r"^(intent|purpose|objective|goal):\s*(.+)", re.IGNORECASE | re.MULTILINE
+        )
+        matches = intent_pattern.findall(repo_readme)
+        if matches:
+            intent_text = matches[0][1].strip()
+            if intent_text:
+                intent_summary = intent_text
+                intent_known = True
+                winning_source = make_provenance("readme", intent_text, "medium", "README.md")
+                return intent_summary, intent_known, [winning_source]
+
+    # 4. Check commit messages for intent lines (medium trust) - take first match
+    if commits and not intent_known:
+        import re
+
+        for commit in commits:
+            message = commit.get("message", "")
+            intent_pattern = re.compile(r"^intent:\s*(.+)", re.IGNORECASE | re.MULTILINE)
+            matches = intent_pattern.findall(message)
+            if matches:
+                intent_text = matches[0].strip()
+                if intent_text:
+                    intent_summary = intent_text
+                    intent_known = True
+                    winning_source = make_provenance(
+                        "commit_message", intent_text, "medium", "git commit"
+                    )
+                    return intent_summary, intent_known, [winning_source]
+
+    # 5. Check chat logs if enabled (low trust) - take first match
+    if (
+        chat_logs
+        and config
+        and config.get("narrative", {}).get("session_chat", {}).get("enabled")
+        and not intent_known
+    ):
+        mode = config.get("narrative", {}).get("session_chat", {}).get("mode", "masked")
+        for log_entry in chat_logs:
+            if log_entry.get("role") == "user":
+                content = log_entry.get("content", "")
+                if mode == "masked":
+                    content = redact_secrets({"content": content}).get("content", "")
+
+                if (
+                    "want to" in content.lower()
+                    or "need to" in content.lower()
+                    or "pipeline" in content.lower()
+                ):
+                    sentences = content.split(".")
+                    if sentences:
+                        potential_intent = sentences[0].strip()
+                        if potential_intent and len(potential_intent) < 200:
+                            intent_summary = potential_intent
+                            intent_known = True
+                            winning_source = make_provenance(
+                                "chat_log", potential_intent, "low", "session chat"
+                            )
+                            return intent_summary, intent_known, [winning_source]
+
+    # Fallback to generated summary if no intent found
+    if not intent_known:
+        intent_summary = generate_intent_summary(manifest)
+        winning_source = make_provenance("inferred", intent_summary, "low")
+        return intent_summary, intent_known, [winning_source]
+
+    # Should not reach here, but ensure we always return something
+    return intent_summary, intent_known, [winning_source] if winning_source else []
 
 
 def generate_intent_summary(manifest: dict) -> str:
@@ -1044,20 +1303,36 @@ def _collect_evidence_ids(evidence_refs: dict) -> list[str]:
     return unique_ids
 
 
-def build_narrative_layer(manifest: dict, run_summary: dict, evidence_refs: dict) -> dict:
-    """Generate natural language narrative (3-5 paragraphs).
+def build_narrative_layer(
+    manifest: dict,
+    run_summary: dict,
+    evidence_refs: dict,
+    config: dict | None = None,
+    repo_readme: str | None = None,
+    commits: list[dict] | None = None,
+    chat_logs: list[dict] | None = None,
+) -> dict:
+    """Generate natural language narrative (3-5 paragraphs) with intent discovery.
 
     Args:
         manifest: Pipeline manifest
         run_summary: Run execution summary with status, duration, etc.
         evidence_refs: Dictionary of evidence references (metrics, events, etc.)
+        config: AIOP configuration for narrative settings
+        repo_readme: README content for intent discovery
+        commits: Commit messages for intent discovery
+        chat_logs: Session chat logs if enabled
 
     Returns:
-        Dictionary with paragraphs list
+        Dictionary with paragraphs list, intent summary, and provenance
     """
+    # Discover intent from multiple sources
+    intent_summary, intent_known, intent_provenance = discover_intent(
+        manifest, repo_readme, commits, chat_logs, config
+    )
+
     # Extract key information - use "name" field for pipeline name
     pipeline_name = manifest.get("name", manifest.get("pipeline", "unnamed pipeline"))
-    intent = generate_intent_summary(manifest)
     status = run_summary.get("status", "unknown")
     duration_ms = run_summary.get("duration_ms")
     duration_str = format_duration(duration_ms) if duration_ms else "unknown duration"
@@ -1075,7 +1350,7 @@ def build_narrative_layer(manifest: dict, run_summary: dict, evidence_refs: dict
     context_para = f"The pipeline execution for {pipeline_name} was initiated"
     if started_at:
         context_para += f" at {started_at}"
-    context_para += f". {intent}."
+    context_para += f". {intent_summary}."
     paragraphs.append(context_para)
 
     # Paragraph 2: Execution details
@@ -1129,161 +1404,14 @@ def build_narrative_layer(manifest: dict, run_summary: dict, evidence_refs: dict
 
     narrative = "\n\n".join(paragraphs)
 
-    # Return both formats for compatibility
-    return {"narrative": narrative, "paragraphs": paragraphs}
-
-
-def generate_markdown_runcard(aiop: dict) -> str:
-    """Generate Markdown run-card from AIOP.
-
-    Args:
-        aiop: AIOP dictionary with evidence, metrics, etc.
-
-    Returns:
-        Markdown-formatted run card
-    """
-    # Guard against empty or None input
-    if not aiop:
-        return "## Unknown Pipeline ⚠️\n\n*No data available*\n"
-
-    lines = []
-
-    # Extract pipeline name from correct location
-    pipeline_data = aiop.get("pipeline", {})
-    pipeline_name = pipeline_data.get("name") if isinstance(pipeline_data, dict) else None
-
-    # Fallback to pipeline_name at root level (for backward compatibility)
-    if not pipeline_name:
-        pipeline_name = aiop.get("pipeline_name")
-
-    # Fallback to pipeline URI if available
-    if not pipeline_name and "@id" in aiop:
-        pipeline_uri = aiop["@id"]
-        if "pipeline/" in pipeline_uri:
-            # Try to extract name from URI
-            pipeline_name = (
-                pipeline_uri.split("/")[-1].split("@")[0] if "@" in pipeline_uri else "Pipeline"
-            )
-
-    # Final fallback - ensure never empty
-    if not pipeline_name:
-        pipeline_name = "Unknown Pipeline"
-
-    # Extract status from run section - ensure never None
-    run_data = aiop.get("run", {})
-    status = run_data.get("status") if isinstance(run_data, dict) else aiop.get("status", "unknown")
-
-    # Ensure status is never None or empty
-    if not status:
-        status = "unknown"
-
-    # Map status to icon
-    if status in ["completed", "success"]:
-        status_icon = "✅"
-    elif status in ["failed", "failure"]:
-        status_icon = "❌"
-    else:
-        status_icon = "⚠️"
-
-    lines.append(f"## {pipeline_name} {status_icon}")
-    lines.append("")
-
-    # Summary info
-    duration_ms = (
-        run_data.get("duration_ms") if isinstance(run_data, dict) else aiop.get("duration_ms", 0)
-    )
-    duration = format_duration(duration_ms)
-    lines.append(f"**Status:** {status}")
-    lines.append(f"**Duration:** {duration}")
-
-    # Metrics summary
-    evidence = aiop.get("evidence", {})
-    metrics = evidence.get("metrics", {})
-
-    total_rows = metrics.get("total_rows")
-    if total_rows:
-        lines.append(f"**Total Rows:** {total_rows:,}")
-
-    lines.append("")
-
-    # Step metrics
-    steps = metrics.get("steps", {})
-    if steps and isinstance(steps, dict):
-        lines.append("### Step Metrics")
-        lines.append("")
-        for step_name, step_metrics in steps.items():
-            lines.append(f"**{step_name}:**")
-            for metric_name, metric_value in step_metrics.items():
-                if metric_name == "error":
-                    lines.append(f"  - ❌ Error: {metric_value}")
-                elif isinstance(metric_value, (int, float)):
-                    if "duration" in metric_name:
-                        lines.append(f"  - {metric_name}: {format_duration(metric_value)}")
-                    else:
-                        lines.append(f"  - {metric_name}: {metric_value:,}")
-                else:
-                    lines.append(f"  - {metric_name}: {metric_value}")
-        lines.append("")
-
-    # Errors if any
-    errors = evidence.get("errors", [])
-    if errors:
-        lines.append("### Errors")
-        lines.append("")
-        for error in errors:
-            error_id = error.get("@id", "")
-            message = error.get("message", "Unknown error")
-            if error_id:
-                lines.append(f"- [{error_id}]: {message}")
-            else:
-                lines.append(f"- {message}")
-        lines.append("")
-
-    # Artifacts
-    artifacts = evidence.get("artifacts", [])
-    if artifacts:
-        lines.append("### Artifacts")
-        lines.append("")
-        for artifact in artifacts:
-            art_id = artifact.get("@id", "")
-            path = artifact.get("path", "")
-            size = artifact.get("size_bytes", 0)
-
-            # Format size
-            if size > 1024 * 1024:
-                size_str = f"{size / (1024 * 1024):.1f} MB"
-            elif size > 1024:
-                size_str = f"{size / 1024:.1f} KB"
-            else:
-                size_str = f"{size} bytes"
-
-            # Extract filename from path
-            filename = path.split("/")[-1] if "/" in path else path
-
-            if art_id:
-                lines.append(f"- {filename} ({size_str}) [{art_id}]")
-            else:
-                lines.append(f"- {filename} ({size_str})")
-        lines.append("")
-    elif not steps and not errors:
-        # Handle empty evidence case
-        lines.append("*No metrics available*")
-        lines.append("")
-
-    # Evidence trail
-    pipeline_uri = aiop.get("@id", "")
-    if pipeline_uri:
-        lines.append("### Evidence Trail")
-        lines.append(f"`{pipeline_uri}`")
-
-    # Join lines and ensure no trailing whitespace
-    markdown = "\n".join(line.rstrip() for line in lines)
-
-    # Ensure never returns empty string
-    if not markdown or not markdown.strip():
-        return f"## {pipeline_name} ⚠️\n\n**Status:** {status}\n\n*No additional data available*\n"
-
-    return markdown
+    # Return both formats for compatibility with intent discovery fields
+    return {
+        "narrative": narrative,
+        "paragraphs": paragraphs,
+        "intent_summary": intent_summary,
+        "intent_known": intent_known,
+        "intent_provenance": intent_provenance,
+    }
 
 
 # ============================================================================
@@ -1363,56 +1491,31 @@ def redact_secrets(data: dict) -> dict:
         """Redact credentials from connection strings and query parameters."""
         import re
 
-        # First handle query parameters
-        if "?" in value:
-            # Mask sensitive query parameters
-            sensitive_params = ["key", "token", "password", "secret", "api_key", "apikey", "auth"]
-            for param in sensitive_params:
-                # Handle both & and ? delimiters
-                value = re.sub(rf"([?&]{param}=)[^&]+", r"\1***", value, flags=re.IGNORECASE)
+        # Store original for fallback
+        # Handle DSN format: scheme://user:pass@host/db?params  # pragma: allowlist secret
+        if "://" in value and "@" in value:
+            # Use regex to mask user:pass part
+            # Handle both user:pass and :pass (no username) formats
+            value = re.sub(r"(://)([^:/@]+:[^@]+|:[^@]+)(@)", r"\1***\3", value)
 
-        # Handle various connection string formats
-        if "://" in value:
-            try:
-                parsed = urlparse(value)
-                # If there's a password, redact it
-                if parsed.password:
-                    # Replace password with ***
-                    netloc = parsed.netloc.replace(f":{parsed.password}@", ":***@")
-                    redacted = urlunparse(
-                        (
-                            parsed.scheme,
-                            netloc,
-                            parsed.path,
-                            parsed.params,
-                            parsed.query,
-                            parsed.fragment,
-                        )
-                    )
-                    return redacted
-                # If there's just a username without password, check for @ sign
-                elif "@" in parsed.netloc and ":" in parsed.netloc.split("@")[0]:
-                    # Format: user:pass@host
-                    user_pass, host = parsed.netloc.split("@", 1)
-                    if ":" in user_pass:
-                        user = user_pass.split(":")[0]
-                        netloc = f"{user}:***@{host}"
-                        redacted = urlunparse(
-                            (
-                                parsed.scheme,
-                                netloc,
-                                parsed.path,
-                                parsed.params,
-                                parsed.query,
-                                parsed.fragment,
-                            )
-                        )
-                        return redacted
-            except Exception:
-                # If parsing fails, check for common patterns
-                if "@" in value and "://" in value:
-                    # Try to redact between : and @
-                    value = re.sub(r":([^:/@]+)@", ":***@", value)
+        # Handle query parameters (even in URLs without @)
+        if "?" in value or "&" in value:
+            # Mask sensitive query parameters
+            sensitive_params = [
+                "key",
+                "token",
+                "password",
+                "secret",
+                "api_key",
+                "apikey",
+                "auth",
+                "access_token",
+            ]
+            for param in sensitive_params:
+                # Handle both & and ? delimiters - mask the value part
+                # Use word boundary to avoid partial matches
+                value = re.sub(rf"([?&]{param}=)[^&\s]+", r"\1***", value, flags=re.IGNORECASE)
+
         return value
 
     def _redact_value(value):
@@ -1434,8 +1537,13 @@ def redact_secrets(data: dict) -> dict:
         result = {}
         for key, value in sorted(d.items()):  # Deterministic traversal
             if _is_secret_field(key):
-                # Redact the entire value
-                result[key] = "[REDACTED]"
+                # Check if the value is a URL/connection string
+                if isinstance(value, str) and ("://" in value or "?" in value):
+                    # Apply connection string redaction instead of full redaction
+                    result[key] = _redact_connection_string(value)
+                else:
+                    # Redact the entire value
+                    result[key] = "[REDACTED]"
             else:
                 # Recursively process the value
                 result[key] = _redact_value(value)
@@ -1517,76 +1625,514 @@ def export_annex_shards(
     return manifest
 
 
-def calculate_delta(current_run: dict, manifest_hash: str) -> dict:  # noqa: ARG001
-    """Compare against previous run for same manifest_hash.
+def generate_markdown_runcard(aiop: dict) -> str:
+    """Generate Markdown run-card from AIOP.
+
+    Args:
+        aiop: AIOP dictionary with evidence, metrics, etc.
+
+    Returns:
+        Markdown-formatted run card
+    """
+    # Guard against empty or None input
+    if not aiop:
+        return "## Unknown Pipeline ⚠️\n\n*No data available*\n"
+
+    lines = []
+
+    # Extract pipeline name from correct location
+    pipeline_data = aiop.get("pipeline", {})
+    pipeline_name = pipeline_data.get("name") if isinstance(pipeline_data, dict) else None
+
+    # Fallback to pipeline_name at root level (for backward compatibility)
+    if not pipeline_name:
+        pipeline_name = aiop.get("pipeline_name")
+
+    # Fallback to pipeline URI if available
+    if not pipeline_name and "@id" in aiop:
+        pipeline_uri = aiop["@id"]
+        if "pipeline/" in pipeline_uri:
+            # Try to extract name from URI
+            pipeline_name = (
+                pipeline_uri.split("/")[-1].split("@")[0] if "@" in pipeline_uri else "Pipeline"
+            )
+
+    # Final fallback - ensure never empty
+    if not pipeline_name:
+        pipeline_name = "Unknown Pipeline"
+
+    # Extract status from run section - ensure never None
+    run_data = aiop.get("run", {})
+    status = run_data.get("status") if isinstance(run_data, dict) else aiop.get("status", "unknown")
+
+    # Ensure status is never None or empty
+    if not status:
+        status = "unknown"
+
+    # Map status to icon
+    if status in ["completed", "success"]:
+        status_icon = "✅"
+    elif status in ["failed", "failure"]:
+        status_icon = "❌"
+    else:
+        status_icon = "⚠️"
+
+    lines.append(f"## {pipeline_name} {status_icon}")
+    lines.append("")
+
+    # Intent section (if available)
+    narrative = aiop.get("narrative", {})
+    if narrative:
+        # Check both old and new structures
+        intent_known = narrative.get("intent_known", False)
+        intent_summary = narrative.get("intent_summary", "")
+
+        # Also check nested structure
+        if not intent_summary and "intent" in narrative:
+            intent_data = narrative["intent"]
+            if isinstance(intent_data, dict):
+                intent_known = intent_data.get("known", False)
+                intent_summary = intent_data.get("summary", "")
+
+        if intent_known and intent_summary:
+            lines.append(f"*Intent:* {intent_summary}")
+            lines.append("")
+
+    # Evidence links
+    session_id = run_data.get("session_id", "")
+    if session_id:
+        lines.append("**Evidence:**")
+        lines.append(f"- Session: `{session_id}`")
+
+        # Add AIOP path if available
+        metadata = aiop.get("metadata", {})
+        if metadata:
+            # Try to extract core_path from somewhere
+            lines.append(f"- AIOP: `logs/aiop/run_{session_id[-13:]}/aiop.json`")
+        lines.append("")
+
+    # Summary info
+    duration_ms = (
+        run_data.get("duration_ms") if isinstance(run_data, dict) else aiop.get("duration_ms", 0)
+    )
+    duration = format_duration(duration_ms)
+    lines.append(f"**Status:** {status}")
+    lines.append(f"**Duration:** {duration}")
+
+    # Metrics summary
+    evidence = aiop.get("evidence", {})
+    metrics = evidence.get("metrics", {})
+    total_rows = metrics.get("total_rows")
+    if total_rows:
+        lines.append(f"**Total Rows:** {total_rows:,}")
+
+    # Delta analysis with improved formatting
+    metadata = aiop.get("metadata", {})
+    delta = metadata.get("delta", {})
+    if delta and not delta.get("first_run", False):
+        lines.append("")
+        lines.append("### 📊 Since last run")
+        lines.append("")
+
+        # Create a comparison table
+        lines.append("| Metric | Previous | Current | Change |")
+        lines.append("|--------|----------|---------|--------|")
+
+        # Row delta
+        if "rows" in delta:
+            row_delta = delta["rows"]
+            prev = row_delta.get("previous", 0)
+            curr = row_delta.get("current", 0)
+            change = row_delta.get("change", 0)
+            change_percent = row_delta.get("change_percent", 0)
+
+            if change > 0:
+                change_str = f"📈 +{change:,} (+{change_percent:.1f}%)"
+            elif change < 0:
+                change_str = f"📉 {change:,} ({change_percent:.1f}%)"
+            else:
+                change_str = "➡️ No change"
+
+            lines.append(f"| **Rows** | {prev:,} | {curr:,} | {change_str} |")
+
+        # Duration delta
+        if "duration_ms" in delta:
+            dur_delta = delta["duration_ms"]
+            prev_ms = dur_delta.get("previous", 0)
+            curr_ms = dur_delta.get("current", 0)
+            change_ms = dur_delta.get("change", 0)
+            change_percent = dur_delta.get("change_percent", 0)
+
+            prev_str = format_duration(prev_ms) if prev_ms else "0s"
+            curr_str = format_duration(curr_ms) if curr_ms else "0s"
+
+            # Duration: faster is better (green down arrow)
+            if change_ms < 0:
+                change_str = f"🟢 -{format_duration(abs(change_ms))} ({change_percent:.1f}%)"
+            elif change_ms > 0:
+                change_str = f"🔴 +{format_duration(change_ms)} (+{change_percent:.1f}%)"
+            else:
+                change_str = "➡️ No change"
+
+            lines.append(f"| **Duration** | {prev_str} | {curr_str} | {change_str} |")
+
+        # Error delta
+        if "errors_count" in delta:
+            err_delta = delta["errors_count"]
+            prev = err_delta.get("previous", 0)
+            curr = err_delta.get("current", 0)
+            change = err_delta.get("change", 0)
+
+            if change < 0:
+                change_str = f"✅ {change:+d}"
+            elif change > 0:
+                change_str = f"❗ {change:+d}"
+            else:
+                change_str = "➡️ No change"
+
+            lines.append(f"| **Errors** | {prev} | {curr} | {change_str} |")
+
+        lines.append("")
+    elif delta and delta.get("first_run", False):
+        lines.append("")
+        lines.append("*First run with this configuration*")
+
+    lines.append("")
+
+    # Step metrics with improved tabular layout
+    steps = metrics.get("steps", {})
+    if steps and isinstance(steps, dict):
+        lines.append("### Step Metrics")
+        lines.append("")
+
+        # Create a table for better readability
+        lines.append("| Step | Rows Read | Rows Written | Duration |")
+        lines.append("|------|-----------|--------------|----------|")
+
+        for step_name, step_metrics in steps.items():
+            rows_read = step_metrics.get("rows_read")
+            rows_written = step_metrics.get("rows_written")
+            duration = step_metrics.get("duration_ms")
+
+            # Format values
+            read_str = f"{rows_read:,}" if rows_read is not None else "–"
+            write_str = f"{rows_written:,}" if rows_written is not None else "–"
+
+            if duration is None:
+                dur_str = "–"
+            elif duration == 0:
+                dur_str = "0s"
+            else:
+                dur_str = format_duration(duration)
+
+            # Check for errors
+            if step_metrics.get("error"):
+                dur_str = f"❌ {step_metrics['error']}"
+
+            lines.append(f"| {step_name} | {read_str} | {write_str} | {dur_str} |")
+
+        lines.append("")
+
+    # Errors if any
+    errors = evidence.get("errors", [])
+    if errors:
+        lines.append("### Errors")
+        lines.append("")
+        for error in errors:
+            error_id = error.get("@id", "")
+            message = error.get("message", "Unknown error")
+            if error_id:
+                lines.append(f"- [{error_id}] {message}")
+            else:
+                lines.append(f"- {message}")
+        lines.append("")
+
+    # Narrative summary (if available)
+    narrative = aiop.get("narrative", {})
+    if narrative and "summary" in narrative:
+        lines.append("### Summary")
+        lines.append("")
+        lines.append(narrative["summary"])
+        lines.append("")
+
+    # Add index file links
+    lines.append("---")
+    lines.append("")
+    lines.append("### 📁 Index Files")
+    lines.append("")
+
+    # Extract manifest hash if available
+    manifest_hash = None
+    if pipeline_data and isinstance(pipeline_data, dict):
+        manifest_hash = pipeline_data.get("manifest_hash")
+    if not manifest_hash and metadata:
+        # Try to get from delta source
+        delta_info = metadata.get("delta", {})
+        if isinstance(delta_info, dict) and "manifest_hash" in delta_info:
+            manifest_hash = delta_info["manifest_hash"]
+
+    lines.append("- **All runs:** `logs/aiop/index/runs.jsonl`")
+    if manifest_hash:
+        lines.append(f"- **This pipeline:** `logs/aiop/index/by_pipeline/{manifest_hash}.jsonl`")
+    lines.append("- **Latest run:** `logs/aiop/latest` (symlink)")
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+def calculate_delta(current_run: dict, manifest_hash: str, current_session_id: str = None) -> dict:
+    """Compare against previous run for same manifest_hash using index.
 
     On first run: return {"first_run": true}.
-    Otherwise include 'rows' and 'duration' changes as in milestone format.
+    Otherwise include 'rows', 'duration', and 'errors' changes.
 
     Args:
         current_run: Current run data with metrics
         manifest_hash: Hash of the manifest for comparison
+        current_session_id: Current session ID to exclude from previous runs
 
     Returns:
         Delta dictionary with first_run flag or change metrics
     """
-    # For now, we'll implement a simple stub that can be extended
-    # with actual repository integration later
-
-    # In a real implementation, this would:
-    # 1. Query a repository/database for previous runs with same manifest_hash
-    # 2. Compare metrics between runs
-    # 3. Calculate deltas
-
     # Check if we have metrics in current run
     if not current_run or "metrics" not in current_run:
-        return {"first_run": True}
+        return {"first_run": True, "delta_source": "no_metrics"}
 
-    # For testing purposes, we'll simulate based on presence of data
-    # In production, this would query actual previous runs
     metrics = current_run.get("metrics", {})
     total_rows = metrics.get("rows_total") or metrics.get("total_rows", 0)
-    duration_seconds = metrics.get("duration_seconds") or (
-        metrics.get("total_duration_ms", 0) / 1000 if metrics.get("total_duration_ms") else 0
-    )
+    duration_ms = metrics.get("total_duration_ms", 0)
+    errors_count = len(current_run.get("errors", []))
 
-    # Simulate repository lookup (would be replaced with actual DB query)
-    # For now, always treat as first run unless we implement persistence
-    previous_run = None  # This would come from repository
+    # Look up previous run by manifest hash in index
+    previous_run = _find_previous_run_by_manifest(manifest_hash, current_session_id)
 
     if not previous_run:
-        return {"first_run": True}
+        return {"first_run": True, "delta_source": "by_pipeline_index"}
 
-    # If we had a previous run, calculate deltas
-    delta = {"first_run": False}
+    # Calculate deltas
+    delta = {"first_run": False, "delta_source": "by_pipeline_index"}
+
+    # Get previous metrics (from index record)
+    previous_rows = previous_run.get("total_rows", 0)
+    previous_duration_ms = previous_run.get("duration_ms", 0)
+    previous_errors = previous_run.get("errors_count", 0)
 
     # Calculate row delta
-    if total_rows > 0:
-        previous_rows = previous_run.get("metrics", {}).get("total_rows", 0)
+    if total_rows > 0 or previous_rows > 0:
+        change = total_rows - previous_rows
         if previous_rows > 0:
-            change = total_rows - previous_rows
-            change_percent = (change / previous_rows) * 100
-            delta["rows"] = {
-                "previous": previous_rows,
-                "current": total_rows,
-                "change": change,
-                "change_percent": round(change_percent, 2),
-            }
+            change_percent = round((change / previous_rows) * 100, 2)
+        else:
+            change_percent = 100.0 if total_rows > 0 else 0.0
+
+        delta["rows"] = {
+            "previous": previous_rows,
+            "current": total_rows,
+            "change": change,
+            "change_percent": change_percent,
+        }
 
     # Calculate duration delta
-    if duration_seconds > 0:
-        previous_duration = previous_run.get("metrics", {}).get("duration_seconds", 0)
-        if previous_duration > 0:
-            change = duration_seconds - previous_duration
-            change_percent = (change / previous_duration) * 100
-            delta["duration"] = {
-                "previous": previous_duration,
-                "current": duration_seconds,
-                "change": change,
-                "change_percent": round(change_percent, 2),
-            }
+    if duration_ms > 0 or previous_duration_ms > 0:
+        change = duration_ms - previous_duration_ms
+        if previous_duration_ms > 0:
+            change_percent = round((change / previous_duration_ms) * 100, 2)
+        else:
+            change_percent = 100.0 if duration_ms > 0 else 0.0
+
+        delta["duration_ms"] = {
+            "previous": previous_duration_ms,
+            "current": duration_ms,
+            "change": change,
+            "change_percent": change_percent,
+        }
+
+    # Calculate errors delta
+    if errors_count > 0 or previous_errors > 0:
+        change = errors_count - previous_errors
+        delta["errors_count"] = {
+            "previous": previous_errors,
+            "current": errors_count,
+            "change": change,
+        }
 
     return delta
+
+
+def _load_chat_logs(session_id: str, config: dict) -> list[dict] | None:
+    """Load chat logs from session if enabled in config.
+
+    Args:
+        session_id: Session ID to load chat logs from
+        config: AIOP configuration
+
+    Returns:
+        List of chat log entries or None if disabled/not found
+    """
+    # Check if chat logs are enabled
+    if not config.get("narrative", {}).get("session_chat", {}).get("enabled", False):
+        return None
+
+    # Look for chat logs in session artifacts
+    chat_log_path = Path(f"logs/{session_id}/artifacts/chat_log.json")
+    if not chat_log_path.exists():
+        # Try alternative location
+        chat_log_path = Path(f"logs/{session_id}/chat_log.json")
+        if not chat_log_path.exists():
+            return None
+
+    try:
+        with open(chat_log_path) as f:
+            chat_logs = json.load(f)
+
+        # Apply redaction based on mode
+        mode = config.get("narrative", {}).get("session_chat", {}).get("mode", "masked")
+        max_chars = config.get("narrative", {}).get("session_chat", {}).get("max_chars", 10000)
+
+        if mode == "masked":
+            # Apply PII redaction to each log entry
+            redacted_logs = []
+            total_chars = 0
+            for entry in chat_logs:
+                if total_chars >= max_chars:
+                    break
+                redacted_entry = redact_secrets(entry)
+                content_len = len(str(redacted_entry.get("content", "")))
+                if total_chars + content_len > max_chars:
+                    # Truncate the content
+                    remaining = max_chars - total_chars
+                    redacted_entry["content"] = (
+                        redacted_entry.get("content", "")[:remaining] + "..."
+                    )
+                    redacted_logs.append(redacted_entry)
+                    break
+                redacted_logs.append(redacted_entry)
+                total_chars += content_len
+            return redacted_logs
+        elif mode == "off":
+            return None
+        else:  # quotes mode or other
+            # Return with truncation only
+            truncated_logs = []
+            total_chars = 0
+            for entry in chat_logs:
+                if total_chars >= max_chars:
+                    break
+                content_len = len(str(entry.get("content", "")))
+                if total_chars + content_len > max_chars:
+                    # Truncate the content
+                    remaining = max_chars - total_chars
+                    entry_copy = entry.copy()
+                    entry_copy["content"] = entry.get("content", "")[:remaining] + "..."
+                    truncated_logs.append(entry_copy)
+                    break
+                truncated_logs.append(entry)
+                total_chars += content_len
+            return truncated_logs
+    except Exception:
+        return None
+
+
+def _build_llm_primer() -> dict:
+    """Build LLM primer with glossary and about section.
+
+    Returns:
+        Dictionary with about and glossary fields
+    """
+    # Keep about to <= 280 chars and glossary to <= 8 terms
+    return {
+        "about": (
+            "AIOP (AI Operation Package) is a structured JSON-LD format for capturing pipeline "
+            "execution data. It has four layers: Evidence (metrics/events), Semantic (DAG/components), "
+            "Narrative (descriptions), and Metadata (config/deltas) for AI analysis."
+        ),
+        "glossary": {
+            "run": "Single pipeline execution",
+            "step": "Individual operation (extract/transform/write)",
+            "manifest_hash": "Unique pipeline configuration ID",
+            "delta": "Comparison between runs",
+            "annex": "External storage for large data",
+            "truncated": "Data reduced to meet size limits",
+            "rows_source": "Method for determining row count",
+            "active_duration": "Time actively processing data",
+        },
+    }
+
+
+def _build_controls(session_id: str) -> dict:
+    """Build controls section with actionable examples.
+
+    Args:
+        session_id: Current session ID
+
+    Returns:
+        Dictionary with examples list (max 3 items)
+    """
+    return {
+        "examples": [
+            {
+                "title": "Export AIOP",
+                "command": f"osiris logs aiop --session {session_id}",
+                "notes": "Export this run for analysis",
+            },
+            {
+                "title": "Rerun Pipeline",
+                "command": "osiris run --last-compile",
+                "notes": "Execute the last compiled manifest",
+            },
+            {
+                "title": "Export with Annex",
+                "command": f"osiris logs aiop --session {session_id} --policy annex",
+                "notes": "Use for large runs exceeding size limits",
+            },
+        ]
+    }
+
+
+def _find_previous_run_by_manifest(
+    manifest_hash: str, current_session_id: str = None
+) -> dict | None:
+    """Find the most recent previous run with the same manifest hash.
+
+    Args:
+        manifest_hash: Hash of the manifest to look up
+        current_session_id: Current session ID to exclude from results
+
+    Returns:
+        Previous run record or None if not found
+    """
+    if not manifest_hash or manifest_hash == "unknown":
+        return None
+
+    # Look up in by_pipeline index
+    index_path = Path("logs/aiop/index/by_pipeline") / f"{manifest_hash}.jsonl"
+    if not index_path.exists():
+        return None
+
+    # Read all runs for this pipeline, get the most recent completed one
+    runs = []
+    try:
+        with open(index_path) as f:
+            for line in f:
+                if line.strip():
+                    run_data = json.loads(line)
+                    # Skip the current run
+                    if current_session_id and run_data.get("session_id") == current_session_id:
+                        continue
+                    # Only consider completed runs
+                    if run_data.get("status") in ["completed", "success"]:
+                        runs.append(run_data)
+    except Exception:
+        return None
+
+    if not runs:
+        return None
+
+    # Sort by started_at timestamp (most recent first), fallback to ended_at
+    runs.sort(key=lambda r: r.get("started_at") or r.get("ended_at", ""), reverse=True)
+
+    # Return the most recent run (excluding current)
+    return runs[0]
 
 
 def build_aiop(
@@ -1679,7 +2225,7 @@ def build_aiop(
             # Build evidence layer (PR2)
             task_id = progress.add_task("Building evidence layer...", total=None)
             timeline = build_timeline(events, density=timeline_density)
-            aggregated_metrics = aggregate_metrics(metrics, topk=metrics_topk)
+            aggregated_metrics = aggregate_metrics(metrics, topk=metrics_topk, events=events)
             errors = _extract_errors(events)
             artifact_list = _build_artifact_list(artifact_paths)
 
@@ -1724,8 +2270,22 @@ def build_aiop(
             }
 
             # Calculate delta
+            # Extract manifest hash from the correct location
             manifest_hash = manifest.get("manifest_hash", "")
-            delta = calculate_delta({"metrics": aggregated_metrics}, manifest_hash)
+            if not manifest_hash and manifest:
+                # Try pipeline.fingerprints.manifest_fp
+                manifest_hash = (
+                    manifest.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp", "")
+                )
+            # Load session_id before delta calculation
+            session_id = session_data.get("session_id")
+
+            delta = calculate_delta(
+                {"metrics": aggregated_metrics, "errors": errors}, manifest_hash, session_id
+            )
+
+            # Load chat logs if enabled
+            chat_logs = _load_chat_logs(session_id, config) if session_id else None
 
             # Build narrative layer (PR4)
             progress.update(task_id, description="Building narrative layer...")
@@ -1733,12 +2293,14 @@ def build_aiop(
                 "timeline_ids": [e.get("@id") for e in timeline[:3] if "@id" in e],
                 "metrics": aggregated_metrics,
             }
-            narrative = build_narrative_layer(manifest, run_summary, evidence_refs)
+            narrative = build_narrative_layer(
+                manifest, run_summary, evidence_refs, config=config, chat_logs=chat_logs
+            )
             progress.update(task_id, description="Narrative layer complete")
     else:
         # Build evidence layer (PR2)
         timeline = build_timeline(events, density=timeline_density)
-        aggregated_metrics = aggregate_metrics(metrics, topk=metrics_topk)
+        aggregated_metrics = aggregate_metrics(metrics, topk=metrics_topk, events=events)
         errors = _extract_errors(events)
         artifact_list = _build_artifact_list(artifact_paths)
 
@@ -1768,26 +2330,61 @@ def build_aiop(
         )
 
         # Build run summary
+        # Calculate duration from timestamps
+        duration_ms = 0
+        started_at = session_data.get("started_at")
+        completed_at = session_data.get("completed_at")
+        if started_at and completed_at:
+            try:
+                from datetime import datetime
+
+                if isinstance(started_at, str):
+                    start_dt = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+                else:
+                    start_dt = started_at
+                if isinstance(completed_at, str):
+                    end_dt = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+                else:
+                    end_dt = completed_at
+                duration_ms = int((end_dt - start_dt).total_seconds() * 1000)
+            except Exception:
+                duration_ms = aggregated_metrics.get("total_duration_ms", 0)
+
         run_summary = {
             "session_id": session_data.get("session_id"),
             "status": session_data.get("status", "unknown"),
             "started_at": session_data.get("started_at"),
             "completed_at": session_data.get("completed_at"),
-            "duration_ms": aggregated_metrics.get("total_duration_ms", 0),
+            "duration_ms": duration_ms,
             "total_rows": aggregated_metrics.get("total_rows", 0),
             "environment": session_data.get("environment", "unknown"),
         }
 
         # Calculate delta
+        # Extract manifest hash from the correct location
         manifest_hash = manifest.get("manifest_hash", "")
-        delta = calculate_delta({"metrics": aggregated_metrics}, manifest_hash)
+        if not manifest_hash and manifest:
+            # Try pipeline.fingerprints.manifest_fp
+            manifest_hash = (
+                manifest.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp", "")
+            )
+        # Load session_id before delta calculation
+        session_id = session_data.get("session_id")
+        delta = calculate_delta(
+            {"metrics": aggregated_metrics, "errors": errors}, manifest_hash, session_id
+        )
+
+        # Load chat logs if enabled
+        chat_logs = _load_chat_logs(session_id, config) if session_id else None
 
         # Build narrative layer (PR4)
         evidence_refs = {
             "timeline_ids": [e.get("@id") for e in timeline[:3] if "@id" in e],
             "metrics": aggregated_metrics,
         }
-        narrative = build_narrative_layer(manifest, run_summary, evidence_refs)
+        narrative = build_narrative_layer(
+            manifest, run_summary, evidence_refs, config=config, chat_logs=chat_logs
+        )
 
     # Compose AIOP
     aiop = {
@@ -1805,6 +2402,10 @@ def build_aiop(
             "truncated": False,
             "delta": delta,
             "config_effective": _build_config_effective(config, config_sources),
+            "compute": {
+                "rows_source": aggregated_metrics.get("rows_source", "unknown"),
+                "total_rows": aggregated_metrics.get("total_rows", 0),
+            },
             "size_hints": {
                 "timeline_events": len(timeline),
                 "metrics_steps": len(aggregated_metrics.get("steps", {})),
@@ -1817,6 +2418,10 @@ def build_aiop(
             },
         },
     }
+
+    # Add LLM affordances
+    aiop["metadata"]["llm_primer"] = _build_llm_primer()
+    aiop["controls"] = _build_controls(session_id)
 
     # Apply truncation if needed
     truncated_aiop, was_truncated = apply_truncation(aiop, max_bytes)

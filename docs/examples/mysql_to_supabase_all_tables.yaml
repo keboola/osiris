@@ -1,5 +1,9 @@
 oml_version: "0.1.0"
 name: mysql-to-supabase-all-tables
+metadata:
+  intent: "Move data from MySQL to Supabase - just a tasting pipeline."
+  description: "Exports all tables."
+
 steps:
 # --- ACTORS ---
 - id: extract-actors

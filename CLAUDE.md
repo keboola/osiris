@@ -402,10 +402,13 @@ python osiris.py chat --pro-mode
   python ../osiris.py compile ../docs/examples/mysql_to_supabase_all_tables.yaml
   python ../osiris.py run --last-compile --e2b
   ```
-- **NEVER guess or make up secrets/passwords**: Always use actual values from .env files or environment
-  - ❌ WRONG: `MYSQL_PASSWORD=test123 python osiris.py run`
-  - ✅ RIGHT: Use actual password from `.env` file or export real value
+- **NEVER guess or make up secrets/passwords**: Osiris has its own connection management system
+  - ❌ WRONG: `MYSQL_PASSWORD=test123 python osiris.py run` (fake password)
+  - ✅ RIGHT: Use actual credentials from `.env` file or let Osiris use its `osiris_connections.yaml`
+  - Osiris automatically loads connections from `osiris_connections.yaml` and secrets from environment
+  - The `testing_env/` directory has pre-configured connections that work with the test environment
 - **Secrets must exist in environment**: Either via `.env` file in testing_env/ or exported variables
+- **For dry runs**: Use `--dry-run` flag which skips actual database connections
 
 **Secret Scanning (Pre-commit)**:
 - Tests with dummy credentials MUST include `# pragma: allowlist secret`

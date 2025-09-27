@@ -163,16 +163,10 @@ def test_redact_secrets_masks_dsn():
     result = redact_secrets(data)
 
     # Check DSN credentials are masked
-    assert result["connections"]["postgres"]["conn"] == "postgres://user:***@host/db"
-    assert (
-        result["connections"]["postgres"]["url"]
-        == "postgresql://admin:***@db.example.com:5432/mydb"
-    )
-    assert result["connections"]["mysql"]["dsn"] == "mysql://root:***@localhost:3306/database"
-    assert (
-        result["connections"]["basic_auth"]["endpoint"]
-        == "https://user:***@api.example.com/v1/data"
-    )
+    assert result["connections"]["postgres"]["conn"] == "postgres://***@host/db"
+    assert result["connections"]["postgres"]["url"] == "postgresql://***@db.example.com:5432/mydb"
+    assert result["connections"]["mysql"]["dsn"] == "mysql://***@localhost:3306/database"
+    assert result["connections"]["basic_auth"]["endpoint"] == "https://***@api.example.com/v1/data"
 
     # Check query params are masked
     assert "?key=***" in result["connections"]["query_params"]["url"]
@@ -212,19 +206,62 @@ def test_redact_dsn_credentials_extended():
     result = redact_secrets(data)
 
     # Check DSN credential masking
-    assert result["connections"]["postgres_full"] == "postgresql://user:***@host.com:5432/database"
+    assert result["connections"]["postgres_full"] == "postgresql://***@host.com:5432/database"
     assert (
         result["connections"]["mysql_with_options"]
-        == "mysql://admin:***@db.example.com/mydb?charset=utf8"
+        == "mysql://***@db.example.com/mydb?charset=utf8"
     )
     assert (
         result["connections"]["mongodb_srv"]
-        == "mongodb+srv://user:***@cluster.mongodb.net/test?retryWrites=true"
+        == "mongodb+srv://***@cluster.mongodb.net/test?retryWrites=true"
     )
-    assert result["connections"]["redis_auth"] == "redis://:***@redis.example.com:6379/0"
+    assert result["connections"]["redis_auth"] == "redis://***@redis.example.com:6379/0"
 
     # No password cases should be unchanged
     assert (
-        result["connections"]["no_password"] == "postgresql://user@host.com/db"
-    )  # pragma: allowlist secret
+        result["connections"]["no_password"]
+        == "postgresql://user@host.com/db"  # pragma: allowlist secret
+    )
     assert result["connections"]["no_auth"] == "postgresql://localhost/db"
+
+
+def test_dsn_masking_masks_user_and_token():
+    """Test that DSN masking properly masks user credentials and tokens in query params."""
+    from osiris.core.run_export_v2 import redact_secrets
+
+    data = {
+        "connection_string": "mysql://user:pass@host/db?token=abc",  # pragma: allowlist secret
+        "complex_url": "postgresql://admin:secret123@db.example.com:5432/mydb?sslmode=require&apikey=xyz123",  # pragma: allowlist secret
+        "with_token": "https://api.example.com/data?access_token=secret_token&client_id=123",  # pragma: allowlist secret
+        "multiple_params": "mysql://root:password@host/db?token=abc&secret=xyz&key=123",  # pragma: allowlist secret
+    }
+
+    result = redact_secrets(data)
+
+    # Basic DSN with token in query
+    assert result["connection_string"] == "mysql://***@host/db?token=***"
+
+    # Complex PostgreSQL with apikey
+    assert "***@" in result["complex_url"]
+    assert "apikey=***" in result["complex_url"]
+    assert "sslmode=require" in result["complex_url"]  # Non-sensitive params preserved
+
+    # HTTPS URL with access token
+    assert "access_token=***" in result["with_token"]
+    assert "client_id=123" in result["with_token"]  # Non-sensitive params preserved
+
+    # Multiple sensitive params
+    assert "***@" in result["multiple_params"]
+    assert "token=***" in result["multiple_params"]
+    assert "secret=***" in result["multiple_params"]
+    assert "key=***" in result["multiple_params"]
+
+    # Ensure no raw secrets in output
+    json_str = json.dumps(result)
+    assert "pass" not in json_str
+    assert "secret123" not in json_str
+    assert "password" not in json_str
+    assert "secret_token" not in json_str
+    assert "abc" not in json_str
+    assert "xyz123" not in json_str
+    assert "xyz" not in json_str

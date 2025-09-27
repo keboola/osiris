@@ -72,6 +72,7 @@ def show_main_help():
     console.print("  [cyan]compile[/cyan]      Compile OML pipeline to deterministic manifest")
     console.print("  [cyan]run[/cyan]          Execute pipeline (OML or compiled manifest)")
     console.print("  [cyan]logs[/cyan]         Manage session logs (list, show, bundle, gc)")
+    console.print("  [cyan]aiop[/cyan]         Manage AI Operation Package (prune)")
     console.print("  [cyan]test[/cyan]         Run automated test scenarios")
     console.print("  [cyan]components[/cyan]   Manage and inspect Osiris components")
     console.print("  [cyan]connections[/cyan]  Manage database connections")
@@ -107,6 +108,7 @@ def parse_main_args():
             "chat",
             "run",
             "runs",  # deprecated but still supported
+            "aiop",
             "compile",
             "logs",
             "test",
@@ -223,6 +225,8 @@ def main():
         dump_prompts_command(command_args)
     elif args.command == "prompts":
         prompts_command(command_args)
+    elif args.command == "aiop":
+        aiop_command(command_args)
     elif args.command == "chat":
         # This case is now handled early in main() to preserve argument order
         pass
@@ -239,6 +243,7 @@ def main():
                             "compile",
                             "run",
                             "logs",
+                            "aiop",
                             "components",
                             "connections",
                             "oml",
@@ -263,6 +268,7 @@ def main():
                             "compile",
                             "run",
                             "logs",
+                            "aiop",
                             "components",
                             "connections",
                             "oml",
@@ -2016,6 +2022,51 @@ def oml_command(args: list) -> None:
             console.print(f"❌ Unknown subcommand: {subcommand}")
             console.print("Available subcommands: validate")
             console.print("Use 'osiris oml --help' for detailed help.")
+
+
+def aiop_command(args: list) -> None:
+    """Manage AIOP (AI Operation Package) - retention and pruning."""
+    console = Console()
+
+    def show_aiop_help():
+        console.print()
+        console.print("[bold green]osiris aiop - AIOP Management[/bold green]")
+        console.print("🤖 Manage AI Operation Package exports and retention")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris aiop [SUBCOMMAND] [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Subcommands[/bold blue]")
+        console.print(
+            "  [cyan]prune[/cyan]                  Apply retention policies to AIOP outputs"
+        )
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print(
+            "  [green]osiris aiop prune[/green]                        # Apply configured retention"
+        )
+        console.print()
+
+    if not args or args[0] in ["--help", "-h"]:
+        show_aiop_help()
+        return
+
+    subcommand = args[0]
+    args[1:]
+
+    if subcommand == "prune":
+        from ..core.aiop_export import prune_aiop
+
+        success, error = prune_aiop()
+        if success:
+            console.print("[green]✓[/green] AIOP retention policies applied successfully")
+        else:
+            console.print(f"[red]✗[/red] Failed to apply retention: {error}")
+            sys.exit(1)
+    else:
+        console.print(f"❌ Unknown subcommand: {subcommand}")
+        console.print("Available subcommands: prune")
+        console.print("Use 'osiris aiop --help' for detailed help.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

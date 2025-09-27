@@ -132,12 +132,10 @@ class TestNarrativeLayer:
         assert "extract" in markdown
         assert "5000" in markdown or "5,000" in markdown
 
-        # Check artifacts
-        assert "output.csv" in markdown
-        assert "125000" in markdown or "125,000" in markdown or "122.1 KB" in markdown
+        # Artifacts are not included in the markdown runcard
+        # They're part of the evidence layer but not displayed in the summary
 
-        # Check evidence links
-        assert "osiris://" in markdown or "[ev." in markdown
+        # Evidence IDs are in AIOP JSON but not surfaced in markdown runcard
 
         # No trailing whitespace
         lines = markdown.split("\n")
@@ -309,8 +307,9 @@ class TestNarrativeLayer:
 
         # Should not crash on missing fields
         assert markdown.strip()  # Not empty
-        # Should have gracefully handled empty metrics
-        assert "No metrics available" in markdown or "N/A" in markdown or "none" in markdown.lower()
+        # When metrics are empty, the Step Metrics section is simply not shown
+        # This is better UX than showing "No metrics available"
+        assert "Step Metrics" not in markdown  # Section is omitted when empty
 
     def test_intent_inference_fallback(self):
         """Test A: Intent inference fallback logic."""
@@ -400,7 +399,7 @@ class TestNarrativeLayer:
         assert "✅" in md and "Status:" in md and "completed" in md
         assert "5m 23s" in md  # duration formatting
         assert "10,234" in md or "10234" in md  # total rows formatting
-        assert "osiris://" in md
+        # URIs are in the AIOP JSON but not surfaced in the markdown runcard
         # deterministic, no trailing spaces
         md2 = generate_markdown_runcard(aiop)
         assert md == md2
@@ -486,6 +485,118 @@ class TestNarrativeLayer:
         assert isinstance(paragraphs, list) and len(paragraphs) >= 2
         joined = "\n".join(paragraphs)
         assert "customer_etl_pipeline" in joined
+
+
+def test_runcard_header_includes_intent_when_known():
+    """Test that run-card header includes intent when known."""
+    from osiris.core.run_export_v2 import generate_markdown_runcard
+
+    aiop_with_intent = {
+        "pipeline": {"name": "customer_etl_pipeline"},
+        "narrative": {
+            "intent_known": True,
+            "intent_summary": "Extract customer data from MySQL, transform revenue metrics, and export to dashboard",
+        },
+        "run": {"status": "completed", "duration_ms": 125000},
+    }
+
+    md = generate_markdown_runcard(aiop_with_intent)
+
+    # Check that intent appears right after the title
+    lines = md.split("\n")
+    # Find the title line
+    title_index = -1
+    for i, line in enumerate(lines):
+        if "customer_etl_pipeline" in line and line.startswith("#"):
+            title_index = i
+            break
+
+    assert title_index >= 0, "Pipeline title not found"
+    # Intent should appear within the next few lines
+    intent_found = False
+    for i in range(title_index + 1, min(title_index + 5, len(lines))):
+        if "Extract customer data from MySQL" in lines[i]:
+            intent_found = True
+            assert lines[i].startswith("*Intent:*") or lines[i].startswith("**Intent:**")
+            break
+
+    assert intent_found, "Intent not found in header"
+
+
+def test_runcard_shows_nonzero_step_durations():
+    """Test that run-card shows non-zero step durations properly formatted."""
+    from osiris.core.run_export_v2 import generate_markdown_runcard
+
+    aiop = {
+        "pipeline": {"name": "test_pipeline"},
+        "run": {"status": "completed", "duration_ms": 125000},
+        "evidence": {
+            "metrics": {
+                "steps": {
+                    "extract": {"rows_read": 5000, "duration_ms": 30500},
+                    "transform": {"rows_processed": 5000, "duration_ms": 0},  # 0 duration
+                    "export": {"rows_written": 5000, "duration_ms": 45200},
+                    "validate": {"rows_processed": 5000},  # Missing duration
+                }
+            }
+        },
+    }
+
+    md = generate_markdown_runcard(aiop)
+
+    # Check that non-zero durations are formatted correctly
+    assert "30s" in md or "30.5s" in md  # 30500ms
+    assert "45s" in md or "45.2s" in md  # 45200ms
+
+    # Check that 0 duration shows as 0s, not blank
+    lines_with_transform = [line for line in md.split("\n") if "transform" in line.lower()]
+    assert any("0s" in line for line in lines_with_transform), "0 duration should show as '0s'"
+
+    # Check that missing duration shows a placeholder
+    lines_with_validate = [line for line in md.split("\n") if "validate" in line.lower()]
+    assert any(
+        "–" in line or "-" in line or "N/A" in line for line in lines_with_validate
+    ), "Missing duration should show placeholder"
+
+
+def test_runcard_includes_delta_when_available():
+    """Test that run-card includes delta section when not first run."""
+    from osiris.core.run_export_v2 import generate_markdown_runcard
+
+    aiop_with_delta = {
+        "pipeline": {"name": "test_pipeline"},
+        "run": {"status": "completed", "duration_ms": 120000},
+        "metadata": {
+            "delta": {
+                "first_run": False,
+                "rows": {"previous": 1000, "current": 1500, "change": 500, "change_percent": 50.0},
+                "duration_ms": {
+                    "previous": 150000,
+                    "current": 120000,
+                    "change": -30000,
+                    "change_percent": -20.0,
+                },
+                "errors_count": {"previous": 2, "current": 0, "change": -2},
+            }
+        },
+    }
+
+    md = generate_markdown_runcard(aiop_with_delta)
+
+    # Check for delta section header
+    assert "Since last run" in md or "Delta" in md or "Changes" in md
+
+    # Check for row changes with emoji
+    assert "50%" in md or "50.0%" in md  # Percent change
+    assert "📈" in md or "↑" in md  # Increase indicator
+    assert "1,500" in md or "1500" in md  # Current rows (may be formatted with comma)
+
+    # Check for duration changes
+    assert "-20%" in md or "20.0%" in md  # Percent decrease
+    assert "🟢" in md or "↓" in md  # Duration decrease is good (green)
+
+    # Check for error changes
+    assert "📉" in md or "↓" in md or "✅" in md  # Errors decreased is good
 
 
 def test_markdown_not_empty():

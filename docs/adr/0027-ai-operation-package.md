@@ -62,11 +62,69 @@ The narrative layer tracks intent provenance with explicit trust levels:
 - **Redaction**: All PII and secrets removed before Annex inclusion
 - **Size limits**: Chat logs truncated to configured max_chars (default 2000)
 
+#### Chat Logs Handling in Annex
+Session chat logs integration for AI context understanding:
+
+```json
+{
+  "annex": {
+    "chat_logs.ndjson": [
+      {"role": "user", "content": "[REDACTED] process customer data"},
+      {"role": "assistant", "content": "I'll help you create a pipeline..."}
+    ]
+  }
+}
+```
+
+- **Opt-in only**: Requires `aiop.narrative.session_chat.enabled: true`
+- **Location**: `logs/<session>/artifacts/chat_log.json` or `logs/<session>/chat_log.json`
+- **Redaction modes**:
+  - `masked`: Apply PII/secret redaction via redact_secrets()
+  - `quotes`: Include as-is with truncation only
+  - `off`: Exclude from export entirely
+- **Max size**: Truncated at configured max_chars (default 10000)
+- **Export**: Written to Annex as `chat_logs.ndjson[.gz]`
+- **Trust level**: Low - used only for intent discovery fallback
+
 ### 2. Semantic / Ontology Layer
 A formal semantic model of the pipeline manifest, OML definitions, component capabilities, and configuration metadata. This includes ontologies that define relationships between data, components, and execution semantics, enabling AI to reason about pipeline structure and intent.
 
 ### 3. Evidence Layer
 Deterministic, timestamped, and citatable records of execution events, metrics, schema validations, errors, and warnings. This layer provides verifiable proof of what happened during the run, with stable IDs linking back to semantic entities, supporting auditability and traceability.
+
+#### Delta Analysis & Persistence
+The Evidence layer includes delta analysis comparing runs of the same pipeline:
+
+```json
+{
+  "delta": {
+    "first_run": false,
+    "delta_source": "by_pipeline_index",
+    "rows": {
+      "previous": 1000,
+      "current": 1500,
+      "change": 500,
+      "change_percent": 50.0
+    },
+    "duration_ms": {
+      "previous": 5000,
+      "current": 4000,
+      "change": -1000,
+      "change_percent": -20.0
+    },
+    "errors_count": {
+      "previous": 0,
+      "current": 2,
+      "change": 2
+    }
+  }
+}
+```
+
+- **Index lookup**: Uses `logs/aiop/index/by_pipeline/<manifest_hash>.jsonl`
+- **Comparison**: Previous successful run metrics vs current run
+- **Deterministic rounding**: Percentages rounded to 2 decimal places
+- **First run detection**: Returns `{"first_run": true}` when no history exists
 
 ### 4. Control Layer
 Machine-actionable interfaces and metadata that allow AI systems to propose or execute interventions, such as configuration changes, reruns, or alerts. This layer encodes operational controls and constraints, enabling AI-driven pipeline management.
@@ -146,10 +204,21 @@ Package Format: 1.0
 
 ### Configuration & Precedence
 
-Configuration follows this precedence order:
+**Implemented in code (commit b6ed2cc).** Configuration follows this precedence order:
 ```
 Precedence: CLI > Environment variables ($OSIRIS_AIOP_*) > Osiris.yaml > built-in defaults
 ```
+
+The configuration layer provides:
+- Full precedence resolution with per-key source tracking
+- Integration with `osiris init` for scaffold generation
+- Effective config echoed in `metadata.config_effective`
+
+**Automatic export is now supported when `aiop.enabled: true`** (Work Unit 4). Every run automatically generates an AIOP export with:
+- Path templating to prevent overwrites
+- Index files for LTM/GraphRAG discovery
+- Retention policies to manage disk usage
+- Latest symlink for convenience
 
 Environment variables use the prefix `OSIRIS_AIOP_` for all AIOP-related settings. See Milestone M2a for the full list of Osiris.yaml keys, ENV mappings, and CLI interactions.
 
@@ -345,3 +414,18 @@ The full AI Operation Package feature is postponed to Milestone M2 for implement
 - [ ] Performance: <5s generation for typical runs
 - [ ] Cross-referenced evidence IDs resolve correctly
 - [ ] Delta calculation works correctly for first run, subsequent runs, and missing previous runs
+
+## Future Work
+
+Beyond the current M2a implementation, the following work units are planned:
+
+### Work Unit 2: Intent Discovery & Provenance
+Implement comprehensive intent discovery from multiple sources with provenance tracking. See [Work Unit 2 in m2a-aiop.md](../milestones/m2a-aiop.md#work-unit-2--intent-discovery--provenance-mvp) for detailed scope.
+
+### Work Unit 3: Delta Analysis
+Implement run-over-run delta comparison by manifest_hash with caching. See [Work Unit 3 in m2a-aiop.md](../milestones/m2a-aiop.md#work-unit-3--delta-analysis-mvp) for implementation details.
+
+### Future Milestones
+- **M2b**: Real-time AIOP streaming during execution
+- **M3**: Full discovery ingestion and catalog storage (ADR-0029)
+- **M4**: Control Layer implementation for AI-driven operations

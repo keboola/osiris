@@ -15,6 +15,7 @@
 """Configuration management for Osiris v2."""
 
 import contextlib
+import datetime
 import os
 import re
 from pathlib import Path
@@ -246,13 +247,29 @@ aiop:
   run_card: true           # Also write Markdown run-card for PR/Slack
 
   output:
-    core_path: logs/aiop/aiop.json         # Where to write Core JSON
-    run_card_path: logs/aiop/run-card.md   # Where to write Markdown run-card
+    core_path: "logs/aiop/{session_id}/aiop.json"         # Where to write Core JSON
+    run_card_path: "logs/aiop/{session_id}/run-card.md"   # Where to write Markdown run-card
 
   annex:
     enabled: false         # Enable NDJSON Annex (timeline/metrics/errors shards)
     dir: logs/aiop/annex   # Directory for Annex shards
     compress: none         # none|gzip|zstd (applies to Annex only; Core is always uncompressed for readability)
+
+  # Path variable templating (for output paths)
+  path_vars:
+    ts_format: "%Y%m%d_%H%M%S"  # Timestamp format for {ts} variable
+    # Available variables in paths:
+    # {session_id} - Full session ID
+    # {ts} - Timestamp formatted with ts_format
+    # {manifest_hash} - Pipeline manifest hash
+    # {status} - Run status (success/failure)
+
+  # Index configuration (tracks all runs for delta analysis)
+  index:
+    enabled: true          # Enable index updates after each run
+    runs_jsonl: "logs/aiop/index/runs.jsonl"        # All runs chronologically
+    by_pipeline_dir: "logs/aiop/index/by_pipeline"  # Per-pipeline run history
+    latest_symlink: "logs/aiop/latest"              # Symlink to latest run
 
   retention:
     keep_runs: 50          # Keep last N Core files (optional)
@@ -637,14 +654,23 @@ AIOP_DEFAULTS = {
     "schema_mode": "summary",
     "delta": "previous",
     "run_card": True,
+    "path_vars": {
+        "ts_format": "%Y%m%d-%H%M%S",
+    },
     "output": {
-        "core_path": "logs/aiop/aiop.json",
-        "run_card_path": "logs/aiop/run-card.md",
+        "core_path": "logs/aiop/{session_id}/aiop.json",
+        "run_card_path": "logs/aiop/{session_id}/run-card.md",
     },
     "annex": {
         "enabled": False,
-        "dir": "logs/aiop/annex",
+        "dir": "logs/aiop/{session_id}/annex",
         "compress": "none",
+    },
+    "index": {
+        "enabled": True,
+        "runs_jsonl": "logs/aiop/index/runs.jsonl",
+        "by_pipeline_dir": "logs/aiop/index/by_pipeline",
+        "latest_symlink": "logs/aiop/latest",
     },
     "retention": {
         "keep_runs": 50,
@@ -767,6 +793,31 @@ def load_aiop_env() -> Dict[str, Any]:
             os.environ["OSIRIS_AIOP_NARRATIVE_SESSION_CHAT_REDACT_PII"].lower() == "true"
         )
 
+    # Path vars
+    if "OSIRIS_AIOP_PATH_VARS_TS_FORMAT" in os.environ:
+        config.setdefault("path_vars", {})["ts_format"] = os.environ[
+            "OSIRIS_AIOP_PATH_VARS_TS_FORMAT"
+        ]
+
+    # Index configuration
+    if "OSIRIS_AIOP_INDEX_ENABLED" in os.environ:
+        config.setdefault("index", {})["enabled"] = (
+            os.environ["OSIRIS_AIOP_INDEX_ENABLED"].lower() == "true"
+        )
+
+    if "OSIRIS_AIOP_INDEX_RUNS_JSONL" in os.environ:
+        config.setdefault("index", {})["runs_jsonl"] = os.environ["OSIRIS_AIOP_INDEX_RUNS_JSONL"]
+
+    if "OSIRIS_AIOP_INDEX_BY_PIPELINE_DIR" in os.environ:
+        config.setdefault("index", {})["by_pipeline_dir"] = os.environ[
+            "OSIRIS_AIOP_INDEX_BY_PIPELINE_DIR"
+        ]
+
+    if "OSIRIS_AIOP_INDEX_LATEST_SYMLINK" in os.environ:
+        config.setdefault("index", {})["latest_symlink"] = os.environ[
+            "OSIRIS_AIOP_INDEX_LATEST_SYMLINK"
+        ]
+
     return config
 
 
@@ -876,3 +927,62 @@ def _flatten_key(key: str, value: Any) -> str:
     """Create a flattened key suitable for sources map."""
     _ = value  # Unused but required for signature compatibility
     return key
+
+
+def render_path(template: str, ctx: dict, ts_format: str = "%Y%m%d-%H%M%S") -> str:
+    """Render {session_id},{ts},{manifest_hash},{status} into an FS-safe relative path.
+
+    Args:
+        template: Path template with {var} placeholders
+        ctx: Context dict with session_id, ts (datetime), manifest_hash, status
+        ts_format: Format string for timestamp formatting
+
+    Returns:
+        Rendered path with variables substituted
+
+    Raises:
+        ValueError: If template contains unsafe path components
+    """
+    from pathlib import Path
+
+    # Check if template contains any variables
+    has_variables = "{" in template and "}" in template
+
+    # Format timestamp if present
+    render_ctx = ctx.copy()
+    if "ts" in render_ctx and isinstance(render_ctx["ts"], datetime.datetime):
+        render_ctx["ts"] = render_ctx["ts"].strftime(ts_format)
+
+    # Simple string format substitution
+    try:
+        rendered = template.format(**render_ctx)
+    except KeyError as e:
+        # Provide default empty string for missing keys
+        missing_key = str(e).strip("'")
+        render_ctx[missing_key] = ""
+        rendered = template.format(**render_ctx)
+
+    # If template had no variables and file already exists, auto-suffix with session_id
+    if not has_variables and Path(rendered).exists():
+        # Insert session_id before the file extension
+        path = Path(rendered)
+        session_id = ctx.get("session_id", "unknown")
+        if path.suffix:
+            # Has extension: file.json -> file.run_123.json
+            rendered = str(path.with_suffix(f".{session_id}{path.suffix}"))
+        else:
+            # No extension: file -> file.run_123
+            rendered = f"{rendered}.{session_id}"
+
+    # Security: ensure no parent directory escapes
+    if ".." in rendered:
+        raise ValueError(f"Path template resolved to unsafe path with '..': {rendered}")
+
+    # Normalize path separators
+    rendered = os.path.normpath(rendered)
+
+    # Ensure relative path (remove leading slash if present)
+    if rendered.startswith(os.sep):
+        rendered = rendered[1:]
+
+    return rendered

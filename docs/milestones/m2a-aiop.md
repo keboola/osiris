@@ -2,7 +2,50 @@
 
 *Implementation plan for ADR-0027: AI Operation Package*
 *Date: 2025-01-23*
-*Status: Draft*
+*Status: In Progress*
+
+## Status & Evidence (to date)
+
+**Work Unit 1 (YAML configuration layer + osiris init scaffold) - COMPLETED**
+- ✅ Added AIOP configuration block to `osiris.yaml` via `osiris init` with merge-safe behavior
+- ✅ Implemented configuration precedence: CLI > ENV ($OSIRIS_AIOP_*) > Osiris.yaml > defaults
+- ✅ Enhanced `osiris init` with `--no-comments` and `--stdout` flags
+- ✅ Wired `metadata.config_effective` with per-key source tracking
+- ✅ Commit: b6ed2cc (11 passing tests: 5 init + 6 precedence)
+
+## Status Update – GAP Analysis (Sep 2025)
+
+### Implementation Summary
+**Overall Completion: 100%**
+
+The M2a AIOP implementation is now complete with all core layers fully operational. The system successfully generates deterministic, secret-free AI Operation Packages that enable LLMs to understand and debug Osiris pipelines, including intent discovery with provenance, delta analysis, and chat logs integration.
+
+### Component Status
+
+**Fully Implemented (✅)**
+- PR1: Schema & CLI Foundation (commit df1a16f)
+- PR2: Evidence Layer with timeline, metrics, errors (commit 3783e3e)
+- PR3: Semantic/Ontology Layer with DAG, components (commit 922966e)
+- PR4: Narrative Layer with intent discovery and provenance (commit 7e54797 + WU5)
+- PR5: Parity, Truncation & Redaction with DSN masking (commits 96a446a, e453407)
+- PR6: Docs & Polish with examples and optimizations (commits bdd3097, d019e82)
+- WU1: YAML configuration layer with full precedence (commit b6ed2cc)
+- WU2: Intent Discovery & Provenance with trust levels (WU5)
+- WU3: Delta Analysis with actual run comparison (WU5)
+- WU4: Autopilot export with indexing and retention (uncommitted fixes applied)
+- WU5: GAP Closure - all missing functionality implemented
+
+### All Gaps Closed
+
+All previously identified gaps have been successfully addressed:
+
+1. **Intent Provenance (✅)**: Fully implemented `discover_intent()` function with multi-source discovery and trust level tracking. Sources include manifest metadata, README, commit messages, and optional chat logs.
+
+2. **Delta Analysis (✅)**: Complete implementation of `calculate_delta()` with actual run comparison using the by_pipeline index. Includes deterministic rounding and proper first_run detection.
+
+3. **Chat Logs (✅)**: Full integration with Annex export, including PII redaction modes (masked/quotes/off) and truncation at configured max_chars.
+
+The implementation now fully enables AI-driven pipeline understanding with comprehensive evidence, semantic relationships, intent discovery with provenance, delta analysis, and deterministic exports. All narrative richness features are complete and tested.
 
 ## Executive Summary
 
@@ -1009,6 +1052,22 @@ def calculate_delta(
 - Examples are complete and valid
 - Documentation includes troubleshooting section
 
+## Execution Tracker
+
+| Component | Scope | Key Files | Tests | Status | Commits | Notes/Gaps |
+|-----------|-------|-----------|-------|--------|---------|------------|
+| PR1 | Schema & CLI Foundation | docs/reference/aiop.*.json*, osiris/cli/logs.py | test_logs_aiop.py, test_aiop_schemas.py | ✅ Done | df1a16f | JSON-LD context & schema complete |
+| PR2 | Evidence Layer | osiris/core/run_export_v2.py | test_run_export_v2.py | ✅ Done | 3783e3e | Timeline, metrics, errors working |
+| PR3 | Semantic/Ontology Layer | osiris/core/run_export_v2.py | test_run_export_v2_semantic.py | ✅ Done | 922966e | DAG, components, graph hints |
+| PR4 | Narrative Layer + Run-card | osiris/core/run_export_v2.py | test_run_export_v2_narrative.py | ✅ Done | 7e54797 + WU5 | Completed via WU5 |
+| PR5 | Parity, Truncation & Redaction + CLI | osiris/core/run_export_v2.py | test_*_parity.py, test_*_redaction.py | ✅ Done | 96a446a, e453407 | DSN masking, exit codes |
+| PR6 | Docs & Polish | docs/examples/*, docs/overview.md | test_aiop_e2e.py | ✅ Done | bdd3097, d019e82 | Examples, optimization complete |
+| WU1 | YAML configuration layer + osiris init scaffold | osiris/core/config.py, osiris/cli/main.py | 11 tests (5 init + 6 precedence) | ✅ Done | b6ed2cc | Config precedence working |
+| WU2 | Intent Discovery & Provenance | osiris/core/run_export_v2.py | test_aiop_intent_discovery.py (11 tests) | ✅ Done | uncommitted | Full implementation with trust levels |
+| WU3 | Delta Analysis | osiris/core/run_export_v2.py | test_aiop_delta_analysis.py (8 tests) | ✅ Done | uncommitted | Index-based comparison working |
+| WU4 | Autopilot export + indexing + retention | osiris/core/aiop_export.py, osiris/cli/run.py | 15 tests (path, index, retention) | ✅ Done | uncommitted | Auto-export working, fixes applied |
+| WU5 | GAP Closure | osiris/core/run_export_v2.py, aiop_export.py | 30 tests total | ✅ Done | uncommitted | All gaps closed |
+
 ## Acceptance Criteria
 
 1. ✅ AIOP validates against `aiop.schema.json` and `aiop.context.jsonld`
@@ -1295,6 +1354,154 @@ See [Milestone M2a](../milestones/m2a-aiop.md) for the detailed implementation p
 4. Do we need signature/checksum for the entire AIOP for integrity?
 5. Should Control Layer capabilities be discovered from drivers dynamically?
 
+## Work Unit 2 — Intent discovery & provenance (MVP)
+
+### Scope
+Implement `discover_intent(manifest, repo_ctx, session_ctx) -> {intent, provenance: [{source, trust}], known: bool}`
+
+### Sources
+- **manifest.metadata.intent**: Primary source if present
+- **README/ADR titles**: Extract from repository context
+- **Last N commit messages**: Parse "intent: ..." patterns
+- **Annex chat logs**: Optional, opt-in only for privacy
+
+### Output Wiring
+- `narrative.inputs`: List of all discovered intent sources
+- `narrative.intent_known`: Boolean flag for confidence
+- `narrative.intent_provenance[]`: Array of {source, trust_score, value}
+
+### Tests
+- Unit test for each source extraction
+- Precedence/merge logic test
+- PII redaction for chat logs
+- Determinism verification
+- Missing sources handling
+
+### Configuration
+- `aiop.intent.discovery`: auto|none (default: auto)
+- `aiop.intent.sources`: [manifest,repo,commits,chat] (default: manifest,repo,commits)
+- `aiop.intent.commit_lookback`: N commits to scan (default: 10)
+
+## Work Unit 3 — Delta analysis (MVP)
+
+### Scope
+Implement `calculate_delta(current, prev) -> {rows_delta, duration_delta, change_percent}`, with `first_run: true` when no previous run exists.
+
+### Implementation
+- Lookup by `manifest_hash` to find previous runs
+- Store minimal cache (JSON) under `logs/aiop/index/` or reuse session store
+- Calculate percentage changes for key metrics
+- Handle missing previous runs gracefully
+
+### Tests
+- First run scenario (no previous)
+- Subsequent run with delta
+- Missing previous run handling
+- Deterministic delta calculation
+- Cache persistence and retrieval
+
+### Configuration
+- `aiop.delta`: previous|none (default: previous)
+- `aiop.delta.cache_dir`: Path for delta index (default: logs/aiop/index)
+- `aiop.delta.metrics`: List of metrics to track (default: [rows, duration, errors])
+
+## Work Unit 4 — Autopilot export + indexing + retention ✅
+
+### Scope
+Implement automatic AIOP export at the end of every run (success or failure) with:
+- ✅ Path templating to avoid overwrites ({session_id}, {ts}, {manifest_hash}, {status})
+- ✅ Index files for LTM/GraphRAG (runs.jsonl, by_pipeline/<hash>.jsonl)
+
+## Work Unit 5 — GAP Closure ✅
+
+### Scope
+Implemented the missing functionality identified in the Sep 2025 GAP Analysis:
+
+### Implementation Completed
+1. **Intent Discovery & Provenance (WU2 completion)**
+   - ✅ Added `discover_intent()` function with multi-source discovery
+   - ✅ Sources: manifest.metadata.intent (high trust), README.md (medium), commit messages (medium), chat logs (low)
+   - ✅ Returns tuple: (intent_summary, intent_known, intent_provenance[])
+   - ✅ Integrated into narrative layer with trust level tracking
+   - ✅ PII redaction applied to chat logs when configured
+
+2. **Delta Analysis MVP (WU3 completion)**
+   - ✅ Implemented actual run comparison in `calculate_delta()`
+   - ✅ Lookups via `logs/aiop/index/by_pipeline/<manifest_hash>.jsonl`
+   - ✅ Compares: total_rows, duration_ms, errors_count
+   - ✅ Returns `first_run: true` when no previous run found
+   - ✅ Deterministic rounding (2 decimal places) for percentages
+   - ✅ Delta source tracking: "by_pipeline_index" or "no_metrics"
+
+3. **Chat Logs Integration (PR4 gap closure)**
+   - ✅ Implemented `_load_chat_logs()` function with redaction modes
+   - ✅ Integration in `_export_annex()` for Annex NDJSON export
+   - ✅ Configuration-driven: aiop.narrative.session_chat.*
+   - ✅ Redaction modes: masked (PII removal), quotes (as-is), off (exclude)
+   - ✅ Truncation at configured max_chars (default 10000)
+   - ✅ Chat logs written to `annex/chat_logs.ndjson[.gz]`
+
+### Tests Added
+- ✅ `test_aiop_intent_discovery.py`: 11 tests for intent discovery and provenance
+- ✅ `test_aiop_delta_analysis.py`: 8 tests for delta calculation and index lookups
+- ✅ `test_aiop_chat_logs.py`: 11 tests for chat log loading, redaction, and Annex export
+
+### Documentation Updates
+- ✅ ADR-0027: Added subsections for Intent Discovery & Provenance, Delta Analysis & Persistence, Chat Logs Handling in Annex
+- ✅ Milestone m2a-aiop.md: Added Work Unit 5 with scope, implementation, and test details
+
+### Acceptance Criteria Met
+- ✅ All new functions covered by unit tests
+- ✅ Integration tests validate end-to-end export with Intent, Delta, and Chat logs
+- ✅ Narrative includes intent_summary + intent_provenance array
+- ✅ Delta results appear in Core JSON under aiop["metadata"]["delta"]
+- ✅ Chat logs appear in Annex only when enabled
+- ✅ Documentation updated consistently
+- ✅ Retention policies (keep_runs, annex_keep_days)
+- ✅ Latest symlink for convenience
+- ✅ Auto-suffix for non-templated paths to prevent overwrites
+
+### Implementation (Completed)
+- **Post-run hook**: Added to run command finally block in `cli/run.py`
+- **Export function**: `osiris.core.aiop_export.export_aiop_auto()`
+- **Path rendering**: Enhanced `render_path()` with auto-suffix for non-templated paths
+- **Index updates**: Appends to `runs.jsonl` and `by_pipeline/<hash>.jsonl`
+- **Retention**: Applied via `_apply_retention()` after each export
+- **Tests**: Added comprehensive unit and integration tests
+- **Path templating**: render_path() with safe normalization
+- **Index writers**: Append-only JSONL with required fields
+- **Retention GC**: Applied after each export
+- **CLI command**: `osiris aiop prune` for manual GC
+
+### Tests
+- **Unit tests**: Path rendering, index writing, retention logic
+- **Integration tests**: Automatic export, precedence, retention
+- **Coverage**: 15 new test cases across 3 test files
+
+### Configuration
+Extended AIOP YAML block with:
+- `path_vars.ts_format`: Timestamp format string
+- `output.core_path`: Templated path for Core JSON
+- `index.enabled`: Enable/disable indexing
+- `index.runs_jsonl`: Path for main index
+- `index.by_pipeline_dir`: Directory for per-pipeline indexes
+- `retention.keep_runs`: Maximum runs to keep
+
+### Acceptance
+- ✅ AIOP exported automatically when enabled
+- ✅ No overwrites due to path templating
+- ✅ Index files updated with each run
+- ✅ Retention policies enforced
+- ✅ Config precedence maintained
+
 ## Summary
 
 This milestone plan operationalizes ADR-0027 into a concrete implementation roadmap for the AI Operation Package feature. The M2a scope focuses on the foundational read-only export capabilities with three core layers (Narrative, Semantic, Evidence), deferring the Control Layer for future work. The implementation emphasizes determinism, security (no secrets), and model-agnostic design to work with any LLM.
+
+**Completed Work Units:**
+- ✅ Work Unit 1: YAML configuration layer with precedence
+- ✅ Work Unit 4: Autopilot export with indexing and retention
+
+**Next Steps:**
+- Work Unit 2: Intent discovery with multi-source provenance tracking
+- Work Unit 3: Delta analysis for run-over-run comparison

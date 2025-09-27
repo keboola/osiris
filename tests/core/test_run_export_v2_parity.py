@@ -74,6 +74,18 @@ def normalize(data):
                     # Keep only filename
                     artifact["path"] = artifact["path"].split("/")[-1]
 
+    # Normalize controls.examples which contain session-specific commands
+    if "controls" in normalized and "examples" in normalized["controls"]:
+        for example in normalized["controls"]["examples"]:
+            if "command" in example:
+                # Replace session IDs in commands
+                import re
+
+                cmd = example["command"]
+                # Replace session IDs like "local-123" or "e2b-456"
+                cmd = re.sub(r"--session [a-zA-Z0-9-]+", "--session NORMALIZED", cmd)
+                example["command"] = cmd
+
     return normalized
 
 
@@ -150,7 +162,9 @@ def test_delta_first_run():
 
     delta = calculate_delta({}, manifest_hash)
 
-    assert delta == {"first_run": True}
+    assert delta["first_run"] is True
+    # Delta source is also included now
+    assert "delta_source" in delta
 
 
 def test_delta_change():

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **AIOP Configuration Layer** (Work Unit 1)
+  - YAML configuration layer implemented with full precedence resolution
+  - `osiris init` enhanced with AIOP scaffold, `--no-comments` and `--stdout` flags
+  - Configuration precedence: CLI > ENV ($OSIRIS_AIOP_*) > Osiris.yaml > defaults
+  - Effective config echoed in `metadata.config_effective` with per-key source tracking
+  - Integration with `resolve_aiop_config()` for unified configuration handling
+
 ## [0.3.0] - 2025-01-25
 
 **Major Release: Milestone M2a - AI Operation Package (AIOP)**

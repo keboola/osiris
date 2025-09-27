@@ -1,5 +1,6 @@
 """CLI command for running pipelines (OML or compiled manifests) with Rich formatting."""
 
+import datetime
 import json
 import os
 import shutil
@@ -12,6 +13,7 @@ import yaml
 from rich.console import Console
 
 from ..core.adapter_factory import get_execution_adapter
+from ..core.aiop_export import export_aiop_auto
 from ..core.compiler_v0 import CompilerV0
 from ..core.env_loader import load_env
 from ..core.execution_adapter import ExecutionContext
@@ -678,6 +680,38 @@ def run_command(args: List[str]):
         sys.exit(1)
 
     finally:
+        # Export AIOP if enabled (best-effort)
+        try:
+            # Determine final status
+            if "execute_success" in locals() and execute_success:
+                final_status = "completed"
+            elif "compile_success" in locals() and not compile_success:
+                final_status = "failed_compile"
+            else:
+                final_status = "failed"
+
+            # Get manifest hash if available
+            manifest_hash = None
+            if "manifest_data" in locals() and isinstance(manifest_data, dict):
+                # Manifest hash is at pipeline.fingerprints.manifest_fp
+                manifest_hash = (
+                    manifest_data.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp")
+                )
+
+            # Export AIOP
+            export_success, export_error = export_aiop_auto(
+                session_id=session_id,
+                manifest_hash=manifest_hash,
+                status=final_status,
+                end_time=datetime.datetime.utcnow(),
+            )
+
+            if not export_success:
+                log_event("aiop_export_error", error=export_error, session_id=session_id)
+        except Exception as e:
+            # Best-effort, don't fail the run
+            log_event("aiop_export_error", error=str(e), session_id=session_id)
+
         # Clean up session
         session.close()
         set_current_session(None)

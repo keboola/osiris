@@ -1452,9 +1452,14 @@ def aiop_export(args: list) -> None:
             if artifact_file.is_file():
                 artifacts.append(artifact_file)
 
-    # Get manifest
+    # Get manifest (check session root first, then artifacts)
     manifest = {}
-    manifest_file = artifacts_dir / "manifest.yaml" if artifacts_dir.exists() else None
+    # First try session root (where it actually is)
+    manifest_file = session_path / "manifest.yaml"
+    if not manifest_file.exists():
+        # Fallback to artifacts dir for backward compatibility
+        manifest_file = artifacts_dir / "manifest.yaml" if artifacts_dir.exists() else None
+
     if manifest_file and manifest_file.exists():
         import yaml
 
