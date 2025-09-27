@@ -352,6 +352,14 @@ python osiris.py chat --pro-mode
    - All tests must pass
    - ADRs must be linked and referenced
 
+### Branch Protection Rules
+
+**⚠️ CRITICAL: The `main` branch is protected - NO direct commits allowed!**
+- All changes must go through pull requests
+- This includes version bumps, documentation updates, and all code changes
+- Only tags can be pushed directly: `git push origin v0.x.y`
+- If you accidentally commit locally to main, create a new branch from your changes
+
 ### Documentation & Decision Making
 
 #### Architecture Decision Records (ADRs)
@@ -427,18 +435,26 @@ python osiris.py chat --pro-mode
 **Branch**: feature/m2a-aiop-context (ready to merge to main)
 
 ### Release Process
+
+**⚠️ IMPORTANT: The `main` branch has protection rules - no direct commits allowed!**
+All changes to main MUST go through a pull request. This includes version bumps.
+
 1. **Complete milestone** in feature branch
-2. **Update version** in README.md and pyproject.toml
-3. **Update CHANGELOG.md** following [Keep a Changelog](https://keepachangelog.com) format
-4. **Create PR** to main with all changes
-5. **After merge**: Tag release (v0.x.y) and create GitHub Release
-6. **Document** release notes from CHANGELOG in GitHub Release
+2. **Update version** in pyproject.toml and CHANGELOG.md in feature branch
+3. **Create PR** to main with all changes (including version bump)
+4. **After PR merge**:
+   - Pull latest main
+   - Tag release (v0.x.y) locally
+   - Push tag only: `git push origin v0.x.y`
+5. **Create GitHub Release** from the pushed tag with changelog highlights
+
+**Note**: Never try to push commits directly to main - only tags can be pushed!
 
 ## Project Version
 
-**Current Version**: v0.3.0 (Released 2025-01-25)
+**Current Version**: v0.3.0 (Released 2025-09-27)
 **Status**: Production-ready with AIOP for LLM-friendly debugging
-**Branch**: feature/m2a-aiop-context
+**Branch**: main
 
 ## MVP Status
 
