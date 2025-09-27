@@ -41,6 +41,8 @@ Welcome to the Osiris Pipeline documentation. Osiris is an LLM-first ETL pipelin
 - **[Component Specifications](reference/components-spec.md)** - Component spec format and schema
 - **[SQL Safety Rules](reference/sql-safety.md)** - Context-specific SQL validation
 - **[Events & Metrics Schema](reference/events_and_metrics_schema.md)** - Log format and observability
+- **[AIOP Architecture](architecture/aiop.md)** - AI Operation Package technical documentation
+- **[AIOP Schema](reference/aiop.schema.json)** - AIOP JSON-LD schema and context
 
 ### 💡 Examples & Future Plans
 - **[Example Pipelines](examples/)** - Ready-to-use pipeline examples:
@@ -58,22 +60,22 @@ Welcome to the Osiris Pipeline documentation. Osiris is an LLM-first ETL pipelin
 
 ## 📦 Current Version
 
-**v0.2.0** (Released: 2025-09-22)
-- ✅ Complete M1 implementation
-- ✅ E2B transparent proxy with <1% overhead
-- ✅ Component Registry with self-describing components
-- ✅ Rich CLI with beautiful formatting
-- ✅ Session-scoped structured logging
-- ✅ Full parity between local and E2B execution
+**v0.3.0** (Released: 2025-09-27)
+- ✅ AI Operation Package (AIOP) for LLM-friendly debugging
+- ✅ Four-layer semantic architecture for AI understanding
+- ✅ Automatic export after every pipeline run
+- ✅ Delta analysis with "Since last run" comparisons
+- ✅ Comprehensive secret redaction with DSN masking
+- ✅ 921 tests passing with production-ready quality
 
 ## 📚 Documentation Highlights
 
 ### Recently Updated
+- **AIOP Documentation** - Complete AI Operation Package architecture and usage
 - **Architecture diagrams** - New layered Conversational Agent diagrams
-- **User Guide** - Added troubleshooting, log interpretation, and best practices
-- **Developer Guide** - Complete module documentation for all 7 core modules
-- **LLM Contracts** - Specialized contracts for drivers, CLI, and testing
-- **Overview** - Rewritten with examples and comparison tables
+- **User Guide** - Added AIOP quickstart, troubleshooting, and best practices
+- **Developer Guide** - AIOP development workflow and team operations guide
+- **Milestone M2a** - Marked complete with production-ready AIOP system
 
 ## 🗺️ Documentation Map
 
