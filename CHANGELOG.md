@@ -9,46 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 *No unreleased changes*
 
-## [0.3.1] - 2025-09-27
+## [0.3.0] - 2025-09-27
 
-**AIOP M2a Complete: Production-Ready AI Operation Package**
+**Major Release: Milestone M2a Complete - AI Operation Package (AIOP)**
 
-This release completes Milestone M2a with comprehensive stabilization work (WU7a/b/c), delivering a production-ready AI Operation Package system. All 24 acceptance criteria met with 921 tests passing.
-
-### Added
-- **AIOP System Stabilization** (WU7a/b/c)
-  - Delta analysis with "Since last run" comparisons using by-pipeline index
-  - Intent discovery with multi-source provenance (manifest, README, commits, chat logs)
-  - Active duration metrics in aggregated statistics
-  - Comprehensive DSN redaction for Redis, MongoDB, PostgreSQL connection strings
-  - LLM affordances: metadata.llm_primer with glossary and controls.examples
-  - Platform-safe symlink implementation with Windows fallback
-  - Robust error handling for missing sessions and corrupted indexes
-
-### Enhanced
-- **AIOP Configuration Layer** (Work Unit 1)
-  - YAML configuration layer with full precedence resolution
-  - `osiris init` enhanced with AIOP scaffold, `--no-comments` and `--stdout` flags
-  - Configuration precedence: CLI > ENV ($OSIRIS_AIOP_*) > Osiris.yaml > defaults
-  - Effective config tracking in `metadata.config_effective` with per-key source
-  - Auto-export after every run with templated paths and retention policies
-
-### Quality
-- **Test Suite Stabilization**: 921 tests passing, 29 skipped (E2B live tests)
-- **Parity Verification**: Local vs E2B execution produces identical AIOP exports
-- **Security Validation**: Comprehensive secret redaction with zero-leak guarantee
-- **Deterministic Output**: Stable IDs, sorted keys, canonical JSON-LD format
-
-### Documentation
-- Complete user guides with quickstart, troubleshooting, and examples
-- Technical architecture documentation for AIOP system design
-- Updated ADR-0027 and M2a milestone marked as fully implemented
-
-## [0.3.0] - 2025-01-25
-
-**Major Release: Milestone M2a - AI Operation Package (AIOP)**
-
-This release introduces the AI Operation Package (AIOP), a comprehensive JSON-LD based export format designed for LLM consumption and debugging. The AIOP provides structured, deterministic exports of pipeline runs with four semantic layers, enabling AI systems to analyze, debug, and learn from Osiris executions.
+This release completes Milestone M2a, delivering a comprehensive, production-ready AI Operation Package (AIOP) system. AIOP provides a four-layer semantic architecture (Evidence, Semantic, Narrative, Metadata) that enables any LLM to fully understand Osiris pipeline runs through structured, deterministic, secret-free exports. All 24 acceptance criteria met with 921 tests passing.
 
 ### Added
 - **AI Operation Package (AIOP) Implementation** (ADR-0027)
@@ -61,6 +26,22 @@ This release introduces the AI Operation Package (AIOP), a comprehensive JSON-LD
   - Automatic secret redaction with DSN masking (postgres://user:***@host/db)
   - Rich progress indicators during export
   - Exit code 4 for truncated exports
+
+- **AIOP System Stabilization** (WU7a/b/c)
+  - Delta analysis with "Since last run" comparisons using by-pipeline index
+  - Intent discovery with multi-source provenance (manifest, README, commits, chat logs)
+  - Active duration metrics in aggregated statistics
+  - Comprehensive DSN redaction for Redis, MongoDB, PostgreSQL connection strings
+  - LLM affordances: metadata.llm_primer with glossary and controls.examples
+  - Platform-safe symlink implementation with Windows fallback
+  - Robust error handling for missing sessions and corrupted indexes
+
+- **AIOP Configuration Layer** (Work Unit 1)
+  - YAML configuration layer with full precedence resolution
+  - `osiris init` enhanced with AIOP scaffold, `--no-comments` and `--stdout` flags
+  - Configuration precedence: CLI > ENV ($OSIRIS_AIOP_*) > Osiris.yaml > defaults
+  - Effective config tracking in `metadata.config_effective` with per-key source
+  - Auto-export after every run with templated paths and retention policies
 
 - **Evidence Layer** (PR1-PR2)
   - Timeline with chronological events and configurable density (low/medium/high)
@@ -100,6 +81,12 @@ This release introduces the AI Operation Package (AIOP), a comprehensive JSON-LD
   - Annex manifest standardized under metadata.annex with files array
   - Markdown run-card enhanced with fallbacks to never return empty
 
+### Enhanced
+- **Test Suite Stabilization**: 921 tests passing, 29 skipped (E2B live tests)
+- **Parity Verification**: Local vs E2B execution produces identical AIOP exports
+- **Security Validation**: Comprehensive secret redaction with zero-leak guarantee
+- **Deterministic Output**: Stable IDs, sorted keys, canonical JSON-LD format
+
 ### Fixed
 - **Test Stability**
   - Fixed AIOP tests failing due to truncation by increasing max-core-bytes limit
@@ -113,7 +100,12 @@ This release introduces the AI Operation Package (AIOP), a comprehensive JSON-LD
   - No file paths exposed in annex manifests
   - Deterministic redaction for reproducible debugging
 
-## [0.2.0] - 2025-01-23
+### Documentation
+- Complete user guides with quickstart, troubleshooting, and examples
+- Technical architecture documentation for AIOP system design
+- Updated ADR-0027 and M2a milestone marked as fully implemented
+
+## [0.2.0] - 2025-09-23
 
 **Major Release: Milestone M1 - Component Registry and Runner**
 
