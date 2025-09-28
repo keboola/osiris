@@ -350,15 +350,7 @@ class TestExecutionParity:
             expected_cfg_dir = Path(tmpdir) / "logs" / f"volume-{num_rows}" / "cfg"
             expected_cfg_dir.mkdir(parents=True, exist_ok=True)
             (expected_cfg_dir / "generate_large.json").write_text(
-                json.dumps(
-                    {
-                        "id": "generate_large",
-                        "component": "duckdb.processor",
-                        "driver": "duckdb.processor",
-                        "mode": "transform",
-                        "config": {"query": f"SELECT i as id FROM generate_series(1, {num_rows}) as s(i)"},
-                    }
-                )
+                json.dumps({"query": f"SELECT i as id FROM generate_series(1, {num_rows}) as s(i)"})
             )
 
             # Execute locally
