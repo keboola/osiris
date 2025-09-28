@@ -66,6 +66,7 @@ class TestE2BSmoke:
             "verbose": True,
         }
 
+    @pytest.mark.e2b_smoke
     def test_e2b_environment_check(self):
         """Test that checks E2B environment setup."""
         api_key = os.environ.get("E2B_API_KEY")
@@ -81,6 +82,8 @@ class TestE2BSmoke:
         assert api_key is not None
         assert live_tests is not None
 
+    @pytest.mark.e2b_smoke
+    @pytest.mark.e2b_live
     @pytest.mark.skipif(not os.getenv("E2B_API_KEY"), reason="E2B_API_KEY not set")
     @pytest.mark.skipif(not os.getenv("E2B_LIVE_TESTS"), reason="E2B_LIVE_TESTS not enabled")
     def test_e2b_adapter_prepare_phase(self, compiled_manifest, e2b_config, execution_context):
@@ -125,6 +128,7 @@ class TestE2BSmoke:
         assert write_cfg["id"] == "write-actors-csv"
         assert write_cfg["component"] == "filesystem.csv_writer"
 
+    @pytest.mark.e2b_smoke
     @pytest.mark.skipif(not os.getenv("E2B_API_KEY"), reason="E2B_API_KEY not set")
     @pytest.mark.skipif(not os.getenv("E2B_LIVE_TESTS"), reason="E2B_LIVE_TESTS not enabled")
     @patch("osiris.remote.e2b_adapter.E2BClient")
@@ -173,6 +177,7 @@ class TestE2BSmoke:
         mock_client.start.assert_called_once()
         mock_client.poll_until_complete.assert_called_once()
 
+    @pytest.mark.e2b_smoke
     @pytest.mark.skipif(not os.getenv("E2B_API_KEY"), reason="E2B_API_KEY not set")
     @pytest.mark.skipif(not os.getenv("E2B_LIVE_TESTS"), reason="E2B_LIVE_TESTS not enabled")
     @patch("osiris.remote.e2b_adapter.E2BClient")
@@ -241,6 +246,7 @@ class TestE2BSmoke:
         # Verify download was called
         mock_client.download_artifacts.assert_called_once()
 
+    @pytest.mark.e2b_smoke
     def test_e2b_adapter_without_api_key(self, compiled_manifest, e2b_config, execution_context):
         """Test E2B adapter behavior when API key is missing."""
         adapter = E2BAdapter(e2b_config)
@@ -254,6 +260,7 @@ class TestE2BSmoke:
         with patch.dict(os.environ, {}, clear=True), pytest.raises(Exception, match="E2B_API_KEY"):
             adapter.execute(prepared, context)
 
+    @pytest.mark.e2b_smoke
     @pytest.mark.skipif(not os.getenv("E2B_API_KEY"), reason="E2B_API_KEY not set")
     @pytest.mark.skipif(not os.getenv("E2B_LIVE_TESTS"), reason="E2B_LIVE_TESTS not enabled")
     def test_e2b_example_pipeline_compatibility(self, example_pipeline_path):
@@ -290,6 +297,7 @@ class TestE2BSmoke:
 class TestE2BAdapterConfiguration:
     """Test E2B adapter configuration and setup."""
 
+    @pytest.mark.e2b_smoke
     def test_e2b_config_defaults(self):
         """Test E2B adapter with default configuration."""
         adapter = E2BAdapter()
@@ -297,6 +305,7 @@ class TestE2BAdapterConfiguration:
         # Should handle empty config gracefully
         assert adapter.e2b_config == {}
 
+    @pytest.mark.e2b_smoke
     def test_e2b_config_custom(self):
         """Test E2B adapter with custom configuration."""
         custom_config = {
@@ -309,6 +318,7 @@ class TestE2BAdapterConfiguration:
         adapter = E2BAdapter(custom_config)
         assert adapter.e2b_config == custom_config
 
+    @pytest.mark.e2b_smoke
     def test_e2b_instructions_for_manual_testing(self):
         """Instructions for running E2B tests manually."""
         instructions = """

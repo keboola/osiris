@@ -1,0 +1,77 @@
+# DuckDB Processor Component Specification (Mock for Testing)
+name: duckdb.processor
+version: 1.0.0
+title: DuckDB Processor (Mock)
+description: Mock DuckDB processor for testing parity between local and E2B execution
+
+modes:
+  - transform
+
+capabilities:
+  discover: false
+  adHocAnalytics: false
+  inMemoryMove: true      # Works with in-memory DataFrames
+  streaming: false        # No streaming support in mock
+  bulkOperations: true    # Handles batches efficiently
+  transactions: false     # No transaction support
+  partitioning: false
+  customTransforms: true  # Custom SQL transforms
+
+configSchema:
+  type: object
+  properties:
+    query:
+      type: string
+      description: SQL query to execute
+      minLength: 1
+  required:
+    - query
+  additionalProperties: false
+
+secrets: []  # No secrets needed for mock processor
+
+examples:
+  - title: Generate series
+    config:
+      query: "SELECT i as id FROM generate_series(1, 10) as s(i)"
+    notes: Generates test data
+
+  - title: Transform with case
+    config:
+      query: |
+        SELECT id,
+               CASE WHEN score >= 500 THEN 'high'
+                    ELSE 'low'
+               END as category
+        FROM input_df
+    notes: Transforms input DataFrame
+
+compatibility:
+  requires:
+    - python>=3.8
+  platforms:
+    - linux
+    - darwin
+    - windows
+    - docker
+
+llmHints:
+  promptGuidance: |
+    Mock DuckDB processor for testing. Supports simple SELECT queries
+    and transformations. Used in parity tests.
+
+loggingPolicy:
+  eventDefaults:
+    - transform.start
+    - transform.complete
+  metricsToCapture:
+    - rows_read
+    - rows_written
+    - duration_ms
+
+limits:
+  maxRows: 1000000
+  maxDurationSeconds: 60
+
+x-runtime:
+  driver: tests.mocks.duckdb_processor_driver.DuckDBProcessorDriver

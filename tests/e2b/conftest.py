@@ -1,6 +1,7 @@
 """Shared fixtures for E2B tests."""
 
 import contextlib
+import inspect
 import os
 import tempfile
 from pathlib import Path
@@ -17,6 +18,46 @@ from osiris.remote.e2b_client import (
     SandboxHandle,
     SandboxStatus,
 )
+
+
+def make_execution_context(tmpdir: Path, **extras) -> ExecutionContext:
+    """
+    Backward/forward-compatible factory for ExecutionContext.
+    Do NOT blindly pass logs_dir or unknown kwargs; inspect signature first.
+    After construction, set optional attributes if present.
+    """
+    sig = inspect.signature(ExecutionContext)
+    kwargs = {}
+
+    # Check if base_path is a parameter (newer versions)
+    # base_path should be the parent directory, not logs itself
+    if "base_path" in sig.parameters:
+        kwargs["base_path"] = tmpdir
+
+    base_candidates = {
+        "session_id": extras.get("session_id", "test-session-123"),
+        "work_dir": tmpdir,  # newer variants
+        "workdir": tmpdir,  # older variants
+        "project_root": tmpdir,
+        "logs_dir": tmpdir / "logs",  # Try this too
+        # DO NOT pass logs_dir here if base_path is used
+    }
+
+    for name, value in base_candidates.items():
+        if name in sig.parameters and name not in kwargs:
+            kwargs[name] = value
+
+    for k, v in extras.items():
+        if k in sig.parameters and k not in kwargs:
+            kwargs[k] = v
+
+    ctx = ExecutionContext(**kwargs)
+
+    # Post-set optional attributes if object supports them
+    # logs_dir is a read-only property, so we can't set it
+    # It's derived from base_path
+
+    return ctx
 
 
 def _merge_env():
@@ -158,10 +199,12 @@ def e2b_sandbox(e2b_env):
 def execution_context():
     """Create execution context for E2B tests."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        context = ExecutionContext(session_id="test-session-123", logs_dir=Path(tmpdir) / "logs")
-        context.logs_dir.mkdir(parents=True, exist_ok=True)
-        context.artifacts_dir = context.logs_dir / "artifacts"
-        context.artifacts_dir.mkdir(parents=True, exist_ok=True)
+        context = make_execution_context(Path(tmpdir))
+        # logs_dir and artifacts_dir are properties, just ensure directories exist
+        if hasattr(context, "logs_dir"):
+            context.logs_dir.mkdir(parents=True, exist_ok=True)
+        if hasattr(context, "artifacts_dir"):
+            context.artifacts_dir.mkdir(parents=True, exist_ok=True)
         yield context
 
 

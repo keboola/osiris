@@ -55,9 +55,9 @@ test-coverage: ## Run tests with coverage report
 	python -m pytest tests/ --cov=osiris --cov-report=html --cov-report=term-missing
 
 # E2B Testing
-test-e2b-smoke: ## Run E2B smoke tests (mocked, no API key needed)
-	@echo "🔍 Running E2B smoke tests..."
-	python -m pytest tests/e2b/test_e2b_smoke.py -v -m "not e2b_live"
+test-e2b-smoke: ## Run E2B smoke tests (live if E2B_LIVE_TESTS=1 and E2B_API_KEY present)
+	@echo "🔍 Running E2B smoke tests (live if E2B_LIVE_TESTS=1 and E2B_API_KEY present)..."
+	python -m pytest tests/e2b/test_e2b_smoke.py -v -m "e2b_smoke"
 
 test-e2b-live: ## Run live E2B tests (requires E2B_API_KEY)
 	@echo "🚀 Running live E2B tests..."
@@ -69,10 +69,7 @@ test-e2b-live: ## Run live E2B tests (requires E2B_API_KEY)
 
 test-e2b-parity: ## Run Local vs E2B parity tests
 	@echo "⚖️  Running parity tests..."
-	@if [ -z "$$E2B_API_KEY" ]; then \
-		echo "⚠️  Running parity tests with mocked E2B (set E2B_API_KEY for live tests)"; \
-	fi
-	python -m pytest tests/parity/test_parity_e2b_vs_local.py -v -m parity
+	python -m pytest tests/parity/test_parity_e2b_vs_local.py -v -m "parity"
 
 test-e2b-orphans: ## Test orphan sandbox detection
 	@echo "🧹 Testing orphan detection..."
