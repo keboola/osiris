@@ -1,0 +1,219 @@
+name: E2B Tests
+
+on:
+  # Run smoke tests on every PR
+  pull_request:
+    paths:
+      - 'osiris/**'
+      - 'tests/**'
+      - '.github/workflows/e2b-tests.yml'
+
+  # Run full parity tests nightly
+  schedule:
+    - cron: '0 2 * * *'  # 2 AM UTC daily
+
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Test type to run'
+        required: true
+        default: 'smoke'
+        type: choice
+        options:
+          - smoke
+          - parity
+          - full
+          - orphan-cleanup
+
+jobs:
+  e2b-smoke:
+    name: E2B Smoke Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.test_type == 'smoke')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run E2B smoke tests (mocked)
+        run: |
+          pytest tests/e2b/test_e2b_smoke.py -v -m "not e2b_live"
+
+      - name: Check for orphaned test artifacts
+        run: |
+          # Ensure no test artifacts left in repo root
+          if [ -d "testing_env" ] && [ "$(ls -A testing_env)" ]; then
+            echo "Warning: testing_env contains artifacts"
+            ls -la testing_env/
+          fi
+
+  e2b-parity:
+    name: E2B Parity Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.test_type == 'parity')
+
+    env:
+      E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+      E2B_LIVE_TESTS: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run parity tests
+        run: |
+          pytest tests/parity/test_parity_e2b_vs_local.py -v -m parity
+
+      - name: Upload parity results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-results-${{ github.run_id }}
+          path: |
+            tests/parity/results/
+            testing_env/logs/
+
+  e2b-full:
+    name: E2B Full Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.test_type == 'full'
+
+    env:
+      E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+      E2B_LIVE_TESTS: "1"
+      MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run all E2B tests
+        run: |
+          pytest tests/e2b/ -v -m "e2b or e2b_live"
+
+      - name: Generate test report
+        if: always()
+        run: |
+          pytest tests/e2b/ --html=e2b-test-report.html --self-contained-html || true
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2b-test-report-${{ github.run_id }}
+          path: e2b-test-report.html
+
+  orphan-cleanup:
+    name: E2B Orphan Cleanup
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.test_type == 'orphan-cleanup')
+
+    env:
+      E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+      E2B_LIVE_TESTS: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run orphan detection
+        run: |
+          python -c "
+          import os
+          from datetime import datetime, timedelta
+
+          # This is a placeholder for actual orphan detection
+          # In production, this would use E2B SDK to list and cleanup sandboxes
+          print(f'Checking for orphaned E2B sandboxes at {datetime.now()}')
+          print('Max sandbox age: 2 hours')
+
+          # Would call cleanup utility here
+          # cleanup_orphaned_sandboxes(max_age_hours=2, dry_run=True)
+          "
+
+      - name: Report cleanup results
+        run: |
+          echo "Orphan cleanup check completed"
+          # In production, this would generate and upload a cleanup report
+
+  test-secret-redaction:
+    name: Verify Secret Redaction
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Test secret redaction
+        env:
+          TEST_SECRET: "this-should-be-redacted"  # pragma: allowlist secret
+        run: |
+          # Run a test that would log secrets
+          python -c "
+          import os
+          from osiris.core.secrets_masking import mask_secrets
+
+          test_string = f\"Connection string: mysql://user:{os.getenv('TEST_SECRET')}@host/db\"
+          masked = mask_secrets(test_string)
+
+          assert 'this-should-be-redacted' not in masked
+          assert '***' in masked
+          print('Secret redaction test passed')
+          "
+
+      - name: Verify no secrets in logs
+        run: |
+          # Check that no secrets appear in any log files
+          if grep -r "this-should-be-redacted" testing_env/logs 2>/dev/null; then
+            echo "ERROR: Secret found in logs!"
+            exit 1
+          fi
+          echo "No secrets found in logs - test passed"

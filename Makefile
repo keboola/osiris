@@ -54,6 +54,43 @@ test-coverage: ## Run tests with coverage report
 	@echo "📊 Running tests with coverage..."
 	python -m pytest tests/ --cov=osiris --cov-report=html --cov-report=term-missing
 
+# E2B Testing
+test-e2b-smoke: ## Run E2B smoke tests (mocked, no API key needed)
+	@echo "🔍 Running E2B smoke tests..."
+	python -m pytest tests/e2b/test_e2b_smoke.py -v -m "not e2b_live"
+
+test-e2b-live: ## Run live E2B tests (requires E2B_API_KEY)
+	@echo "🚀 Running live E2B tests..."
+	@if [ -z "$$E2B_API_KEY" ]; then \
+		echo "❌ E2B_API_KEY not set. Please export E2B_API_KEY=your-key"; \
+		exit 1; \
+	fi
+	E2B_LIVE_TESTS=1 python -m pytest tests/e2b/ -v -m e2b_live
+
+test-e2b-parity: ## Run Local vs E2B parity tests
+	@echo "⚖️  Running parity tests..."
+	@if [ -z "$$E2B_API_KEY" ]; then \
+		echo "⚠️  Running parity tests with mocked E2B (set E2B_API_KEY for live tests)"; \
+	fi
+	python -m pytest tests/parity/test_parity_e2b_vs_local.py -v -m parity
+
+test-e2b-orphans: ## Test orphan sandbox detection
+	@echo "🧹 Testing orphan detection..."
+	python -m pytest tests/e2b/test_orphan_cleanup.py -v
+
+e2b-cleanup: ## Clean up orphaned E2B sandboxes (dry-run by default)
+	@echo "🧹 Checking for orphaned E2B sandboxes..."
+	@python -c "print('Orphan cleanup utility - would clean sandboxes older than 2 hours')"
+	@echo "To run actual cleanup: make e2b-cleanup-force"
+
+e2b-cleanup-force: ## Force cleanup of orphaned E2B sandboxes
+	@echo "🧹 Cleaning up orphaned E2B sandboxes..."
+	@if [ -z "$$E2B_API_KEY" ]; then \
+		echo "❌ E2B_API_KEY not set"; \
+		exit 1; \
+	fi
+	@echo "⚠️  This would clean up real E2B sandboxes - implement with caution"
+
 cov: ## Run pytest with coverage to terminal
 	@echo "📊 Running tests with coverage..."
 	python -m pytest tests/ --cov=osiris --cov-report=term-missing
@@ -243,8 +280,11 @@ secrets-audit: ## Audit detected secrets interactively
 pre-commit: format lint type-check secrets-check test-fast ## Run pre-commit checks (format, lint, type-check, secrets, fast tests)
 	@echo "✅ Pre-commit checks complete!"
 
-ci: lint type-check secrets-check test test-coverage ## Run full CI pipeline
+ci: lint type-check secrets-check test test-coverage test-e2b-smoke ## Run full CI pipeline
 	@echo "✅ CI pipeline complete!"
+
+ci-nightly: ci test-e2b-parity e2b-cleanup ## Run nightly CI pipeline with parity tests
+	@echo "🌙 Nightly CI pipeline complete!"
 
 dev: clean dev-install pre-commit ## Full development setup and validation
 	@echo "✅ Development environment ready!"
@@ -269,3 +309,23 @@ env-info: ## Show environment information
 # mempack for ChatGPT
 mempack:
 	python tools/mempack/mempack.py -c tools/mempack/mempack.yaml
+
+# E2B Development
+e2b-dev: ## Run E2B pipeline locally for development
+	@echo "🔧 Running E2B test pipeline..."
+	@if [ ! -d "testing_env" ]; then \
+		echo "📁 Creating testing_env directory..."; \
+		mkdir -p testing_env; \
+	fi
+	cd testing_env && python ../osiris.py run ../docs/examples/mysql_to_local_csv_all_tables.yaml --e2b --dry-run
+
+e2b-live-run: ## Run example pipeline in E2B (requires API key)
+	@echo "🚀 Running pipeline in E2B sandbox..."
+	@if [ -z "$$E2B_API_KEY" ]; then \
+		echo "❌ E2B_API_KEY not set"; \
+		exit 1; \
+	fi
+	@if [ ! -d "testing_env" ]; then \
+		mkdir -p testing_env; \
+	fi
+	cd testing_env && python ../osiris.py run ../docs/examples/mysql_to_local_csv_all_tables.yaml --e2b
