@@ -146,11 +146,11 @@ exclude = [
 [tool.ruff]
 line-length = 120
 target-version = "py311"
-# Optional pragmatics to reduce friction in complex code paths
-extend-ignore = ["E203", "E501", "SIM102", "PLC1901", "PLR0911", "PLR0912", "PLR0913", "PLR2004", "ARG002", "TRY003", "EM102", "SIM108", "C901"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "PL", "W"]
+# Optional pragmatics to reduce friction in complex code paths
+extend-ignore = ["E203", "E501", "SIM102", "PLC1901", "PLR0911", "PLR0912", "PLR0913", "PLR2004", "ARG002", "TRY003", "EM102", "SIM108", "C901"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]

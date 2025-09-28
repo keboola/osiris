@@ -5,6 +5,7 @@
 1. Write code (VS Code auto-format on save recommended).
 2. `git add -A`
 3. `git commit` (fast pre-commit: Black, isort, Ruff --fix, detect-secrets baseline)
+   - If hooks keep re-formatting, run `make fmt` first, then commit
 4. `git push` (CI runs strict lint + Bandit)
 
 ## Fixing Format Issues
