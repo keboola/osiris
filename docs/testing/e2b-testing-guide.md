@@ -4,6 +4,8 @@
 
 This guide covers the E2B (remote sandbox) testing infrastructure for Osiris Pipeline. The test suite ensures parity between local and E2B execution while preventing orphaned sandboxes and leaked secrets.
 
+> **Note**: E2B CI is temporarily disabled on PRs. Use 'Run workflow' (workflow_dispatch) to execute live test suites manually.
+
 ## Test Categories
 
 ### 1. Smoke Tests (`test_e2b_smoke.py`)
