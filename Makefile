@@ -137,22 +137,28 @@ coverage-check: ## Check coverage against thresholds (non-blocking for now)
 		--format markdown || true
 
 # Code Quality
-lint: ## Run all linting checks
-	@echo "🔍 Running linting checks..."
-	ruff check osiris/ tests/
-	black --check osiris/ tests/
-	isort --check-only osiris/ tests/
-
-format: ## Format code with black and isort
-	@echo "🎨 Formatting code..."
-	black osiris/ tests/
-	isort osiris/ tests/
+fmt: ## Auto-format code with Black, isort, and Ruff
+	@echo "🎨 Auto-formatting code..."
+	black --line-length=120 .
+	isort --profile=black --line-length=120 .
+	ruff check --fix --unsafe-fixes .
 	@echo "✅ Code formatted!"
 
-format-check: ## Check if code formatting is correct
-	@echo "🔍 Checking code formatting..."
-	black --check osiris/ tests/
-	isort --check-only osiris/ tests/
+lint: ## Run all linting checks (strict, no auto-fix)
+	@echo "🔍 Running strict linting checks..."
+	ruff check .
+	black --check --line-length=120 .
+	isort --check-only --profile=black --line-length=120 .
+
+security: ## Run Bandit security checks
+	@echo "🛡️  Running security checks..."
+	bandit -r osiris -c bandit.yaml -q
+
+precommit: ## Install and run pre-commit hooks
+	@echo "🔧 Setting up and running pre-commit hooks..."
+	pre-commit install
+	pre-commit autoupdate
+	pre-commit run --all-files
 
 type-check: ## Run type checking with mypy (disabled for MVP)
 	@echo "🔍 MyPy type checking disabled for MVP"
@@ -160,9 +166,13 @@ type-check: ## Run type checking with mypy (disabled for MVP)
 	@echo "💡 Run 'mypy osiris/' manually if needed"
 	# mypy osiris/
 
-ruff-fix: ## Fix auto-fixable linting issues
-	@echo "🔧 Fixing linting issues..."
-	ruff check --fix osiris/ tests/
+commit-wip: ## Commit with WIP message, skipping slower checks
+	@echo "💾 Committing WIP changes..."
+	SKIP=ruff,bandit git commit -m "WIP: $${msg:-work in progress}"
+
+commit-emergency: ## Emergency commit, skip all checks (use sparingly!)
+	@echo "🚨 Emergency commit (skipping all checks)..."
+	git commit --no-verify -m "$${msg:-emergency fix}"
 
 quality: lint type-check ## Run all quality checks
 
@@ -222,6 +232,42 @@ demo-mysql-duckdb-supabase: ## Run MySQL → DuckDB → Supabase demo pipeline
 	@echo "▶️  Running compiled pipeline..."
 	cd testing_env && python ../osiris.py run --last-compile
 	@echo "✅ Demo complete! Check director_stats_demo table in Supabase"
+
+debug-mysql-duckdb-supabase: ## Debug MySQL → DuckDB → Supabase pipeline with CSV tee outputs
+	@echo "🐛 Running debug version with CSV tee outputs..."
+	@if [ ! -d "testing_env" ]; then \
+		echo "📁 Creating testing_env directory..."; \
+		mkdir -p testing_env; \
+	fi
+	@if [ ! -d "testing_env/debug_out" ]; then \
+		echo "📁 Creating debug_out directory..."; \
+		mkdir -p testing_env/debug_out; \
+	fi
+	@echo "📋 Compiling debug pipeline..."
+	cd testing_env && python ../osiris.py compile ../docs/examples/mysql_duckdb_supabase_debug.yaml
+	@echo "▶️  Running compiled debug pipeline..."
+	cd testing_env && python ../osiris.py run --last-compile
+	@echo "✅ Debug complete! Check CSV files in testing_env/debug_out/"
+	@echo "📊 CSV outputs:"
+	@ls -la testing_env/debug_out/*.csv 2>/dev/null || echo "No CSV files found"
+
+demo-mysql-duckdb-supabase-e2b: ## Run MySQL → DuckDB → Supabase demo in E2B sandbox
+	@echo "🚀 Running MySQL → DuckDB → Supabase demo in E2B..."
+	@if [ -z "$$E2B_API_KEY" ]; then \
+		echo "❌ E2B_API_KEY not set"; \
+		exit 1; \
+	fi
+	@if [ ! -d "testing_env" ]; then \
+		echo "📁 Creating testing_env directory..."; \
+		mkdir -p testing_env; \
+	fi
+	@echo "📋 Compiling pipeline..."
+	cd testing_env && python ../osiris.py compile ../docs/examples/mysql_duckdb_supabase_demo.yaml
+	@echo "☁️  Running compiled pipeline in E2B sandbox..."
+	cd testing_env && python ../osiris.py run --last-compile --e2b --verbose
+	@echo "✅ E2B demo complete!"
+	@echo "📊 Checking metrics..."
+	@cd testing_env && tail -5 logs/run_*/metrics.jsonl | grep rows || echo "No metrics found"
 
 # Development
 docs: ## Generate documentation (placeholder)
@@ -286,7 +332,7 @@ secrets-audit: ## Audit detected secrets interactively
 	@echo "🔍 Auditing secrets baseline..."
 	detect-secrets audit .secrets.baseline
 
-pre-commit: format lint type-check secrets-check test-fast ## Run pre-commit checks (format, lint, type-check, secrets, fast tests)
+pre-commit: fmt lint security test-fast ## Run pre-commit checks (format, lint, security, fast tests)
 	@echo "✅ Pre-commit checks complete!"
 
 ci: lint type-check secrets-check test test-coverage test-e2b-smoke ## Run full CI pipeline

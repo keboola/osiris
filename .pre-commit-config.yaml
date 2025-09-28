@@ -1,189 +1,30 @@
-# Pre-commit configuration for Osiris Pipeline
-# Runs automatic checks before each commit to ensure code quality and security
-#
-# Setup:
-#   pip install pre-commit
-#   pre-commit install
-#
-# Usage:
-#   pre-commit run --all-files  # Check all files
-#   pre-commit run              # Check staged files
-
 repos:
-  # Security & Secret Detection
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: https://github.com/psf/black
+    rev: 24.8.0
+    hooks:
+      - id: black
+        args: ["--line-length=120"]
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ["--profile=black", "--line-length=120"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.4
+    hooks:
+      - id: ruff
+        args: ["--fix", "--unsafe-fixes"]
+
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.5.0
     hooks:
       - id: detect-secrets
-        name: 🔐 Detect secrets
-        args: ['--baseline', '.secrets.baseline']
-        exclude: |
-          (?x)^(
-            .*/\.env\.dist$|
-            .*/\.env\.example$|
-            .*\.md$|
-            testing_env/\.env$|
-            docs/.*$
-          )$
-
-  # Python Code Quality
-  - repo: https://github.com/psf/black
-    rev: 25.1.0
-    hooks:
-      - id: black
-        name: 🎨 Format Python code
-        language_version: python3
-        exclude: |
-          (?x)^(
-            testing_env/.*$|
-            \.venv/.*$|
-            build/.*$|
-            dist/.*$
-          )$
-
-  - repo: https://github.com/pycqa/isort
-    rev: 6.0.1
-    hooks:
-      - id: isort
-        name: 📦 Sort Python imports
-        args: ["--profile", "black", "--line-length=100"]
-        exclude: |
-          (?x)^(
-            testing_env/.*$|
-            \.venv/.*$|
-            build/.*$|
-            dist/.*$
-          )$
-
-  - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: v0.12.11
-    hooks:
-      - id: ruff
-        name: ⚡ Lint Python code
-        args: [--fix, --exit-non-zero-on-fix]
-        exclude: |
-          (?x)^(
-            testing_env/.*$|
-            \.venv/.*$|
-            build/.*$|
-            dist/.*$
-          )$
-
-# MyPy disabled for MVP - too many type annotation issues
-# TODO: Re-enable after adding proper type annotations
-#  - repo: https://github.com/pre-commit/mirrors-mypy
-#    rev: v1.17.1
-#    hooks:
-#      - id: mypy
-#        name: 🔍 Type check Python
-#        additional_dependencies: [types-PyYAML, types-requests]
-#        exclude: |
-#          (?x)^(
-#            testing_env/.*$|
-#            tests/.*$|
-#            setup\.py$|
-#            \.venv/.*$|
-#            build/.*$|
-#            dist/.*$
-#          )$
-
-  # General File Quality
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
-    hooks:
-      - id: trailing-whitespace
-        name: ✂️  Trim trailing whitespace
-        exclude: |
-          (?x)^(
-            .*\.md$|
-            testing_env/.*$
-          )$
-
-      - id: end-of-file-fixer
-        name: 📄 Fix end of files
-        exclude: |
-          (?x)^(
-            testing_env/.*$|
-            \.venv/.*$
-          )$
-
-      - id: check-yaml
-        name: ✅ Check YAML syntax
-        exclude: |
-          (?x)^(
-            testing_env/.*\.yaml$|
-            testing_env/.*\.yml$
-          )$
-
-      - id: check-json
-        name: ✅ Check JSON syntax
-        exclude: testing_env/.*$
-
-      - id: check-toml
-        name: ✅ Check TOML syntax
-
-      - id: check-merge-conflict
-        name: 🔀 Check for merge conflicts
-
-      - id: check-case-conflict
-        name: 📁 Check for case conflicts
-
-      - id: check-added-large-files
-        name: 📏 Check for large files
-        args: ['--maxkb=1000']  # 1MB limit
-
-      - id: fix-byte-order-marker
-        name: 🔧 Fix byte order marker
-
-  # Security Checks
-  - repo: https://github.com/PyCQA/bandit
-    rev: 1.8.6
-    hooks:
-      - id: bandit
-        name: 🛡️  Security linting
-        args: ["-c", "pyproject.toml"]
-        additional_dependencies: ["bandit[toml]"]
-        exclude: |
-          (?x)^(
-            tests/.*$|
-            testing_env/.*$|
-            \.venv/.*$
-          )$
-
-  # Documentation
-  - repo: https://github.com/pre-commit/pygrep-hooks
-    rev: v1.10.0
-    hooks:
-      - id: python-no-log-warn
-        name: 📝 Check for deprecated logging
-      - id: python-no-eval
-        name: 🚫 Check for eval usage
-      - id: python-use-type-annotations
-        name: 🏷️  Check for type annotations
-        exclude: |
-          (?x)^(
-            tests/.*$|
-            testing_env/.*$|
-            setup\.py$
-          )$
-
-  # Dockerfile (if added later)
-  - repo: https://github.com/hadolint/hadolint
-    rev: v2.13.1-beta
-    hooks:
-      - id: hadolint-docker
-        name: 🐳 Lint Dockerfile
-        files: Dockerfile.*
-
-# CI Integration
-ci:
-  autofix_commit_msg: |
-    [pre-commit.ci] auto fixes from pre-commit hooks
-
-    for more information, see https://pre-commit.ci
-  autofix_prs: true
-  autoupdate_branch: ''
-  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
-  autoupdate_schedule: weekly
-  skip: [mypy]  # Skip mypy in CI (too slow)
-  submodules: false
+        args: ["--baseline", ".secrets.baseline"]
