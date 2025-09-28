@@ -1,0 +1,246 @@
+name: E2B Manual Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: 'Test suite to run'
+        required: true
+        default: 'smoke'
+        type: choice
+        options:
+          - smoke
+          - parity
+          - cleanup
+      preflight:
+        description: 'Preflight validation'
+        required: true
+        default: 'on'
+        type: choice
+        options:
+          - on
+          - off
+      verbose:
+        description: 'Enable verbose output'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  manual-e2b-test:
+    name: E2B Manual Test - ${{ github.event.inputs.suite }}
+    runs-on: ubuntu-latest
+
+    env:
+      E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+      E2B_LIVE_TESTS: "1"
+      MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+    steps:
+      - name: Validate inputs
+        run: |
+          echo "📋 Manual E2B Test Configuration"
+          echo "================================"
+          echo "Suite: ${{ github.event.inputs.suite }}"
+          echo "Preflight: ${{ github.event.inputs.preflight }}"
+          echo "Verbose: ${{ github.event.inputs.verbose }}"
+          echo "Runner: ${{ runner.os }}"
+          echo "Triggered by: ${{ github.actor }}"
+          echo ""
+
+          if [ -z "$E2B_API_KEY" ]; then
+            echo "⚠️  Warning: E2B_API_KEY not configured - tests will use mocked client"
+          else
+            echo "✅ E2B_API_KEY configured"
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Configure preflight bypass
+        if: github.event.inputs.preflight == 'off'
+        run: |
+          echo "🔧 Disabling preflight validation"
+          echo "OSIRIS_TEST_DISABLE_PREFLIGHT=1" >> $GITHUB_ENV
+
+      - name: Run smoke tests
+        if: github.event.inputs.suite == 'smoke'
+        run: |
+          echo "🔍 Running E2B smoke tests"
+          VERBOSE_FLAG=""
+          if [ "${{ github.event.inputs.verbose }}" == "true" ]; then
+            VERBOSE_FLAG="-vv"
+          fi
+
+          pytest tests/e2b/test_e2b_smoke.py -v $VERBOSE_FLAG -m "e2b_smoke" \
+            --junitxml=test-results-smoke.xml \
+            --html=test-report-smoke.html \
+            --self-contained-html || true
+
+          # Also run orphan detection test
+          echo ""
+          echo "🧹 Running orphan detection tests"
+          pytest tests/e2b/test_orphan_cleanup.py -v $VERBOSE_FLAG \
+            --junitxml=test-results-orphan.xml || true
+
+      - name: Run parity tests
+        if: github.event.inputs.suite == 'parity'
+        run: |
+          echo "⚖️  Running Local vs E2B parity tests"
+          VERBOSE_FLAG=""
+          if [ "${{ github.event.inputs.verbose }}" == "true" ]; then
+            VERBOSE_FLAG="-vv"
+          fi
+
+          pytest tests/parity/test_parity_e2b_vs_local.py -v $VERBOSE_FLAG -m "parity" \
+            --junitxml=test-results-parity.xml \
+            --html=test-report-parity.html \
+            --self-contained-html || true
+
+      - name: Run cleanup operations
+        if: github.event.inputs.suite == 'cleanup'
+        run: |
+          echo "🧹 Running E2B sandbox cleanup"
+          echo "Max age: 2 hours"
+          echo ""
+
+          # Run orphan detection first (dry run)
+          python -c "
+          import os
+          from datetime import datetime, timedelta
+
+          print(f'Checking for orphaned E2B sandboxes at {datetime.now()}')
+          print('This is a dry-run - no sandboxes will be deleted')
+          print('')
+
+          # In production, this would:
+          # 1. List all active sandboxes via E2B SDK
+          # 2. Filter sandboxes older than 2 hours
+          # 3. Delete orphaned sandboxes
+          # 4. Generate cleanup report
+
+          print('Cleanup check completed')
+          print('To implement actual cleanup, update this script with E2B SDK calls')
+          "
+
+          # Run cleanup tests
+          pytest tests/e2b/test_orphan_cleanup.py::TestCleanupUtility -v \
+            --junitxml=test-results-cleanup.xml || true
+
+      - name: Test secret redaction
+        if: always()
+        run: |
+          echo "🔐 Verifying secret redaction in logs"
+
+          # Create test file with potential secrets
+          echo "mysql://user:testpass123@host/db" > test_secrets.txt
+          echo "E2B_API_KEY=fake-key-12345" >> test_secrets.txt
+
+          # Run redaction test
+          python -c "
+          from osiris.core.secrets_masking import mask_secrets
+
+          with open('test_secrets.txt') as f:
+              content = f.read()
+
+          masked = mask_secrets(content)
+
+          assert 'testpass123' not in masked
+          assert 'fake-key-12345' not in masked
+          assert '***' in masked
+
+          print('✅ Secret redaction verified')
+          print(f'Original: {len(content)} chars')
+          print(f'Masked: {len(masked)} chars')
+          "
+
+          rm -f test_secrets.txt
+
+      - name: Collect artifacts
+        if: always()
+        run: |
+          echo "📦 Collecting test artifacts"
+
+          # Create artifacts directory
+          mkdir -p manual-run-artifacts
+
+          # Move test results
+          mv test-*.xml manual-run-artifacts/ 2>/dev/null || true
+          mv test-*.html manual-run-artifacts/ 2>/dev/null || true
+
+          # Collect logs if they exist
+          if [ -d "testing_env/logs" ]; then
+            echo "Found testing_env logs"
+            tar -czf manual-run-artifacts/testing-env-logs.tar.gz testing_env/logs/
+          fi
+
+          # Create run summary
+          cat > manual-run-artifacts/run-summary.txt << EOF
+          E2B Manual Test Run Summary
+          ==========================
+          Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          Suite: ${{ github.event.inputs.suite }}
+          Preflight: ${{ github.event.inputs.preflight }}
+          Verbose: ${{ github.event.inputs.verbose }}
+          Runner: ${{ runner.os }}
+          Triggered by: ${{ github.actor }}
+          Workflow: ${{ github.workflow }}
+          Run ID: ${{ github.run_id }}
+          EOF
+
+          echo ""
+          echo "Artifacts collected in manual-run-artifacts/"
+          ls -la manual-run-artifacts/
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2b-manual-${{ github.event.inputs.suite }}-${{ github.run_id }}
+          path: manual-run-artifacts/
+          retention-days: 7
+
+      - name: Upload coverage (if generated)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-manual-${{ github.run_id }}
+          path: |
+            .coverage
+            htmlcov/
+          retention-days: 3
+          if-no-files-found: ignore
+
+      - name: Report summary
+        if: always()
+        run: |
+          echo "## 📊 Test Run Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Suite | ${{ github.event.inputs.suite }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Preflight | ${{ github.event.inputs.preflight }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Verbose | ${{ github.event.inputs.verbose }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Run ID | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f "manual-run-artifacts/test-results-*.xml" ]; then
+            echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+            echo "Test results have been uploaded as artifacts" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "- Download artifacts from the workflow run page" >> $GITHUB_STEP_SUMMARY
+          echo "- Review HTML test reports for detailed results" >> $GITHUB_STEP_SUMMARY
+          echo "- Check logs for any secret leakage" >> $GITHUB_STEP_SUMMARY
