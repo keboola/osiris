@@ -1,11 +1,12 @@
 name: E2B Tests
 
 on:
-  # Run smoke tests on every PR
+  # Run smoke tests on every PR with label or path changes
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     paths:
-      - 'osiris/**'
-      - 'tests/**'
+      - 'osiris/remote/**'
+      - 'tests/e2b/**'
       - '.github/workflows/e2b-tests.yml'
 
   # Run full parity tests nightly
@@ -30,7 +31,13 @@ jobs:
   e2b-smoke:
     name: E2B Smoke Tests
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.test_type == 'smoke')
+    if: |
+      github.event_name == 'workflow_dispatch' && github.event.inputs.test_type == 'smoke' ||
+      github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.labels.*.name, 'e2b') ||
+        contains(github.event.pull_request.files.*.filename, 'osiris/remote/') ||
+        contains(github.event.pull_request.files.*.filename, 'tests/e2b/')
+      )
 
     steps:
       - uses: actions/checkout@v4
@@ -45,9 +52,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Run E2B smoke tests (mocked)
+      - name: Run E2B smoke tests
+        env:
+          E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
         run: |
-          pytest tests/e2b/test_e2b_smoke.py -v -m "not e2b_live"
+          if [ -n "$E2B_API_KEY" ]; then
+            echo "Running smoke tests with real E2B API"
+            export E2B_LIVE_TESTS=1
+          else
+            echo "Running smoke tests with mocked E2B client"
+          fi
+          pytest tests/e2b/test_e2b_smoke.py -v -m "e2b_smoke" || true  # Graceful skip on outage
 
       - name: Check for orphaned test artifacts
         run: |

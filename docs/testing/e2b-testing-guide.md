@@ -48,20 +48,37 @@ This guide covers the E2B (remote sandbox) testing infrastructure for Osiris Pip
   - Lifecycle tracking
   - Exception handling
 
+## Prerequisites and Secrets
+
+### Setup for Live Testing
+1. Create `testing_env/.env` with your API key:
+   ```bash
+   echo "E2B_API_KEY=your-api-key-here" > testing_env/.env
+   ```
+
+2. Enable live tests by exporting:
+   ```bash
+   export E2B_LIVE_TESTS=1
+   ```
+
 ## Running Tests
 
 ### Local Development
 
 ```bash
-# Run smoke tests (no API key needed)
+# Offline/mocked smoke tests (no API key needed)
 make test-e2b-smoke
 
-# Run live tests (requires E2B_API_KEY)
+# Live smoke tests (creates & tears down real sandbox)
 export E2B_API_KEY="your-api-key"
-make test-e2b-live
+export E2B_LIVE_TESTS=1
+make test-e2b-smoke
 
-# Run parity tests
+# Parity tests (preflight bypass ON by default)
 make test-e2b-parity
+
+# Enforce real preflight validation when cfg layout is ready
+OSIRIS_TEST_DISABLE_PREFLIGHT=0 pytest -m parity -vv
 
 # Check for orphaned sandboxes
 make test-e2b-orphans
@@ -76,13 +93,17 @@ make e2b-cleanup-force
 ### CI/CD Pipeline
 
 #### PR Checks (Automatic)
-- Smoke tests with mocked E2B client
+- **Trigger**: Label `e2b` or changes under `osiris/remote/**` or `tests/e2b/**`
+- **Behavior**: Uses repository secret `E2B_API_KEY` if present; otherwise skips gracefully
+- Smoke tests with optional real E2B client
 - Secret redaction verification
-- No API keys required
+- No failures if API key missing or E2B service outage
 
 #### Nightly Tests (Scheduled)
-- Full parity testing
-- Live E2B execution
+- Full parity testing between local and E2B execution
+- Uploads artifacts (diffs/logs) for analysis
+- Fails on real parity regressions
+- Live E2B execution when secrets available
 - Orphan detection and cleanup
 - Requires secrets in GitHub Actions
 
@@ -257,6 +278,33 @@ def test_new_parity_check(parity_pipeline):
 - Execution duration comparison
 - Orphan sandbox count
 - Secret leak detection rate
+
+## Frequently Seen Errors & Remediation
+
+### Common Test Failures
+
+1. **"No sandbox created" or "E2B_API_KEY not set"**
+   - **Cause**: Missing API key
+   - **Fix**: Export `E2B_API_KEY` or add to `testing_env/.env`
+   - **CI Fix**: Add secret to GitHub repository settings
+
+2. **"LocalAdapter preflight validation failed"**
+   - **Cause**: Missing cfg files in expected locations
+   - **Fix**: Keep `OSIRIS_TEST_DISABLE_PREFLIGHT=1` (default) until cfg layout is ready
+   - **Future**: Remove bypass once proper cfg materialization is implemented
+
+3. **"Secret leaked in logs"**
+   - **Cause**: Unredacted credentials in output
+   - **Fix**: Check `_redact_connection_string()` in secrets masking
+   - **Prevention**: Use `# pragma: allowlist secret` for test-only credentials
+
+4. **"ExecutionContext() got unexpected keyword argument 'logs_dir'"**
+   - **Cause**: Version mismatch in ExecutionContext API
+   - **Fix**: Use `make_execution_context()` helper from conftest.py
+
+5. **"Driver 'duckdb_processor' not registered"**
+   - **Cause**: Missing mock driver for testing
+   - **Fix**: Ensure `components/duckdb.processor/spec.yaml` exists
 
 ## Troubleshooting
 
