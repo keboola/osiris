@@ -6,6 +6,36 @@ This guide covers the E2B (remote sandbox) testing infrastructure for Osiris Pip
 
 > **Note**: E2B CI is temporarily disabled on PRs. Use 'Run workflow' (workflow_dispatch) to execute live test suites manually.
 
+## Manual Test Runs via GitHub Actions
+
+You can manually trigger E2B tests through the GitHub Actions UI:
+
+1. **Navigate to Actions**: Go to the [Actions tab](https://github.com/keboola/osiris/actions) in the repository
+2. **Select "E2B Manual Run"**: Find the workflow in the left sidebar
+3. **Click "Run workflow"**: Configure your test run with:
+   - **Suite**: Choose `smoke`, `parity`, or `cleanup`
+   - **Preflight**: Toggle preflight validation `on` or `off`
+   - **Verbose**: Enable detailed output for debugging
+4. **Monitor execution**: Tests typically complete in 3-10 minutes
+5. **Download artifacts**: Results are available as workflow artifacts for 7 days
+
+### Expected Runtime
+- **Smoke tests**: 2-3 minutes
+- **Parity tests**: 5-8 minutes
+- **Cleanup operations**: 1-2 minutes
+
+### Artifacts Generated
+- `test-results-*.xml`: JUnit XML test results
+- `test-report-*.html`: Self-contained HTML reports with detailed results
+- `testing-env-logs.tar.gz`: Complete execution logs (if available)
+- `run-summary.txt`: Metadata about the test run
+
+### Security Guarantees
+- All secrets are automatically redacted from logs using `***`
+- Connection strings are masked (e.g., `mysql://***@host/db`)
+- Test artifacts are scanned for accidental secret exposure
+- Workflow requires repository secrets for live execution
+
 ## Test Categories
 
 ### 1. Smoke Tests (`test_e2b_smoke.py`)

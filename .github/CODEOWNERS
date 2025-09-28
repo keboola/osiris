@@ -1,0 +1,38 @@
+# CODEOWNERS for Osiris Pipeline
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything in the repo
+* @keboola/osiris-maintainers
+
+# E2B and remote execution infrastructure
+/osiris/remote/ @keboola/runtime-team @keboola/remote-owners
+/tests/e2b/ @keboola/runtime-team @keboola/remote-owners
+/.github/workflows/e2b-*.yml @keboola/runtime-team @keboola/remote-owners
+/docs/testing/e2b-*.md @keboola/runtime-team @keboola/remote-owners
+
+# Core pipeline components
+/osiris/core/ @keboola/core-team
+/osiris/cli/ @keboola/core-team
+
+# Database connectors
+/osiris/connectors/ @keboola/connectors-team
+
+# Driver implementations
+/osiris/drivers/ @keboola/runtime-team
+
+# Component specifications
+/components/ @keboola/components-team
+
+# Documentation
+/docs/ @keboola/documentation-team
+/README.md @keboola/documentation-team
+
+# CI/CD and workflows (except E2B)
+/.github/workflows/ @keboola/devops-team
+/.github/actions/ @keboola/devops-team
+
+# Configuration and project files
+/pyproject.toml @keboola/core-team
+/requirements*.txt @keboola/core-team
+/Makefile @keboola/core-team
+/.pre-commit-config.yaml @keboola/devops-team
