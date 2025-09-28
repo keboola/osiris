@@ -1,8 +1,8 @@
-# DuckDB Processor Component Specification (Mock for Testing)
+# DuckDB Processor Component Specification
 name: duckdb.processor
 version: 1.0.0
-title: DuckDB Processor (Mock)
-description: Mock DuckDB processor for testing parity between local and E2B execution
+title: DuckDB Processor
+description: DuckDB processor for SQL transformations on in-memory DataFrames
 
 modes:
   - transform
@@ -74,4 +74,4 @@ limits:
   maxDurationSeconds: 60
 
 x-runtime:
-  driver: tests.mocks.duckdb_processor_driver.DuckDBProcessorDriver
+  driver: osiris.drivers.duckdb_processor_driver.DuckDBProcessorDriver

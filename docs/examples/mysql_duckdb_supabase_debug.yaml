@@ -1,20 +1,20 @@
-# MySQL → DuckDB → Supabase Demo Pipeline
+# MySQL → DuckDB → Supabase Debug Pipeline with CSV Tee Outputs
 #
-# This example demonstrates:
-# 1. Extracting movie data from MySQL
-# 2. Computing director statistics using DuckDB transformation
-# 3. Writing aggregated results to Supabase
+# This is a debug version of the demo pipeline that writes CSV files
+# at critical boundaries to help diagnose data flow issues.
 #
 # To run locally:
 #   cd testing_env
-#   python ../osiris.py compile ../docs/examples/mysql_duckdb_supabase_demo.yaml
+#   python ../osiris.py compile ../docs/examples/mysql_duckdb_supabase_debug.yaml
 #   python ../osiris.py run --last-compile
 #
+# CSV outputs will be in testing_env/debug_out/
+#
 # Or use make target:
-#   make demo-mysql-duckdb-supabase
+#   make debug-mysql-duckdb-supabase
 
 oml_version: "0.1.0"
-name: mysql-duckdb-supabase-demo
+name: mysql-duckdb-supabase-debug
 
 steps:
 # Step 1: Extract movies data from MySQL
@@ -38,6 +38,18 @@ steps:
       FROM movies m
       JOIN directors d ON m.director_id = d.director_id
       WHERE m.director_id IS NOT NULL
+
+# Step 1a: DEBUG - Write MySQL extract to CSV
+- id: debug-mysql-extract
+  component: filesystem.csv_writer
+  mode: write
+  needs: [ "extract-movies" ]
+  config:
+    path: "./debug_out/mysql_extract.csv"
+    encoding: "utf-8"
+    newline: "lf"
+    delimiter: ","
+    quotechar: '"'
 
 # Step 2: Compute director statistics using DuckDB
 - id: compute-director-stats
@@ -66,6 +78,18 @@ steps:
       HAVING COUNT(*) >= 1
       ORDER BY total_box_office_usd DESC
 
+# Step 2a: DEBUG - Write DuckDB output to CSV
+- id: debug-duckdb-output
+  component: filesystem.csv_writer
+  mode: write
+  needs: [ "compute-director-stats" ]
+  config:
+    path: "./debug_out/duckdb_output.csv"
+    encoding: "utf-8"
+    newline: "lf"
+    delimiter: ","
+    quotechar: '"'
+
 # Step 3: Write results to Supabase
 - id: write-director-stats
   component: supabase.writer
@@ -73,7 +97,19 @@ steps:
   needs: [ "compute-director-stats" ]
   config:
     connection: "@supabase.main"
-    table: "director_stats_replace"
+    table: "director_stats_replace" # Different table name for debug
     create_if_missing: true
     write_mode: "replace" # Replace entire table for demo
     primary_key: [ "director_id" ]
+
+# Step 3a: DEBUG - Also write final output to CSV for comparison
+- id: debug-final-output
+  component: filesystem.csv_writer
+  mode: write
+  needs: [ "compute-director-stats" ]
+  config:
+    path: "./debug_out/final_output_to_supabase.csv"
+    encoding: "utf-8"
+    newline: "lf"
+    delimiter: ","
+    quotechar: '"'

@@ -12,6 +12,7 @@ testing_env/tests/*
 docs/m1c-tmp-gpt.md
 testing_env/aiop*
 testing_env/.aiop-annex/*
+testing_env/debug_out/*
 
 # ChatGPT mempack
 mempack.txt

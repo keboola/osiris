@@ -230,3 +230,185 @@ graph TD
 - Research document: `docs/research/duckdb-e2b-readiness.md` (this file)
 - Sanity check script: `scripts/diagnostics/duckdb_sanity.py`
 - Test checklist: `tests/todo/duckdb-e2b-checklist.md`
+
+---
+
+## Diagnosis: Supabase 0 Rows Issue (2025-01-28)
+
+### Problem
+Pipeline reports successful execution with metrics showing 14 rows processed at each step, but Supabase table contains 0 rows.
+
+### Investigation Results
+From analysis of logs and code:
+
+1. **Metrics Confirm Data Flow**:
+   - MySQL extraction: 14 rows read
+   - DuckDB transformation: 14 rows written
+   - Supabase writer: 14 rows written
+   - All steps report success with no errors
+
+2. **Potential Root Causes**:
+   - **`write_mode: "replace"`** behavior in Supabase writer driver (lines 269-274)
+     - Deletes all existing rows with `.delete().neq("id", "0").execute()`
+     - Then inserts new data in batches
+     - Possible timing issue or separate transaction contexts
+
+   - **Transaction Handling**:
+     - No explicit commit visible in Supabase writer
+     - Supabase client may auto-commit or require explicit transaction management
+     - Possible race condition between delete and insert operations
+
+   - **Batch Processing**:
+     - Writer processes in batches (100 rows default)
+     - First batch triggers delete (for replace mode)
+     - Possible issue with batch sequencing or partial commits
+
+### Debug Strategy Implemented
+Created `mysql_duckdb_supabase_debug.yaml` with CSV "tee" outputs at three critical points:
+1. After MySQL extraction → `debug_out/mysql_extract.csv`
+2. After DuckDB transformation → `debug_out/duckdb_output.csv`
+3. Before Supabase write → `debug_out/final_output_to_supabase.csv`
+
+### Debug Artifacts Created
+- **OML Pipeline**: `docs/examples/mysql_duckdb_supabase_debug.yaml`
+- **Makefile Target**: `make debug-mysql-duckdb-supabase`
+- **Debug Runbook**: `docs/examples/DEBUG_RUNBOOK.md`
+
+### Recommended Actions
+1. Run debug pipeline to capture CSV outputs and verify data at each boundary
+2. Test with `write_mode: "append"` instead of `"replace"` to isolate deletion issue
+3. Add explicit transaction logging to Supabase writer for visibility
+4. Check Supabase dashboard logs for API operations and timing
+5. Consider adding a small delay between delete and insert operations
+6. Verify table constraints and data type compatibility in Supabase
+
+---
+
+## E2B Enablement - Driver Registration & Smoke (2025-01-28)
+
+### Changes Implemented
+
+#### 1. ProxyWorker Registration
+**File**: `osiris/remote/proxy_worker.py`
+**Lines**: 693-702
+**Change**: Added DuckDB driver registration in `_register_drivers()`:
+```python
+# Import and register DuckDB processor
+try:
+    from osiris.drivers.duckdb_processor_driver import DuckDBProcessorDriver
+    self.driver_registry.register("duckdb.processor", lambda: DuckDBProcessorDriver())
+    self.logger.info("Registered driver: duckdb.processor")
+    self.send_event("driver_registered", driver="duckdb.processor", status="success")
+except ImportError as e:
+    self.logger.warning(f"Failed to import DuckDBProcessorDriver: {e}")
+    self.send_event("driver_registration_failed", driver="duckdb.processor", error=str(e))
+```
+
+#### 2. E2B Make Target
+**File**: `Makefile`
+**Lines**: 244-260
+**Target**: `demo-mysql-duckdb-supabase-e2b`
+- Compiles the demo pipeline
+- Runs in E2B sandbox with verbose output
+- Shows metrics for verification
+
+#### 3. E2B Smoke Test
+**File**: `tests/e2b/test_duckdb_pipeline_e2b.py`
+**Tests**:
+- `test_duckdb_pipeline_e2b`: Verifies pipeline runs in E2B with non-zero rows
+- `test_duckdb_driver_registered_e2b`: Confirms DuckDB driver registration
+
+### Running in E2B
+
+```bash
+# Using make target
+make demo-mysql-duckdb-supabase-e2b
+
+# Manual execution
+cd testing_env
+python ../osiris.py compile ../docs/examples/mysql_duckdb_supabase_demo.yaml
+python ../osiris.py run --last-compile --e2b --verbose
+```
+
+### Expected Output
+- ProxyWorker logs: "Registered driver: duckdb.processor"
+- MySQL extraction: 14 rows read
+- DuckDB transformation: 10 rows written
+- Supabase write: 10 rows persisted
+
+### Verification
+The E2B execution should now have full parity with local execution for MySQL → DuckDB → Supabase pipelines.
+
+---
+
+## E2B Parity Fixes - Dependency & IO Management (2025-01-28)
+
+### Issues Identified
+1. **DuckDB receives None input** - Input binding broken between steps in E2B
+2. **psycopg2-binary missing** - Required for Supabase DDL but not installed
+3. **Static dependency list** - Not using project requirements.txt
+
+### Fixes Implemented
+
+#### 1. Fixed DuckDB Input Binding
+**File**: `osiris/remote/e2b_transparent_proxy.py`
+**Lines**: 887-895
+**Change**: Use `needs` dependencies to determine inputs for all step types
+```python
+# Determine inputs based on needs dependencies
+inputs = {}
+needs = step.get("needs", [])
+
+if needs:
+    # This step needs inputs from upstream steps
+    from_step = needs[0]
+    inputs = {"df": {"from_step": from_step, "key": "df"}}
+```
+
+#### 2. Requirements.txt Upload
+**File**: `osiris/remote/e2b_transparent_proxy.py`
+**Lines**: 565-578
+**Change**: Upload requirements.txt when `--e2b-install-deps` is used
+```python
+if self.config.get("install_deps", False):
+    requirements_path = Path(__file__).parent.parent.parent / "requirements.txt"
+    if requirements_path.exists():
+        await self.sandbox.files.write(
+            f"/home/user/session/{self.session_id}/requirements_e2b.txt",
+            requirements_content
+        )
+```
+
+#### 3. Added psycopg2-binary to Dependencies
+**File**: `osiris/remote/proxy_worker.py`
+**Line**: 748
+**Change**: Added psycopg2-binary to Supabase writer dependencies
+```python
+"supabase.writer": ["supabase", "pandas", "psycopg2-binary"]
+```
+
+### E2B Doctor Tool
+**File**: `scripts/e2b_doctor.py`
+- Checks Python version
+- Verifies key packages (duckdb, pandas, pymysql, sqlalchemy, supabase, psycopg2)
+- Runs DuckDB sanity tests
+- Shows installed packages
+
+### Running E2B with Fixes
+```bash
+# Compile pipeline
+cd testing_env
+python ../osiris.py compile ../docs/examples/mysql_duckdb_supabase_demo.yaml
+
+# Run with dependency installation
+python ../osiris.py run --last-compile --e2b --e2b-install-deps
+
+# Run E2B doctor (inside sandbox)
+python scripts/e2b_doctor.py
+```
+
+### Expected Behavior
+- Dependencies installed from requirements.txt
+- DuckDB receives DataFrame input from MySQL extractor
+- Supabase DDL works with psycopg2-binary installed
+- Pipeline completes successfully end-to-end

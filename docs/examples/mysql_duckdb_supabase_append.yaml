@@ -1,20 +1,15 @@
-# MySQL → DuckDB → Supabase Demo Pipeline
+# MySQL → DuckDB → Supabase Demo Pipeline (Append Mode)
 #
-# This example demonstrates:
-# 1. Extracting movie data from MySQL
-# 2. Computing director statistics using DuckDB transformation
-# 3. Writing aggregated results to Supabase
+# This version uses write_mode: "append" instead of "replace"
+# to test if the issue is with the replace mode deleting data
 #
 # To run locally:
 #   cd testing_env
-#   python ../osiris.py compile ../docs/examples/mysql_duckdb_supabase_demo.yaml
+#   python ../osiris.py compile ../docs/examples/mysql_duckdb_supabase_append.yaml
 #   python ../osiris.py run --last-compile
-#
-# Or use make target:
-#   make demo-mysql-duckdb-supabase
 
 oml_version: "0.1.0"
-name: mysql-duckdb-supabase-demo
+name: mysql-duckdb-supabase-append
 
 steps:
 # Step 1: Extract movies data from MySQL
@@ -66,14 +61,14 @@ steps:
       HAVING COUNT(*) >= 1
       ORDER BY total_box_office_usd DESC
 
-# Step 3: Write results to Supabase
+# Step 3: Write results to Supabase (APPEND mode)
 - id: write-director-stats
   component: supabase.writer
   mode: write
   needs: [ "compute-director-stats" ]
   config:
     connection: "@supabase.main"
-    table: "director_stats_replace"
+    table: "director_stats_append" # Different table name
     create_if_missing: true
-    write_mode: "replace" # Replace entire table for demo
+    write_mode: "append" # Changed from "replace" to "append"
     primary_key: [ "director_id" ]

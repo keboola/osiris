@@ -55,11 +55,22 @@ python ../osiris.py run --last-compile
 - Computes statistics per director (movie count, avg runtime, total box office, ROI)
 - Creates/updates `director_stats_demo` table in Supabase with aggregated results
 
+**Running in E2B Sandbox**:
+```bash
+# Requires E2B_API_KEY environment variable
+make demo-mysql-duckdb-supabase-e2b
+
+# Or manually
+cd testing_env
+python ../osiris.py compile ../docs/examples/mysql_duckdb_supabase_demo.yaml
+python ../osiris.py run --last-compile --e2b --verbose
+```
+
 **Troubleshooting**:
 - **Missing connections**: Ensure `osiris_connections.yaml` exists with MySQL and Supabase configs
 - **Authentication errors**: Check `MYSQL_PASSWORD` and `SUPABASE_SERVICE_ROLE_KEY` environment variables
 - **Table exists error**: The pipeline uses `write_mode: replace` to overwrite existing data
-- **DuckDB not found**: The mock driver should be registered; for E2B, see research/duckdb-e2b-readiness.md
+- **DuckDB not found**: The driver is now registered in both local and E2B execution paths
 
 ### AIOP Examples
 
