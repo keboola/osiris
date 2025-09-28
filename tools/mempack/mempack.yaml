@@ -33,6 +33,12 @@ include:
 - docs/examples/aiop-*.json
 - docs/examples/run-card-sample.md
 
+# E2B docs + CI skripty
+- docs/testing/e2b-testing-guide.md
+- .github/workflows/e2b-tests.yml
+- .github/workflows/e2b-manual.yml
+- .github/scripts/verify_redaction.py
+
 # Test coverage research (exclude HTML)
 - docs/testing/research/coverage-*/README.md
 - docs/testing/research/coverage-*/coverage.md
@@ -304,4 +310,25 @@ commands:
   with_cmd: true
   shell: bash
   timeout: 45s
+  on_error: keep
+
+- output_path: tools/mempack/gen/tests-e2b-inventory.txt
+  run: |
+    source .venv/bin/activate
+    pytest --collect-only -q -m e2b_smoke > ../tools/mempack/gen/tests-e2b-inventory.txt || true
+    echo "" >> ../tools/mempack/gen/tests-e2b-inventory.txt
+    echo "---- PARITY ----" >> ../tools/mempack/gen/tests-e2b-inventory.txt
+    pytest --collect-only -q -m parity >> ../tools/mempack/gen/tests-e2b-inventory.txt || true
+  with_cmd: true
+  shell: bash
+  timeout: 30s
+  on_error: keep
+
+- output_path: tools/mempack/gen/pytest-markers.txt
+  run: |
+    source .venv/bin/activate
+    pytest --markers > ../tools/mempack/gen/pytest-markers.txt || true
+  with_cmd: true
+  shell: bash
+  timeout: 15s
   on_error: keep
