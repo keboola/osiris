@@ -1,15 +1,18 @@
 """Supabase writer driver for runtime execution."""
 
-import logging
-import random
-import time
 from datetime import date, datetime
 from decimal import Decimal
+import logging
 from pathlib import Path
+import random
+import socket
+import time
 from typing import Any
+from urllib.parse import urlparse
 
 import numpy as np
 import pandas as pd
+import requests
 
 from ..connectors.supabase.client import SupabaseClient
 from ..core.driver import Driver
@@ -97,6 +100,7 @@ class SupabaseWriterDriver(Driver):
             "timeout",
             "retries",
             "prefer",
+            "ddl_channel",
         }
 
         unknown_keys = set(config.keys()) - known_keys
@@ -127,8 +131,8 @@ class SupabaseWriterDriver(Driver):
 
         # Get primary key for upsert
         primary_key = config.get("primary_key")
-        if write_mode == "upsert" and not primary_key:
-            raise ValueError(f"Step {step_id}: 'primary_key' is required when mode is 'upsert'")
+        if write_mode in {"upsert", "replace"} and not primary_key:
+            raise ValueError(f"Step {step_id}: 'primary_key' is required when mode is '{write_mode}'")
 
         # Normalize primary_key to list
         if primary_key and not isinstance(primary_key, list):
@@ -140,6 +144,11 @@ class SupabaseWriterDriver(Driver):
         create_if_missing = config.get("create_if_missing", False)
         timeout = config.get("timeout", 30)
         retries = config.get("retries", 3)
+        ddl_channel = config.get("ddl_channel", "auto").lower()
+        if ddl_channel not in {"auto", "http_sql", "psycopg2"}:
+            raise ValueError(
+                f"Step {step_id}: Invalid ddl_channel '{ddl_channel}'. Expected auto, http_sql, or psycopg2"
+            )
 
         # Log operation start
         if ctx:
@@ -164,86 +173,40 @@ class SupabaseWriterDriver(Driver):
             output_dir = Path(f"logs/run_{int(datetime.now().timestamp() * 1000)}/artifacts/{step_id}")
             output_dir.mkdir(parents=True, exist_ok=True)
 
+        effective_mode = "upsert" if write_mode == "replace" else write_mode
+        primary_key_values = self._collect_primary_key_values(df, primary_key) if primary_key else []
+
         try:
             # Initialize Supabase client
             client_config = {**connection_config, "timeout": timeout}
             supabase_client = SupabaseClient(client_config)
 
             with supabase_client as client:
-                # Pre-flight check: verify table exists
-                try:
-                    # Try to fetch 0 rows to check table existence
-                    client.table(table_name).select("*").limit(0).execute()
-                except Exception as e:
-                    if create_if_missing:
-                        # Generate CREATE TABLE SQL
-                        create_sql = self._generate_create_table_sql(df, table_name, schema, primary_key)
+                table_exists = self._table_exists(client, table_name)
+                if not table_exists:
+                    if not create_if_missing:
+                        raise RuntimeError(f"Table {table_name} does not exist and create_if_missing is false")
 
-                        # Save DDL plan as artifact
-                        if output_dir:
-                            ddl_path = output_dir / "ddl_plan.sql"
-                            with open(ddl_path, "w") as f:
-                                f.write(create_sql)
-                            logger.info(f"DDL plan saved to: {ddl_path}")
+                    create_sql = self._generate_create_table_sql(df, table_name, schema, primary_key)
+                    ddl_path = None
+                    if output_dir:
+                        ddl_path = output_dir / "ddl_plan.sql"
+                        with open(ddl_path, "w", encoding="utf-8") as f:
+                            f.write(create_sql)
+                        logger.info(f"DDL plan saved to: {ddl_path}")
 
-                        # Check if we have a SQL channel (DSN or SQL client)
-                        has_sql_channel = self._has_sql_channel(connection_config)
+                    self._ensure_table_exists(
+                        step_id=step_id,
+                        connection_config=connection_config,
+                        ddl_sql=create_sql,
+                        schema=schema,
+                        table_name=table_name,
+                        ddl_channel=ddl_channel,
+                        ddl_plan_path=ddl_path,
+                    )
 
-                        if has_sql_channel:
-                            # Execute DDL via SQL channel
-                            try:
-                                self._execute_ddl(connection_config, create_sql, schema, table_name)
-                                logger.info(f"Successfully created table {schema}.{table_name}")
-                                log_event(
-                                    "table.ddl_executed",
-                                    step_id=step_id,
-                                    table=table_name,
-                                    schema=schema,
-                                    ddl_path=str(ddl_path) if output_dir else None,
-                                    executed=True,
-                                )
-                                # Wait for PostgREST schema cache to refresh
-                                import time
-
-                                logger.info("Waiting 3s for PostgREST schema cache refresh...")
-                                time.sleep(3)
-                            except Exception as ddl_error:
-                                logger.error(f"Failed to execute DDL: {str(ddl_error)}")
-                                log_event(
-                                    "table.ddl_failed",
-                                    step_id=step_id,
-                                    table=table_name,
-                                    error=str(ddl_error),
-                                )
-                                # Check if it's a network connectivity issue (IPv6 in E2B)
-                                error_str = str(ddl_error).lower()
-                                if "network is unreachable" in error_str or "2a05:d016" in error_str:
-                                    logger.warning(
-                                        "Network connectivity issue detected (likely IPv6 in E2B). "
-                                        "Proceeding without table creation - table must exist already."
-                                    )
-                                    # Don't raise, just continue - assume table exists
-                                else:
-                                    raise RuntimeError(f"Table creation failed: {str(ddl_error)}") from ddl_error
-                        else:
-                            # No SQL channel available, only log the plan
-                            logger.warning(
-                                f"Table {table_name} does not exist. DDL plan saved but not executed (no SQL channel). "
-                                f"Please create the table manually:\n{create_sql}"
-                            )
-                            log_event(
-                                "table.ddl_planned",
-                                step_id=step_id,
-                                table=table_name,
-                                schema=schema,
-                                ddl_path=str(ddl_path) if output_dir else None,
-                                executed=False,
-                                reason="No SQL channel available",
-                            )
-                            # Continue with write attempt (may fail)
-                            pass
-                    else:
-                        raise RuntimeError(f"Table {table_name} does not exist: {str(e)}") from e
+                    logger.info("Waiting 3s for PostgREST schema cache refresh...")
+                    time.sleep(3)
 
                 # Convert DataFrame to records
                 records = self._prepare_records(df)
@@ -255,38 +218,16 @@ class SupabaseWriterDriver(Driver):
                     try:
                         # Wrap Supabase operations in retry logic
                         def write_batch(batch_data=batch, batch_idx=i):
-                            if write_mode == "insert":
+                            if effective_mode == "insert":
                                 return client.table(table_name).insert(batch_data).execute()
-                            elif write_mode == "upsert":
+                            elif effective_mode == "upsert":
                                 return (
                                     client.table(table_name)
                                     .upsert(batch_data, on_conflict=",".join(primary_key))
                                     .execute()
                                 )
-                            elif write_mode == "replace":
-                                # Replace mode: delete all then insert
-                                if batch_idx == 0:  # Only delete on first batch
-                                    # Supabase/PostgREST requires a WHERE clause for DELETE
-                                    # We need to delete all rows. The standard approach is to use
-                                    # a condition that matches everything.
-                                    pk_col = primary_key[0] if primary_key else "director_id"
-                                    try:
-                                        # Delete all rows by using >= with a very small number
-                                        # This should match all rows with numeric IDs
-                                        delete_result = client.table(table_name).delete().gte(pk_col, -999999).execute()
-                                        logger.debug(
-                                            f"Deleted {len(delete_result.data) if delete_result.data else 'all'} rows from {table_name}"
-                                        )
-                                    except Exception:
-                                        # If numeric comparison fails, try string comparison
-                                        try:
-                                            delete_result = client.table(table_name).delete().neq(pk_col, "").execute()
-                                            logger.debug(f"Deleted rows from {table_name} using string comparison")
-                                        except Exception as e2:
-                                            logger.warning(f"Could not delete existing rows: {e2}")
-                                return client.table(table_name).insert(batch_data).execute()
                             else:
-                                raise ValueError(f"Unsupported write mode: {write_mode}")
+                                raise ValueError(f"Unsupported write mode: {effective_mode}")
 
                         # Execute with retry
                         retry_with_backoff(write_batch, max_attempts=3)
@@ -308,15 +249,27 @@ class SupabaseWriterDriver(Driver):
                             # Simple retry logic (could be enhanced with backoff)
                             logger.info(f"Retrying batch {i // batch_size}...")
                             try:
-                                if write_mode == "insert":
+                                if effective_mode == "insert":
                                     client.table(table_name).insert(batch).execute()
-                                elif write_mode == "upsert":
+                                elif effective_mode == "upsert":
                                     client.table(table_name).upsert(batch, on_conflict=",".join(primary_key)).execute()
                                 rows_written += len(batch)
                             except Exception as retry_e:
                                 raise RuntimeError(f"Batch write failed after retry: {str(retry_e)}") from retry_e
                         else:
                             raise
+
+                if write_mode == "replace":
+                    self._perform_replace_cleanup(
+                        step_id=step_id,
+                        client=client,
+                        connection_config=connection_config,
+                        table_name=table_name,
+                        schema=schema,
+                        primary_key=primary_key,
+                        primary_key_values=primary_key_values,
+                        ddl_channel=ddl_channel,
+                    )
 
             # Calculate metrics
             duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
@@ -444,61 +397,404 @@ class SupabaseWriterDriver(Driver):
         std_params = ["host", "database", "user", "password"]
         return all(param in connection_config for param in std_params)
 
+    def _has_http_sql_channel(self, connection_config: dict[str, Any]) -> bool:
+        return any(k in connection_config for k in ["sql_url", "sql_endpoint"])
+
     def _execute_ddl(self, connection_config: dict[str, Any], ddl_sql: str, schema: str, table_name: str) -> None:
-        """Execute DDL statement via SQL channel if available.
+        self._execute_psycopg2_sql(connection_config, ddl_sql)
 
-        Args:
-            connection_config: Resolved connection configuration
-            ddl_sql: DDL statement to execute
-            schema: Schema name
-            table_name: Table name
+    def _execute_psycopg2_sql(self, connection_config: dict[str, Any], ddl_sql: str) -> None:
+        try:
+            import psycopg2
+        except ImportError as exc:  # pragma: no cover - dependency guard
+            raise RuntimeError(
+                "SQL channel available but psycopg2 not installed. Install with: pip install psycopg2-binary"
+            ) from exc
 
-        Raises:
-            RuntimeError: If DDL execution fails
-        """
-        # Try to get DSN - check multiple possible keys
+        conn = self._connect_psycopg2(connection_config)
+        if conn is None:
+            raise RuntimeError("SQL channel DDL execution not available. Provide pg_dsn or connection parameters.")
+
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(ddl_sql)
+            conn.commit()
+
+    def _table_exists(self, client, table_name: str) -> bool:
+        try:
+            client.table(table_name).select("count").limit(0).execute()
+            return True
+        except Exception:
+            return False
+
+    def _ensure_table_exists(
+        self,
+        *,
+        step_id: str,
+        connection_config: dict[str, Any],
+        ddl_sql: str,
+        schema: str,
+        table_name: str,
+        ddl_channel: str,
+        ddl_plan_path: Path | None,
+    ) -> None:
+        channels = [ddl_channel] if ddl_channel != "auto" else ["http_sql", "psycopg2"]
+        last_error: Exception | None = None
+
+        if ddl_plan_path:
+            log_event(
+                "table.ddl_planned",
+                step_id=step_id,
+                table=table_name,
+                schema=schema,
+                ddl_path=str(ddl_plan_path),
+                executed=False,
+            )
+
+        for channel in channels:
+            if channel == "http_sql" and not self._has_http_sql_channel(connection_config):
+                last_error = RuntimeError("HTTP SQL channel not configured")
+                continue
+            if channel == "psycopg2" and not self._has_sql_channel(connection_config):
+                last_error = RuntimeError("psycopg2 channel not configured")
+                continue
+
+            self._ddl_attempt(
+                step_id=step_id, table=table_name, schema=schema, operation="create_table", channel=channel
+            )
+
+            try:
+                if channel == "http_sql":
+                    self._execute_http_sql(connection_config, ddl_sql)
+                else:
+                    self._execute_psycopg2_sql(connection_config, ddl_sql)
+
+                self._ddl_success(
+                    step_id=step_id,
+                    table=table_name,
+                    schema=schema,
+                    operation="create_table",
+                    channel=channel,
+                    ddl_path=str(ddl_plan_path) if ddl_plan_path else None,
+                )
+                return
+            except Exception as exc:
+                last_error = exc
+                self._ddl_failed(
+                    step_id=step_id,
+                    table=table_name,
+                    schema=schema,
+                    operation="create_table",
+                    channel=channel,
+                    error=str(exc),
+                )
+                if ddl_channel == channel:
+                    raise
+
+        if last_error:
+            raise RuntimeError(f"Table creation failed: {last_error}") from last_error
+
+    def _execute_http_sql(self, connection_config: dict[str, Any], ddl_sql: str) -> None:
+        sql_url = connection_config.get("sql_url") or connection_config.get("sql_endpoint")
+        api_key = (
+            connection_config.get("service_role_key")
+            or connection_config.get("key")
+            or connection_config.get("anon_key")
+        )
+        if not sql_url or not api_key:
+            raise RuntimeError("HTTP SQL channel not configured (missing sql_url or key)")
+
+        headers = {
+            "apikey": api_key,
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {"query": ddl_sql}
+        response = requests.post(sql_url, json=payload, headers=headers, timeout=30)
+        if response.status_code >= 400:
+            raise RuntimeError(f"HTTP SQL request failed ({response.status_code}): {response.text}")
+
+    def _connect_psycopg2(self, connection_config: dict[str, Any]):
+        try:
+            import psycopg2
+        except ImportError as exc:  # pragma: no cover - dependency guard
+            raise RuntimeError("psycopg2 not installed") from exc
+
         dsn = connection_config.get("dsn") or connection_config.get("sql_dsn") or connection_config.get("pg_dsn")
 
-        # If no DSN, try to build one from separate params
-        if not dsn:
-            # Try pg_ prefixed params first
-            if all(k in connection_config for k in ["pg_host", "pg_database", "pg_user", "pg_password"]):
-                pg_port = connection_config.get("pg_port", 5432)
-                dsn = (
-                    f"postgresql://{connection_config['pg_user']}:{connection_config['pg_password']}"
-                    f"@{connection_config['pg_host']}:{pg_port}/{connection_config['pg_database']}"
-                )
-                logger.info(f"Built PostgreSQL DSN from pg_ parameters (host={connection_config['pg_host']})")
-            # Try standard params
-            elif all(k in connection_config for k in ["host", "database", "user", "password"]):
-                port = connection_config.get("port", 5432)
-                dsn = (
-                    f"postgresql://{connection_config['user']}:{connection_config['password']}"
-                    f"@{connection_config['host']}:{port}/{connection_config['database']}"
-                )
-                logger.info(f"Built PostgreSQL DSN from standard parameters (host={connection_config['host']})")
-
         if dsn:
+            parsed = urlparse(dsn)
+            host = parsed.hostname
+            port = parsed.port or 5432
+            user = parsed.username
+            password = parsed.password
+            dbname = parsed.path.lstrip("/")
+            ipv4 = self._resolve_ipv4(host, port) if host else None
+            sslmode = "require"
+            return psycopg2.connect(
+                host=ipv4 or host,
+                port=port,
+                user=user,
+                password=password,
+                dbname=dbname,
+                sslmode=sslmode,
+            )
+
+        # Build DSN from discrete parameters
+        host = connection_config.get("pg_host") or connection_config.get("host")
+        if not host:
+            return None
+
+        port = connection_config.get("pg_port") or connection_config.get("port") or 5432
+        user = connection_config.get("pg_user") or connection_config.get("user")
+        password = connection_config.get("pg_password") or connection_config.get("password")
+        database = connection_config.get("pg_database") or connection_config.get("database")
+        if not all([user, password, database]):
+            return None
+
+        ipv4 = self._resolve_ipv4(host, port)
+        try:
+            import psycopg2
+
+            return psycopg2.connect(
+                host=ipv4 or host,
+                port=port,
+                user=user,
+                password=password,
+                dbname=database,
+                sslmode="require",
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Failed to connect via psycopg2: {exc}") from exc
+
+    @staticmethod
+    def _resolve_ipv4(host: str | None, port: int) -> str | None:
+        if not host:
+            return None
+        try:
+            result = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
+            if result:
+                return result[0][4][0]
+        except socket.gaierror:
+            return None
+        return None
+
+    def _collect_primary_key_values(self, df: pd.DataFrame, primary_key: list[str]) -> list[tuple[Any, ...]]:
+        if not primary_key:
+            return []
+
+        pk_df = df[primary_key].drop_duplicates()
+        values: list[tuple[Any, ...]] = []
+        for _, row in pk_df.iterrows():
+            values.append(tuple(row[col] for col in primary_key))
+        return values
+
+    def _perform_replace_cleanup(
+        self,
+        *,
+        step_id: str,
+        client,
+        connection_config: dict[str, Any],
+        table_name: str,
+        schema: str,
+        primary_key: list[str] | None,
+        primary_key_values: list[tuple[Any, ...]],
+        ddl_channel: str,
+    ) -> None:
+        if not primary_key:
+            raise ValueError(f"Step {step_id}: 'primary_key' must be provided for replace mode")
+
+        if not primary_key_values:
+            # Delete all rows since new dataset is empty
+            if ddl_channel in {"auto", "http_sql"} and self._has_http_sql_channel(connection_config):
+                self._ddl_attempt(step_id, table_name, schema, "anti_delete", "http_sql")
+                try:
+                    self._delete_all_rows_http(client, table_name, primary_key[0])
+                    self._ddl_success(step_id, table_name, schema, "anti_delete", "http_sql")
+                    return
+                except Exception as exc:
+                    self._ddl_failed(step_id, table_name, schema, "anti_delete", "http_sql", str(exc))
+                    if ddl_channel == "http_sql":
+                        raise
+
+            self._ddl_attempt(step_id, table_name, schema, "anti_delete", "psycopg2")
+            self._delete_all_rows_psycopg2(connection_config, table_name, schema)
+            self._ddl_success(step_id, table_name, schema, "anti_delete", "psycopg2")
+            return
+
+        channels = [ddl_channel] if ddl_channel != "auto" else ["http_sql", "psycopg2"]
+        last_error: Exception | None = None
+
+        for channel in channels:
+            self._ddl_attempt(step_id, table_name, schema, "anti_delete", channel)
             try:
-                import psycopg2
+                if channel == "http_sql":
+                    if len(primary_key) > 1:
+                        raise RuntimeError("HTTP SQL anti-delete does not support composite primary keys")
+                    if not self._has_http_sql_channel(connection_config):
+                        raise RuntimeError("HTTP SQL channel not configured")
+                    flat_values = [value[0] for value in primary_key_values]
+                    self._delete_missing_rows_http(client, table_name, primary_key[0], flat_values)
+                else:
+                    self._delete_missing_rows_psycopg2(
+                        connection_config,
+                        table_name,
+                        schema,
+                        primary_key,
+                        primary_key_values,
+                    )
 
-                logger.info(f"SQL channel detected: psycopg2 (schema={schema}, table={table_name})")
-                with psycopg2.connect(dsn) as conn, conn.cursor() as cur:
-                    cur.execute(ddl_sql)
-                    conn.commit()
-                logger.info(f"Successfully executed DDL for {schema}.{table_name}")
+                self._ddl_success(step_id, table_name, schema, "anti_delete", channel)
                 return
-            except ImportError:
-                logger.warning("psycopg2 not installed, cannot execute DDL via DSN")
-                raise RuntimeError(
-                    "SQL channel available but psycopg2 not installed. " "Install with: pip install psycopg2-binary"
-                ) from None
-            except Exception as e:
-                logger.error(f"Failed to execute DDL: {str(e)}")
-                raise RuntimeError(f"DDL execution failed: {str(e)}") from e
+            except Exception as exc:
+                last_error = exc
+                self._ddl_failed(step_id, table_name, schema, "anti_delete", channel, str(exc))
+                if ddl_channel == channel:
+                    raise
 
-        # No SQL channel available - this is not an error, just log it
-        logger.info("SQL channel detected: none - DDL plan saved but not executed")
-        raise NotImplementedError(
-            "SQL channel DDL execution not available. " "Please create the table manually using the generated DDL plan."
+        if last_error:
+            raise RuntimeError(f"Replace cleanup failed: {last_error}") from last_error
+
+    def _delete_missing_rows_http(
+        self,
+        client,
+        table_name: str,
+        primary_key: str,
+        primary_key_values: list[Any],
+    ) -> None:
+        existing = client.table(table_name).select(primary_key).execute().data or []
+        existing_values = {row[primary_key] for row in existing if primary_key in row}
+        incoming_values = set(primary_key_values)
+        missing = existing_values - incoming_values
+
+        if not missing:
+            return
+
+        for chunk in self._chunk_list(list(missing), 100):
+            client.table(table_name).delete().in_(primary_key, chunk).execute()
+
+    def _delete_missing_rows_psycopg2(
+        self,
+        connection_config: dict[str, Any],
+        table_name: str,
+        schema: str,
+        primary_key: list[str],
+        primary_key_values: list[tuple[Any, ...]],
+    ) -> None:
+
+        conn = self._connect_psycopg2(connection_config)
+        if conn is None:
+            raise RuntimeError("psycopg2 channel not configured")
+
+        with conn:
+            with conn.cursor() as cur:
+                select_sql = f"SELECT {', '.join(primary_key)} FROM {schema}.{table_name}"
+                cur.execute(select_sql)
+                existing = cur.fetchall()
+
+                incoming_set = set(primary_key_values)
+                missing = [row for row in existing if row not in incoming_set]
+
+                if not missing:
+                    return
+
+                chunk_size = 100
+                for chunk in self._chunk_list(missing, chunk_size):
+                    conditions = []
+                    params: list[Any] = []
+                    for row in chunk:
+                        condition = " AND ".join([f"{col} = %s" for col in primary_key])
+                        conditions.append(f"({condition})")
+                        params.extend(row)
+
+                    delete_sql = f"DELETE FROM {schema}.{table_name} WHERE " + " OR ".join(conditions)
+                    cur.execute(delete_sql, params)
+
+            conn.commit()
+
+    def _delete_all_rows_http(self, client, table_name: str, primary_key: str) -> None:
+        try:
+            client.table(table_name).delete().neq(primary_key, None).execute()
+        except Exception:
+            # If primary key can be NULL, fall back to match all values
+            client.table(table_name).delete().execute()
+
+    def _delete_all_rows_psycopg2(self, connection_config: dict[str, Any], table_name: str, schema: str) -> None:
+
+        conn = self._connect_psycopg2(connection_config)
+        if conn is None:
+            raise RuntimeError("psycopg2 channel not configured")
+
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(f"DELETE FROM {schema}.{table_name}")
+            conn.commit()
+
+    @staticmethod
+    def _chunk_list(values: list[Any], size: int) -> list[list[Any]]:
+        return [values[i : i + size] for i in range(0, len(values), size)]
+
+    def _ddl_attempt(self, *, step_id: str, table: str, schema: str, operation: str, channel: str) -> None:
+        log_event(
+            "ddl_attempt",
+            step_id=step_id,
+            table=table,
+            schema=schema,
+            operation=operation,
+            channel=channel,
+        )
+
+    def _ddl_success(
+        self,
+        step_id: str,
+        table: str,
+        schema: str,
+        operation: str,
+        channel: str,
+        ddl_path: str | None = None,
+    ) -> None:
+        log_event(
+            "ddl_succeeded",
+            step_id=step_id,
+            table=table,
+            schema=schema,
+            operation=operation,
+            channel=channel,
+            ddl_path=ddl_path,
+        )
+        log_event(
+            "table.ddl_executed",
+            step_id=step_id,
+            table=table,
+            schema=schema,
+            channel=channel,
+            ddl_path=ddl_path,
+            executed=True,
+        )
+
+    def _ddl_failed(
+        self,
+        step_id: str,
+        table: str,
+        schema: str,
+        operation: str,
+        channel: str,
+        error: str,
+    ) -> None:
+        log_event(
+            "ddl_failed",
+            step_id=step_id,
+            table=table,
+            schema=schema,
+            operation=operation,
+            channel=channel,
+            error=error,
+        )
+        log_event(
+            "table.ddl_failed",
+            step_id=step_id,
+            table=table,
+            schema=schema,
+            channel=channel,
+            error=error,
         )

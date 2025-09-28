@@ -4,15 +4,26 @@ This worker receives commands via stdin, executes drivers directly,
 and streams results back via stdout.
 """
 
+from collections.abc import Iterable, Mapping
+import copy
+import importlib
 import json
 import logging
+import os
+from pathlib import Path
+import subprocess
 import sys
 import time
 import traceback
-from pathlib import Path
 from typing import Any
 
+try:  # Python 3.11+
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - optional for older runtimes
+    tomllib = None  # type: ignore[assignment]
+
 # Import core components
+from osiris.components.registry import ComponentRegistry
 from osiris.core.driver import DriverRegistry
 from osiris.core.execution_adapter import ExecutionContext
 from osiris.remote.rpc_protocol import (
@@ -47,6 +58,12 @@ class ProxyWorker:
         self.step_outputs = {}  # Cache outputs for downstream steps
         self.step_rows = {}  # Track rows per step for cleanup aggregation
         self.step_drivers = {}  # Track driver type per step
+        self.step_io: dict[str, dict[str, Any]] = {}
+        self.component_specs: dict[str, dict[str, Any]] = {}
+        self.component_secret_paths: dict[str, list[list[str]]] = {}
+        self.driver_summary = None
+        self.artifacts_root: Path | None = None
+        self.component_registry: ComponentRegistry | None = None
 
         # Set up stderr logging for debugging
         logging.basicConfig(
@@ -113,82 +130,113 @@ class ProxyWorker:
     def handle_prepare(self, cmd: PrepareCommand) -> PrepareResponse:
         """Initialize session and load drivers."""
         self.session_id = cmd.session_id
-        self.manifest = cmd.manifest
-        self.allow_install_deps = getattr(cmd, "install_deps", False)
-        self.execution_start = time.time()  # Track start time for status.json
+        self.manifest = cmd.manifest or {}
+        self.allow_install_deps = bool(getattr(cmd, "install_deps", False))
+        self.execution_start = time.time()
 
         # Use the mounted session directory directly (no nested run_id)
-        # E2B mounts host session dir to /home/user/session/<session_id>
         self.session_dir = Path(f"/home/user/session/{self.session_id}")
         self.session_dir.mkdir(parents=True, exist_ok=True)
 
-        # Write events and metrics directly to session root
+        # Prepare artifact layout and logging endpoints
+        self.artifacts_root = self.session_dir / "artifacts"
+        self.artifacts_root.mkdir(parents=True, exist_ok=True)
         self.events_file = self.session_dir / "events.jsonl"
         self.metrics_file = self.session_dir / "metrics.jsonl"
-
-        # Note: We don't use SessionContext here to avoid nested directories
-        # Instead we'll write events/metrics directly
-        self.session_context = None
-
-        # Initialize execution context
+        self.session_context = None  # Avoid nested directories in sandbox
         self.execution_context = ExecutionContext(session_id=self.session_id, base_path=self.session_dir)
 
-        # Run dependency preflight check
-        required_deps = self._get_required_dependencies()
-        if required_deps:
-            preflight_result = self._preflight_dependencies(required_deps)
+        # Load component specifications once per session
+        self.component_registry = ComponentRegistry()
+        self.component_specs = self.component_registry.load_specs()
+        self.component_secret_paths = self._build_secret_index(self.component_specs)
 
-            # Send dependency check event
-            self.send_event(
-                "dependency_check",
-                missing=preflight_result["missing"],
-                present=preflight_result["present"],
-            )
+        # Register drivers using ComponentRegistry as the single source of truth
+        self.driver_registry = DriverRegistry()
+        allowlist = self._env_set("OSIRIS_E2B_DRIVER_ALLOWLIST")
+        denylist = self._env_set("OSIRIS_E2B_DRIVER_DENYLIST")
+        mode_filter = self._mode_filter()
 
-            # If missing dependencies found
-            if preflight_result["missing"]:
-                if self.allow_install_deps:
-                    # Install missing dependencies
-                    self.logger.info(f"Installing missing dependencies: {preflight_result['missing']}")
-                    install_success = self._install_dependencies(preflight_result["missing"])
+        self.driver_summary = self.driver_registry.populate_from_component_specs(
+            self.component_specs,
+            modes=mode_filter,
+            allow=allowlist,
+            deny=denylist,
+            verify_import=False,
+            strict=False,
+            on_success=lambda component, driver: self.logger.debug(f"Registered driver {component} -> {driver}"),
+        )
 
-                    if install_success:
-                        # Re-check after installation
-                        post_install_check = self._preflight_dependencies(required_deps)
-                        self.send_event(
-                            "dependency_installed",
-                            now_present=post_install_check["present"],
-                            still_missing=post_install_check["missing"],
-                        )
+        for component_name, reason in self.driver_summary.skipped.items():
+            self.logger.debug(f"Component {component_name} skipped during driver registration: {reason}")
 
-                        if post_install_check["missing"]:
-                            # Log warning but continue - some drivers may still work
-                            warning_msg = f"Some dependencies could not be installed: {post_install_check['missing']}"
-                            self.logger.warning(warning_msg)
-                            self.send_event(
-                                "dependency_install_partial",
-                                missing=post_install_check["missing"],
-                                warning=warning_msg,
-                            )
-                    else:
-                        error_msg = "Failed to install dependencies"
-                        self.logger.error(error_msg)
-                        raise ValueError(error_msg)
-                else:
-                    # Fail with clear error message
+        for component_name, error_msg in self.driver_summary.errors.items():
+            self.logger.error(f"Driver registration issue for {component_name}: {error_msg}")
+            self.send_event("driver_registration_failed", driver=component_name, error=error_msg)
+
+        required_modules, required_packages = self._collect_runtime_requirements(self.driver_summary.registered.keys())
+
+        missing_modules, present_modules = self._check_runtime_dependencies(required_modules)
+        self.send_event(
+            "dependency_check",
+            required=sorted(required_modules),
+            present=present_modules,
+            missing=missing_modules,
+        )
+
+        if missing_modules:
+            if self.allow_install_deps:
+                install_details = self._install_requirements(required_packages)
+                missing_modules, present_modules = self._check_runtime_dependencies(required_modules)
+                self.send_event(
+                    "dependency_install_complete",
+                    still_missing=missing_modules,
+                    now_present=present_modules,
+                    installed=install_details.get("installed", []),
+                    log_path=install_details.get("log_relpath"),
+                )
+
+                if missing_modules:
                     error_msg = (
-                        f"Missing required dependencies: {', '.join(preflight_result['missing'])}\n"
-                        "To enable auto-install, use --e2b-install-deps or set OSIRIS_E2B_INSTALL_DEPS=1"
+                        "Missing required dependencies after installation: " f"{', '.join(sorted(missing_modules))}"
                     )
                     self.logger.error(error_msg)
                     raise ValueError(error_msg)
+            else:
+                error_msg = (
+                    "Missing required dependencies: "
+                    f"{', '.join(sorted(missing_modules))}. "
+                    "Enable auto-install with --e2b-install-deps or set OSIRIS_E2B_INSTALL_DEPS=1"
+                )
+                self.logger.error(error_msg)
+                raise ValueError(error_msg)
 
-        # Initialize and register drivers explicitly (do this regardless of dependency status)
-        self.driver_registry = DriverRegistry()
-        self._register_drivers()
+        # Verify that drivers import successfully now that dependencies are satisfied
+        import_results = self.driver_registry.validate_imports()
+        degraded = {name: str(exc) for name, exc in import_results.items() if exc}
+        if degraded:
+            for driver_name, error_msg in degraded.items():
+                self.send_event("driver_registration_failed", driver=driver_name, error=error_msg)
+            error_msg = "Drivers failed to import: " + ", ".join(sorted(degraded))
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
 
-        # Get list of loaded drivers
         drivers_loaded = self.list_registered_drivers()
+        for driver_name in drivers_loaded:
+            impl_path = self.driver_summary.registered.get(driver_name, "")
+            self.send_event(
+                "driver_registered",
+                driver=driver_name,
+                implementation=impl_path,
+                status="success",
+            )
+
+        self.driver_summary.compute_fingerprint()
+        self.send_event(
+            "drivers_registered",
+            drivers=drivers_loaded,
+            fingerprint=self.driver_summary.fingerprint,
+        )
 
         # Emit run_start event with pipeline_id (before session_initialized)
         pipeline_id = None
@@ -202,14 +250,15 @@ class ProxyWorker:
             profile=self.manifest.get("pipeline", {}).get("fingerprints", {}).get("profile", "default"),
         )
 
-        # Send initialization event
+        # Send initialization event and baseline metrics
         self.send_event("session_initialized", session_id=self.session_id, drivers_loaded=drivers_loaded)
 
-        # Send metrics
         steps_count = len(self.manifest.get("steps", []))
         self.send_metric("steps_total", steps_count)
 
-        self.logger.info(f"Session {self.session_id} prepared with {len(drivers_loaded)} drivers")
+        self.logger.info(
+            f"Session {self.session_id} prepared with {len(drivers_loaded)} drivers (fingerprint {self.driver_summary.fingerprint})"
+        )
 
         return PrepareResponse(
             session_id=self.session_id,
@@ -248,10 +297,12 @@ class ProxyWorker:
             # Fallback to inline config if provided (for backward compatibility)
             config = cmd.config if hasattr(cmd, "config") else {}
 
+        component_name = config.get("component") or driver_name
+
         # Resolve symbolic inputs from cached step outputs
-        resolved_inputs = {}
-        if hasattr(cmd, "inputs") and cmd.inputs:
-            resolved_inputs = self._resolve_inputs(cmd.inputs)
+        resolved_inputs, rows_in = self._resolve_inputs(getattr(cmd, "inputs", {}) or {}, step_id)
+        if rows_in:
+            self.send_metric("rows_in", rows_in, tags={"step": step_id})
 
         # Send start event
         self.send_event("step_start", step_id=step_id, driver=driver_name)
@@ -323,31 +374,19 @@ class ProxyWorker:
                     self.send_event("connection_resolve_complete", **event_data, ok=True)
 
                     # Add metadata to resolved_connection for tracking
-                    clean_config["resolved_connection"]["_family"] = family
+                    clean_config.setdefault("resolved_connection", {})["_family"] = family
                     if alias and alias != "unknown":
                         clean_config["resolved_connection"]["_alias"] = alias
 
             # Save cleaned config as artifact (with masked secrets)
             cleaned_config_path = step_artifacts_dir / "cleaned_config.json"
-            artifact_config = clean_config.copy()
-            if "resolved_connection" in artifact_config:
-                # Mask sensitive fields in resolved connection
-                conn = artifact_config["resolved_connection"].copy()
-                for key in ["password", "key", "token", "secret"]:
-                    if key in conn:
-                        conn[key] = "***MASKED***"
-                artifact_config["resolved_connection"] = conn
+            artifact_config = self._mask_config_for_artifact(component_name, clean_config)
 
-            with open(cleaned_config_path, "w") as f:
+            with open(cleaned_config_path, "w", encoding="utf-8") as f:
                 json.dump(artifact_config, f, indent=2)
 
             self.logger.debug(f"Created artifact: {cleaned_config_path}")
-            self.send_event(
-                "artifact_created",
-                step_id=step_id,
-                artifact_type="cleaned_config",
-                path=str(cleaned_config_path.relative_to(self.session_dir)),
-            )
+            self._emit_artifact_event(cleaned_config_path, artifact_type="cleaned_config", step_id=step_id)
 
             # Get driver from registry
             driver = self.driver_registry.get(driver_name)
@@ -380,10 +419,9 @@ class ProxyWorker:
                 ctx=ctx,
             )
 
-            # Cache outputs for downstream steps by step_id
-            # IMPORTANT: Keep DataFrames in memory but DO NOT serialize them
+            cached_output: dict[str, Any] = {}
             if result and isinstance(result, dict):
-                self.step_outputs[step_id] = result
+                cached_output = {k: v for k, v in result.items() if k != "df"}
 
             # Extract metrics from result (if any)
             # Extractors return {"df": DataFrame} and we count rows as rows_processed
@@ -400,39 +438,38 @@ class ProxyWorker:
 
                         if isinstance(result["df"], pd.DataFrame):
                             rows_processed = len(result["df"])
+                            parquet_path = step_artifacts_dir / "output.parquet"
+                            result["df"].to_parquet(parquet_path, index=False)
+                            cached_output["df_path"] = parquet_path
+                            self._emit_artifact_event(parquet_path, artifact_type="parquet", step_id=step_id)
                             # Emit rows_read for extractors specifically (ONLY with step tag)
                             if driver_name.endswith(".extractor"):
                                 self.send_metric("rows_read", rows_processed, tags={"step": step_id})
-                                # DO NOT emit untagged rows_read metric
+                            # Release DataFrame reference held in result
+                            del result["df"]
                     except Exception:
                         pass
 
             # Track driver type and rows for this step
             self.step_drivers[step_id] = driver_name
 
-            # For writer steps, get actual written count
-            rows_written = 0
+            rows_out = rows_processed
             if driver_name.endswith(".writer"):
-                # Try to get actual written count from driver result or input DataFrame
-                if rows_processed > 0:
-                    rows_written = rows_processed
-                elif resolved_inputs and "df" in resolved_inputs:
+                df_input = resolved_inputs.get("df")
+                if not rows_out and df_input is not None:
                     try:
                         import pandas as pd
 
-                        if isinstance(resolved_inputs["df"], pd.DataFrame):
-                            rows_written = len(resolved_inputs["df"])
+                        if isinstance(df_input, pd.DataFrame):
+                            rows_out = len(df_input)
                     except Exception:
                         pass
-                # Track rows for this writer step
-                self.step_rows[step_id] = rows_written
-                # Writers contribute to total_rows
-                self.total_rows += rows_written
+                self.step_rows[step_id] = rows_out
+                self.total_rows += rows_out
+                if rows_in and rows_out == 0:
+                    raise ValueError(f"Writer step {step_id} produced zero rows but had {rows_in} input rows")
             else:
-                # Track rows for extractor/transform steps
                 self.step_rows[step_id] = rows_processed
-                # Non-writers don't contribute to total_rows anymore
-                # self.total_rows += rows_processed  # REMOVED
 
             # Update step counter
             self.step_count += 1
@@ -446,9 +483,21 @@ class ProxyWorker:
                 self.send_metric("rows_processed", rows_processed, tags={"step": step_id})
             self.send_metric("step_duration_ms", duration_ms, tags={"step": step_id})
 
+            self.step_outputs[step_id] = cached_output
+            artifact_paths = [str(cleaned_config_path.relative_to(self.session_dir))]
+            if cached_output.get("df_path"):
+                artifact_paths.append(str(cached_output["df_path"].relative_to(self.session_dir)))
+            self.step_io[step_id] = {
+                "driver": driver_name,
+                "rows_in": rows_in,
+                "rows_out": rows_out,
+                "duration_ms": duration_ms,
+                "status": "succeeded",
+                "artifacts": artifact_paths,
+            }
+
             # Send completion event with correct row count
-            # Writers report actual written count, extractors report extracted count
-            completion_rows = rows_written if driver_name.endswith(".writer") else rows_processed
+            completion_rows = rows_out if driver_name.endswith(".writer") else rows_processed
             self.send_event(
                 "step_complete",
                 step_id=step_id,
@@ -460,7 +509,7 @@ class ProxyWorker:
 
             # CRITICAL: Return response WITHOUT DataFrames - only JSON-serializable data
             # For RPC response, writers should report actual written count
-            rpc_rows = rows_written if driver_name.endswith(".writer") else rows_processed
+            rpc_rows = rows_out if driver_name.endswith(".writer") else rows_processed
             return ExecStepResponse(
                 step_id=step_id,
                 rows_processed=rpc_rows,  # Writers report written count in RPC response
@@ -480,6 +529,15 @@ class ProxyWorker:
             )
 
             self.logger.error(f"Step {step_id} failed: {e}", exc_info=True)
+
+            self.step_io[step_id] = {
+                "driver": driver_name,
+                "rows_in": rows_in,
+                "rows_out": 0,
+                "duration_ms": (time.time() - start_time) * 1000,
+                "status": "failed",
+                "error": str(e),
+            }
 
             # Return error response with enhanced info
             return ExecStepResponse(
@@ -511,6 +569,8 @@ class ProxyWorker:
         # Use writers-only sum if available, else fall back to extractors
         final_total_rows = sum_rows_written if sum_rows_written > 0 else sum_rows_read
 
+        run_card_path: Path | None = None
+
         try:
             # Ensure metrics.jsonl exists even if empty
             if hasattr(self, "metrics_file") and self.metrics_file:
@@ -526,12 +586,19 @@ class ProxyWorker:
                             f.write(json.dumps(initial_metric) + "\n")
                     except Exception as e:
                         self.logger.warning(f"Failed to create metrics file: {e}")
+
+            if self.step_io:
+                try:
+                    run_card_path = self._write_run_card()
+                except Exception as card_error:  # pragma: no cover - best effort
+                    self.logger.warning(f"Failed to write run card: {card_error}")
         finally:
             # ALWAYS write status.json, even on failure
             self._write_final_status()
 
             # Clear cached outputs
             self.step_outputs.clear()
+            self.step_io.clear()
 
         self.send_event("cleanup_complete", steps_executed=self.step_count, total_rows=final_total_rows)
 
@@ -713,107 +780,285 @@ class ProxyWorker:
         """Get list of registered driver names."""
         return sorted(self.driver_registry._drivers.keys())
 
-    def _get_required_dependencies(self) -> dict[str, list[str]]:
-        """Get required dependencies based on drivers used in the plan.
+    def _env_set(self, env_var: str) -> set[str]:
+        raw = os.environ.get(env_var, "")
+        return {value.strip() for value in raw.split(",") if value.strip()}
 
-        Returns:
-            Dict mapping driver name to list of required modules
-        """
-        # Map of driver to required modules
-        driver_deps = {
-            "mysql.extractor": ["sqlalchemy", "pandas", "pymysql"],
-            "filesystem.csv_writer": ["pandas"],
-            "supabase.writer": ["supabase", "pandas", "psycopg2"],  # Use psycopg2 (not binary)
-            "duckdb.processor": ["duckdb", "pandas"],
+    def _mode_filter(self) -> set[str]:
+        return {"extract", "transform", "write", "read"}
+
+    def _collect_runtime_requirements(self, components: Iterable[str]) -> tuple[set[str], set[str]]:
+        modules: set[str] = set()
+        packages: set[str] = set()
+
+        for component in components:
+            spec = self.component_specs.get(component, {}) if hasattr(self, "component_specs") else {}
+            runtime_cfg = (spec.get("x-runtime", {}) or {}).get("requirements", {}) or {}
+            for module_name in runtime_cfg.get("imports", []) or []:
+                modules.add(module_name)
+            for package_name in runtime_cfg.get("packages", []) or []:
+                packages.add(package_name)
+
+        return modules, packages
+
+    def _check_runtime_dependencies(self, modules: Iterable[str]) -> tuple[list[str], list[str]]:
+        missing: list[str] = []
+        present: list[str] = []
+
+        for module_name in sorted({m for m in modules if m}):
+            try:
+                importlib.import_module(module_name)
+            except ImportError:
+                missing.append(module_name)
+                self.logger.debug(f"Module {module_name} is missing")
+            else:
+                present.append(module_name)
+                self.logger.debug(f"Module {module_name} is available")
+
+        return missing, present
+
+    def _install_requirements(self, packages: Iterable[str]) -> dict[str, Any]:
+        artifacts_base = self.artifacts_root or (self.session_dir / "artifacts")
+        system_dir = artifacts_base / "_system"
+        system_dir.mkdir(parents=True, exist_ok=True)
+        log_path = system_dir / "pip_install.log"
+
+        commands: list[list[str]] = []
+        lock_file = self.session_dir / "requirements.lock"
+        uv_lock = self.session_dir / "uv.lock"
+        requirements_file = self.session_dir / "requirements_e2b.txt"
+
+        if lock_file.exists():
+            commands.append([sys.executable, "-m", "pip", "install", "-r", str(lock_file)])
+        elif uv_lock.exists():
+            lock_packages = self._packages_from_uv_lock(uv_lock)
+            if lock_packages:
+                commands.append([sys.executable, "-m", "pip", "install", *lock_packages])
+
+        if requirements_file.exists():
+            commands.append([sys.executable, "-m", "pip", "install", "-r", str(requirements_file)])
+
+        fallback_packages = sorted({pkg for pkg in packages if pkg})
+        if fallback_packages and not requirements_file.exists():
+            commands.append([sys.executable, "-m", "pip", "install", *fallback_packages])
+
+        installed: list[str] = []
+
+        if not commands:
+            with open(log_path, "w", encoding="utf-8") as log_file:
+                message = "No requirements files provided; skipping pip install\n"
+                log_file.write(message)
+            self._emit_artifact_event(log_path, artifact_type="pip_log")
+            return {
+                "installed": installed,
+                "log_path": log_path,
+                "log_relpath": str(log_path.relative_to(self.session_dir)),
+            }
+
+        with open(log_path, "w", encoding="utf-8") as log_file:
+            for command in commands:
+                log_file.write("$ " + " ".join(command) + "\n")
+                log_file.flush()
+                self.logger.info("Running %s", " ".join(command))
+                result = subprocess.run(
+                    command,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    cwd=str(self.session_dir),
+                )
+                if result.stdout:
+                    log_file.write(result.stdout)
+                if result.stderr:
+                    log_file.write(result.stderr)
+                log_file.flush()
+
+                if result.returncode != 0:
+                    raise ValueError(f"pip command failed ({' '.join(command)}), see {log_path.name} for details")
+
+                for line in result.stdout.splitlines():
+                    if line.lower().startswith("successfully installed"):
+                        installed.extend(part.strip() for part in line.split("installed", 1)[1].split())
+
+        self._emit_artifact_event(log_path, artifact_type="pip_log")
+
+        return {
+            "installed": installed,
+            "log_path": log_path,
+            "log_relpath": str(log_path.relative_to(self.session_dir)),
         }
 
-        # Find which drivers are used in the plan
-        required = {}
-        for step in self.manifest.get("steps", []):
-            driver = step.get("driver", step.get("type"))
-            if driver in driver_deps:
-                required[driver] = driver_deps[driver]
+    def _packages_from_uv_lock(self, lock_path: Path) -> list[str]:
+        if not tomllib:
+            self.logger.debug("tomllib not available; skipping uv.lock parsing")
+            return []
 
-        return required
+        try:
+            data = tomllib.loads(lock_path.read_text(encoding="utf-8"))
+            packages: list[str] = []
+            for entry in data.get("package", []):
+                name = entry.get("name")
+                version = entry.get("version")
+                if name and version:
+                    packages.append(f"{name}=={version}")
+            return packages
+        except Exception as exc:  # pragma: no cover - best effort parsing
+            self.logger.warning(f"Failed to parse {lock_path}: {exc}")
+            return []
 
-    def _preflight_dependencies(self, required_deps: dict[str, list[str]]) -> dict[str, list[str]]:
-        """Check if required modules are importable.
+    def _build_secret_index(self, specs: Mapping[str, dict[str, Any]]) -> dict[str, list[list[str]]]:
+        secret_index: dict[str, list[list[str]]] = {}
+        for component, spec in specs.items():
+            pointers: list[list[str]] = []
+            for field in ("secrets", "x-secret"):
+                for pointer in spec.get(field, []) or []:
+                    path = self._pointer_to_path(pointer)
+                    if path:
+                        pointers.append(path)
+            if pointers:
+                secret_index[component] = pointers
+        return secret_index
 
-        Args:
-            required_deps: Dict of driver name to list of required modules
+    @staticmethod
+    def _pointer_to_path(pointer: str) -> list[str]:
+        if not pointer:
+            return []
+        trimmed = pointer[1:] if pointer.startswith("/") else pointer
+        if not trimmed:
+            return []
+        parts: list[str] = []
+        for segment in trimmed.split("/"):
+            segment = segment.replace("~1", "/").replace("~0", "~")
+            if segment:
+                parts.append(segment)
+        return parts
 
-        Returns:
-            Dict with 'missing' and 'present' lists
-        """
-        missing = []
-        present = []
+    def _mask_config_for_artifact(self, component_name: str, config: dict[str, Any]) -> dict[str, Any]:
+        redacted = copy.deepcopy(config)
+        for path in self.component_secret_paths.get(component_name, []):
+            self._mask_path(redacted, path)
+        return redacted
 
-        # Get unique list of all required modules
-        all_modules = set()
-        for modules in required_deps.values():
-            all_modules.update(modules)
+    def _mask_path(self, data: Any, path: list[str]) -> None:
+        if not path:
+            return
+        current = data
+        for segment in path[:-1]:
+            if isinstance(current, dict):
+                if segment not in current:
+                    return
+                current = current[segment]
+            elif isinstance(current, list):
+                try:
+                    idx = int(segment)
+                except ValueError:
+                    return
+                if idx < 0 or idx >= len(current):
+                    return
+                current = current[idx]
+            else:
+                return
 
-        # Try importing each module
-        for module_name in all_modules:
+        last = path[-1]
+        if isinstance(current, dict) and last in current:
+            current[last] = "***MASKED***"
+        elif isinstance(current, list):
             try:
-                # Special case for psycopg2 - accept either psycopg2 or psycopg2-binary
-                if module_name == "psycopg2":
-                    try:
-                        __import__("psycopg2")
-                        present.append(module_name)
-                        self.logger.debug("Module psycopg2 is available")
-                    except ImportError:
-                        # Try psycopg2-binary as fallback
-                        try:
-                            __import__("psycopg2")  # psycopg2-binary provides psycopg2
-                            present.append(module_name)
-                            self.logger.debug("Module psycopg2 is available (via psycopg2-binary)")
-                        except ImportError:
-                            missing.append(module_name)
-                            self.logger.debug(f"Module {module_name} is missing")
-                else:
-                    __import__(module_name)
-                    present.append(module_name)
-                    self.logger.debug(f"Module {module_name} is available")
-            except ImportError:
-                if module_name != "psycopg2":  # Already handled above
-                    missing.append(module_name)
-                    self.logger.debug(f"Module {module_name} is missing")
+                idx = int(last)
+            except ValueError:
+                return
+            if 0 <= idx < len(current):
+                current[idx] = "***MASKED***"
 
-        return {"missing": missing, "present": present}
+    def _emit_artifact_event(self, path: Path, *, artifact_type: str, step_id: str | None = None) -> None:
+        try:
+            rel_path = path.relative_to(self.session_dir)
+        except ValueError:
+            rel_path = path
 
-    def _resolve_inputs(self, inputs_spec: dict[str, Any]) -> dict[str, Any]:
-        """Resolve symbolic input references to actual values.
+        payload = {
+            "artifact_type": artifact_type,
+            "path": str(rel_path),
+        }
+        if step_id:
+            payload["step_id"] = step_id
+        self.send_event("artifact_created", **payload)
 
-        Args:
-            inputs_spec: Input specification with symbolic references
-                        e.g., {"df": {"from_step": "extract-actors", "key": "df"}}
+    def _resolve_inputs(self, inputs_spec: dict[str, Any], step_id: str) -> tuple[dict[str, Any], int]:
+        if not inputs_spec:
+            return {}, 0
 
-        Returns:
-            Resolved inputs with actual values from cached outputs
-        """
-        resolved = {}
+        resolved: dict[str, Any] = {}
+        rows_total = 0
 
         for input_key, ref in inputs_spec.items():
             if isinstance(ref, dict) and "from_step" in ref:
                 from_step = ref["from_step"]
-                from_key = ref.get("key", "df")  # Default to "df" if not specified
+                from_key = ref.get("key", "df")
+                step_output = self.step_outputs.get(from_step)
 
-                # Look up the output from the referenced step
-                if from_step in self.step_outputs:
-                    step_output = self.step_outputs[from_step]
-                    if isinstance(step_output, dict) and from_key in step_output:
-                        resolved[input_key] = step_output[from_key]
-                        self.logger.debug(f"Resolved input '{input_key}' from step '{from_step}', key '{from_key}'")
-                    else:
-                        self.logger.warning(f"Key '{from_key}' not found in outputs from step '{from_step}'")
-                else:
+                if not step_output:
                     self.logger.warning(f"No outputs cached for step '{from_step}'")
+                    continue
+
+                if from_key == "df" and isinstance(step_output, dict) and step_output.get("df_path"):
+                    df_path = step_output["df_path"]
+                    try:
+                        import pandas as pd
+
+                        df = pd.read_parquet(df_path)
+                        resolved[input_key] = df
+                        rows = len(df)
+                        rows_total += rows
+                        self.send_event(
+                            "inputs_resolved",
+                            step_id=step_id,
+                            from_step=from_step,
+                            key=from_key,
+                            rows=rows,
+                            artifact=str(Path(df_path).relative_to(self.session_dir)),
+                        )
+                    except Exception as exc:
+                        self.logger.error(f"Failed to load input parquet {df_path}: {exc}")
+                elif isinstance(step_output, dict) and from_key in step_output:
+                    resolved[input_key] = step_output[from_key]
+                    self.logger.debug(f"Resolved input '{input_key}' from step '{from_step}', key '{from_key}'")
+                else:
+                    available_keys = list(step_output.keys()) if isinstance(step_output, dict) else []
+                    self.logger.warning(
+                        f"Key '{from_key}' not found in outputs from step '{from_step}' (available: {available_keys})"
+                    )
             else:
-                # Not a symbolic reference, use as-is
                 resolved[input_key] = ref
 
-        return resolved
+        return resolved, rows_total
+
+    def _write_run_card(self) -> Path | None:
+        if not self.step_io:
+            return None
+
+        artifacts_base = self.artifacts_root or (self.session_dir / "artifacts")
+        system_dir = artifacts_base / "_system"
+        system_dir.mkdir(parents=True, exist_ok=True)
+        run_card_path = system_dir / "run_card.json"
+
+        run_card = {
+            "session_id": self.session_id,
+            "steps": [],
+        }
+
+        for step_id, info in self.step_io.items():
+            entry = {"step_id": step_id}
+            for key, value in info.items():
+                entry[key] = value
+            run_card["steps"].append(entry)
+
+        with open(run_card_path, "w", encoding="utf-8") as f:
+            json.dump(run_card, f, indent=2)
+
+        self._emit_artifact_event(run_card_path, artifact_type="run_card")
+        self.logger.debug(f"Run card written to {run_card_path}")
+        return run_card_path
 
     def _write_final_status(self):
         """Write final status.json with execution summary matching local contract."""
@@ -863,132 +1108,6 @@ class ProxyWorker:
                     json.dump(minimal_status, f)
             except:
                 pass  # Give up if we can't write at all
-
-    def _install_dependencies(self, missing_modules: list[str]) -> bool:
-        """Install missing dependencies in the sandbox.
-
-        Args:
-            missing_modules: List of module names to install
-
-        Returns:
-            True if installation succeeded
-        """
-        import subprocess
-        import sys
-
-        try:
-            # Check if we have a requirements file
-            requirements_file = self.session_dir / "requirements_e2b.txt"
-
-            if requirements_file.exists():
-                # Install from requirements file
-                self.logger.info(f"Installing from {requirements_file}")
-                result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "-r", str(requirements_file)],
-                    check=False, capture_output=True,
-                    text=True,
-                    timeout=300,  # 5 minute timeout
-                )
-            else:
-                # Handle psycopg2 special case
-                modules_to_install = []
-                for mod in missing_modules:
-                    if mod == "psycopg2":
-                        # Try psycopg2-binary first as it's easier to install
-                        modules_to_install.append("psycopg2-binary")
-                    else:
-                        modules_to_install.append(mod)
-
-                # Install specific modules
-                self.logger.info(f"Installing modules: {modules_to_install}")
-                result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install"] + modules_to_install,
-                    check=False, capture_output=True,
-                    text=True,
-                    timeout=300,  # 5 minute timeout
-                )
-
-            if result.returncode == 0:
-                self.logger.info("Dependency installation completed successfully")
-                # Log installed versions
-                for line in result.stdout.split("\n"):
-                    if "Successfully installed" in line:
-                        self.logger.info(f"Installed: {line}")
-                return True
-            else:
-                self.logger.error(f"Dependency installation failed: {result.stderr}")
-                return False
-
-        except subprocess.TimeoutExpired:
-            self.logger.error("Dependency installation timed out after 5 minutes")
-            return False
-        except Exception as e:
-            self.logger.error(f"Error installing dependencies: {e}")
-            return False
-
-    def _resolve_inputs(self, inputs_spec: dict) -> dict:
-        """Resolve symbolic input references to actual Python objects.
-
-        Args:
-            inputs_spec: Dictionary with symbolic references like:
-                {"df": {"from_step": "extract-actors", "key": "df"}}
-
-        Returns:
-            Dictionary with resolved Python objects from step_outputs cache
-        """
-        resolved = {}
-
-        for input_key, ref in inputs_spec.items():
-            if isinstance(ref, dict) and "from_step" in ref:
-                from_step = ref["from_step"]
-                from_key = ref.get("key", "df")  # Default to "df" if not specified
-
-                # Look up the cached output from the referenced step
-                if from_step in self.step_outputs:
-                    step_output = self.step_outputs[from_step]
-                    if from_key in step_output:
-                        resolved[input_key] = step_output[from_key]
-                        self.logger.debug(f"Resolved input {input_key} from {from_step}.{from_key}")
-                    else:
-                        available_keys = list(step_output.keys())
-                        error_msg = (
-                            f"Input key '{from_key}' not found in outputs from step '{from_step}'. "
-                            f"Available keys: {available_keys}"
-                        )
-                        self.logger.error(error_msg)
-                        self.send_event(
-                            "input_resolution_failed",
-                            input_key=input_key,
-                            from_step=from_step,
-                            requested_key=from_key,
-                            available_keys=available_keys,
-                        )
-                        raise KeyError(error_msg)
-                else:
-                    available_steps = list(self.step_outputs.keys())
-                    error_msg = (
-                        f"Step '{from_step}' not found in cached outputs. " f"Available steps: {available_steps}"
-                    )
-                    self.logger.error(error_msg)
-                    self.send_event(
-                        "input_resolution_failed",
-                        input_key=input_key,
-                        from_step=from_step,
-                        available_steps=available_steps,
-                    )
-                    raise KeyError(error_msg)
-
-        # Log successful input resolution for observability
-        if resolved:
-            from_steps = list(
-                set(ref.get("from_step", "unknown") for ref in inputs_spec.values() if isinstance(ref, dict))
-            )
-            resolved_keys = list(resolved.keys())
-
-            self.send_event("inputs_resolved", keys=resolved_keys, from_steps=from_steps)
-            self.logger.debug(f"Resolved {len(resolved)} inputs from {from_steps}")
-
-        return resolved
 
 
 if __name__ == "__main__":

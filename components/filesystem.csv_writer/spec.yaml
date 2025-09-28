@@ -160,3 +160,6 @@ limits:
 
 x-runtime:
   driver: osiris.drivers.filesystem_csv_writer_driver.FilesystemCsvWriterDriver
+  requirements:
+    imports:
+      - pandas

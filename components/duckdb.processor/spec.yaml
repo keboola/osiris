@@ -75,3 +75,7 @@ limits:
 
 x-runtime:
   driver: osiris.drivers.duckdb_processor_driver.DuckDBProcessorDriver
+  requirements:
+    imports:
+      - duckdb
+      - pandas

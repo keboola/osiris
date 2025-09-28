@@ -1,11 +1,10 @@
 """Minimal local runner for compiled manifests."""
 
-import importlib
+from datetime import datetime
 import json
 import logging
-import time
-from datetime import datetime
 from pathlib import Path
+import time
 from typing import Any
 
 import yaml
@@ -52,38 +51,20 @@ class RunnerV0:
         component_registry = ComponentRegistry()
         specs = component_registry.load_specs()
 
-        # Register drivers from specs
-        for component_name, spec in specs.items():
-            # Check for x-runtime.driver
-            runtime_config = spec.get("x-runtime", {})
-            driver_path = runtime_config.get("driver")
+        summary = registry.populate_from_component_specs(
+            specs,
+            on_success=lambda component, driver: logger.debug(f"Registered driver for {component}: {driver}"),
+        )
 
-            if driver_path:
-                try:
-                    # Parse module and class name
-                    module_path, class_name = driver_path.rsplit(".", 1)
+        for component_name, reason in summary.skipped.items():
+            logger.debug(f"Component {component_name} skipped during driver registration: {reason}")
 
-                    # Create factory function
-                    def create_driver(module_path=module_path, class_name=class_name):
-                        module = importlib.import_module(module_path)
-                        driver_class = getattr(module, class_name)
-                        return driver_class()
-
-                    # Register with component name
-                    registry.register(component_name, create_driver)
-                    logger.debug(f"Registered driver for {component_name}: {driver_path}")
-
-                except Exception as e:
-                    # Provide helpful error message
-                    error_msg = (
-                        f"Failed to register driver for component '{component_name}'. "
-                        f"x-runtime.driver value: '{driver_path}'. "
-                        f"Error: {str(e)}"
-                    )
-                    logger.error(error_msg)
-                    # Don't fail here - let compile-time check catch missing drivers
-            else:
-                logger.debug(f"Component {component_name} has no x-runtime.driver specified")
+        for component_name, error in summary.errors.items():
+            logger.error(
+                "Driver registration warning for %s: %s",
+                component_name,
+                error,
+            )
 
         return registry
 
