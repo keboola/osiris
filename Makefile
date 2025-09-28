@@ -211,6 +211,18 @@ run-sample: ## Run sample pipeline
 	fi
 	cd testing_env && python ../osiris.py run sample_pipeline.yaml --dry-run
 
+demo-mysql-duckdb-supabase: ## Run MySQL → DuckDB → Supabase demo pipeline
+	@echo "🚀 Running MySQL → DuckDB → Supabase demo..."
+	@if [ ! -d "testing_env" ]; then \
+		echo "📁 Creating testing_env directory..."; \
+		mkdir -p testing_env; \
+	fi
+	@echo "📋 Compiling pipeline..."
+	cd testing_env && python ../osiris.py compile ../docs/examples/mysql_duckdb_supabase_demo.yaml
+	@echo "▶️  Running compiled pipeline..."
+	cd testing_env && python ../osiris.py run --last-compile
+	@echo "✅ Demo complete! Check director_stats_demo table in Supabase"
+
 # Development
 docs: ## Generate documentation (placeholder)
 	@echo "📚 Generating documentation..."
