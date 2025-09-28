@@ -20,5 +20,16 @@
 
 ## Detect-Secrets Baseline
 
-- To update baseline: `detect-secrets scan > .secrets.baseline`
-- Always review baseline changes before committing.
+**When to update the baseline:**
+- After adding test files with dummy credentials
+- After removing false positives
+- When detect-secrets reports new legitimate test secrets
+- Before releases to ensure baseline is current
+
+**How to update:**
+```bash
+detect-secrets scan > .secrets.baseline
+git diff .secrets.baseline  # Review changes carefully!
+```
+
+**Important:** Always review baseline changes before committing to ensure no real secrets are being whitelisted.

@@ -44,7 +44,7 @@ Osiris MVP is an **LLM-first conversational ETL pipeline generator**. It uses AI
    ```bash
    # Always activate venv first!
    source .venv/bin/activate
-   
+
    # Initialize Osiris configuration
    python osiris.py init
    ```
@@ -116,23 +116,27 @@ python osiris.py chat --pro-mode
 
 # Modern development workflow (RECOMMENDED)
 make dev                    # Full dev setup: install deps + pre-commit
-make pre-commit            # Run all quality checks
+make fmt                    # Auto-format code (Black, isort, Ruff --fix)
+make lint                  # Strict lint checks (no auto-fix)
+make security              # Run Bandit security checks
 make test                  # Run tests
-make format                # Format code (black + isort)
-make lint                  # Lint code (ruff)
 make type-check            # Type check (mypy)
-make secrets-check         # Check for secrets
 make clean                 # Clean build artifacts
 
 # Pre-commit hooks (automatically run on git commit)
 make pre-commit-install    # Install pre-commit hooks
-make pre-commit-run        # Run hooks manually
+make precommit             # Install, update, and run all hooks
+make pre-commit-run        # Run hooks on staged files
 make pre-commit-all        # Run hooks on all files
+
+# Quick commit helpers
+make commit-wip msg="..."  # Commit with WIP, skip slower checks
+make commit-emergency msg="..."  # Emergency commit, skip ALL checks
 
 # Traditional commands (still supported)
 python -m pytest tests/
-black osiris/
-mypy osiris/
+black --line-length=120 osiris/
+ruff check osiris/
 python osiris.py --help
 ```
 
@@ -264,15 +268,15 @@ Osiris uses a unified environment loading system that ensures consistent behavio
 **Setting Secrets:**
 ```bash
 # Option 1: Export in shell
-export MYSQL_PASSWORD="your-password"
+export MYSQL_PASSWORD="your-password"  # pragma: allowlist secret
 osiris run pipeline.yaml
 
 # Option 2: Use .env file
-echo "MYSQL_PASSWORD=your-password" > .env
+echo "MYSQL_PASSWORD=your-password" > .env  # pragma: allowlist secret
 osiris run pipeline.yaml
 
 # Option 3: Inline for single command
-MYSQL_PASSWORD="your-password" osiris run pipeline.yaml
+MYSQL_PASSWORD="your-password" osiris run pipeline.yaml  # pragma: allowlist secret
 ```
 
 ## Dependencies
@@ -289,7 +293,7 @@ MYSQL_PASSWORD="your-password" osiris run pipeline.yaml
 
 **LLM Providers:**
 - `openai` - GPT-4o, GPT-4 models
-- `anthropic` - Claude-3.5 Sonnet  
+- `anthropic` - Claude-3.5 Sonnet
 - `google-generativeai` - Gemini models
 
 ## How It Works
@@ -323,7 +327,7 @@ python osiris.py chat --pro-mode
 ### Benefits
 - **🎯 Domain Customization**: Adapt for finance, healthcare, retail, etc.
 - **🧪 Experimentation**: Test different prompting strategies
-- **🐛 Debugging**: See exact instructions sent to LLMs  
+- **🐛 Debugging**: See exact instructions sent to LLMs
 - **⚡ Performance**: Fine-tune for better response quality
 - **🔧 Advanced Control**: Complete control over AI behavior
 
@@ -334,6 +338,38 @@ python osiris.py chat --pro-mode
 - **Multi-language support**: Adapt prompts for different languages
 
 ## Development Workflow & Branch Strategy
+
+### Code Quality Standards
+
+**Line Length**: Standardized to 120 characters across all tools (Black, isort, Ruff)
+
+**VS Code Integration**:
+- Auto-format on save configured (`.vscode/settings.json`)
+- Black formatting with 120 char line length
+- Auto-organize imports on save
+
+**Pre-commit Hooks** (fast, auto-fixing):
+- Black formatting
+- isort import sorting
+- Ruff with `--fix` flag
+- detect-secrets baseline check
+- NO Bandit locally (runs in CI only)
+
+**CI Checks** (strict, no auto-fix):
+- Ruff check (no fix)
+- Black --check
+- isort --check-only
+- Bandit security scanning
+
+**Quick Development Flow**:
+1. Write code (VS Code auto-formats on save if configured)
+2. `git add` your changes
+3. `git commit` - pre-commit auto-fixes formatting
+4. `git push` - CI runs strict checks
+
+**Emergency Commits**:
+- `make commit-wip msg="debugging"` - Skip slower checks
+- `make commit-emergency msg="hotfix"` - Skip ALL checks (use sparingly)
 
 ### Branch Management
 1. **Main Branch**
@@ -363,7 +399,7 @@ python osiris.py chat --pro-mode
 ### Documentation & Decision Making
 
 #### Architecture Decision Records (ADRs)
-**Location**: `docs/adr/`  
+**Location**: `docs/adr/`
 **Rules**:
 - Every architectural decision requires an ADR
 - Numbered sequentially: `0001-title.md`, `0002-title.md`, etc.
@@ -373,7 +409,7 @@ python osiris.py chat --pro-mode
 - **Purpose**: Document why decisions were made, prevent re-litigation
 
 #### Milestones
-**Location**: `docs/milestones/`  
+**Location**: `docs/milestones/`
 **Structure**:
 - Each milestone has a dedicated document
 - Organized into phases: M1a, M1b, M1c, etc.
@@ -426,8 +462,10 @@ python osiris.py chat --pro-mode
 - Tests with dummy credentials MUST include `# pragma: allowlist secret`
 - Do **NOT** bypass detect-secrets via `--no-verify`
 - Fix test secrets properly or add pragma comments
-- Pre-commit hooks enforce: secrets detection, black formatting, ruff linting
+- Pre-commit hooks enforce: Black (120 chars), isort, Ruff --fix, detect-secrets
 - All hooks must pass before commit (no exceptions for production code)
+- Use `make commit-wip` to skip Ruff/Bandit for work-in-progress commits
+- CI enforces strict checks: Ruff (no fix), Black --check, isort --check, Bandit
 
 ## Version Management
 
@@ -577,7 +615,7 @@ Osiris v0.3.0 is a **production-ready system** for LLM-first pipeline generation
 
 ### Previous Release (v0.1.1)
 - **✅ Session-scoped logging system**: Complete structured logging with events.jsonl, metrics.jsonl, and artifacts
-- **✅ Pipeline generation bug fixes**: Fixed display and saving of generated YAML pipelines  
+- **✅ Pipeline generation bug fixes**: Fixed display and saving of generated YAML pipelines
 - **✅ Secrets masking**: Automatic detection and masking of sensitive data in logs
 - **✅ Event filtering**: Configurable event logging with wildcard support (`"*"`)
 - **✅ Configuration precedence**: Proper YAML → ENV → CLI override handling
@@ -689,12 +727,12 @@ Osiris uses a driver-based architecture for executing pipeline steps. This desig
   - Clear error messages for missing drivers
 
 ### Concrete Drivers
-- **MySQL Extractor** (`osiris/drivers/mysql_extractor_driver.py`): 
+- **MySQL Extractor** (`osiris/drivers/mysql_extractor_driver.py`):
   - Executes SQL queries via SQLAlchemy/pandas
   - Returns `{"df": DataFrame}`
   - Automatically logs `rows_read` metric
   - Uses `resolved_connection` from config for credentials
-  
+
 - **Filesystem CSV Writer** (`osiris/drivers/filesystem_csv_writer_driver.py`):
   - Writes DataFrames to CSV files with deterministic output
   - Sorts columns lexicographically for reproducibility
@@ -706,7 +744,7 @@ Osiris uses a driver-based architecture for executing pipeline steps. This desig
 Mode aliasing ensures OML compatibility with driver implementations:
 - **OML Mode** → **Component Mode**
 - `read` → `extract`
-- `write` → `write` 
+- `write` → `write`
 - `transform` → `transform`
 
 Aliasing is applied at compile time by the compiler, manifests contain canonical modes.
