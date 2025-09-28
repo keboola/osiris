@@ -21,7 +21,7 @@ with friendly error messages and validation modes (warn/strict/off).
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # Basic JSON schemas for connection validation
 MYSQL_CONNECTION_SCHEMA = {
@@ -113,7 +113,7 @@ class ValidationError:
     message: str
     why: str
     fix: str
-    example: Optional[str] = None
+    example: str | None = None
 
 
 @dataclass
@@ -121,8 +121,8 @@ class ValidationResult:
     """Result of validation with errors and warnings."""
 
     is_valid: bool
-    errors: List[ValidationError]
-    warnings: List[ValidationError]
+    errors: list[ValidationError]
+    warnings: list[ValidationError]
 
 
 class ConnectionValidator:
@@ -202,7 +202,7 @@ class ConnectionValidator:
             mode = ValidationMode.WARN
         return cls(mode)
 
-    def validate_connection(self, config: Dict[str, Any]) -> ValidationResult:
+    def validate_connection(self, config: dict[str, Any]) -> ValidationResult:
         """Validate connection configuration.
 
         Args:
@@ -240,7 +240,7 @@ class ConnectionValidator:
 
         return self._validate_against_schema(config, schema, "connection")
 
-    def validate_pipeline_config(self, config: Dict[str, Any]) -> ValidationResult:
+    def validate_pipeline_config(self, config: dict[str, Any]) -> ValidationResult:
         """Validate pipeline configuration.
 
         Args:
@@ -255,7 +255,7 @@ class ConnectionValidator:
         return self._validate_against_schema(config, PIPELINE_CONFIG_SCHEMA, "pipeline")
 
     def _validate_against_schema(
-        self, config: Dict[str, Any], schema: Dict[str, Any], config_type: str
+        self, config: dict[str, Any], schema: dict[str, Any], config_type: str
     ) -> ValidationResult:
         """Validate configuration against JSON schema.
 
@@ -292,9 +292,7 @@ class ConnectionValidator:
             # jsonschema not available - do basic validation
             return self._basic_validation(config, schema, config_type)
 
-    def _basic_validation(
-        self, config: Dict[str, Any], schema: Dict[str, Any], config_type: str
-    ) -> ValidationResult:
+    def _basic_validation(self, config: dict[str, Any], schema: dict[str, Any], config_type: str) -> ValidationResult:
         """Basic validation without jsonschema library.
 
         Args:
@@ -340,11 +338,7 @@ class ConnectionValidator:
         Returns:
             ValidationError with friendly message
         """
-        path = (
-            ".".join(str(p) for p in json_error.path)
-            if json_error.path
-            else json_error.schema_path[-1]
-        )
+        path = ".".join(str(p) for p in json_error.path) if json_error.path else json_error.schema_path[-1]
         rule = json_error.validator
 
         # Look up friendly mapping

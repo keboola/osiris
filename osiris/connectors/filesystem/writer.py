@@ -2,8 +2,9 @@
 
 import csv
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Union
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 class FilesystemCSVWriter:
     """Write data to CSV files with deterministic output."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         """Initialize CSV writer.
 
         Args:
@@ -42,7 +43,7 @@ class FilesystemCSVWriter:
             "none": csv.QUOTE_NONE,
         }
 
-    def write(self, data: Union[List[Dict[str, Any]], Iterator[Dict[str, Any]]]) -> Dict[str, Any]:
+    def write(self, data: list[dict[str, Any]] | Iterator[dict[str, Any]]) -> dict[str, Any]:
         """Write data to CSV file.
 
         Args:
@@ -98,8 +99,7 @@ class FilesystemCSVWriter:
                     missing = expected_keys - row_keys
                     extra = row_keys - expected_keys
                     logger.warning(
-                        f"Row {rows_written + 1} has column mismatch. "
-                        f"Missing: {missing}, Extra: {extra}"
+                        f"Row {rows_written + 1} has column mismatch. " f"Missing: {missing}, Extra: {extra}"
                     )
                     # Fill missing with None, ignore extra
                     for col in missing:
@@ -124,9 +124,7 @@ class FilesystemCSVWriter:
         file_stats = self.path.stat()
         bytes_written = file_stats.st_size
 
-        logger.info(
-            f"Successfully wrote {rows_written} rows ({bytes_written} bytes) to {self.path}"
-        )
+        logger.info(f"Successfully wrote {rows_written} rows ({bytes_written} bytes) to {self.path}")
 
         return {
             "rows_written": rows_written,
@@ -134,12 +132,10 @@ class FilesystemCSVWriter:
             "bytes_written": bytes_written,
         }
 
-    async def write_async(
-        self, data: Union[List[Dict[str, Any]], Iterator[Dict[str, Any]]]
-    ) -> Dict[str, Any]:
+    async def write_async(self, data: list[dict[str, Any]] | Iterator[dict[str, Any]]) -> dict[str, Any]:
         """Async wrapper for write method (delegates to sync implementation)."""
         return self.write(data)
 
-    def run(self, data: Union[List[Dict[str, Any]], Iterator[Dict[str, Any]]]) -> Dict[str, Any]:
+    def run(self, data: list[dict[str, Any]] | Iterator[dict[str, Any]]) -> dict[str, Any]:
         """Alias for write method for runner compatibility."""
         return self.write(data)

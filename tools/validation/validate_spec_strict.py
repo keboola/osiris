@@ -88,9 +88,7 @@ def validate_json_pointer_references(spec, errors):
                     break
 
             if not path_valid and path_parts[0] not in ["auth", "credentials", "connection"]:
-                errors.append(
-                    f"Redaction extra pointer '{pointer}' doesn't reference a field in configSchema"
-                )
+                errors.append(f"Redaction extra pointer '{pointer}' doesn't reference a field in configSchema")
 
 
 def validate_input_aliases(spec, errors):

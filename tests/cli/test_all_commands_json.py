@@ -23,7 +23,7 @@ class TestAllCommandsJSON:
         """Run an osiris command and return stdout."""
         result = subprocess.run(
             [sys.executable, str(osiris_path)] + list(args),
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
             cwd=osiris_path.parent,
         )
@@ -165,11 +165,7 @@ class TestAllCommandsJSON:
             stdout, stderr, code = self.run_command(osiris_path, cmd, "--help", "--json")
             try:
                 data = json.loads(stdout)
-                assert (
-                    data["command"] == cmd
-                    if cmd != "dump-prompts"
-                    else data["command"] == "dump-prompts"
-                )
+                assert data["command"] == cmd if cmd != "dump-prompts" else data["command"] == "dump-prompts"
                 assert "options" in data
                 assert "--json" in data["options"]
             except json.JSONDecodeError:

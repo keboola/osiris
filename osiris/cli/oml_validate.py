@@ -1,7 +1,6 @@
 """OML validation CLI command."""
 
 from pathlib import Path
-from typing import List
 
 import yaml
 from rich.console import Console
@@ -76,65 +75,64 @@ def validate_oml_command(file_path: str, json_output: bool = False, verbose: boo
             result["name"] = oml_data.get("name")
             result["steps_count"] = len(oml_data.get("steps", []))
         console.print_json(data=result)
+    # Rich formatted output
+    elif is_valid:
+        # Success panel
+        panel = Panel(
+            f"✅ [green]Valid OML[/green]\n"
+            f"File: {path.name}\n"
+            f"Version: {oml_data.get('oml_version', 'unknown')}\n"
+            f"Name: {oml_data.get('name', 'unknown')}\n"
+            f"Steps: {len(oml_data.get('steps', []))}",
+            title="OML Validation Result",
+            border_style="green",
+        )
+        console.print(panel)
+
+        if warnings and verbose:
+            console.print("\n[yellow]Warnings:[/yellow]")
+            for warning in warnings:
+                console.print(f"  ⚠️  {warning['message']}")
     else:
-        # Rich formatted output
-        if is_valid:
-            # Success panel
-            panel = Panel(
-                f"✅ [green]Valid OML[/green]\n"
-                f"File: {path.name}\n"
-                f"Version: {oml_data.get('oml_version', 'unknown')}\n"
-                f"Name: {oml_data.get('name', 'unknown')}\n"
-                f"Steps: {len(oml_data.get('steps', []))}",
-                title="OML Validation Result",
-                border_style="green",
-            )
-            console.print(panel)
+        # Error panel
+        error_text = Text()
+        error_text.append("❌ Invalid OML\n", style="red")
+        error_text.append(f"File: {path.name}\n")
 
-            if warnings and verbose:
-                console.print("\n[yellow]Warnings:[/yellow]")
-                for warning in warnings:
-                    console.print(f"  ⚠️  {warning['message']}")
-        else:
-            # Error panel
-            error_text = Text()
-            error_text.append("❌ Invalid OML\n", style="red")
-            error_text.append(f"File: {path.name}\n")
+        panel = Panel(error_text, title="OML Validation Failed", border_style="red")
+        console.print(panel)
 
-            panel = Panel(error_text, title="OML Validation Failed", border_style="red")
-            console.print(panel)
+        # Error table
+        if errors:
+            console.print("\n[red]Errors:[/red]")
+            table = Table(show_header=True, header_style="bold red")
+            table.add_column("Type", style="red")
+            table.add_column("Message")
+            if verbose:
+                table.add_column("Location")
 
-            # Error table
-            if errors:
-                console.print("\n[red]Errors:[/red]")
-                table = Table(show_header=True, header_style="bold red")
-                table.add_column("Type", style="red")
-                table.add_column("Message")
-                if verbose:
-                    table.add_column("Location")
+            for error in errors:
+                if verbose and "location" in error:
+                    table.add_row(
+                        error.get("type", "unknown"),
+                        error.get("message", ""),
+                        error.get("location", ""),
+                    )
+                else:
+                    table.add_row(error.get("type", "unknown"), error.get("message", ""))
 
-                for error in errors:
-                    if verbose and "location" in error:
-                        table.add_row(
-                            error.get("type", "unknown"),
-                            error.get("message", ""),
-                            error.get("location", ""),
-                        )
-                    else:
-                        table.add_row(error.get("type", "unknown"), error.get("message", ""))
+            console.print(table)
 
-                console.print(table)
-
-            # Warnings (even for invalid files)
-            if warnings and verbose:
-                console.print("\n[yellow]Warnings:[/yellow]")
-                for warning in warnings:
-                    console.print(f"  ⚠️  {warning['message']}")
+        # Warnings (even for invalid files)
+        if warnings and verbose:
+            console.print("\n[yellow]Warnings:[/yellow]")
+            for warning in warnings:
+                console.print(f"  ⚠️  {warning['message']}")
 
     return 0 if is_valid else 1
 
 
-def validate_batch(file_paths: List[str], json_output: bool = False, verbose: bool = False) -> int:
+def validate_batch(file_paths: list[str], json_output: bool = False, verbose: bool = False) -> int:
     """Validate multiple OML files.
 
     Args:

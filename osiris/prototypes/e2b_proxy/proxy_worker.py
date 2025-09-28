@@ -5,7 +5,7 @@ import json
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 
 class ProxyWorker:
@@ -44,7 +44,7 @@ class ProxyWorker:
             except Exception as e:
                 self.send_error(f"Command failed: {e}")
 
-    def handle_command(self, cmd: Dict[str, Any]) -> Dict[str, Any]:
+    def handle_command(self, cmd: dict[str, Any]) -> dict[str, Any]:
         """Process a command and return response."""
         cmd_type = cmd.get("cmd")
 
@@ -59,7 +59,7 @@ class ProxyWorker:
         else:
             return {"status": "error", "error": f"Unknown command: {cmd_type}"}
 
-    def handle_prepare(self, cmd: Dict[str, Any]) -> Dict[str, Any]:
+    def handle_prepare(self, cmd: dict[str, Any]) -> dict[str, Any]:
         """Handle prepare command - initialize session."""
         self.session_id = cmd.get("session_id", "unknown")
         manifest = cmd.get("manifest", {})
@@ -80,7 +80,7 @@ class ProxyWorker:
             "session_dir": str(self.session_dir),
         }
 
-    def handle_exec_step(self, cmd: Dict[str, Any]) -> Dict[str, Any]:
+    def handle_exec_step(self, cmd: dict[str, Any]) -> dict[str, Any]:
         """Handle exec_step command - simulate step execution."""
         step_id = cmd.get("step_id", "unknown")
         config = cmd.get("config", {})
@@ -108,7 +108,7 @@ class ProxyWorker:
 
         return {"status": "complete", "step_id": step_id, "result": echo_data}
 
-    def handle_cleanup(self, cmd: Dict[str, Any]) -> Dict[str, Any]:
+    def handle_cleanup(self, cmd: dict[str, Any]) -> dict[str, Any]:
         """Handle cleanup command - finalize session."""
         self.send_event("cleanup_start")
 
@@ -125,7 +125,7 @@ class ProxyWorker:
             "steps_executed": self.step_count,
         }
 
-    def handle_ping(self, cmd: Dict[str, Any]) -> Dict[str, Any]:
+    def handle_ping(self, cmd: dict[str, Any]) -> dict[str, Any]:
         """Handle ping command - simple echo."""
         return {"status": "pong", "timestamp": time.time(), "echo": cmd.get("data", "")}
 

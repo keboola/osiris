@@ -233,11 +233,11 @@ class TestSupabaseWriterDriver:
         # Mock context for metrics
         mock_ctx = MagicMock()
 
-        with patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient, patch(
-            "osiris.drivers.supabase_writer_driver.log_metric"
-        ) as mock_log_metric, patch(
-            "osiris.drivers.supabase_writer_driver.log_event"
-        ) as mock_log_event:
+        with (
+            patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient,
+            patch("osiris.drivers.supabase_writer_driver.log_metric") as mock_log_metric,
+            patch("osiris.drivers.supabase_writer_driver.log_event") as mock_log_event,
+        ):
             mock_client_instance = MagicMock()
             mock_table = MagicMock()
 
@@ -266,9 +266,7 @@ class TestSupabaseWriterDriver:
 
             # Check metrics were logged
             mock_log_metric.assert_any_call("rows_written", 3, step_id="test_step")
-            mock_log_metric.assert_any_call(
-                "duration_ms", pytest.approx(10, abs=500), step_id="test_step"
-            )
+            mock_log_metric.assert_any_call("duration_ms", pytest.approx(10, abs=500), step_id="test_step")
 
             # Check events were logged
             mock_log_event.assert_any_call(

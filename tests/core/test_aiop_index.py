@@ -308,12 +308,11 @@ class TestAIOPIndex:
                 with open(latest_path) as f:
                     content = f.read()
                 assert "run_001" in content
-        else:
-            # On Windows, should create fallback file
-            if latest_path.exists():
-                with open(latest_path) as f:
-                    content = f.read()
-                assert "run_001" in content
+        # On Windows, should create fallback file
+        elif latest_path.exists():
+            with open(latest_path) as f:
+                content = f.read()
+            assert "run_001" in content
 
     def test_index_enriched_with_duration(self, tmp_path):
         """Test that index is enriched with duration_ms calculation."""

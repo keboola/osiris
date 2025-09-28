@@ -22,7 +22,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 @dataclass
@@ -56,16 +56,14 @@ class CacheEntry:
     created_at: str
     ttl_seconds: int
     fingerprint: CacheFingerprint
-    payload: Dict[str, Any]
+    payload: dict[str, Any]
 
     @property
     def is_expired(self) -> bool:
         """Check if cache entry has expired."""
         import time
 
-        created_timestamp = datetime.fromisoformat(
-            self.created_at.replace("Z", "+00:00")
-        ).timestamp()
+        created_timestamp = datetime.fromisoformat(self.created_at.replace("Z", "+00:00")).timestamp()
         age = time.time() - created_timestamp
         return age > self.ttl_seconds
 
@@ -94,7 +92,7 @@ def sha256_hex(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
-def input_options_fingerprint(options: Dict[str, Any]) -> str:
+def input_options_fingerprint(options: dict[str, Any]) -> str:
     """Generate fingerprint for input options.
 
     Args:
@@ -106,7 +104,7 @@ def input_options_fingerprint(options: Dict[str, Any]) -> str:
     return sha256_hex(canonical_json(options))
 
 
-def spec_fingerprint(spec_schema: Dict[str, Any]) -> str:
+def spec_fingerprint(spec_schema: dict[str, Any]) -> str:
     """Generate fingerprint for component spec schema.
 
     Args:
@@ -122,8 +120,8 @@ def create_cache_fingerprint(
     component_type: str,
     component_version: str,
     connection_ref: str,
-    options: Dict[str, Any],
-    spec_schema: Dict[str, Any],
+    options: dict[str, Any],
+    spec_schema: dict[str, Any],
 ) -> CacheFingerprint:
     """Create complete cache fingerprint from components.
 
@@ -149,9 +147,7 @@ def create_cache_fingerprint(
     )
 
 
-def create_cache_entry(
-    fingerprint: CacheFingerprint, payload: Dict[str, Any], ttl_seconds: int = 3600
-) -> CacheEntry:
+def create_cache_entry(fingerprint: CacheFingerprint, payload: dict[str, Any], ttl_seconds: int = 3600) -> CacheEntry:
     """Create cache entry with fingerprint and payload.
 
     Args:
@@ -190,9 +186,7 @@ def fingerprints_match(fp1: CacheFingerprint, fp2: CacheFingerprint) -> bool:
     )
 
 
-def should_invalidate_cache(
-    cached_entry: Optional[CacheEntry], current_fingerprint: CacheFingerprint
-) -> bool:
+def should_invalidate_cache(cached_entry: CacheEntry | None, current_fingerprint: CacheFingerprint) -> bool:
     """Determine if cache should be invalidated.
 
     Args:

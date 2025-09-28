@@ -4,7 +4,7 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from osiris.core.logs_serialize import to_index_json, to_session_json
 from osiris.core.session_reader import SessionReader
@@ -28,7 +28,7 @@ def classify_session_type(session_id: str) -> str:
         return "other"
 
 
-def read_session_logs(logs_dir: str, session_id: str) -> Dict[str, Any]:
+def read_session_logs(logs_dir: str, session_id: str) -> dict[str, Any]:
     """Read full session logs including events and metrics."""
     session_path = Path(logs_dir) / session_id
     result = {"events": [], "metrics": [], "artifacts": []}
@@ -71,10 +71,10 @@ def read_session_logs(logs_dir: str, session_id: str) -> Dict[str, Any]:
 def generate_html_report(
     logs_dir: str = "./logs",
     output_dir: str = "dist/logs",
-    status_filter: Optional[str] = None,
-    label_filter: Optional[str] = None,
-    since_filter: Optional[str] = None,
-    limit: Optional[int] = None,
+    status_filter: str | None = None,
+    label_filter: str | None = None,
+    since_filter: str | None = None,
+    limit: int | None = None,
 ) -> None:
     """Generate static HTML report from session logs with enhanced developer features."""
     # Create output directory
@@ -1702,9 +1702,7 @@ def generate_index_html(data_json: str, session_details: dict) -> str:
     return html
 
 
-def generate_single_session_html(
-    session_id: str, logs_dir: str = "./logs", output_dir: str = "dist/logs"
-) -> str:
+def generate_single_session_html(session_id: str, logs_dir: str = "./logs", output_dir: str = "dist/logs") -> str:
     """Generate HTML report for a single session."""
     reader = SessionReader(logs_dir)
 

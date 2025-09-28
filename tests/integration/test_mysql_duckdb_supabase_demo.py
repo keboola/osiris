@@ -28,9 +28,7 @@ class TestMySQLDuckDBSupabaseDemo:
     def temp_workspace(self, tmp_path):
         """Create a temporary workspace with connections."""
         # Copy osiris_connections.yaml from testing_env
-        connections_src = (
-            Path(__file__).parent.parent.parent / "testing_env/osiris_connections.yaml"
-        )
+        connections_src = Path(__file__).parent.parent.parent / "testing_env/osiris_connections.yaml"
         if connections_src.exists():
             connections_dst = tmp_path / "osiris_connections.yaml"
             connections_dst.write_text(connections_src.read_text())

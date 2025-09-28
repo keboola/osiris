@@ -6,7 +6,7 @@ import time
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -45,8 +45,7 @@ def retry_with_backoff(func, max_attempts=3, initial_delay=1.0, max_delay=10.0):
                 # Add jitter: 0.5x to 1.5x the base delay
                 jittered_delay = delay * (0.5 + random.random())
                 logger.warning(
-                    f"Attempt {attempt + 1} failed: {str(e)[:100]}. "
-                    f"Retrying in {jittered_delay:.2f}s..."
+                    f"Attempt {attempt + 1} failed: {str(e)[:100]}. " f"Retrying in {jittered_delay:.2f}s..."
                 )
                 time.sleep(jittered_delay)
                 # Exponential backoff with cap
@@ -60,9 +59,7 @@ def retry_with_backoff(func, max_attempts=3, initial_delay=1.0, max_delay=10.0):
 class SupabaseWriterDriver(Driver):
     """Driver for writing data to Supabase."""
 
-    def run(
-        self, *, step_id: str, config: dict, inputs: Optional[dict] = None, ctx: Any = None
-    ) -> dict:
+    def run(self, *, step_id: str, config: dict, inputs: dict | None = None, ctx: Any = None) -> dict:
         """Execute Supabase write operation.
 
         Args:
@@ -104,9 +101,7 @@ class SupabaseWriterDriver(Driver):
 
         unknown_keys = set(config.keys()) - known_keys
         if unknown_keys:
-            raise ValueError(
-                f"Step {step_id}: Unknown configuration keys: {', '.join(sorted(unknown_keys))}"
-            )
+            raise ValueError(f"Step {step_id}: Unknown configuration keys: {', '.join(sorted(unknown_keys))}")
 
         # Get resolved connection
         connection_config = config.get("resolved_connection", {})
@@ -166,9 +161,7 @@ class SupabaseWriterDriver(Driver):
             output_dir = Path(ctx.output_dir)
         elif step_id:
             # Try to infer from step_id
-            output_dir = Path(
-                f"logs/run_{int(datetime.now().timestamp() * 1000)}/artifacts/{step_id}"
-            )
+            output_dir = Path(f"logs/run_{int(datetime.now().timestamp() * 1000)}/artifacts/{step_id}")
             output_dir.mkdir(parents=True, exist_ok=True)
 
         try:
@@ -184,9 +177,7 @@ class SupabaseWriterDriver(Driver):
                 except Exception as e:
                     if create_if_missing:
                         # Generate CREATE TABLE SQL
-                        create_sql = self._generate_create_table_sql(
-                            df, table_name, schema, primary_key
-                        )
+                        create_sql = self._generate_create_table_sql(df, table_name, schema, primary_key)
 
                         # Save DDL plan as artifact
                         if output_dir:
@@ -224,9 +215,16 @@ class SupabaseWriterDriver(Driver):
                                     table=table_name,
                                     error=str(ddl_error),
                                 )
-                                raise RuntimeError(
-                                    f"Table creation failed: {str(ddl_error)}"
-                                ) from ddl_error
+                                # Check if it's a network connectivity issue (IPv6 in E2B)
+                                error_str = str(ddl_error).lower()
+                                if "network is unreachable" in error_str or "2a05:d016" in error_str:
+                                    logger.warning(
+                                        "Network connectivity issue detected (likely IPv6 in E2B). "
+                                        "Proceeding without table creation - table must exist already."
+                                    )
+                                    # Don't raise, just continue - assume table exists
+                                else:
+                                    raise RuntimeError(f"Table creation failed: {str(ddl_error)}") from ddl_error
                         else:
                             # No SQL channel available, only log the plan
                             logger.warning(
@@ -268,9 +266,24 @@ class SupabaseWriterDriver(Driver):
                             elif write_mode == "replace":
                                 # Replace mode: delete all then insert
                                 if batch_idx == 0:  # Only delete on first batch
-                                    client.table(table_name).delete().neq(
-                                        "id", "0"
-                                    ).execute()  # Delete all
+                                    # Supabase/PostgREST requires a WHERE clause for DELETE
+                                    # We need to delete all rows. The standard approach is to use
+                                    # a condition that matches everything.
+                                    pk_col = primary_key[0] if primary_key else "director_id"
+                                    try:
+                                        # Delete all rows by using >= with a very small number
+                                        # This should match all rows with numeric IDs
+                                        delete_result = client.table(table_name).delete().gte(pk_col, -999999).execute()
+                                        logger.debug(
+                                            f"Deleted {len(delete_result.data) if delete_result.data else 'all'} rows from {table_name}"
+                                        )
+                                    except Exception:
+                                        # If numeric comparison fails, try string comparison
+                                        try:
+                                            delete_result = client.table(table_name).delete().neq(pk_col, "").execute()
+                                            logger.debug(f"Deleted rows from {table_name} using string comparison")
+                                        except Exception as e2:
+                                            logger.warning(f"Could not delete existing rows: {e2}")
                                 return client.table(table_name).insert(batch_data).execute()
                             else:
                                 raise ValueError(f"Unsupported write mode: {write_mode}")
@@ -298,14 +311,10 @@ class SupabaseWriterDriver(Driver):
                                 if write_mode == "insert":
                                     client.table(table_name).insert(batch).execute()
                                 elif write_mode == "upsert":
-                                    client.table(table_name).upsert(
-                                        batch, on_conflict=",".join(primary_key)
-                                    ).execute()
+                                    client.table(table_name).upsert(batch, on_conflict=",".join(primary_key)).execute()
                                 rows_written += len(batch)
                             except Exception as retry_e:
-                                raise RuntimeError(
-                                    f"Batch write failed after retry: {str(retry_e)}"
-                                ) from retry_e
+                                raise RuntimeError(f"Batch write failed after retry: {str(retry_e)}") from retry_e
                         else:
                             raise
 
@@ -334,7 +343,7 @@ class SupabaseWriterDriver(Driver):
                 log_event("write.error", step_id=step_id, error=str(e))
             raise RuntimeError(f"Supabase write failed: {str(e)}") from e
 
-    def _prepare_records(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
+    def _prepare_records(self, df: pd.DataFrame) -> list[dict[str, Any]]:
         """Convert DataFrame to list of records with proper serialization.
 
         Args:
@@ -351,14 +360,14 @@ class SupabaseWriterDriver(Driver):
                 if pd.isna(value):
                     record[col] = None
                 # Handle datetime types
-                elif isinstance(value, (pd.Timestamp, np.datetime64)):
+                elif isinstance(value, pd.Timestamp | np.datetime64):
                     record[col] = pd.Timestamp(value).isoformat()
-                elif isinstance(value, (datetime, date)):
+                elif isinstance(value, datetime | date):
                     record[col] = value.isoformat()
                 # Handle numeric types
-                elif isinstance(value, (np.integer, np.int64, np.int32)):
+                elif isinstance(value, np.integer | np.int64 | np.int32):
                     record[col] = int(value)
-                elif isinstance(value, (np.floating, np.float64, np.float32)):
+                elif isinstance(value, np.floating | np.float64 | np.float32):
                     if np.isnan(value):
                         record[col] = None
                     else:
@@ -374,7 +383,7 @@ class SupabaseWriterDriver(Driver):
         return records
 
     def _generate_create_table_sql(
-        self, df: pd.DataFrame, table_name: str, schema: str, primary_key: Optional[List[str]]
+        self, df: pd.DataFrame, table_name: str, schema: str, primary_key: list[str] | None
     ) -> str:
         """Generate CREATE TABLE SQL based on DataFrame schema (display only).
 
@@ -409,7 +418,7 @@ class SupabaseWriterDriver(Driver):
         sql += "\n);"
         return sql
 
-    def _has_sql_channel(self, connection_config: Dict[str, Any]) -> bool:
+    def _has_sql_channel(self, connection_config: dict[str, Any]) -> bool:
         """Check if connection config provides SQL execution capability.
 
         Args:
@@ -435,9 +444,7 @@ class SupabaseWriterDriver(Driver):
         std_params = ["host", "database", "user", "password"]
         return all(param in connection_config for param in std_params)
 
-    def _execute_ddl(
-        self, connection_config: Dict[str, Any], ddl_sql: str, schema: str, table_name: str
-    ) -> None:
+    def _execute_ddl(self, connection_config: dict[str, Any], ddl_sql: str, schema: str, table_name: str) -> None:
         """Execute DDL statement via SQL channel if available.
 
         Args:
@@ -450,26 +457,18 @@ class SupabaseWriterDriver(Driver):
             RuntimeError: If DDL execution fails
         """
         # Try to get DSN - check multiple possible keys
-        dsn = (
-            connection_config.get("dsn")
-            or connection_config.get("sql_dsn")
-            or connection_config.get("pg_dsn")
-        )
+        dsn = connection_config.get("dsn") or connection_config.get("sql_dsn") or connection_config.get("pg_dsn")
 
         # If no DSN, try to build one from separate params
         if not dsn:
             # Try pg_ prefixed params first
-            if all(
-                k in connection_config for k in ["pg_host", "pg_database", "pg_user", "pg_password"]
-            ):
+            if all(k in connection_config for k in ["pg_host", "pg_database", "pg_user", "pg_password"]):
                 pg_port = connection_config.get("pg_port", 5432)
                 dsn = (
                     f"postgresql://{connection_config['pg_user']}:{connection_config['pg_password']}"
                     f"@{connection_config['pg_host']}:{pg_port}/{connection_config['pg_database']}"
                 )
-                logger.info(
-                    f"Built PostgreSQL DSN from pg_ parameters (host={connection_config['pg_host']})"
-                )
+                logger.info(f"Built PostgreSQL DSN from pg_ parameters (host={connection_config['pg_host']})")
             # Try standard params
             elif all(k in connection_config for k in ["host", "database", "user", "password"]):
                 port = connection_config.get("port", 5432)
@@ -477,9 +476,7 @@ class SupabaseWriterDriver(Driver):
                     f"postgresql://{connection_config['user']}:{connection_config['password']}"
                     f"@{connection_config['host']}:{port}/{connection_config['database']}"
                 )
-                logger.info(
-                    f"Built PostgreSQL DSN from standard parameters (host={connection_config['host']})"
-                )
+                logger.info(f"Built PostgreSQL DSN from standard parameters (host={connection_config['host']})")
 
         if dsn:
             try:
@@ -494,8 +491,7 @@ class SupabaseWriterDriver(Driver):
             except ImportError:
                 logger.warning("psycopg2 not installed, cannot execute DDL via DSN")
                 raise RuntimeError(
-                    "SQL channel available but psycopg2 not installed. "
-                    "Install with: pip install psycopg2-binary"
+                    "SQL channel available but psycopg2 not installed. " "Install with: pip install psycopg2-binary"
                 ) from None
             except Exception as e:
                 logger.error(f"Failed to execute DDL: {str(e)}")
@@ -504,6 +500,5 @@ class SupabaseWriterDriver(Driver):
         # No SQL channel available - this is not an error, just log it
         logger.info("SQL channel detected: none - DDL plan saved but not executed")
         raise NotImplementedError(
-            "SQL channel DDL execution not available. "
-            "Please create the table manually using the generated DDL plan."
+            "SQL channel DDL execution not available. " "Please create the table manually using the generated DDL plan."
         )

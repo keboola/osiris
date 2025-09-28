@@ -534,9 +534,7 @@ class TestComponentSpecSchema:
             {"type": "object", "properties": {"field": {"type": "string"}}},
             {
                 "type": "object",
-                "properties": {
-                    "nested": {"type": "object", "properties": {"field": {"type": "integer"}}}
-                },
+                "properties": {"nested": {"type": "object", "properties": {"field": {"type": "integer"}}}},
                 "required": ["nested"],
             },
             {

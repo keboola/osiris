@@ -8,7 +8,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 
 @dataclass
@@ -16,11 +16,11 @@ class SessionSummary:
     """Aggregated summary of a session."""
 
     session_id: str
-    started_at: Optional[str] = None
-    finished_at: Optional[str] = None
+    started_at: str | None = None
+    finished_at: str | None = None
     duration_ms: int = 0
     status: str = "unknown"
-    labels: List[str] = field(default_factory=list)
+    labels: list[str] = field(default_factory=list)
 
     # Aggregated metrics
     steps_total: int = 0
@@ -28,18 +28,18 @@ class SessionSummary:
     steps_failed: int = 0
     rows_in: int = 0
     rows_out: int = 0
-    tables: List[str] = field(default_factory=list)
+    tables: list[str] = field(default_factory=list)
     warnings: int = 0
     errors: int = 0
 
     # Pipeline metadata
-    pipeline_name: Optional[str] = None
-    oml_version: Optional[str] = None
+    pipeline_name: str | None = None
+    oml_version: str | None = None
     adapter_type: str = "Local"  # Default to Local, set to E2B for remote runs
 
     # Artifacts metadata
     artifacts_count: int = 0
-    steps_with_artifacts: List[str] = field(default_factory=list)
+    steps_with_artifacts: list[str] = field(default_factory=list)
 
     # Diagnostic hints
     double_count_hint: bool = False  # Indicates potential double counting (non-blocking)
@@ -126,7 +126,7 @@ class SessionReader:
         # Default to extractor (safer to avoid double counting)
         return False
 
-    def list_sessions(self, limit: Optional[int] = None) -> List[SessionSummary]:
+    def list_sessions(self, limit: int | None = None) -> list[SessionSummary]:
         """List all sessions, ordered by newest first.
 
         Args:
@@ -159,7 +159,7 @@ class SessionReader:
 
         return sessions
 
-    def read_session(self, session_id: str) -> Optional[SessionSummary]:
+    def read_session(self, session_id: str) -> SessionSummary | None:
         """Read and aggregate data for a single session.
 
         Args:
@@ -175,8 +175,8 @@ class SessionReader:
         summary = SessionSummary(session_id=session_id)
 
         # Shared tracking dictionaries
-        rows_by_step: Dict[str, int] = {}
-        driver_names: Dict[str, str] = {}
+        rows_by_step: dict[str, int] = {}
+        driver_names: dict[str, str] = {}
         cleanup_total_rows = None
 
         # Read metadata.json if it exists
@@ -187,9 +187,7 @@ class SessionReader:
         # Read events.jsonl for step metrics and cleanup total
         events_path = session_path / "events.jsonl"
         if events_path.exists():
-            cleanup_total_rows = self._read_events_v2(
-                events_path, summary, rows_by_step, driver_names
-            )
+            cleanup_total_rows = self._read_events_v2(events_path, summary, rows_by_step, driver_names)
 
         # Read metrics.jsonl for additional metrics
         metrics_path = session_path / "metrics.jsonl"
@@ -227,7 +225,7 @@ class SessionReader:
 
         return summary
 
-    def get_last_session(self) -> Optional[SessionSummary]:
+    def get_last_session(self) -> SessionSummary | None:
         """Get the most recent session.
 
         Returns:
@@ -259,9 +257,9 @@ class SessionReader:
         self,
         path: Path,
         summary: SessionSummary,
-        rows_by_step: Dict[str, int],
-        driver_names: Dict[str, str],
-    ) -> Optional[int]:
+        rows_by_step: dict[str, int],
+        driver_names: dict[str, str],
+    ) -> int | None:
         """Read and aggregate events.jsonl file (v2 - no double counting).
 
         Args:
@@ -273,8 +271,8 @@ class SessionReader:
         Returns:
             cleanup_total_rows if found, None otherwise
         """
-        steps_seen: Set[str] = set()
-        tables_seen: Set[str] = set()
+        steps_seen: set[str] = set()
+        tables_seen: set[str] = set()
         cleanup_total_rows = None
 
         try:
@@ -359,9 +357,9 @@ class SessionReader:
     def _finalize_row_totals(
         self,
         summary: SessionSummary,
-        cleanup_total_rows: Optional[int],
-        rows_by_step: Dict[str, int],
-        driver_names: Dict[str, str],
+        cleanup_total_rows: int | None,
+        rows_by_step: dict[str, int],
+        driver_names: dict[str, str],
     ) -> None:
         """Finalize row totals using single source of truth logic.
 
@@ -401,9 +399,9 @@ class SessionReader:
 
     def _read_events(self, path: Path, summary: SessionSummary) -> None:
         """Read and aggregate events.jsonl file."""
-        steps_seen: Set[str] = set()
-        tables_seen: Set[str] = set()
-        rows_by_step: Dict[str, int] = {}  # Track rows per step to avoid duplicates
+        steps_seen: set[str] = set()
+        tables_seen: set[str] = set()
+        rows_by_step: dict[str, int] = {}  # Track rows per step to avoid duplicates
         cleanup_total_rows = None  # Track cleanup_complete.total_rows if present
 
         try:
@@ -436,9 +434,7 @@ class SessionReader:
                         elif event_type == "compile_start":
                             summary.started_at = event.get("ts")
                             summary.status = "running"
-                            summary.pipeline_name = (
-                                event.get("pipeline", "").split("/")[-1].replace(".yaml", "")
-                            )
+                            summary.pipeline_name = event.get("pipeline", "").split("/")[-1].replace(".yaml", "")
 
                         elif event_type == "compile_complete":
                             summary.finished_at = event.get("ts")
@@ -447,7 +443,7 @@ class SessionReader:
                             summary.status = "success"
 
                         # Track connection sessions
-                        elif event_type == "connections_list" or event_type == "connections_doctor":
+                        elif event_type in {"connections_list", "connections_doctor"}:
                             if not summary.started_at:
                                 summary.started_at = event.get("ts")
                             summary.finished_at = event.get("ts")
@@ -521,11 +517,7 @@ class SessionReader:
                     total_all_steps = sum(rows_by_step.values())
                     # Check if any steps look like writers (simple heuristic)
                     has_writers = any("write" in step_id.lower() for step_id in rows_by_step)
-                    if (
-                        has_writers
-                        and cleanup_total_rows == total_all_steps
-                        and total_all_steps > 0
-                    ):
+                    if has_writers and cleanup_total_rows == total_all_steps and total_all_steps > 0:
                         # Potential double count detected (cleanup should be writers-only)
                         summary.double_count_hint = True
 
@@ -590,8 +582,8 @@ class SessionReader:
         self,
         path: Path,
         summary: SessionSummary,
-        rows_by_step: Dict[str, int],
-        driver_names: Dict[str, str],
+        rows_by_step: dict[str, int],
+        driver_names: dict[str, str],
     ) -> None:
         """Read and aggregate metrics.jsonl file.
 
@@ -791,7 +783,7 @@ class SessionReader:
                 except OSError:
                     pass
 
-    def filter_safe_fields(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def filter_safe_fields(self, data: dict[str, Any]) -> dict[str, Any]:
         """Filter dictionary to only include whitelisted fields.
 
         Args:

@@ -10,7 +10,7 @@ import sys
 import time
 import traceback
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # Import core components
 from osiris.core.driver import DriverRegistry
@@ -97,7 +97,7 @@ class ProxyWorker:
                 self.logger.error(f"Unexpected error: {e}", exc_info=True)
                 self.send_error(f"Worker error: {e}", include_traceback=True)
 
-    def handle_command(self, command) -> Optional[Any]:
+    def handle_command(self, command) -> Any | None:
         """Process a command and return response."""
         if isinstance(command, PrepareCommand):
             return self.handle_prepare(command)
@@ -131,9 +131,7 @@ class ProxyWorker:
         self.session_context = None
 
         # Initialize execution context
-        self.execution_context = ExecutionContext(
-            session_id=self.session_id, base_path=self.session_dir
-        )
+        self.execution_context = ExecutionContext(session_id=self.session_id, base_path=self.session_dir)
 
         # Run dependency preflight check
         required_deps = self._get_required_dependencies()
@@ -151,9 +149,7 @@ class ProxyWorker:
             if preflight_result["missing"]:
                 if self.allow_install_deps:
                     # Install missing dependencies
-                    self.logger.info(
-                        f"Installing missing dependencies: {preflight_result['missing']}"
-                    )
+                    self.logger.info(f"Installing missing dependencies: {preflight_result['missing']}")
                     install_success = self._install_dependencies(preflight_result["missing"])
 
                     if install_success:
@@ -166,9 +162,14 @@ class ProxyWorker:
                         )
 
                         if post_install_check["missing"]:
-                            error_msg = f"Failed to install some dependencies: {post_install_check['missing']}"
-                            self.logger.error(error_msg)
-                            raise ValueError(error_msg)
+                            # Log warning but continue - some drivers may still work
+                            warning_msg = f"Some dependencies could not be installed: {post_install_check['missing']}"
+                            self.logger.warning(warning_msg)
+                            self.send_event(
+                                "dependency_install_partial",
+                                missing=post_install_check["missing"],
+                                warning=warning_msg,
+                            )
                     else:
                         error_msg = "Failed to install dependencies"
                         self.logger.error(error_msg)
@@ -182,7 +183,7 @@ class ProxyWorker:
                     self.logger.error(error_msg)
                     raise ValueError(error_msg)
 
-        # Initialize and register drivers explicitly
+        # Initialize and register drivers explicitly (do this regardless of dependency status)
         self.driver_registry = DriverRegistry()
         self._register_drivers()
 
@@ -198,15 +199,11 @@ class ProxyWorker:
             "run_start",
             pipeline_id=pipeline_id,
             manifest_path=f"session/{self.session_id}/manifest.json",
-            profile=self.manifest.get("pipeline", {})
-            .get("fingerprints", {})
-            .get("profile", "default"),
+            profile=self.manifest.get("pipeline", {}).get("fingerprints", {}).get("profile", "default"),
         )
 
         # Send initialization event
-        self.send_event(
-            "session_initialized", session_id=self.session_id, drivers_loaded=drivers_loaded
-        )
+        self.send_event("session_initialized", session_id=self.session_id, drivers_loaded=drivers_loaded)
 
         # Send metrics
         steps_count = len(self.manifest.get("steps", []))
@@ -246,9 +243,7 @@ class ProxyWorker:
             # Emit cfg_opened event with path, sha256, and keys
             self.send_event("cfg_opened", path=cmd.cfg_path, sha256=sha256, keys=config_keys)
 
-            self.logger.info(
-                f"Loaded config from {cmd.cfg_path} (sha256: {sha256[:8]}..., keys: {config_keys})"
-            )
+            self.logger.info(f"Loaded config from {cmd.cfg_path} (sha256: {sha256[:8]}..., keys: {config_keys})")
         else:
             # Fallback to inline config if provided (for backward compatibility)
             config = cmd.config if hasattr(cmd, "config") else {}
@@ -268,14 +263,10 @@ class ProxyWorker:
             artifacts_base = self.session_dir / "artifacts"
             step_artifacts_dir = artifacts_base / step_id
             step_artifacts_dir.mkdir(parents=True, exist_ok=True)
-            self.logger.debug(
-                f"Created artifacts directory for step {step_id}: {step_artifacts_dir}"
-            )
+            self.logger.debug(f"Created artifacts directory for step {step_id}: {step_artifacts_dir}")
 
             # Emit event for artifacts directory creation
-            self.send_event(
-                "artifacts_dir_created", step_id=step_id, relative_path=f"artifacts/{step_id}"
-            )
+            self.send_event("artifacts_dir_created", step_id=step_id, relative_path=f"artifacts/{step_id}")
 
             # Clean config for driver (strip meta keys) and save cleaned_config.json
             clean_config = config.copy()
@@ -291,9 +282,7 @@ class ProxyWorker:
 
             # Emit event for config meta stripping if we removed any keys
             if meta_keys_removed:
-                self.send_event(
-                    "config_meta_stripped", step_id=step_id, keys_removed=meta_keys_removed
-                )
+                self.send_event("config_meta_stripped", step_id=step_id, keys_removed=meta_keys_removed)
 
             # Emit connection resolution events if we have a resolved connection
             # (for parity with local runs, even though resolution happened on host)
@@ -413,9 +402,7 @@ class ProxyWorker:
                             rows_processed = len(result["df"])
                             # Emit rows_read for extractors specifically (ONLY with step tag)
                             if driver_name.endswith(".extractor"):
-                                self.send_metric(
-                                    "rows_read", rows_processed, tags={"step": step_id}
-                                )
+                                self.send_metric("rows_read", rows_processed, tags={"step": step_id})
                                 # DO NOT emit untagged rows_read metric
                     except Exception:
                         pass
@@ -469,9 +456,7 @@ class ProxyWorker:
                 duration_ms=duration_ms,
             )
 
-            self.logger.info(
-                f"Step {step_id} completed: {rows_processed} rows in {duration_ms:.2f}ms"
-            )
+            self.logger.info(f"Step {step_id} completed: {rows_processed} rows in {duration_ms:.2f}ms")
 
             # CRITICAL: Return response WITHOUT DataFrames - only JSON-serializable data
             # For RPC response, writers should report actual written count
@@ -548,17 +533,13 @@ class ProxyWorker:
             # Clear cached outputs
             self.step_outputs.clear()
 
-        self.send_event(
-            "cleanup_complete", steps_executed=self.step_count, total_rows=final_total_rows
-        )
+        self.send_event("cleanup_complete", steps_executed=self.step_count, total_rows=final_total_rows)
 
         self.logger.info(
             f"Session {self.session_id} cleaned up - total_rows={final_total_rows} (writers={sum_rows_written}, extractors={sum_rows_read})"
         )
 
-        return CleanupResponse(
-            session_id=self.session_id, steps_executed=self.step_count, total_rows=final_total_rows
-        )
+        return CleanupResponse(session_id=self.session_id, steps_executed=self.step_count, total_rows=final_total_rows)
 
     def handle_ping(self, cmd: PingCommand) -> PingResponse:
         """Handle ping command for health check."""
@@ -585,7 +566,7 @@ class ProxyWorker:
             except Exception as e:
                 self.logger.warning(f"Failed to write event to file: {e}")
 
-    def send_metric(self, metric_name: str, value: Any, tags: Optional[Dict[str, str]] = None):
+    def send_metric(self, metric_name: str, value: Any, tags: dict[str, str] | None = None):
         """Send a metric to the host and write to metrics file."""
         msg = MetricMessage(name=metric_name, value=value, timestamp=time.time(), tags=tags)
         metric_data = msg.model_dump(exclude_none=True)
@@ -607,9 +588,7 @@ class ProxyWorker:
         if include_traceback:
             context["traceback"] = traceback.format_exc()
 
-        msg = ErrorMessage(
-            error=error_msg, timestamp=time.time(), context=context if context else None
-        )
+        msg = ErrorMessage(error=error_msg, timestamp=time.time(), context=context if context else None)
         print(json.dumps(msg.model_dump(exclude_none=True)), flush=True)
 
     def _register_drivers(self):
@@ -629,16 +608,12 @@ class ProxyWorker:
         try:
             from osiris.drivers.filesystem_csv_writer_driver import FilesystemCsvWriterDriver
 
-            self.driver_registry.register(
-                "filesystem.csv_writer", lambda: FilesystemCsvWriterDriver()
-            )
+            self.driver_registry.register("filesystem.csv_writer", lambda: FilesystemCsvWriterDriver())
             self.logger.info("Registered driver: filesystem.csv_writer")
             self.send_event("driver_registered", driver="filesystem.csv_writer", status="success")
         except ImportError as e:
             self.logger.warning(f"Failed to import FilesystemCsvWriterDriver: {e}")
-            self.send_event(
-                "driver_registration_failed", driver="filesystem.csv_writer", error=str(e)
-            )
+            self.send_event("driver_registration_failed", driver="filesystem.csv_writer", error=str(e))
 
         # Import and register Supabase writer if available
         try:
@@ -658,9 +633,7 @@ class ProxyWorker:
                     f"Try: --e2b-install-deps or include supabase deps in your image."
                 )
                 self.logger.error(error_msg)
-                self.send_event(
-                    "driver_registration_failed", driver="supabase.writer", error=str(e)
-                )
+                self.send_event("driver_registration_failed", driver="supabase.writer", error=str(e))
 
                 # If we need supabase and auto-install is enabled, try to install
                 if hasattr(self, "allow_install_deps") and self.allow_install_deps:
@@ -670,9 +643,7 @@ class ProxyWorker:
                         try:
                             from osiris.drivers.supabase_writer_driver import SupabaseWriterDriver
 
-                            self.driver_registry.register(
-                                "supabase.writer", lambda: SupabaseWriterDriver()
-                            )
+                            self.driver_registry.register("supabase.writer", lambda: SupabaseWriterDriver())
                             self.logger.info("Registered driver: supabase.writer (after install)")
                             self.send_event(
                                 "driver_registered",
@@ -680,15 +651,58 @@ class ProxyWorker:
                                 status="success_after_install",
                             )
                         except ImportError as e2:
-                            self.logger.error(
-                                f"Still unable to register supabase.writer after install: {e2}"
-                            )
+                            self.logger.error(f"Still unable to register supabase.writer after install: {e2}")
                             # Will fail later when trying to execute a step that needs it
                     else:
                         self.logger.error("Failed to install supabase dependencies")
             else:
                 # Supabase not needed for this pipeline
                 self.logger.debug(f"Supabase writer not available (not needed): {e}")
+
+        # Import and register DuckDB processor
+        try:
+            from osiris.drivers.duckdb_processor_driver import DuckDBProcessorDriver
+
+            self.driver_registry.register("duckdb.processor", lambda: DuckDBProcessorDriver())
+            self.logger.info("Registered driver: duckdb.processor")
+            self.send_event("driver_registered", driver="duckdb.processor", status="success")
+        except ImportError as e:
+            # Check if DuckDB is needed in the plan
+            steps = self.manifest.get("steps", []) if hasattr(self, "manifest") else []
+            needs_duckdb = any(step.get("driver") == "duckdb.processor" for step in steps)
+
+            if needs_duckdb:
+                self.logger.warning(f"DuckDB driver needed but unavailable: {e}")
+
+                # If auto-install is enabled, try to install duckdb
+                if hasattr(self, "allow_install_deps") and self.allow_install_deps:
+                    self.logger.info("Attempting to install duckdb package...")
+                    if self._install_dependencies(["duckdb"]):
+                        # Retry registration after install
+                        try:
+                            from osiris.drivers.duckdb_processor_driver import DuckDBProcessorDriver
+
+                            self.driver_registry.register("duckdb.processor", lambda: DuckDBProcessorDriver())
+                            self.logger.info("Registered driver: duckdb.processor (after install)")
+                            self.send_event(
+                                "driver_registered",
+                                driver="duckdb.processor",
+                                status="success_after_install",
+                            )
+                        except ImportError as e2:
+                            self.logger.error(f"Still unable to register duckdb.processor after install: {e2}")
+                            self.send_event(
+                                "driver_registration_failed",
+                                driver="duckdb.processor",
+                                error=str(e2),
+                            )
+                    else:
+                        self.logger.error("Failed to install duckdb package")
+                        self.send_event("driver_registration_failed", driver="duckdb.processor", error=str(e))
+                else:
+                    self.send_event("driver_registration_failed", driver="duckdb.processor", error=str(e))
+            else:
+                self.logger.debug(f"DuckDB processor not available (not needed): {e}")
 
         # Log all registered drivers for diagnostics
         registered = self.list_registered_drivers()
@@ -699,7 +713,7 @@ class ProxyWorker:
         """Get list of registered driver names."""
         return sorted(self.driver_registry._drivers.keys())
 
-    def _get_required_dependencies(self) -> Dict[str, List[str]]:
+    def _get_required_dependencies(self) -> dict[str, list[str]]:
         """Get required dependencies based on drivers used in the plan.
 
         Returns:
@@ -709,7 +723,8 @@ class ProxyWorker:
         driver_deps = {
             "mysql.extractor": ["sqlalchemy", "pandas", "pymysql"],
             "filesystem.csv_writer": ["pandas"],
-            "supabase.writer": ["supabase", "pandas"],
+            "supabase.writer": ["supabase", "pandas", "psycopg2"],  # Use psycopg2 (not binary)
+            "duckdb.processor": ["duckdb", "pandas"],
         }
 
         # Find which drivers are used in the plan
@@ -721,7 +736,7 @@ class ProxyWorker:
 
         return required
 
-    def _preflight_dependencies(self, required_deps: Dict[str, List[str]]) -> Dict[str, List[str]]:
+    def _preflight_dependencies(self, required_deps: dict[str, list[str]]) -> dict[str, list[str]]:
         """Check if required modules are importable.
 
         Args:
@@ -741,16 +756,33 @@ class ProxyWorker:
         # Try importing each module
         for module_name in all_modules:
             try:
-                __import__(module_name)
-                present.append(module_name)
-                self.logger.debug(f"Module {module_name} is available")
+                # Special case for psycopg2 - accept either psycopg2 or psycopg2-binary
+                if module_name == "psycopg2":
+                    try:
+                        __import__("psycopg2")
+                        present.append(module_name)
+                        self.logger.debug("Module psycopg2 is available")
+                    except ImportError:
+                        # Try psycopg2-binary as fallback
+                        try:
+                            __import__("psycopg2")  # psycopg2-binary provides psycopg2
+                            present.append(module_name)
+                            self.logger.debug("Module psycopg2 is available (via psycopg2-binary)")
+                        except ImportError:
+                            missing.append(module_name)
+                            self.logger.debug(f"Module {module_name} is missing")
+                else:
+                    __import__(module_name)
+                    present.append(module_name)
+                    self.logger.debug(f"Module {module_name} is available")
             except ImportError:
-                missing.append(module_name)
-                self.logger.debug(f"Module {module_name} is missing")
+                if module_name != "psycopg2":  # Already handled above
+                    missing.append(module_name)
+                    self.logger.debug(f"Module {module_name} is missing")
 
         return {"missing": missing, "present": present}
 
-    def _resolve_inputs(self, inputs_spec: Dict[str, Any]) -> Dict[str, Any]:
+    def _resolve_inputs(self, inputs_spec: dict[str, Any]) -> dict[str, Any]:
         """Resolve symbolic input references to actual values.
 
         Args:
@@ -772,13 +804,9 @@ class ProxyWorker:
                     step_output = self.step_outputs[from_step]
                     if isinstance(step_output, dict) and from_key in step_output:
                         resolved[input_key] = step_output[from_key]
-                        self.logger.debug(
-                            f"Resolved input '{input_key}' from step '{from_step}', key '{from_key}'"
-                        )
+                        self.logger.debug(f"Resolved input '{input_key}' from step '{from_step}', key '{from_key}'")
                     else:
-                        self.logger.warning(
-                            f"Key '{from_key}' not found in outputs from step '{from_step}'"
-                        )
+                        self.logger.warning(f"Key '{from_key}' not found in outputs from step '{from_step}'")
                 else:
                     self.logger.warning(f"No outputs cached for step '{from_step}'")
             else:
@@ -811,9 +839,7 @@ class ProxyWorker:
             "ok": success,
             "session_path": str(self.session_dir),
             "session_copied": True,  # E2B copies to host
-            "events_jsonl_exists": (
-                (self.session_dir / "events.jsonl").exists() if self.session_dir else False
-            ),
+            "events_jsonl_exists": ((self.session_dir / "events.jsonl").exists() if self.session_dir else False),
             "reason": "" if success else f"Completed {self.step_count}/{steps_total} steps",
         }
 
@@ -838,7 +864,7 @@ class ProxyWorker:
             except:
                 pass  # Give up if we can't write at all
 
-    def _install_dependencies(self, missing_modules: List[str]) -> bool:
+    def _install_dependencies(self, missing_modules: list[str]) -> bool:
         """Install missing dependencies in the sandbox.
 
         Args:
@@ -859,16 +885,25 @@ class ProxyWorker:
                 self.logger.info(f"Installing from {requirements_file}")
                 result = subprocess.run(
                     [sys.executable, "-m", "pip", "install", "-r", str(requirements_file)],
-                    capture_output=True,
+                    check=False, capture_output=True,
                     text=True,
                     timeout=300,  # 5 minute timeout
                 )
             else:
+                # Handle psycopg2 special case
+                modules_to_install = []
+                for mod in missing_modules:
+                    if mod == "psycopg2":
+                        # Try psycopg2-binary first as it's easier to install
+                        modules_to_install.append("psycopg2-binary")
+                    else:
+                        modules_to_install.append(mod)
+
                 # Install specific modules
-                self.logger.info(f"Installing modules: {missing_modules}")
+                self.logger.info(f"Installing modules: {modules_to_install}")
                 result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install"] + missing_modules,
-                    capture_output=True,
+                    [sys.executable, "-m", "pip", "install"] + modules_to_install,
+                    check=False, capture_output=True,
                     text=True,
                     timeout=300,  # 5 minute timeout
                 )
@@ -932,8 +967,7 @@ class ProxyWorker:
                 else:
                     available_steps = list(self.step_outputs.keys())
                     error_msg = (
-                        f"Step '{from_step}' not found in cached outputs. "
-                        f"Available steps: {available_steps}"
+                        f"Step '{from_step}' not found in cached outputs. " f"Available steps: {available_steps}"
                     )
                     self.logger.error(error_msg)
                     self.send_event(
@@ -947,11 +981,7 @@ class ProxyWorker:
         # Log successful input resolution for observability
         if resolved:
             from_steps = list(
-                set(
-                    ref.get("from_step", "unknown")
-                    for ref in inputs_spec.values()
-                    if isinstance(ref, dict)
-                )
+                set(ref.get("from_step", "unknown") for ref in inputs_spec.values() if isinstance(ref, dict))
             )
             resolved_keys = list(resolved.keys())
 

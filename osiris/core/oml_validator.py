@@ -1,7 +1,7 @@
 """OML v0.1.0 validation logic."""
 
 import re
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from ..components.registry import ComponentRegistry
 from .mode_mapper import ModeMapper
@@ -33,11 +33,11 @@ class OMLValidator:
 
     def __init__(self):
         """Initialize the validator."""
-        self.errors: List[Dict[str, str]] = []
-        self.warnings: List[Dict[str, str]] = []
+        self.errors: list[dict[str, str]] = []
+        self.warnings: list[dict[str, str]] = []
         self.registry = ComponentRegistry()
 
-    def validate(self, oml: Any) -> Tuple[bool, List[Dict[str, str]], List[Dict[str, str]]]:
+    def validate(self, oml: Any) -> tuple[bool, list[dict[str, str]], list[dict[str, str]]]:
         """Validate an OML document.
 
         Args:
@@ -51,9 +51,7 @@ class OMLValidator:
 
         # Check basic structure
         if not isinstance(oml, dict):
-            self.errors.append(
-                {"type": "invalid_type", "message": "OML must be a dictionary/object"}
-            )
+            self.errors.append({"type": "invalid_type", "message": "OML must be a dictionary/object"})
             return False, self.errors, self.warnings
 
         # Check required top-level keys
@@ -77,7 +75,7 @@ class OMLValidator:
 
         return len(self.errors) == 0, self.errors, self.warnings
 
-    def _check_required_keys(self, oml: Dict[str, Any]) -> None:
+    def _check_required_keys(self, oml: dict[str, Any]) -> None:
         """Check for required top-level keys."""
         missing = self.REQUIRED_TOP_KEYS - set(oml.keys())
         for key in missing:
@@ -89,7 +87,7 @@ class OMLValidator:
                 }
             )
 
-    def _check_forbidden_keys(self, oml: Dict[str, Any]) -> None:
+    def _check_forbidden_keys(self, oml: dict[str, Any]) -> None:
         """Check for forbidden top-level keys."""
         forbidden = self.FORBIDDEN_TOP_KEYS & set(oml.keys())
         for key in forbidden:
@@ -101,7 +99,7 @@ class OMLValidator:
                 }
             )
 
-    def _validate_version(self, oml: Dict[str, Any]) -> None:
+    def _validate_version(self, oml: dict[str, Any]) -> None:
         """Validate OML version."""
         version = oml.get("oml_version")
         if version is None:
@@ -126,7 +124,7 @@ class OMLValidator:
                 }
             )
 
-    def _validate_name(self, oml: Dict[str, Any]) -> None:
+    def _validate_name(self, oml: dict[str, Any]) -> None:
         """Validate pipeline name."""
         name = oml.get("name")
         if name is None:
@@ -143,9 +141,7 @@ class OMLValidator:
             return
 
         if not name.strip():
-            self.errors.append(
-                {"type": "empty_name", "message": "name cannot be empty", "location": "name"}
-            )
+            self.errors.append({"type": "empty_name", "message": "name cannot be empty", "location": "name"})
 
         # Check naming convention (warning only)
         if not re.match(r"^[a-z0-9][a-z0-9-]*$", name):
@@ -179,17 +175,13 @@ class OMLValidator:
             )
             return
 
-        step_ids: Set[str] = set()
-        all_step_ids: Set[str] = {
-            step.get("id") for step in steps if isinstance(step, dict) and "id" in step
-        }
+        step_ids: set[str] = set()
+        all_step_ids: set[str] = {step.get("id") for step in steps if isinstance(step, dict) and "id" in step}
 
         for i, step in enumerate(steps):
             self._validate_step(step, i, step_ids, all_step_ids)
 
-    def _validate_step(
-        self, step: Any, index: int, step_ids: Set[str], all_step_ids: Set[str]
-    ) -> None:
+    def _validate_step(self, step: Any, index: int, step_ids: set[str], all_step_ids: set[str]) -> None:
         """Validate a single step."""
         location = f"steps[{index}]"
 
@@ -343,9 +335,7 @@ class OMLValidator:
             else:
                 self._validate_step_config(config, component, f"{location}.config")
 
-    def _validate_step_config(
-        self, config: Dict[str, Any], component: Optional[str], location: str
-    ) -> None:
+    def _validate_step_config(self, config: dict[str, Any], component: str | None, location: str) -> None:
         """Validate step configuration."""
         # Check connection references
         connection = config.get("connection")
@@ -405,7 +395,7 @@ class OMLValidator:
                     }
                 )
 
-    def _check_unknown_keys(self, oml: Dict[str, Any]) -> None:
+    def _check_unknown_keys(self, oml: dict[str, Any]) -> None:
         """Check for unknown top-level keys (warnings)."""
         known = self.REQUIRED_TOP_KEYS | {"description", "metadata", "schedule"}
         unknown = set(oml.keys()) - known - self.FORBIDDEN_TOP_KEYS

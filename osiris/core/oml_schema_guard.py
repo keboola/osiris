@@ -1,14 +1,14 @@
 """OML schema validation guard for ensuring correct pipeline format."""
 
 import logging
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import yaml
 
 logger = logging.getLogger(__name__)
 
 
-def check_oml_schema(pipeline_yaml: str) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+def check_oml_schema(pipeline_yaml: str) -> tuple[bool, str | None, dict[str, Any] | None]:
     """Check if the pipeline YAML conforms to OML v0.1.0 schema.
 
     Args:
@@ -82,7 +82,7 @@ def check_oml_schema(pipeline_yaml: str) -> Tuple[bool, Optional[str], Optional[
 
 
 def create_oml_regeneration_prompt(
-    _original_yaml: str, error_message: str, parsed_data: Optional[Dict[str, Any]] = None
+    _original_yaml: str, error_message: str, parsed_data: dict[str, Any] | None = None
 ) -> str:
     """Create a directed prompt for regenerating valid OML.
 

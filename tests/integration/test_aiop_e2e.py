@@ -97,7 +97,7 @@ class TestAIOPEndToEnd:
             "--logs-dir",
             str(logs_dir),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
         # Verify successful execution
         assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -139,7 +139,7 @@ class TestAIOPEndToEnd:
             "--logs-dir",
             str(logs_dir),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
         # Verify successful execution
         assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -173,7 +173,7 @@ class TestAIOPEndToEnd:
             "--logs-dir",
             str(logs_dir),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
         # Verify successful execution
         assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -207,7 +207,7 @@ class TestAIOPEndToEnd:
             "--logs-dir",
             str(logs_dir),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
         # Should exit with code 4 for truncation
         assert result.returncode == 4, f"Expected exit code 4, got {result.returncode}"
@@ -241,7 +241,7 @@ class TestAIOPEndToEnd:
             "--logs-dir",
             str(logs_dir),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
         # Verify execution
         assert result.returncode in [0, 4]  # May or may not truncate
@@ -268,7 +268,7 @@ class TestAIOPEndToEnd:
             "--logs-dir",
             str(logs_dir),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
         # Verify successful execution
         assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -295,8 +295,8 @@ class TestAIOPEndToEnd:
             str(logs_dir),
         ]
 
-        result1 = subprocess.run(cmd, capture_output=True, text=True)
-        result2 = subprocess.run(cmd, capture_output=True, text=True)
+        result1 = subprocess.run(cmd, check=False, capture_output=True, text=True)
+        result2 = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
         # Both should succeed
         assert result1.returncode == 0
@@ -349,7 +349,7 @@ class TestAIOPEndToEnd:
             "--logs-dir",
             str(logs_dir),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
         # Parse output
         aiop_str = result.stdout
@@ -380,7 +380,7 @@ class TestAIOPEndToEnd:
             "--logs-dir",
             str(logs_dir),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
         # Should succeed
         assert result.returncode == 0
@@ -408,7 +408,7 @@ class TestAIOPEndToEnd:
             "--logs-dir",
             str(logs_dir),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
         # Should fail with exit code 2
         assert result.returncode == 2
@@ -438,7 +438,7 @@ class TestAIOPEndToEnd:
             "--format",
             "json",
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
         # Parse JSON output
         aiop = json.loads(result.stdout)
@@ -491,7 +491,7 @@ class TestAIOPEndToEnd:
             "--format",
             "json",
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
         # Parse JSON output
         aiop = json.loads(result.stdout)

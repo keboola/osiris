@@ -33,7 +33,7 @@ import logging
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from .prompt_manager import PromptManager
@@ -54,10 +54,10 @@ class LLMResponse:
     """Response from LLM with structured data."""
 
     message: str
-    action: Optional[str] = None
-    params: Optional[Dict[str, Any]] = None
+    action: str | None = None
+    params: dict[str, Any] | None = None
     confidence: float = 1.0
-    token_usage: Optional[Dict[str, int]] = None
+    token_usage: dict[str, int] | None = None
 
 
 @dataclass
@@ -66,10 +66,10 @@ class ConversationContext:
 
     session_id: str
     user_input: str
-    discovery_data: Optional[Dict] = None
-    pipeline_config: Optional[Dict] = None
+    discovery_data: dict | None = None
+    pipeline_config: dict | None = None
     validation_status: str = "pending"
-    conversation_history: List[str] = None
+    conversation_history: list[str] = None
 
     def __post_init__(self):
         if self.conversation_history is None:
@@ -82,10 +82,10 @@ class LLMAdapter:
     def __init__(
         self,
         provider: str = "openai",
-        config: Optional[Dict] = None,
+        config: dict | None = None,
         pro_mode: bool = False,
         prompt_manager: Optional["PromptManager"] = None,
-        context: Optional[Dict[str, Any]] = None,
+        context: dict[str, Any] | None = None,
     ):
         """Initialize LLM adapter.
 
@@ -128,31 +128,21 @@ class LLMAdapter:
             # Precedence: ENV > config > default
             self.model = os.environ.get("OPENAI_MODEL") or llm_config.get("model") or "gpt-4o-mini"
             self.fallback_model = (
-                os.environ.get("OPENAI_MODEL_FALLBACK")
-                or llm_config.get("fallback_model")
-                or "gpt-4o"
+                os.environ.get("OPENAI_MODEL_FALLBACK") or llm_config.get("fallback_model") or "gpt-4o"
             )
         elif self.provider == LLMProvider.CLAUDE:
             self.api_key = os.environ.get("CLAUDE_API_KEY")
             # Precedence: ENV > config > default
-            self.model = (
-                os.environ.get("CLAUDE_MODEL")
-                or llm_config.get("model")
-                or "claude-3-sonnet-20240229"
-            )
+            self.model = os.environ.get("CLAUDE_MODEL") or llm_config.get("model") or "claude-3-sonnet-20240229"
             self.fallback_model = (
-                os.environ.get("CLAUDE_MODEL_FALLBACK")
-                or llm_config.get("fallback_model")
-                or "claude-3-opus-20240229"
+                os.environ.get("CLAUDE_MODEL_FALLBACK") or llm_config.get("fallback_model") or "claude-3-opus-20240229"
             )
         elif self.provider == LLMProvider.GEMINI:
             self.api_key = os.environ.get("GEMINI_API_KEY")
             # Precedence: ENV > config > default
             self.model = os.environ.get("GEMINI_MODEL") or llm_config.get("model") or "gemini-pro"
             self.fallback_model = (
-                os.environ.get("GEMINI_MODEL_FALLBACK")
-                or llm_config.get("fallback_model")
-                or "gemini-1.5-flash"
+                os.environ.get("GEMINI_MODEL_FALLBACK") or llm_config.get("fallback_model") or "gemini-1.5-flash"
             )
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
@@ -160,7 +150,7 @@ class LLMAdapter:
         if not self.api_key:
             raise ValueError(f"API key not found for provider: {self.provider}")
 
-    async def _call_openai(self, messages: List[Dict], **kwargs) -> str:
+    async def _call_openai(self, messages: list[dict], **kwargs) -> str:
         """Call OpenAI API."""
         try:
             import openai
@@ -205,27 +195,21 @@ class LLMAdapter:
 
                 # Try fallback model with max_completion_tokens first
                 try:
-                    fallback_params["max_completion_tokens"] = int(
-                        os.environ.get("LLM_MAX_TOKENS", "2000")
-                    )
+                    fallback_params["max_completion_tokens"] = int(os.environ.get("LLM_MAX_TOKENS", "2000"))
                     response = await client.chat.completions.create(**fallback_params)
                 except Exception as fallback_e:
                     if "max_completion_tokens" in str(fallback_e):
                         # Fallback to max_tokens for older fallback models
                         fallback_params.pop("max_completion_tokens", None)
-                        fallback_params["max_tokens"] = int(
-                            os.environ.get("LLM_MAX_TOKENS", "2000")
-                        )
+                        fallback_params["max_tokens"] = int(os.environ.get("LLM_MAX_TOKENS", "2000"))
                         response = await client.chat.completions.create(**fallback_params)
                     else:
                         raise fallback_e
                 return response.choices[0].message.content
             except Exception as fallback_error:
-                raise Exception(
-                    f"Both models failed. Primary: {e}, Fallback: {fallback_error}"
-                ) from fallback_error
+                raise Exception(f"Both models failed. Primary: {e}, Fallback: {fallback_error}") from fallback_error
 
-    async def _call_claude(self, messages: List[Dict], **_kwargs) -> str:
+    async def _call_claude(self, messages: list[dict], **_kwargs) -> str:
         """Call Claude API."""
         try:
             import anthropic
@@ -255,7 +239,7 @@ class LLMAdapter:
             logger.error(f"Claude API call failed: {e}")
             raise
 
-    async def _call_gemini(self, messages: List[Dict], **_kwargs) -> str:
+    async def _call_gemini(self, messages: list[dict], **_kwargs) -> str:
         """Call Gemini API."""
         try:
             import google.generativeai as genai
@@ -289,8 +273,8 @@ class LLMAdapter:
         self,
         message: str,
         context: ConversationContext,
-        available_connectors: List[str],
-        capabilities: List[str],
+        available_connectors: list[str],
+        capabilities: list[str],
     ) -> LLMResponse:
         """Process conversation message and return structured response."""
         from ..core.session_logging import get_current_session
@@ -382,7 +366,7 @@ class LLMAdapter:
                 confidence=0.0,
             )
 
-    def _build_system_prompt(self, available_connectors: List[str], capabilities: List[str]) -> str:
+    def _build_system_prompt(self, available_connectors: list[str], capabilities: list[str]) -> str:
         """Build system prompt for conversation."""
         base_prompt = ""
 
@@ -496,7 +480,7 @@ IMPORTANT: Don't ask for database credentials - they're already configured. Jump
 
             return "\n\n".join(prompt_parts)
 
-    def _summarize_discovery(self, discovery_data: Dict) -> str:
+    def _summarize_discovery(self, discovery_data: dict) -> str:
         """Summarize discovery data for context."""
         summary_parts = []
 
@@ -515,15 +499,9 @@ IMPORTANT: Don't ask for database credentials - they're already configured. Jump
                 # Add sample data if available
                 if sample_data:
                     table_summary += "\n  Sample rows:"
-                    for i, row in enumerate(
-                        sample_data[:10]
-                    ):  # Show 10 sample rows to ensure comprehensive visibility
+                    for i, row in enumerate(sample_data[:10]):  # Show 10 sample rows to ensure comprehensive visibility
                         row_summary = ", ".join(
-                            [
-                                f"{k}={v}"
-                                for k, v in row.items()
-                                if k not in ["created_at", "updated_at"]
-                            ]
+                            [f"{k}={v}" for k, v in row.items() if k not in ["created_at", "updated_at"]]
                         )
                         table_summary += f"\n    Row {i + 1}: {row_summary}"
 
@@ -551,15 +529,13 @@ IMPORTANT: Don't ask for database credentials - they're already configured. Jump
                 )
             else:
                 # Fallback: treat entire response as message
-                return LLMResponse(
-                    message=response_text, action="ask_clarification", confidence=0.5
-                )
+                return LLMResponse(message=response_text, action="ask_clarification", confidence=0.5)
 
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse JSON response: {e}")
             return LLMResponse(message=response_text, action="ask_clarification", confidence=0.3)
 
-    async def generate_sql(self, intent: str, discovery_data: Dict, context: Dict = None) -> str:
+    async def generate_sql(self, intent: str, discovery_data: dict, context: dict = None) -> str:
         """Generate SQL based on intent and discovered data."""
 
         if self.pro_mode and self.prompt_manager:
@@ -610,6 +586,4 @@ Generate the SQL query:"""
                 return await self._call_gemini(messages)
         except Exception as e:
             logger.error(f"SQL generation failed: {e}")
-            return (
-                f"-- Error generating SQL: {str(e)}\n-- Please provide more specific requirements"
-            )
+            return f"-- Error generating SQL: {str(e)}\n-- Please provide more specific requirements"

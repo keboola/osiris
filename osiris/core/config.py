@@ -19,7 +19,7 @@ import datetime
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import yaml
 
@@ -30,7 +30,7 @@ class ConfigError(Exception):
     pass
 
 
-def load_config(config_path: str = ".osiris.yaml") -> Dict[str, Any]:
+def load_config(config_path: str = ".osiris.yaml") -> dict[str, Any]:
     """Load configuration from YAML file.
 
     Args:
@@ -54,9 +54,7 @@ def load_config(config_path: str = ".osiris.yaml") -> Dict[str, Any]:
     return config or {}
 
 
-def create_sample_config(
-    config_path: str = "osiris.yaml", no_comments: bool = False, to_stdout: bool = False
-) -> str:
+def create_sample_config(config_path: str = "osiris.yaml", no_comments: bool = False, to_stdout: bool = False) -> str:
     """Create a sample configuration file.
 
     Args:
@@ -320,7 +318,7 @@ aiop:
 class ConfigManager:
     """Configuration manager for loading and managing Osiris configuration."""
 
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: str | None = None):
         """Initialize configuration manager.
 
         Args:
@@ -329,7 +327,7 @@ class ConfigManager:
         self.config_path = config_path or "osiris.yaml"
         self._config = None
 
-    def load_config(self) -> Dict[str, Any]:
+    def load_config(self) -> dict[str, Any]:
         """Load configuration from file.
 
         Returns:
@@ -344,7 +342,7 @@ class ConfigManager:
 
         return self._config
 
-    def _get_default_config(self) -> Dict[str, Any]:
+    def _get_default_config(self) -> dict[str, Any]:
         """Get default configuration when no config file exists."""
         return {
             "version": "2.0",
@@ -382,7 +380,7 @@ class ConfigManager:
         }
 
 
-def load_connections_yaml(substitute_env: bool = True) -> Dict[str, Any]:
+def load_connections_yaml(substitute_env: bool = True) -> dict[str, Any]:
     """Load connections configuration with optional ${VAR} substitution from environment.
 
     Args:
@@ -401,8 +399,7 @@ def load_connections_yaml(substitute_env: bool = True) -> Dict[str, Any]:
     search_paths = [
         Path.cwd() / "osiris_connections.yaml",
         Path.cwd().parent / "osiris_connections.yaml",
-        Path(__file__).parent.parent.parent
-        / "osiris_connections.yaml",  # Repo root from osiris/core/
+        Path(__file__).parent.parent.parent / "osiris_connections.yaml",  # Repo root from osiris/core/
     ]
 
     connections_file = None
@@ -453,7 +450,7 @@ def load_connections_yaml(substitute_env: bool = True) -> Dict[str, Any]:
     return substitute_env_vars(connections)
 
 
-def parse_connection_ref(ref: str) -> tuple[Optional[str], Optional[str]]:
+def parse_connection_ref(ref: str) -> tuple[str | None, str | None]:
     """Parse a connection reference string like '@family.alias'.
 
     Args:
@@ -481,14 +478,12 @@ def parse_connection_ref(ref: str) -> tuple[Optional[str], Optional[str]]:
 
     family, alias = parts
     if not family or not alias:
-        raise ValueError(
-            f"Invalid connection reference format: '@{ref}'. Family and alias cannot be empty"
-        )
+        raise ValueError(f"Invalid connection reference format: '@{ref}'. Family and alias cannot be empty")
 
     return family, alias
 
 
-def resolve_connection(family: str, alias: Optional[str] = None) -> Dict[str, Any]:
+def resolve_connection(family: str, alias: str | None = None) -> dict[str, Any]:
     """Resolve connection by family and optional alias.
 
     Args:
@@ -515,9 +510,7 @@ def resolve_connection(family: str, alias: Optional[str] = None) -> Dict[str, An
                 family = parsed_family
             alias = parsed_alias
         else:
-            raise ValueError(
-                f"Invalid connection reference format: {alias}. Expected @family.alias"
-            )
+            raise ValueError(f"Invalid connection reference format: {alias}. Expected @family.alias")
 
     # Load connections
     connections = load_connections_yaml()
@@ -526,12 +519,8 @@ def resolve_connection(family: str, alias: Optional[str] = None) -> Dict[str, An
     if family not in connections:
         available = list(connections.keys())
         if not available:
-            raise ValueError(
-                f"No connections configured. Create osiris_connections.yaml with {family} connections."
-            )
-        raise ValueError(
-            f"Connection family '{family}' not found. Available families: {', '.join(available)}"
-        )
+            raise ValueError(f"No connections configured. Create osiris_connections.yaml with {family} connections.")
+        raise ValueError(f"Connection family '{family}' not found. Available families: {', '.join(available)}")
 
     family_connections = connections[family]
 
@@ -559,9 +548,7 @@ def resolve_connection(family: str, alias: Optional[str] = None) -> Dict[str, An
                 if matches:
                     for var in matches:
                         field_name = path.split(".")[-1] if path else "field"
-                        raise ConfigError(
-                            f"Environment variable '{var}' not set for {field_name} in {family}.{alias}"
-                        )
+                        raise ConfigError(f"Environment variable '{var}' not set for {field_name} in {family}.{alias}")
             elif isinstance(obj, dict):
                 for k, v in obj.items():
                     new_path = f"{path}.{k}" if path else k
@@ -616,9 +603,7 @@ def resolve_connection(family: str, alias: Optional[str] = None) -> Dict[str, An
                 if matches:
                     for var in matches:
                         field_name = path.split(".")[-1] if path else "field"
-                        raise ValueError(
-                            f"Environment variable '{var}' not set for {field_name} in {family}.default"
-                        )
+                        raise ValueError(f"Environment variable '{var}' not set for {field_name} in {family}.default")
             elif isinstance(obj, dict):
                 for k, v in obj.items():
                     new_path = f"{path}.{k}" if path else k
@@ -688,7 +673,7 @@ AIOP_DEFAULTS = {
 }
 
 
-def load_osiris_yaml(path: Optional[str] = None) -> Dict[str, Any]:
+def load_osiris_yaml(path: str | None = None) -> dict[str, Any]:
     """Load Osiris YAML configuration file.
 
     Args:
@@ -710,7 +695,7 @@ def load_osiris_yaml(path: Optional[str] = None) -> Dict[str, Any]:
         return {}
 
 
-def load_aiop_env() -> Dict[str, Any]:
+def load_aiop_env() -> dict[str, Any]:
     """Load AIOP configuration from environment variables.
 
     Returns:
@@ -742,14 +727,10 @@ def load_aiop_env() -> Dict[str, Any]:
         config.setdefault("output", {})["core_path"] = os.environ["OSIRIS_AIOP_OUTPUT_CORE_PATH"]
 
     if "OSIRIS_AIOP_OUTPUT_RUN_CARD_PATH" in os.environ:
-        config.setdefault("output", {})["run_card_path"] = os.environ[
-            "OSIRIS_AIOP_OUTPUT_RUN_CARD_PATH"
-        ]
+        config.setdefault("output", {})["run_card_path"] = os.environ["OSIRIS_AIOP_OUTPUT_RUN_CARD_PATH"]
 
     if "OSIRIS_AIOP_ANNEX_ENABLED" in os.environ:
-        config.setdefault("annex", {})["enabled"] = (
-            os.environ["OSIRIS_AIOP_ANNEX_ENABLED"].lower() == "true"
-        )
+        config.setdefault("annex", {})["enabled"] = os.environ["OSIRIS_AIOP_ANNEX_ENABLED"].lower() == "true"
 
     if "OSIRIS_AIOP_ANNEX_DIR" in os.environ:
         config.setdefault("annex", {})["dir"] = os.environ["OSIRIS_AIOP_ANNEX_DIR"]
@@ -758,14 +739,10 @@ def load_aiop_env() -> Dict[str, Any]:
         config.setdefault("annex", {})["compress"] = os.environ["OSIRIS_AIOP_ANNEX_COMPRESS"]
 
     if "OSIRIS_AIOP_RETENTION_KEEP_RUNS" in os.environ:
-        config.setdefault("retention", {})["keep_runs"] = int(
-            os.environ["OSIRIS_AIOP_RETENTION_KEEP_RUNS"]
-        )
+        config.setdefault("retention", {})["keep_runs"] = int(os.environ["OSIRIS_AIOP_RETENTION_KEEP_RUNS"])
 
     if "OSIRIS_AIOP_RETENTION_ANNEX_KEEP_DAYS" in os.environ:
-        config.setdefault("retention", {})["annex_keep_days"] = int(
-            os.environ["OSIRIS_AIOP_RETENTION_ANNEX_KEEP_DAYS"]
-        )
+        config.setdefault("retention", {})["annex_keep_days"] = int(os.environ["OSIRIS_AIOP_RETENTION_ANNEX_KEEP_DAYS"])
 
     # Narrative sources (comma-separated list)
     if "OSIRIS_AIOP_NARRATIVE_SOURCES" in os.environ:
@@ -795,33 +772,25 @@ def load_aiop_env() -> Dict[str, Any]:
 
     # Path vars
     if "OSIRIS_AIOP_PATH_VARS_TS_FORMAT" in os.environ:
-        config.setdefault("path_vars", {})["ts_format"] = os.environ[
-            "OSIRIS_AIOP_PATH_VARS_TS_FORMAT"
-        ]
+        config.setdefault("path_vars", {})["ts_format"] = os.environ["OSIRIS_AIOP_PATH_VARS_TS_FORMAT"]
 
     # Index configuration
     if "OSIRIS_AIOP_INDEX_ENABLED" in os.environ:
-        config.setdefault("index", {})["enabled"] = (
-            os.environ["OSIRIS_AIOP_INDEX_ENABLED"].lower() == "true"
-        )
+        config.setdefault("index", {})["enabled"] = os.environ["OSIRIS_AIOP_INDEX_ENABLED"].lower() == "true"
 
     if "OSIRIS_AIOP_INDEX_RUNS_JSONL" in os.environ:
         config.setdefault("index", {})["runs_jsonl"] = os.environ["OSIRIS_AIOP_INDEX_RUNS_JSONL"]
 
     if "OSIRIS_AIOP_INDEX_BY_PIPELINE_DIR" in os.environ:
-        config.setdefault("index", {})["by_pipeline_dir"] = os.environ[
-            "OSIRIS_AIOP_INDEX_BY_PIPELINE_DIR"
-        ]
+        config.setdefault("index", {})["by_pipeline_dir"] = os.environ["OSIRIS_AIOP_INDEX_BY_PIPELINE_DIR"]
 
     if "OSIRIS_AIOP_INDEX_LATEST_SYMLINK" in os.environ:
-        config.setdefault("index", {})["latest_symlink"] = os.environ[
-            "OSIRIS_AIOP_INDEX_LATEST_SYMLINK"
-        ]
+        config.setdefault("index", {})["latest_symlink"] = os.environ["OSIRIS_AIOP_INDEX_LATEST_SYMLINK"]
 
     return config
 
 
-def _deep_merge(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
+def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
     """Deep merge two dictionaries, with overlay taking precedence.
 
     Args:
@@ -843,8 +812,8 @@ def _deep_merge(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]
 
 
 def resolve_aiop_config(
-    cli_args: Optional[Dict[str, Any]] = None,
-) -> Tuple[Dict[str, Any], Dict[str, str]]:
+    cli_args: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], dict[str, str]]:
     """Resolve AIOP configuration with precedence: CLI > ENV > YAML > defaults.
 
     Args:
@@ -903,7 +872,7 @@ def resolve_aiop_config(
     return effective, sources
 
 
-def _flatten_dict(d: Dict[str, Any], parent_key: str = "") -> Dict[str, Any]:
+def _flatten_dict(d: dict[str, Any], parent_key: str = "") -> dict[str, Any]:
     """Flatten a nested dictionary.
 
     Args:

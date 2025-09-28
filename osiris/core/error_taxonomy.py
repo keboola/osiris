@@ -5,7 +5,7 @@ consistently across local and remote execution adapters.
 """
 
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class ErrorCategory(Enum):
@@ -110,7 +110,7 @@ class ErrorMapper:
     }
 
     @classmethod
-    def map_error(cls, error_message: str, exception: Optional[Exception] = None) -> ErrorCode:
+    def map_error(cls, error_message: str, exception: Exception | None = None) -> ErrorCode:
         """Map an error message to a standard error code.
 
         Args:
@@ -173,10 +173,10 @@ class ErrorMapper:
         cls,
         error_code: ErrorCode,
         message: str,
-        step_id: Optional[str] = None,
+        step_id: str | None = None,
         source: str = "local",
         **additional_fields,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Format an error event with standard fields.
 
         Args:
@@ -221,10 +221,10 @@ class ErrorContext:
     def handle_error(
         self,
         error_message: str,
-        exception: Optional[Exception] = None,
-        step_id: Optional[str] = None,
+        exception: Exception | None = None,
+        step_id: str | None = None,
         **additional_fields,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Handle an error and return formatted event.
 
         Args:
@@ -248,9 +248,7 @@ class ErrorContext:
             **additional_fields,
         )
 
-    def wrap_driver_error(
-        self, driver_name: str, step_id: str, exception: Exception
-    ) -> Dict[str, Any]:
+    def wrap_driver_error(self, driver_name: str, step_id: str, exception: Exception) -> dict[str, Any]:
         """Wrap a driver error with context.
 
         Args:

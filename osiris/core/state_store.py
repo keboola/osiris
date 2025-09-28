@@ -50,9 +50,7 @@ class SQLiteStateStore(IStateStore):
     def set(self, key: str, value: Any) -> None:
         """Store a value."""
         json_value = json.dumps(value)
-        self.conn.execute(
-            "INSERT OR REPLACE INTO state (key, value) VALUES (?, ?)", (key, json_value)
-        )
+        self.conn.execute("INSERT OR REPLACE INTO state (key, value) VALUES (?, ?)", (key, json_value))
         self.conn.commit()
 
     def get(self, key: str, default: Any = None) -> Any:

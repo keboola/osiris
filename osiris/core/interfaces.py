@@ -23,7 +23,7 @@ These minimal interfaces enable:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any
 
 
 # Data structures
@@ -32,11 +32,11 @@ class TableInfo:
     """Basic table information."""
 
     name: str
-    columns: List[str]  # Column names
-    column_types: Dict[str, str]  # {"column_name": "type"}
-    primary_keys: List[str]
+    columns: list[str]  # Column names
+    column_types: dict[str, str]  # {"column_name": "type"}
+    primary_keys: list[str]
     row_count: int
-    sample_data: List[Dict[str, Any]]  # Sample data rows
+    sample_data: list[dict[str, Any]]  # Sample data rows
 
 
 @dataclass
@@ -46,7 +46,7 @@ class Pipeline:
     name: str
     yaml_content: str
     estimated_runtime: float  # seconds
-    tables_used: List[str]
+    tables_used: list[str]
 
 
 # Core interfaces (MVP - only 3 essential ones)
@@ -73,7 +73,7 @@ class IDiscovery(ABC):
     """Discovers data sources and schemas."""
 
     @abstractmethod
-    async def list_tables(self) -> List[str]:
+    async def list_tables(self) -> list[str]:
         """List available tables."""
         pass
 
@@ -102,7 +102,7 @@ class IExtractor(IConnector):
     """Data extraction interface for reading from sources."""
 
     @abstractmethod
-    async def list_tables(self) -> List[str]:
+    async def list_tables(self) -> list[str]:
         """List available tables."""
         pass
 
@@ -131,7 +131,7 @@ class ITransformer(ABC):
         pass
 
     @abstractmethod
-    async def execute_transform(self, sql: str, inputs: Dict[str, Any]) -> Any:
+    async def execute_transform(self, sql: str, inputs: dict[str, Any]) -> Any:
         """Execute transformation."""
         pass
 
@@ -150,18 +150,16 @@ class ILoader(ABC):
         pass
 
     @abstractmethod
-    async def insert_data(self, table_name: str, data: List[Dict[str, Any]]) -> bool:
+    async def insert_data(self, table_name: str, data: list[dict[str, Any]]) -> bool:
         """Insert data into a table."""
         pass
 
     @abstractmethod
-    async def upsert_data(
-        self, table_name: str, data: List[Dict[str, Any]], conflict_keys: List[str] = None
-    ) -> bool:
+    async def upsert_data(self, table_name: str, data: list[dict[str, Any]], conflict_keys: list[str] = None) -> bool:
         """Upsert data (insert or update on conflict)."""
         pass
 
     @abstractmethod
-    async def replace_table(self, table_name: str, data: List[Dict[str, Any]]) -> bool:
+    async def replace_table(self, table_name: str, data: list[dict[str, Any]]) -> bool:
         """Replace entire table contents."""
         pass

@@ -17,7 +17,7 @@
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 # Privacy levels
 PRIVACY_STANDARD = "standard"
@@ -92,7 +92,7 @@ ABSOLUTE_PATH_PATTERN = re.compile(r"^(/[^/]+(?:/[^/]+)*|[A-Z]:\\[^\\]+(?:\\[^\\
 class Redactor:
     """Configurable redaction system for sensitive data."""
 
-    def __init__(self, privacy_level: str = PRIVACY_STANDARD, repo_root: Optional[Path] = None):
+    def __init__(self, privacy_level: str = PRIVACY_STANDARD, repo_root: Path | None = None):
         """Initialize redactor.
 
         Args:
@@ -124,9 +124,7 @@ class Redactor:
             return False
 
         # Special case: "tokens" in context of metrics is not a secret
-        if "tokens" in key_lower and any(
-            metric in key_lower for metric in ["prompt", "response", "total"]
-        ):
+        if "tokens" in key_lower and any(metric in key_lower for metric in ["prompt", "response", "total"]):
             return False
 
         # Check exact matches first (but skip "key" as we handled it above)
@@ -136,9 +134,7 @@ class Redactor:
         # Then check for substrings, but be more careful
         for secret in SECRET_FIELDS:
             # Skip "token" if it's part of "_tokens" (metrics)
-            if secret == "token" and key_lower.endswith(  # nosec B105  # pragma: allowlist secret
-                "_tokens"
-            ):
+            if secret == "token" and key_lower.endswith("_tokens"):  # nosec B105  # pragma: allowlist secret
                 continue
             # Skip bare "key" - we handled it above
             if secret == "key":  # pragma: allowlist secret  # nosec B105
@@ -204,10 +200,7 @@ class Redactor:
                     # Not under repo root
                     # For known temp/system paths, return basename
                     path_str = str(path)
-                    if (
-                        path_str.startswith(("/tmp", "/var", "/etc"))  # nosec B108
-                        or "Temp" in path_str
-                    ):
+                    if path_str.startswith(("/tmp", "/var", "/etc")) or "Temp" in path_str:  # nosec B108
                         return path.name
                     # Otherwise keep the path (might be important)
                     return value
@@ -265,9 +258,7 @@ class Redactor:
         # Check for generic key-like pattern (long mixed-case strings with numbers)
         return bool(KEY_PATTERN.match(value))
 
-    def redact_value(
-        self, key: str, value: Any, parent_key: Optional[str] = None  # noqa: ARG002
-    ) -> Any:
+    def redact_value(self, key: str, value: Any, parent_key: str | None = None) -> Any:  # noqa: ARG002
         """Redact a single value based on its key and content.
 
         Args:
@@ -283,7 +274,7 @@ class Redactor:
             return value
 
         # Preserve numeric metrics FIRST (before checking for secrets)
-        if isinstance(value, (int, float)) and self._is_numeric_metric(key):
+        if isinstance(value, int | float) and self._is_numeric_metric(key):
             return value
 
         # Check if field is a secret
@@ -295,9 +286,7 @@ class Redactor:
             return self._shorten_fingerprint(value)
 
         # Handle paths
-        if key in ["path", "file", "file_path", "dir", "directory", "out", "output"] and isinstance(
-            value, str
-        ):
+        if key in ["path", "file", "file_path", "dir", "directory", "out", "output"] and isinstance(value, str):
             value = self._relativize_path(value)
 
         # Check for key-like values in string
@@ -324,7 +313,7 @@ class Redactor:
 
         return value
 
-    def redact_dict(self, data: Dict[str, Any], parent_key: Optional[str] = None) -> Dict[str, Any]:
+    def redact_dict(self, data: dict[str, Any], parent_key: str | None = None) -> dict[str, Any]:
         """Recursively redact sensitive fields in a dictionary.
 
         Args:
@@ -361,7 +350,7 @@ def get_privacy_level() -> str:
     return os.environ.get("OSIRIS_PRIVACY", PRIVACY_STANDARD).lower()
 
 
-def create_redactor(privacy_level: Optional[str] = None) -> Redactor:
+def create_redactor(privacy_level: str | None = None) -> Redactor:
     """Create a redactor with the specified or default privacy level."""
     if privacy_level is None:
         privacy_level = get_privacy_level()
@@ -369,7 +358,7 @@ def create_redactor(privacy_level: Optional[str] = None) -> Redactor:
 
 
 # Backward compatibility functions
-def mask_sensitive_dict(data: Dict[str, Any]) -> Dict[str, Any]:
+def mask_sensitive_dict(data: dict[str, Any]) -> dict[str, Any]:
     """Legacy function for masking sensitive data."""
     redactor = create_redactor()
     return redactor.redact_dict(data)

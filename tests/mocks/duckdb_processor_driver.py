@@ -1,6 +1,6 @@
 """Mock DuckDB processor driver for testing."""
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -11,10 +11,10 @@ class DuckDBProcessorDriver:
     def run(
         self,
         step_id: str,
-        config: Dict[str, Any],
-        inputs: Optional[Dict[str, Any]],
+        config: dict[str, Any],
+        inputs: dict[str, Any] | None,
         ctx: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Execute the mock DuckDB processor step.
 
         This is a simplified mock that generates test data or transforms input data
@@ -52,9 +52,7 @@ class DuckDBProcessorDriver:
             # Apply simple transformations based on query patterns
             if "CASE" in query and "score" in df.columns:
                 # Add category based on score
-                df["category"] = df["score"].apply(
-                    lambda x: "high" if x >= 500 else ("medium" if x >= 300 else "low")
-                )
+                df["category"] = df["score"].apply(lambda x: "high" if x >= 500 else ("medium" if x >= 300 else "low"))
 
             if "ORDER BY" in query and "ORDER BY id" in query:
                 # Sort by id if specified

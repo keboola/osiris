@@ -4,7 +4,6 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Optional
 
 import yaml
 from rich import print as rprint
@@ -22,7 +21,7 @@ def list_components(
     mode: str = "all",
     as_json: bool = False,
     runnable: bool = False,
-    session_context: Optional[SessionContext] = None,
+    session_context: SessionContext | None = None,
 ):
     """List available components and their capabilities.
 
@@ -68,12 +67,11 @@ def list_components(
         if as_json:
             # Return empty JSON array
             print(json.dumps([]))
+        elif filter_mode:
+            rprint(f"[yellow]No components found with mode '{filter_mode}'[/yellow]")
         else:
-            if filter_mode:
-                rprint(f"[yellow]No components found with mode '{filter_mode}'[/yellow]")
-            else:
-                rprint("[red]No components found[/red]")
-                rprint("[dim]Check that components directory exists with valid specs[/dim]")
+            rprint("[red]No components found[/red]")
+            rprint("[dim]Check that components directory exists with valid specs[/dim]")
         return
 
     if as_json:
@@ -124,9 +122,7 @@ def list_components(
         console.print(table)
 
 
-def show_component(
-    component_name: str, as_json: bool = False, session_context: Optional[SessionContext] = None
-):
+def show_component(component_name: str, as_json: bool = False, session_context: SessionContext | None = None):
     """Show detailed information about a specific component."""
     registry = get_registry(session_context=session_context)
     spec = registry.get_component(component_name)
@@ -213,10 +209,10 @@ def show_component(
 def validate_component(
     component_name: str,
     level: str = "enhanced",
-    session_id: Optional[str] = None,
+    session_id: str | None = None,
     logs_dir: str = "logs",
     log_level: str = "INFO",
-    events: Optional[list] = None,
+    events: list | None = None,
     json_output: bool = False,
     verbose: bool = False,
 ):
@@ -241,9 +237,7 @@ def validate_component(
         events = ["*"]
 
     # Create session with logging configuration
-    session = SessionContext(
-        session_id=session_id, base_logs_dir=Path(logs_dir), allowed_events=events
-    )
+    session = SessionContext(session_id=session_id, base_logs_dir=Path(logs_dir), allowed_events=events)
     set_current_session(session)
 
     # Setup logging
@@ -345,51 +339,50 @@ def validate_component(
             result["version"] = spec.get("version", "unknown")
             result["modes"] = spec.get("modes", [])
         print(json.dumps(result, indent=2))
+    elif is_valid:
+        rprint(f"[green]✓ Component '{component_name}' is valid (level: {level})[/green]")
+        if spec:
+            rprint(f"[dim]  Version: {spec.get('version', 'unknown')}[/dim]")
+            rprint(f"[dim]  Modes: {', '.join(spec.get('modes', []))}[/dim]")
+            rprint(f"[dim]  Session: {session_id}[/dim]")
     else:
-        if is_valid:
-            rprint(f"[green]✓ Component '{component_name}' is valid (level: {level})[/green]")
-            if spec:
-                rprint(f"[dim]  Version: {spec.get('version', 'unknown')}[/dim]")
-                rprint(f"[dim]  Modes: {', '.join(spec.get('modes', []))}[/dim]")
-                rprint(f"[dim]  Session: {session_id}[/dim]")
-        else:
-            rprint(f"[red]✗ Component '{component_name}' validation failed (level: {level})[/red]")
-            rprint()
+        rprint(f"[red]✗ Component '{component_name}' validation failed (level: {level})[/red]")
+        rprint()
 
-            # Display friendly errors
-            from ..components.error_mapper import FriendlyErrorMapper
+        # Display friendly errors
+        from ..components.error_mapper import FriendlyErrorMapper
 
-            mapper = FriendlyErrorMapper()
+        mapper = FriendlyErrorMapper()
 
-            for err in errors:
-                if isinstance(err, dict) and "friendly" in err:
-                    friendly = err["friendly"]
+        for err in errors:
+            if isinstance(err, dict) and "friendly" in err:
+                friendly = err["friendly"]
 
-                    # Display friendly error
-                    icon = mapper._get_category_icon(friendly.category)
-                    title = mapper._get_category_title(friendly.category)
+                # Display friendly error
+                icon = mapper._get_category_icon(friendly.category)
+                title = mapper._get_category_title(friendly.category)
 
-                    rprint(f"{icon} [bold]{title}[/bold]")
-                    rprint(f"   Field: [cyan]{friendly.field_label}[/cyan]")
-                    rprint(f"   Problem: {friendly.problem}")
-                    rprint(f"   Fix: [green]{friendly.fix_hint}[/green]")
-                    if friendly.example:
-                        rprint(f"   Example: [dim]{friendly.example}[/dim]")
+                rprint(f"{icon} [bold]{title}[/bold]")
+                rprint(f"   Field: [cyan]{friendly.field_label}[/cyan]")
+                rprint(f"   Problem: {friendly.problem}")
+                rprint(f"   Fix: [green]{friendly.fix_hint}[/green]")
+                if friendly.example:
+                    rprint(f"   Example: [dim]{friendly.example}[/dim]")
 
-                    # Show technical details if verbose
-                    if verbose and friendly.technical_details:
-                        rprint("\n   [dim]Technical Details:[/dim]")
-                        if "technical" in err:
-                            rprint(f"   [dim]- {err['technical']}[/dim]")
-                        for key, value in friendly.technical_details.items():
-                            rprint(f"   [dim]- {key}: {value}[/dim]")
+                # Show technical details if verbose
+                if verbose and friendly.technical_details:
+                    rprint("\n   [dim]Technical Details:[/dim]")
+                    if "technical" in err:
+                        rprint(f"   [dim]- {err['technical']}[/dim]")
+                    for key, value in friendly.technical_details.items():
+                        rprint(f"   [dim]- {key}: {value}[/dim]")
 
-                    rprint()  # Empty line between errors
-                else:
-                    # Fallback for simple string errors
-                    rprint(f"[yellow]  • {err}[/yellow]")
+                rprint()  # Empty line between errors
+            else:
+                # Fallback for simple string errors
+                rprint(f"[yellow]  • {err}[/yellow]")
 
-            rprint(f"[dim]Session: {session_id}[/dim]")
+        rprint(f"[dim]Session: {session_id}[/dim]")
 
     # Close the session properly
     session.log_event(
@@ -399,9 +392,7 @@ def validate_component(
     )
 
 
-def show_config_example(
-    component_name: str, example_index: int = 0, session_context: Optional[SessionContext] = None
-):
+def show_config_example(component_name: str, example_index: int = 0, session_context: SessionContext | None = None):
     """Show example configuration for a component."""
     registry = get_registry(session_context=session_context)
     spec = registry.get_component(component_name)
@@ -436,8 +427,8 @@ def show_config_example(
 
 def discover_with_component(
     component_name: str,
-    config: Optional[str] = None,
-    session_context: Optional[SessionContext] = None,
+    config: str | None = None,
+    session_context: SessionContext | None = None,
 ):
     """Run discovery mode for a component (if supported)."""
     registry = get_registry(session_context=session_context)

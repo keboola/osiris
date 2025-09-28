@@ -95,9 +95,7 @@ class TestComponentRegistry:
                         },
                     }
                 ],
-                "llmHints": {
-                    "inputAliases": {"url": ["endpoint", "host"], "key": ["api_key", "token"]}
-                },
+                "llmHints": {"inputAliases": {"url": ["endpoint", "host"], "key": ["api_key", "token"]}},
                 "capabilities": {"discover": True, "bulkOperations": True, "transactions": False},
             }
             with open(comp2_dir / "spec.yaml", "w") as f:
@@ -180,11 +178,7 @@ class TestComponentRegistry:
         assert len(errors) > 0
         # Check for "version" in either string errors or dict errors with technical field
         assert any(
-            (
-                "version" in error
-                if isinstance(error, str)
-                else "version" in error.get("technical", "")
-            )
+            ("version" in error if isinstance(error, str) else "version" in error.get("technical", ""))
             for error in errors
         )
 
@@ -214,8 +208,7 @@ class TestComponentRegistry:
         # Check for schema validation errors in either string or dict format
         assert any(
             (
-                "invalid configschema" in error.lower()
-                or "not a valid json schema" in error.lower()
+                "invalid configschema" in error.lower() or "not a valid json schema" in error.lower()
                 if isinstance(error, str)
                 else "Invalid configSchema" in error.get("technical", "")
                 or "invalid-type" in error.get("technical", "")
@@ -244,11 +237,7 @@ class TestComponentRegistry:
                 "type": "object",
                 "properties": {"host": {"type": "string"}},
             },
-            "llmHints": {
-                "inputAliases": {
-                    "nonexistent_field": ["alias1", "alias2"]  # Invalid - field doesn't exist
-                }
-            },
+            "llmHints": {"inputAliases": {"nonexistent_field": ["alias1", "alias2"]}},  # Invalid - field doesn't exist
         }
         with open(bad_aliases_dir / "spec.yaml", "w") as f:
             yaml.dump(bad_spec, f)
@@ -335,9 +324,7 @@ class TestComponentRegistry:
         mock_session.log_event.assert_any_call("registry_load_start", root=str(temp_components_dir))
         # Check for load complete with at least 2 components (errors array may have invalid component)
         load_complete_calls = [
-            call
-            for call in mock_session.log_event.call_args_list
-            if call[0][0] == "registry_load_complete"
+            call for call in mock_session.log_event.call_args_list if call[0][0] == "registry_load_complete"
         ]
         assert len(load_complete_calls) > 0
         load_complete_kwargs = load_complete_calls[0][1]
@@ -346,9 +333,7 @@ class TestComponentRegistry:
 
         # Validation should log events
         registry.validate_spec("test.extractor", level="basic")
-        mock_session.log_event.assert_any_call(
-            "component_validation_start", component="test.extractor", level="basic"
-        )
+        mock_session.log_event.assert_any_call("component_validation_start", component="test.extractor", level="basic")
         mock_session.log_event.assert_any_call(
             "component_validation_complete",
             component="test.extractor",

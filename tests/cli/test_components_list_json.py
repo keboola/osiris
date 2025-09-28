@@ -35,8 +35,9 @@ class TestComponentsListJSON:
         # Capture stdout
         captured_output = StringIO()
 
-        with patch("osiris.cli.components_cmd.get_registry", return_value=mock_registry), patch(
-            "sys.stdout", captured_output
+        with (
+            patch("osiris.cli.components_cmd.get_registry", return_value=mock_registry),
+            patch("sys.stdout", captured_output),
         ):
             list_components(mode="all", as_json=True)
 
@@ -70,8 +71,9 @@ class TestComponentsListJSON:
 
         captured_output = StringIO()
 
-        with patch("osiris.cli.components_cmd.get_registry", return_value=mock_registry), patch(
-            "sys.stdout", captured_output
+        with (
+            patch("osiris.cli.components_cmd.get_registry", return_value=mock_registry),
+            patch("sys.stdout", captured_output),
         ):
             list_components(mode="all", as_json=True)
 
@@ -96,8 +98,9 @@ class TestComponentsListJSON:
 
         captured_output = StringIO()
 
-        with patch("osiris.cli.components_cmd.get_registry", return_value=mock_registry), patch(
-            "sys.stdout", captured_output
+        with (
+            patch("osiris.cli.components_cmd.get_registry", return_value=mock_registry),
+            patch("sys.stdout", captured_output),
         ):
             list_components(mode="write", as_json=True)
 
@@ -121,9 +124,10 @@ class TestComponentsListJSON:
             }
         ]
 
-        with patch("osiris.cli.components_cmd.get_registry", return_value=mock_registry), patch(
-            "osiris.cli.components_cmd.console.print"
-        ) as mock_print:
+        with (
+            patch("osiris.cli.components_cmd.get_registry", return_value=mock_registry),
+            patch("osiris.cli.components_cmd.console.print") as mock_print,
+        ):
             list_components(mode="all", as_json=False)
 
         # Should have called console.print with a Table object
@@ -147,8 +151,9 @@ class TestComponentsListJSON:
 
         captured_output = StringIO()
 
-        with patch("osiris.cli.components_cmd.get_registry", return_value=mock_registry), patch(
-            "sys.stdout", captured_output
+        with (
+            patch("osiris.cli.components_cmd.get_registry", return_value=mock_registry),
+            patch("sys.stdout", captured_output),
         ):
             list_components(mode="all", as_json=True)
 
@@ -191,8 +196,9 @@ class TestComponentsListJSON:
 
         captured_output = StringIO()
 
-        with patch("osiris.cli.components_cmd.get_registry", return_value=mock_registry), patch(
-            "sys.stdout", captured_output
+        with (
+            patch("osiris.cli.components_cmd.get_registry", return_value=mock_registry),
+            patch("sys.stdout", captured_output),
         ):
             list_components(mode="all", as_json=True)
 

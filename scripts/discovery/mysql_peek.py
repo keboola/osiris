@@ -142,9 +142,7 @@ def suggest_transforms(engine, tables):
     # Generic aggregation for any table with numeric columns
     for table in tables[:3]:  # Check first 3 tables
         schema = describe_table(engine, table)
-        numeric_cols = schema[schema["Type"].str.contains("int|decimal|float", case=False)][
-            "Field"
-        ].tolist()
+        numeric_cols = schema[schema["Type"].str.contains("int|decimal|float", case=False)]["Field"].tolist()
         if len(numeric_cols) > 1 and table not in ["movies", "reviews", "movie_actors"]:
             suggestions.append(
                 {

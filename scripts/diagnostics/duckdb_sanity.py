@@ -54,9 +54,7 @@ def test_dataframe_interop():
         import pandas as pd
 
         # Create test DataFrame
-        df = pd.DataFrame(
-            {"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"], "score": [100, 200, 150]}
-        )
+        df = pd.DataFrame({"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"], "score": [100, 200, 150]})
 
         # Query DataFrame directly
         conn = duckdb.connect(":memory:")

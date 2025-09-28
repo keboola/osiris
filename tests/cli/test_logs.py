@@ -99,9 +99,7 @@ class TestSessionInfoUtils:
             session_dir.mkdir()
 
             events_file = session_dir / "events.jsonl"
-            events = [
-                {"ts": "2025-09-01T10:00:00Z", "session": "running_session", "event": "run_start"}
-            ]
+            events = [{"ts": "2025-09-01T10:00:00Z", "session": "running_session", "event": "run_start"}]
 
             with open(events_file, "w") as f:
                 for event in events:
@@ -197,14 +195,10 @@ class TestListSessions:
 
                 # Create events.jsonl
                 events_file = session_dir / "events.jsonl"
-                events = [
-                    {"ts": f"2025-09-01T10:0{i}:00Z", "session": session_id, "event": "run_start"}
-                ]
+                events = [{"ts": f"2025-09-01T10:0{i}:00Z", "session": session_id, "event": "run_start"}]
 
                 if status == "completed":
-                    events.append(
-                        {"ts": f"2025-09-01T10:1{i}:00Z", "session": session_id, "event": "run_end"}
-                    )
+                    events.append({"ts": f"2025-09-01T10:1{i}:00Z", "session": session_id, "event": "run_end"})
                 elif status == "error":
                     events.append(
                         {
@@ -339,9 +333,7 @@ class TestShowSession:
 
             # Create events.jsonl (required for session info)
             events_file = session_dir / "events.jsonl"
-            events = [
-                {"ts": "2025-09-01T10:00:00Z", "session": "test_session", "event": "run_start"}
-            ]
+            events = [{"ts": "2025-09-01T10:00:00Z", "session": "test_session", "event": "run_start"}]
 
             with open(events_file, "w") as f:
                 for event in events:
@@ -371,9 +363,7 @@ class TestShowSession:
 
     def test_show_session_nonexistent(self):
         """Test showing nonexistent session."""
-        with tempfile.TemporaryDirectory() as temp_dir, patch(
-            "rich.console.Console.print"
-        ) as mock_print:
+        with tempfile.TemporaryDirectory() as temp_dir, patch("rich.console.Console.print") as mock_print:
             show_session(["--session", "nonexistent", "--logs-dir", temp_dir])
 
             # Should print error message
@@ -420,9 +410,7 @@ class TestBundleSession:
 
             # Create session files
             events_file = session_dir / "events.jsonl"
-            events = [
-                {"ts": "2025-09-01T10:00:00Z", "session": "test_session", "event": "run_start"}
-            ]
+            events = [{"ts": "2025-09-01T10:00:00Z", "session": "test_session", "event": "run_start"}]
 
             with open(events_file, "w") as f:
                 for event in events:
@@ -503,9 +491,7 @@ class TestBundleSession:
 
     def test_bundle_session_nonexistent(self):
         """Test bundling nonexistent session."""
-        with tempfile.TemporaryDirectory() as temp_dir, patch(
-            "rich.console.Console.print"
-        ) as mock_print:
+        with tempfile.TemporaryDirectory() as temp_dir, patch("rich.console.Console.print") as mock_print:
             bundle_session(["--session", "nonexistent", "--logs-dir", temp_dir])
 
             # Should print error message

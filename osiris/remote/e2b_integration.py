@@ -2,7 +2,6 @@
 
 import os
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
 
 
 @dataclass
@@ -14,7 +13,7 @@ class E2BConfig:
     timeout: int = 900
     cpu: int = 2
     mem_gb: int = 4
-    env_vars: Dict[str, str] = None
+    env_vars: dict[str, str] = None
     dry_run: bool = False
     install_deps: bool = False  # Auto-install missing dependencies
 
@@ -23,7 +22,7 @@ class E2BConfig:
             self.env_vars = {}
 
 
-def add_e2b_help_text(lines: List[str]) -> None:
+def add_e2b_help_text(lines: list[str]) -> None:
     """Add E2B-specific help text to CLI help output.
 
     Args:
@@ -52,7 +51,7 @@ def add_e2b_help_text(lines: List[str]) -> None:
     )
 
 
-def parse_e2b_args(args: List[str]) -> Tuple[E2BConfig, List[str]]:
+def parse_e2b_args(args: list[str]) -> tuple[E2BConfig, list[str]]:
     """Parse E2B-specific arguments from command line.
 
     Args:

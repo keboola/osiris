@@ -16,10 +16,7 @@ def create_test_session(logs_dir: Path) -> str:
     events_file = session_dir / "events.jsonl"
     with open(events_file, "w") as f:
         # Start event
-        f.write(
-            json.dumps({"ts": "2024-01-01T00:00:00Z", "event": "run_start", "session": session_id})
-            + "\n"
-        )
+        f.write(json.dumps({"ts": "2024-01-01T00:00:00Z", "event": "run_start", "session": session_id}) + "\n")
 
         # Add many events to trigger truncation
         for i in range(1000):
@@ -52,10 +49,7 @@ def create_test_session(logs_dir: Path) -> str:
     metrics_file = session_dir / "metrics.jsonl"
     with open(metrics_file, "w") as f:
         for i in range(100):
-            f.write(
-                json.dumps({"step_id": f"step_{i}", "rows_read": i * 100, "duration_ms": i * 1000})
-                + "\n"
-            )
+            f.write(json.dumps({"step_id": f"step_{i}", "rows_read": i * 100, "duration_ms": i * 1000}) + "\n")
 
     # Create artifacts directory with manifest
     artifacts_dir = session_dir / "artifacts"
@@ -97,7 +91,7 @@ def test_cli_truncation_exit_and_markers(tmp_path):
         str(logs_dir),
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
     # Assert exit code 4 for truncation
     assert result.returncode == 4, f"Expected exit code 4, got {result.returncode}"
@@ -149,7 +143,7 @@ def test_annex_manifest_present(tmp_path):
         str(logs_dir),
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
     # Should succeed
     assert result.returncode == 0
@@ -193,7 +187,7 @@ def test_console_stderr_no_typeerror(tmp_path, capsys):
         str(logs_dir),
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
     # Should exit with code 4 (truncated)
     assert result.returncode == 4
@@ -226,7 +220,7 @@ def test_md_export_non_empty(tmp_path):
         str(logs_dir),
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
     # Check MD output is not empty
     assert result.returncode == 0

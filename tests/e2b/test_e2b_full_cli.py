@@ -9,9 +9,7 @@ import pytest
 
 # Skip all tests in this file unless both conditions are met
 pytestmark = [
-    pytest.mark.skipif(
-        not os.environ.get("E2B_API_KEY"), reason="E2B_API_KEY not set - skipping live tests"
-    ),
+    pytest.mark.skipif(not os.environ.get("E2B_API_KEY"), reason="E2B_API_KEY not set - skipping live tests"),
     pytest.mark.skipif(
         os.environ.get("E2B_LIVE_TESTS") != "1",
         reason="E2B_LIVE_TESTS not set to 1 - skipping live tests",

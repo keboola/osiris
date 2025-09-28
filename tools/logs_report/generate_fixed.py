@@ -3,7 +3,6 @@
 
 import json
 from pathlib import Path
-from typing import Optional
 
 from osiris.core.logs_serialize import to_index_json, to_session_json
 from osiris.core.session_reader import SessionReader
@@ -12,10 +11,10 @@ from osiris.core.session_reader import SessionReader
 def generate_html_report(
     logs_dir: str = "./logs",
     output_dir: str = "dist/logs",
-    status_filter: Optional[str] = None,
-    label_filter: Optional[str] = None,
-    since_filter: Optional[str] = None,
-    limit: Optional[int] = None,
+    status_filter: str | None = None,
+    label_filter: str | None = None,
+    since_filter: str | None = None,
+    limit: int | None = None,
 ) -> None:
     """Generate static HTML report from session logs."""
     # Create output directory

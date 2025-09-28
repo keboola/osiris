@@ -1,12 +1,11 @@
 """Unified environment loading for Osiris."""
 
 from pathlib import Path
-from typing import List, Optional
 
 from dotenv import load_dotenv
 
 
-def load_env(dotenv_paths: Optional[List[str]] = None) -> List[str]:
+def load_env(dotenv_paths: list[str] | None = None) -> list[str]:
     """Load environment variables from .env files.
 
     Loads process env (no-op for already exported vars) + optionally .env files.

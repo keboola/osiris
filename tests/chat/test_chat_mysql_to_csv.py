@@ -54,9 +54,7 @@ steps:
 
     with patch("osiris.core.conversational_agent.LLMAdapter") as mock_llm:
         mock_llm_instance = MagicMock()
-        mock_llm_instance.process_conversation = AsyncMock(
-            side_effect=[discovery_response, oml_response]
-        )
+        mock_llm_instance.process_conversation = AsyncMock(side_effect=[discovery_response, oml_response])
         mock_llm_instance.chat = AsyncMock(return_value=oml_response)
         mock_llm.return_value = mock_llm_instance
 
@@ -78,9 +76,7 @@ steps:
             async def discovery_side_effect(params, context):
                 context.discovery_data = {"tables": {"actors": {}, "directors": {}}}
                 # The actual method now forces synthesis
-                return await agent._generate_pipeline(
-                    {"pipeline_yaml": oml_response.params["pipeline_yaml"]}, context
-                )
+                return await agent._generate_pipeline({"pipeline_yaml": oml_response.params["pipeline_yaml"]}, context)
 
             mock_discovery.side_effect = discovery_side_effect
 
@@ -160,17 +156,13 @@ steps:
                     confidence=0.9,
                 )
 
-                mock_llm_instance.process_conversation = AsyncMock(
-                    side_effect=[discovery_resp, oml_resp]
-                )
+                mock_llm_instance.process_conversation = AsyncMock(side_effect=[discovery_resp, oml_resp])
                 mock_llm_instance.chat = AsyncMock(return_value=oml_resp)
                 mock_llm.return_value = mock_llm_instance
 
                 agent = ConversationalPipelineAgent(
                     llm_provider="openai",
-                    config={
-                        "mysql": {"host": "test", "database": "test", "user": "u", "password": "p"}
-                    },
+                    config={"mysql": {"host": "test", "database": "test", "user": "u", "password": "p"}},
                 )
 
                 # Mock discovery and validation
@@ -202,9 +194,7 @@ steps:
                             transitions = [e for e in events if e["event"] == "state_transition"]
                             if transitions:
                                 # Check progression
-                                states_seen = [
-                                    (t.get("from_state"), t.get("to_state")) for t in transitions
-                                ]
+                                states_seen = [(t.get("from_state"), t.get("to_state")) for t in transitions]
                                 # Should move from init->intent_captured->discovery->oml_synthesis
                                 assert any("init" in str(s[0]) for s in states_seen)
                                 assert any("intent_captured" in str(s[1]) for s in states_seen)

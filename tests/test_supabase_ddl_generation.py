@@ -59,17 +59,9 @@ class TestSupabaseDDLGeneration:
         driver = SupabaseWriterDriver()
 
         # Test with DSN
+        assert driver._has_sql_channel({"dsn": "postgresql://user:pass@host/db"}) is True  # pragma: allowlist secret
         assert (
-            driver._has_sql_channel(
-                {"dsn": "postgresql://user:pass@host/db"}  # pragma: allowlist secret
-            )
-            is True
-        )
-        assert (
-            driver._has_sql_channel(
-                {"sql_dsn": "postgresql://user:pass@host/db"}  # pragma: allowlist secret
-            )
-            is True
+            driver._has_sql_channel({"sql_dsn": "postgresql://user:pass@host/db"}) is True  # pragma: allowlist secret
         )
 
         # Test with full SQL parameters
@@ -112,9 +104,7 @@ class TestSupabaseDDLGeneration:
                 mock_table = MagicMock()
 
                 # First check fails (table doesn't exist)
-                mock_table.select.return_value.limit.return_value.execute.side_effect = Exception(
-                    "Table not found"
-                )
+                mock_table.select.return_value.limit.return_value.execute.side_effect = Exception("Table not found")
 
                 mock_client_instance = MagicMock()
                 mock_client_instance.table.return_value = mock_table
@@ -161,8 +151,9 @@ class TestSupabaseDDLGeneration:
             mock_ctx = MagicMock()
             mock_ctx.output_dir = output_dir
 
-            with patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient, patch(
-                "osiris.drivers.supabase_writer_driver.log_event"
+            with (
+                patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient,
+                patch("osiris.drivers.supabase_writer_driver.log_event"),
             ):
                 mock_client = MagicMock()
                 mock_table = MagicMock()
@@ -232,9 +223,10 @@ class TestSupabaseDDLGeneration:
             mock_ctx = MagicMock()
             mock_ctx.output_dir = output_dir
 
-            with patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient, patch(
-                "osiris.drivers.supabase_writer_driver.log_event"
-            ) as mock_log_event:
+            with (
+                patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient,
+                patch("osiris.drivers.supabase_writer_driver.log_event") as mock_log_event,
+            ):
                 mock_client = MagicMock()
                 mock_table = MagicMock()
 
@@ -279,9 +271,7 @@ class TestSupabaseDDLGeneration:
 
                 # Check that ddl_planned event was logged
                 ddl_planned_calls = [
-                    call
-                    for call in mock_log_event.call_args_list
-                    if call[0][0] == "table.ddl_planned"
+                    call for call in mock_log_event.call_args_list if call[0][0] == "table.ddl_planned"
                 ]
 
                 assert len(ddl_planned_calls) == 1
@@ -294,9 +284,10 @@ class TestSupabaseDDLGeneration:
         driver = SupabaseWriterDriver()
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})
 
-        with patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient, patch(
-            "osiris.drivers.supabase_writer_driver.log_event"
-        ) as mock_log_event:
+        with (
+            patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient,
+            patch("osiris.drivers.supabase_writer_driver.log_event") as mock_log_event,
+        ):
             mock_client = MagicMock()
             mock_table = MagicMock()
 
@@ -326,8 +317,7 @@ class TestSupabaseDDLGeneration:
             ddl_events = [
                 call
                 for call in mock_log_event.call_args_list
-                if call[0][0]
-                in ["table.ddl_planned", "table.ddl_executed", "table.creation_suggested"]
+                if call[0][0] in ["table.ddl_planned", "table.ddl_executed", "table.creation_suggested"]
             ]
 
             assert len(ddl_events) == 0  # No DDL events

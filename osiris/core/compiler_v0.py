@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from ..components.registry import ComponentRegistry
 from .canonical import canonical_json, canonical_yaml
@@ -40,10 +40,10 @@ class CompilerV0:
     def compile(
         self,
         oml_path: str,
-        profile: Optional[str] = None,
-        cli_params: Dict[str, Any] = None,
+        profile: str | None = None,
+        cli_params: dict[str, Any] = None,
         compile_mode: str = "auto",
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """
         Compile OML to manifest.
 
@@ -125,7 +125,7 @@ class CompilerV0:
         except Exception as e:
             return False, f"Compilation failed: {str(e)}"
 
-    def _extract_defaults(self, oml: Dict) -> Dict[str, Any]:
+    def _extract_defaults(self, oml: dict) -> dict[str, Any]:
         """Extract default values from OML params."""
         defaults = {}
         if "params" in oml:
@@ -174,7 +174,7 @@ class CompilerV0:
 
         return True
 
-    def _compute_fingerprints(self, oml: Dict, profile: Optional[str]):
+    def _compute_fingerprints(self, oml: dict, profile: str | None):
         """Compute all fingerprints."""
         # OML fingerprint (canonical JSON)
         oml_bytes = canonical_json(oml).encode("utf-8")
@@ -210,7 +210,7 @@ class CompilerV0:
         # TODO: Implement actual cache lookup
         return False
 
-    def _generate_manifest(self, oml: Dict) -> Dict:
+    def _generate_manifest(self, oml: dict) -> dict:
         """Generate manifest from resolved OML."""
         steps = []
 
@@ -302,7 +302,7 @@ class CompilerV0:
 
         return manifest
 
-    def _generate_configs(self, oml: Dict) -> Dict[str, Dict]:
+    def _generate_configs(self, oml: dict) -> dict[str, dict]:
         """Generate per-step configurations."""
         configs = {}
 
@@ -323,18 +323,15 @@ class CompilerV0:
 
             # Filter out secrets (they'll be resolved at runtime)
             for key, value in config.items():
-                if not any(secret in key.lower() for secret in self.SECRET_FIELDS):
+                # Special case: primary_key is not a secret even though it contains "key"
+                if key == "primary_key" or not any(secret in key.lower() for secret in self.SECRET_FIELDS) or isinstance(value, str) and value.startswith("${"):
                     step_config[key] = value
-                else:
-                    # Keep placeholder for secrets
-                    if isinstance(value, str) and value.startswith("${"):
-                        step_config[key] = value
 
             configs[step_id] = step_config
 
         return configs
 
-    def _write_outputs(self, manifest: Dict, configs: Dict, oml: Dict, profile: Optional[str]):
+    def _write_outputs(self, manifest: dict, configs: dict, oml: dict, profile: str | None):
         """Write all compilation outputs."""
         # Create output directory
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -369,9 +366,7 @@ class CompilerV0:
         # Write effective_config.json
         config_path = self.output_dir / "effective_config.json"
         with open(config_path, "w") as f:
-            f.write(
-                canonical_json({"params": self.resolver.get_effective_params(), "profile": profile})
-            )
+            f.write(canonical_json({"params": self.resolver.get_effective_params(), "profile": profile}))
 
     def _has_driver(self, component_name: str) -> bool:
         """Check if a component has a runtime driver.
@@ -406,7 +401,7 @@ class CompilerV0:
         except Exception:
             return False
 
-    def _validate_drivers(self, manifest: Dict) -> bool:
+    def _validate_drivers(self, manifest: dict) -> bool:
         """Validate all steps have runtime drivers.
 
         Args:

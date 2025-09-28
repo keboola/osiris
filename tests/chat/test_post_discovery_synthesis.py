@@ -91,11 +91,7 @@ steps:
                     assert "?" not in result or "pipeline" in result.lower()
 
                     # Should contain pipeline or success message
-                    assert (
-                        "pipeline" in result.lower()
-                        or "generated" in result.lower()
-                        or "export" in result.lower()
-                    )
+                    assert "pipeline" in result.lower() or "generated" in result.lower() or "export" in result.lower()
 
 
 @pytest.mark.asyncio
@@ -118,9 +114,7 @@ async def test_csv_intent_triggers_deterministic_template():
 
     with patch("osiris.core.conversational_agent.LLMAdapter") as mock_llm:
         mock_llm_instance = MagicMock()
-        mock_llm_instance.process_conversation = AsyncMock(
-            side_effect=[discovery_response, wrong_response]
-        )
+        mock_llm_instance.process_conversation = AsyncMock(side_effect=[discovery_response, wrong_response])
         # Force synthesis should use template
         mock_llm_instance.chat = AsyncMock(return_value=wrong_response)
         mock_llm.return_value = mock_llm_instance
@@ -158,8 +152,4 @@ steps:
 
                         # Should have generated pipeline, not asked question
                         assert "?" not in result or "pipeline" in result.lower()
-                        assert (
-                            "export" in result.lower()
-                            or "csv" in result.lower()
-                            or "generated" in result.lower()
-                        )
+                        assert "export" in result.lower() or "csv" in result.lower() or "generated" in result.lower()

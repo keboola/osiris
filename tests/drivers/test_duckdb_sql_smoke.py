@@ -177,11 +177,7 @@ class TestDuckDBSQLSmoke:
         )
 
         # Group and filter by count
-        result = (
-            input_df.groupby(["director_id", "director_name"])
-            .agg(movie_count=("movie_id", "count"))
-            .reset_index()
-        )
+        result = input_df.groupby(["director_id", "director_name"]).agg(movie_count=("movie_id", "count")).reset_index()
 
         # Apply HAVING clause (>= 1)
         result = result[result["movie_count"] >= 1]

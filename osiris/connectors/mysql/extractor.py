@@ -16,7 +16,7 @@
 
 import logging
 import re
-from typing import Any, Dict, List
+from typing import Any
 
 import pandas as pd
 from sqlalchemy import inspect, text
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 class MySQLExtractor(IExtractor):
     """MySQL extractor for data discovery and extraction."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         """Initialize MySQL extractor.
 
         Args:
@@ -59,7 +59,7 @@ class MySQLExtractor(IExtractor):
         self.inspector = None
         self._initialized = False
 
-    async def list_tables(self) -> List[str]:
+    async def list_tables(self) -> list[str]:
         """List all tables in the database."""
         if not self._initialized:
             await self.connect()

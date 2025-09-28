@@ -68,18 +68,14 @@ class TestFilesystemCsvWriterDriver:
         driver = FilesystemCsvWriterDriver()
 
         with pytest.raises(ValueError, match="requires 'df' in inputs"):
-            driver.run(
-                step_id="test-write", config={"path": str(tmp_path / "output.csv")}, inputs={}
-            )
+            driver.run(step_id="test-write", config={"path": str(tmp_path / "output.csv")}, inputs={})
 
     def test_run_no_inputs(self, tmp_path):
         """Test error when inputs is None."""
         driver = FilesystemCsvWriterDriver()
 
         with pytest.raises(ValueError, match="requires 'df' in inputs"):
-            driver.run(
-                step_id="test-write", config={"path": str(tmp_path / "output.csv")}, inputs=None
-            )
+            driver.run(step_id="test-write", config={"path": str(tmp_path / "output.csv")}, inputs=None)
 
     def test_run_missing_path(self):
         """Test error when path is missing."""
@@ -149,9 +145,7 @@ class TestFilesystemCsvWriterDriver:
         test_df = pd.DataFrame({"col": [1, 2]})
 
         driver = FilesystemCsvWriterDriver()
-        driver.run(
-            step_id="test-write", config={"path": "relative/output.csv"}, inputs={"df": test_df}
-        )
+        driver.run(step_id="test-write", config={"path": "relative/output.csv"}, inputs={"df": test_df})
 
         # Verify file exists at expected location
         expected_file = tmp_path / "relative" / "output.csv"
@@ -164,9 +158,7 @@ class TestFilesystemCsvWriterDriver:
         output_file = tmp_path / "empty.csv"
 
         driver = FilesystemCsvWriterDriver()
-        result = driver.run(
-            step_id="test-write", config={"path": str(output_file)}, inputs={"df": test_df}
-        )
+        result = driver.run(step_id="test-write", config={"path": str(output_file)}, inputs={"df": test_df})
 
         # Verify file exists but is essentially empty
         assert output_file.exists()

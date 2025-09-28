@@ -251,9 +251,7 @@ class TestSupabaseWriter:
         with patch.object(writer, "upsert_data") as mock_upsert:
             mock_upsert.return_value = True
 
-            result = await writer.load_dataframe(
-                "test_table", df, write_mode="upsert", primary_key="id"
-            )
+            result = await writer.load_dataframe("test_table", df, write_mode="upsert", primary_key="id")
 
             assert result is True
             mock_upsert.assert_called_once_with("test_table", df.to_dict("records"), "id")
@@ -317,9 +315,10 @@ class TestSupabaseWriter:
     @pytest.mark.asyncio
     async def test_connect_disconnect(self, writer):
         """Test connection lifecycle."""
-        with patch.object(writer.base_client, "connect") as mock_connect, patch.object(
-            writer.base_client, "disconnect"
-        ) as mock_disconnect:
+        with (
+            patch.object(writer.base_client, "connect") as mock_connect,
+            patch.object(writer.base_client, "disconnect") as mock_disconnect,
+        ):
             mock_connect.return_value = MagicMock()
 
             # Connect

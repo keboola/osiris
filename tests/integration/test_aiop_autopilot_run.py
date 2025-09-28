@@ -66,7 +66,7 @@ steps:
         osiris_path = Path(__file__).parent.parent.parent / "osiris.py"
         compile_result = subprocess.run(
             [sys.executable, str(osiris_path), "compile", str(oml_file)],
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
         )
 
@@ -78,19 +78,18 @@ steps:
         assert last_compile_file.exists(), f"Last compile file not created at {last_compile_file}"
 
         # Extract session ID from compile output
-        compile_session_id = None
         for line in compile_result.stdout.split("\n"):
             if "Session:" in line and "logs/" in line:
                 # Extract session ID from "Session: logs/compile_XXX/"
                 parts = line.split("logs/")
                 if len(parts) > 1:
-                    compile_session_id = parts[1].strip("/")
+                    parts[1].strip("/")
                     break
 
         # Now run the compiled manifest with dry-run
         run_result = subprocess.run(
             [sys.executable, str(osiris_path), "run", "--last-compile", "--dry-run"],
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
         )
 

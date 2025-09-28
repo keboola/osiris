@@ -15,7 +15,7 @@
 """Secrets masking for secure logging."""
 
 import re
-from typing import Any, Dict
+from typing import Any
 
 # Sensitive field patterns (case-insensitive)
 SENSITIVE_PATTERNS = [
@@ -36,9 +36,7 @@ SENSITIVE_PATTERNS = [
 ]
 
 # Compile regex patterns for efficiency
-SENSITIVE_REGEX = re.compile(
-    "|".join(f"({pattern})" for pattern in SENSITIVE_PATTERNS), re.IGNORECASE
-)
+SENSITIVE_REGEX = re.compile("|".join(f"({pattern})" for pattern in SENSITIVE_PATTERNS), re.IGNORECASE)
 
 # Structural keys that should NEVER be masked (used for system operation)
 STRUCTURAL_KEYS = {
@@ -84,7 +82,7 @@ def mask_sensitive_value(key: str, value: Any) -> Any:
     return value
 
 
-def mask_sensitive_dict(data: Dict[str, Any]) -> Dict[str, Any]:
+def mask_sensitive_dict(data: dict[str, Any]) -> dict[str, Any]:
     """Recursively mask sensitive fields in a dictionary.
 
     Args:
@@ -101,9 +99,7 @@ def mask_sensitive_dict(data: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(value, dict):
             masked[key] = mask_sensitive_dict(value)
         elif isinstance(value, list):
-            masked[key] = [
-                mask_sensitive_dict(item) if isinstance(item, dict) else item for item in value
-            ]
+            masked[key] = [mask_sensitive_dict(item) if isinstance(item, dict) else item for item in value]
         else:
             masked[key] = mask_sensitive_value(key, value)
 

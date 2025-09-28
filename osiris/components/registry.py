@@ -8,7 +8,7 @@ of truth for component capabilities and configuration schemas.
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Set, Union
+from typing import Any, Literal
 
 import yaml
 from jsonschema import Draft202012Validator, ValidationError
@@ -22,9 +22,7 @@ logger = logging.getLogger(__name__)
 class ComponentRegistry:
     """Registry for loading and managing component specifications."""
 
-    def __init__(
-        self, root: Optional[Path] = None, session_context: Optional[SessionContext] = None
-    ):
+    def __init__(self, root: Path | None = None, session_context: SessionContext | None = None):
         """Initialize the registry.
 
         Args:
@@ -33,9 +31,9 @@ class ComponentRegistry:
         """
         self.root = Path(root) if root else Path("components")
         self.session_context = session_context
-        self._cache: Dict[str, Dict[str, Any]] = {}
-        self._mtime_cache: Dict[str, float] = {}
-        self._schema: Optional[Dict[str, Any]] = None
+        self._cache: dict[str, dict[str, Any]] = {}
+        self._mtime_cache: dict[str, float] = {}
+        self._schema: dict[str, Any] | None = None
 
         # Try parent directory if components not found (common in testing_env)
         if not self.root.exists():
@@ -70,7 +68,7 @@ class ComponentRegistry:
         cached_mtime = self._mtime_cache.get(name, 0)
         return current_mtime == cached_mtime
 
-    def _load_spec_file(self, spec_path: Path) -> Dict[str, Any]:
+    def _load_spec_file(self, spec_path: Path) -> dict[str, Any]:
         """Load a spec file (YAML or JSON)."""
         content = spec_path.read_text()
         if spec_path.suffix in [".yaml", ".yml"]:
@@ -78,7 +76,7 @@ class ComponentRegistry:
         else:
             return json.loads(content)
 
-    def load_specs(self, root: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
+    def load_specs(self, root: Path | None = None) -> dict[str, dict[str, Any]]:
         """Load all component specs from the root directory.
 
         Args:
@@ -148,7 +146,7 @@ class ComponentRegistry:
 
         return specs
 
-    def get_component(self, name: str) -> Optional[Dict[str, Any]]:
+    def get_component(self, name: str) -> dict[str, Any] | None:
         """Get a specific component specification by name.
 
         Args:
@@ -180,7 +178,7 @@ class ComponentRegistry:
         self.load_specs()
         return self._cache.get(name)
 
-    def list_components(self, mode: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list_components(self, mode: str | None = None) -> list[dict[str, Any]]:
         """List all available components, optionally filtered by mode.
 
         Args:
@@ -214,7 +212,7 @@ class ComponentRegistry:
 
     def validate_spec(
         self, name_or_path: str, level: Literal["basic", "enhanced", "strict"] = "basic"
-    ) -> tuple[bool, List[Union[str, Dict[str, Any]]]]:
+    ) -> tuple[bool, list[str | dict[str, Any]]]:
         """Validate a component specification at various levels.
 
         Args:
@@ -248,9 +246,7 @@ class ComponentRegistry:
 
         # Log validation start
         if self.session_context:
-            self.session_context.log_event(
-                "component_validation_start", component=name_or_path, level=level
-            )
+            self.session_context.log_event("component_validation_start", component=name_or_path, level=level)
 
         # Basic validation against schema
         if self._schema:
@@ -287,9 +283,7 @@ class ComponentRegistry:
                 Draft202012Validator.check_schema(config_schema)
             except Exception as e:
                 friendly = mapper.map_error(e)
-                errors.append(
-                    {"friendly": friendly, "technical": f"Invalid configSchema: {str(e)}"}
-                )
+                errors.append({"friendly": friendly, "technical": f"Invalid configSchema: {str(e)}"})
 
             # Validate examples against configSchema
             if "examples" in spec and "configSchema" in spec:
@@ -331,7 +325,7 @@ class ComponentRegistry:
 
         return len(errors) == 0, errors
 
-    def _validate_semantic(self, spec: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _validate_semantic(self, spec: dict[str, Any]) -> list[dict[str, Any]]:
         """Perform semantic validation on a spec.
 
         Args:
@@ -362,9 +356,7 @@ class ComponentRegistry:
         if "redaction" in spec and "extras" in spec["redaction"]:
             for pointer in spec["redaction"]["extras"]:
                 if not self._validate_json_pointer(pointer, config_fields):
-                    technical = (
-                        f"Redaction pointer '{pointer}' doesn't reference a valid config field"
-                    )
+                    technical = f"Redaction pointer '{pointer}' doesn't reference a valid config field"
                     friendly = FriendlyError(
                         category="constraint_error",
                         field_label="Redaction Field Reference",
@@ -396,7 +388,7 @@ class ComponentRegistry:
 
         return errors
 
-    def _extract_config_fields(self, schema_obj: Dict[str, Any], prefix: str = "") -> Set[str]:
+    def _extract_config_fields(self, schema_obj: dict[str, Any], prefix: str = "") -> set[str]:
         """Extract all field paths from a JSON Schema.
 
         Args:
@@ -426,7 +418,7 @@ class ComponentRegistry:
 
         return fields
 
-    def _validate_json_pointer(self, pointer: str, config_fields: Set[str]) -> bool:
+    def _validate_json_pointer(self, pointer: str, config_fields: set[str]) -> bool:
         """Validate a JSON Pointer references a valid field.
 
         Args:
@@ -448,7 +440,7 @@ class ComponentRegistry:
         # Allow common nested paths
         return path_parts[0] in ["auth", "credentials", "connection"]
 
-    def get_secret_map(self, name: str) -> Dict[str, List[str]]:
+    def get_secret_map(self, name: str) -> dict[str, list[str]]:
         """Get the secret mapping for a component for runtime redaction.
 
         Args:
@@ -477,12 +469,10 @@ class ComponentRegistry:
 
 
 # Module-level singleton instance
-_registry: Optional[ComponentRegistry] = None
+_registry: ComponentRegistry | None = None
 
 
-def get_registry(
-    root: Optional[Path] = None, session_context: Optional[SessionContext] = None
-) -> ComponentRegistry:
+def get_registry(root: Path | None = None, session_context: SessionContext | None = None) -> ComponentRegistry:
     """Get or create the global registry instance.
 
     Args:

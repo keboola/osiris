@@ -14,9 +14,10 @@ This test suite validates:
 import json
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -56,7 +57,7 @@ class TestLoggingConfigurationPrecedence:
         """Test that YAML log level is used when no overrides exist."""
         result = subprocess.run(
             ["python", "osiris.py", "validate", "--json"],
-            cwd=Path(__file__).parent.parent.parent,
+            check=False, cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env={**os.environ, "OSIRIS_CONFIG": str(osiris_config)},
@@ -79,7 +80,7 @@ class TestLoggingConfigurationPrecedence:
 
         result = subprocess.run(
             ["python", "osiris.py", "validate", "--json"],
-            cwd=Path(__file__).parent.parent.parent,
+            check=False, cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env=env,
@@ -101,7 +102,7 @@ class TestLoggingConfigurationPrecedence:
 
         result = subprocess.run(
             ["python", "osiris.py", "validate", "--log-level", "ERROR", "--json"],
-            cwd=Path(__file__).parent.parent.parent,
+            check=False, cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env=env,
@@ -126,7 +127,7 @@ class TestLoggingConfigurationPrecedence:
         # Test 1: YAML only
         result = subprocess.run(
             ["python", "osiris.py", "validate", "--mode", "warn", "--json"],
-            cwd=Path(__file__).parent.parent.parent,
+            check=False, cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env={**os.environ, "OSIRIS_CONFIG": str(osiris_config)},
@@ -142,7 +143,7 @@ class TestLoggingConfigurationPrecedence:
         env = {**os.environ, "OSIRIS_CONFIG": str(osiris_config), "OSIRIS_LOGS_DIR": str(env_dir)}
         result = subprocess.run(
             ["python", "osiris.py", "validate", "--mode", "warn", "--json"],
-            cwd=Path(__file__).parent.parent.parent,
+            check=False, cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env=env,
@@ -165,7 +166,7 @@ class TestLoggingConfigurationPrecedence:
                 str(cli_dir),
                 "--json",
             ],
-            cwd=Path(__file__).parent.parent.parent,
+            check=False, cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env=env,
@@ -309,16 +310,13 @@ class TestPermissionFallback:
             mock_mkdir.side_effect = PermissionError("Access denied")
 
             # Should not raise, should fallback to temp
-            session = SessionContext(
-                session_id="test_fallback", base_logs_dir=Path("/nonexistent/readonly")
-            )
+            session = SessionContext(session_id="test_fallback", base_logs_dir=Path("/nonexistent/readonly"))
 
             # Session should still work
             assert session.session_dir.exists()
             # On macOS, temp dirs are in /var/folders/, on Linux in /tmp, on Windows in Temp
             assert any(
-                temp_marker in str(session.session_dir)
-                for temp_marker in ["/var/folders/", "/tmp", "Temp", "TEMP"]
+                temp_marker in str(session.session_dir) for temp_marker in ["/var/folders/", "/tmp", "Temp", "TEMP"]
             )
 
             # Should be able to log
@@ -343,7 +341,7 @@ class TestEffectiveConfigurationReporting:
 
         result = subprocess.run(
             ["python", "osiris.py", "validate", "--json"],
-            cwd=Path(__file__).parent.parent.parent,
+            check=False, cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env=env,
@@ -366,7 +364,7 @@ class TestEffectiveConfigurationReporting:
 class TestLogLevelComparison:
     """Test comparing logs at different verbosity levels."""
 
-    def run_with_log_level(self, level: str, workspace: Path) -> Dict[str, Any]:
+    def run_with_log_level(self, level: str, workspace: Path) -> dict[str, Any]:
         """Run osiris command with specified log level and return log info."""
         logs_dir = workspace / f"logs_{level.lower()}"
 
@@ -390,7 +388,7 @@ class TestLogLevelComparison:
                 str(logs_dir),
                 "--json",
             ],
-            cwd=Path(__file__).parent.parent.parent,
+            check=False, cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env={**os.environ, "OSIRIS_CONFIG": str(config_path)},
@@ -430,24 +428,16 @@ class TestLogLevelComparison:
         if debug_info["log_size"] == 0 and critical_info["log_size"] == 0:
             pytest.skip("No logs created - command may have failed")
 
-        assert (
-            debug_info["log_size"] > critical_info["log_size"]
-        ), "DEBUG logs should be larger than CRITICAL logs"
+        assert debug_info["log_size"] > critical_info["log_size"], "DEBUG logs should be larger than CRITICAL logs"
 
-        assert (
-            debug_info["lines"] > critical_info["lines"]
-        ), "DEBUG should have more log lines than CRITICAL"
+        assert debug_info["lines"] > critical_info["lines"], "DEBUG should have more log lines than CRITICAL"
 
         # DEBUG logs should contain DEBUG messages
         assert debug_info.get("has_debug", False), "DEBUG level should include DEBUG messages"
 
         # CRITICAL logs should not contain DEBUG or INFO
-        assert not critical_info.get(
-            "has_debug", False
-        ), "CRITICAL level should not include DEBUG messages"
-        assert not critical_info.get(
-            "has_info", False
-        ), "CRITICAL level should not include INFO messages"
+        assert not critical_info.get("has_debug", False), "CRITICAL level should not include DEBUG messages"
+        assert not critical_info.get("has_info", False), "CRITICAL level should not include INFO messages"
 
 
 class TestDiscoveryCacheConfiguration:
@@ -458,9 +448,7 @@ class TestDiscoveryCacheConfiguration:
         config_path = tmp_path / "osiris.yaml"
         config = {
             "version": "2.0",
-            "discovery": {
-                "cache": {"ttl_seconds": 5, "dir": str(tmp_path / "cache")}  # Short TTL for testing
-            },
+            "discovery": {"cache": {"ttl_seconds": 5, "dir": str(tmp_path / "cache")}},  # Short TTL for testing
         }
         with open(config_path, "w") as f:
             yaml.dump(config, f)
@@ -546,7 +534,7 @@ class TestManualScenarios:
                 "--logs-dir",
                 str(workspace / "debug_logs"),
             ],
-            cwd=Path(__file__).parent.parent.parent,
+            check=False, cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env={**os.environ, "OSIRIS_CONFIG": str(config_path)},
@@ -564,7 +552,7 @@ class TestManualScenarios:
                 "--logs-dir",
                 str(workspace / "critical_logs"),
             ],
-            cwd=Path(__file__).parent.parent.parent,
+            check=False, cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env={**os.environ, "OSIRIS_CONFIG": str(config_path)},
@@ -637,4 +625,4 @@ def run_comprehensive_test_suite():
 if __name__ == "__main__":
     # Run the comprehensive test suite
     exit_code = run_comprehensive_test_suite()
-    exit(exit_code)
+    sys.exit(exit_code)

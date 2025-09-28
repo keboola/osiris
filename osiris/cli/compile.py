@@ -5,7 +5,6 @@ import shutil
 import sys
 import time
 from pathlib import Path
-from typing import List
 
 from rich.console import Console
 
@@ -86,14 +85,10 @@ def show_compile_help(json_output: bool = False):
     console.print("  [green]osiris compile pipeline.yaml --profile prod[/green]")
     console.print()
     console.print("  [dim]# Override parameters[/dim]")
-    console.print(
-        "  [green]osiris compile pipeline.yaml --param db=mydb --param env=staging[/green]"
-    )
+    console.print("  [green]osiris compile pipeline.yaml --param db=mydb --param env=staging[/green]")
     console.print()
     console.print("  [dim]# Force recompilation to custom directory[/dim]")
-    console.print(
-        "  [green]osiris compile pipeline.yaml --out /tmp/compiled --compile force[/green]"
-    )
+    console.print("  [green]osiris compile pipeline.yaml --out /tmp/compiled --compile force[/green]")
     console.print()
 
     console.print("[bold blue]📋 Parameter Precedence[/bold blue]")
@@ -111,16 +106,12 @@ def show_compile_help(json_output: bool = False):
     console.print()
 
     console.print("[bold blue]🔄 Workflow[/bold blue]")
-    console.print(
-        "  [cyan]1.[/cyan] [green]osiris compile pipeline.yaml[/green]     Compile OML to manifest"
-    )
-    console.print(
-        "  [cyan]2.[/cyan] [green]osiris execute compiled/manifest.yaml[/green]  Run the pipeline"
-    )
+    console.print("  [cyan]1.[/cyan] [green]osiris compile pipeline.yaml[/green]     Compile OML to manifest")
+    console.print("  [cyan]2.[/cyan] [green]osiris execute compiled/manifest.yaml[/green]  Run the pipeline")
     console.print()
 
 
-def compile_command(args: List[str]):
+def compile_command(args: list[str]):
     """Execute the compile command."""
     # Load environment variables (redundant but safe)
     loaded_envs = load_env()
@@ -216,21 +207,18 @@ def compile_command(args: List[str]):
                     print(json.dumps({"error": error_msg}))
                 else:
                     console.print(f"[red]❌ {error_msg}[/red]")
-                    console.print(
-                        "[dim]💡 Run 'osiris compile --help' to see available options[/dim]"
-                    )
+                    console.print("[dim]💡 Run 'osiris compile --help' to see available options[/dim]")
                 sys.exit(2)
+        elif pipeline_file is None:
+            pipeline_file = arg
         else:
-            if pipeline_file is None:
-                pipeline_file = arg
+            error_msg = "Multiple pipeline files specified"
+            if use_json:
+                print(json.dumps({"error": error_msg}))
             else:
-                error_msg = "Multiple pipeline files specified"
-                if use_json:
-                    print(json.dumps({"error": error_msg}))
-                else:
-                    console.print(f"[red]❌ {error_msg}[/red]")
-                    console.print("[dim]💡 Only one pipeline file can be compiled at a time[/dim]")
-                sys.exit(2)
+                console.print(f"[red]❌ {error_msg}[/red]")
+                console.print("[dim]💡 Only one pipeline file can be compiled at a time[/dim]")
+            sys.exit(2)
 
         i += 1
 
@@ -335,11 +323,7 @@ def compile_command(args: List[str]):
                             "message": message,
                             "session_id": session_id,
                             "session_dir": f"logs/{session_id}",
-                            "output_dir": (
-                                output_dir
-                                if output_dir != "compiled"
-                                else f"logs/{session_id}/compiled"
-                            ),
+                            "output_dir": (output_dir if output_dir != "compiled" else f"logs/{session_id}/compiled"),
                             "manifest": (
                                 f"{output_dir}/manifest.yaml"
                                 if output_dir != "compiled"
@@ -360,9 +344,7 @@ def compile_command(args: List[str]):
             log_event("compile_error", error=message, duration=duration)
 
             if use_json:
-                error_type = (
-                    "validation_error" if "secret" in message.lower() else "compilation_error"
-                )
+                error_type = "validation_error" if "secret" in message.lower() else "compilation_error"
                 print(
                     json.dumps(
                         {

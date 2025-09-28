@@ -113,7 +113,5 @@ class TestConversationalPipelineAgent:
 
         # Test with manual analysis response (should force)
         llm_response = "Here's the analysis: 1. **Actor A** 2. **Actor B**"
-        should_force = agent._should_force_pipeline_generation(
-            "show top actors", context, llm_response
-        )
+        should_force = agent._should_force_pipeline_generation("show top actors", context, llm_response)
         assert should_force is True

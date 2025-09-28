@@ -250,12 +250,8 @@ class TestCacheInvalidation:
         options2 = {"table": "users", "schema": "private"}
         spec_schema = {"type": "object"}
 
-        fingerprint1 = create_cache_fingerprint(
-            "mysql.table", "0.1.0", "@mysql", options1, spec_schema
-        )
-        fingerprint2 = create_cache_fingerprint(
-            "mysql.table", "0.1.0", "@mysql", options2, spec_schema
-        )
+        fingerprint1 = create_cache_fingerprint("mysql.table", "0.1.0", "@mysql", options1, spec_schema)
+        fingerprint2 = create_cache_fingerprint("mysql.table", "0.1.0", "@mysql", options2, spec_schema)
 
         entry = create_cache_entry(fingerprint1, {"test": "data"})
 

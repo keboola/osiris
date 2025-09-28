@@ -99,9 +99,7 @@ class TestCompileRunCSVWriter:
             }
 
             # Create test data
-            test_data = pd.DataFrame(
-                {"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"], "age": [30, 25, 35]}
-            )
+            test_data = pd.DataFrame({"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"], "age": [30, 25, 35]})
 
             # Create manifest
             manifest = {
@@ -185,9 +183,7 @@ class TestCompileRunCSVWriter:
                 # Register the CSV writer driver manually
                 from osiris.drivers.filesystem_csv_writer_driver import FilesystemCsvWriterDriver
 
-                runner.driver_registry.register(
-                    "filesystem.csv_writer", lambda: FilesystemCsvWriterDriver()
-                )
+                runner.driver_registry.register("filesystem.csv_writer", lambda: FilesystemCsvWriterDriver())
 
                 # Mock the MySQL driver to return test data
                 mock_mysql_driver = MagicMock()

@@ -1,11 +1,11 @@
 """Factory for creating execution adapters based on target."""
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .execution_adapter import ExecutionAdapter
 
 
-def get_execution_adapter(target: str, config: Optional[Dict[str, Any]] = None) -> ExecutionAdapter:
+def get_execution_adapter(target: str, config: dict[str, Any] | None = None) -> ExecutionAdapter:
     """Get an execution adapter based on target.
 
     Args:

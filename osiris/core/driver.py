@@ -1,7 +1,8 @@
 """Driver interface and registry for runtime execution."""
 
 import logging
-from typing import Any, Callable, Dict, Optional, Protocol
+from collections.abc import Callable
+from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
 
@@ -13,9 +14,7 @@ class Driver(Protocol):
     They receive configuration and inputs, and return outputs.
     """
 
-    def run(
-        self, *, step_id: str, config: dict, inputs: Optional[dict] = None, ctx: Any = None
-    ) -> dict:
+    def run(self, *, step_id: str, config: dict, inputs: dict | None = None, ctx: Any = None) -> dict:
         """Execute the driver logic.
 
         Args:
@@ -39,7 +38,7 @@ class DriverRegistry:
     """Registry for driver implementations."""
 
     def __init__(self):
-        self._drivers: Dict[str, Callable[[], Driver]] = {}
+        self._drivers: dict[str, Callable[[], Driver]] = {}
 
     def register(self, name: str, factory: Callable[[], Driver]) -> None:
         """Register a driver factory.
@@ -65,9 +64,7 @@ class DriverRegistry:
         """
         if name not in self._drivers:
             available = ", ".join(sorted(self._drivers.keys()))
-            raise ValueError(
-                f"Driver '{name}' not registered. " f"Available drivers: {available or '(none)'}"
-            )
+            raise ValueError(f"Driver '{name}' not registered. " f"Available drivers: {available or '(none)'}")
 
         factory = self._drivers[name]
         return factory()

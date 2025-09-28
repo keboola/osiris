@@ -7,7 +7,7 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import pymysql
 from rich.console import Console
@@ -27,7 +27,7 @@ def check_env_var_set(var_name: str) -> bool:
     return var_name in os.environ
 
 
-def extract_env_vars(value: Any) -> List[str]:
+def extract_env_vars(value: Any) -> list[str]:
     """Extract environment variable names from a value with ${VAR} patterns."""
     if isinstance(value, str):
         pattern = r"\$\{([^}]+)\}"
@@ -45,7 +45,7 @@ def extract_env_vars(value: Any) -> List[str]:
     return []
 
 
-def mask_connection_for_display(connection: Dict[str, Any]) -> Dict[str, Any]:
+def mask_connection_for_display(connection: dict[str, Any]) -> dict[str, Any]:
     """Mask sensitive fields in a connection for display."""
     sensitive_keys = {
         "password",
@@ -107,9 +107,7 @@ def list_connections(args: list) -> None:
 
     # Create session for logging
     session_id = f"connections_{int(time.time() * 1000)}"
-    session = SessionContext(
-        session_id=session_id, base_logs_dir=Path("logs"), allowed_events=["*"]
-    )
+    session = SessionContext(session_id=session_id, base_logs_dir=Path("logs"), allowed_events=["*"])
     set_current_session(session)
     session.setup_logging(level=logging.INFO, enable_debug=False)
 
@@ -250,9 +248,7 @@ def list_connections(args: list) -> None:
                         for k, v in config.items():
                             if (
                                 k != "default"
-                                and not any(
-                                    s in k.lower() for s in ["password", "key", "token", "secret"]
-                                )
+                                and not any(s in k.lower() for s in ["password", "key", "token", "secret"])
                                 and isinstance(v, str)
                                 and not v.startswith("${")
                             ):
@@ -269,9 +265,7 @@ def list_connections(args: list) -> None:
                         status_icon = "[green]✓[/green]" if is_set else "[red]✗[/red]"
                         env_status_parts.append(f"{var} {status_icon}")
 
-                    env_status_str = (
-                        ", ".join(env_status_parts) if env_status_parts else "None required"
-                    )
+                    env_status_str = ", ".join(env_status_parts) if env_status_parts else "None required"
 
                     table.add_row(alias, default_marker, info_str, env_status_str)
 
@@ -293,7 +287,7 @@ def list_connections(args: list) -> None:
         restore_logger_levels(saved_levels)
 
 
-def check_mysql_connection(config: Dict[str, Any]) -> Dict[str, Any]:
+def check_mysql_connection(config: dict[str, Any]) -> dict[str, Any]:
     """Test MySQL connection by executing SELECT 1."""
     start_time = time.time()
     try:
@@ -325,7 +319,7 @@ def check_mysql_connection(config: Dict[str, Any]) -> Dict[str, Any]:
         return {"status": "failure", "latency_ms": round(latency_ms, 2), "message": str(e)}
 
 
-def check_supabase_connection(config: Dict[str, Any]) -> Dict[str, Any]:
+def check_supabase_connection(config: dict[str, Any]) -> dict[str, Any]:
     """Test Supabase connection with a simple health check."""
     start_time = time.time()
     try:
@@ -402,7 +396,7 @@ def check_supabase_connection(config: Dict[str, Any]) -> Dict[str, Any]:
         }
 
 
-def check_duckdb_connection(config: Dict[str, Any]) -> Dict[str, Any]:
+def check_duckdb_connection(config: dict[str, Any]) -> dict[str, Any]:
     """Test DuckDB connection by checking file existence/writability."""
     start_time = time.time()
     try:
@@ -456,9 +450,7 @@ def doctor_connections(args: list) -> None:
 
     # Create session for logging
     session_id = f"connections_{int(time.time() * 1000)}"
-    session = SessionContext(
-        session_id=session_id, base_logs_dir=Path("logs"), allowed_events=["*"]
-    )
+    session = SessionContext(session_id=session_id, base_logs_dir=Path("logs"), allowed_events=["*"])
     set_current_session(session)
     session.setup_logging(level=logging.INFO, enable_debug=False)
 
@@ -500,9 +492,7 @@ def doctor_connections(args: list) -> None:
             console.print("[bold blue]Examples[/bold blue]")
             console.print("  [green]osiris connections doctor[/green]")
             console.print("  [green]osiris connections doctor --family mysql[/green]")
-            console.print(
-                "  [green]osiris connections doctor --family mysql --alias movie_db[/green]"
-            )
+            console.print("  [green]osiris connections doctor --family mysql --alias movie_db[/green]")
             console.print("  [green]osiris connections doctor --json[/green]")
             console.print()
 
@@ -549,9 +539,7 @@ def doctor_connections(args: list) -> None:
                 return
 
             families_to_test = (
-                {parsed_args.family: connections[parsed_args.family]}
-                if parsed_args.family
-                else connections
+                {parsed_args.family: connections[parsed_args.family]} if parsed_args.family else connections
             )
 
             if not parsed_args.json:
@@ -560,9 +548,7 @@ def doctor_connections(args: list) -> None:
             for test_family, aliases in families_to_test.items():
                 if parsed_args.alias:
                     if parsed_args.alias not in aliases:
-                        error_msg = (
-                            f"Alias '{parsed_args.alias}' not found in family '{test_family}'"
-                        )
+                        error_msg = f"Alias '{parsed_args.alias}' not found in family '{test_family}'"
                         if parsed_args.json:
                             print(json.dumps({"error": error_msg}, indent=2))
                         else:
@@ -658,9 +644,7 @@ def doctor_connections(args: list) -> None:
                         }.get(test_result["status"], "[dim]?[/dim]")
 
                         latency_str = (
-                            f" ({test_result.get('latency_ms', 0):.1f}ms)"
-                            if "latency_ms" in test_result
-                            else ""
+                            f" ({test_result.get('latency_ms', 0):.1f}ms)" if "latency_ms" in test_result else ""
                         )
                         console.print(
                             f"{status_icon} {test_family}.{test_alias}{latency_str}: {test_result['message']}"
@@ -672,9 +656,7 @@ def doctor_connections(args: list) -> None:
             else:
                 console.print("\n[bold]Connection test complete.[/bold]")
 
-            log_event(
-                "connections_doctor_complete", test_count=sum(len(r) for r in results.values())
-            )
+            log_event("connections_doctor_complete", test_count=sum(len(r) for r in results.values()))
 
         except Exception as e:
             log_event("connections_doctor_error", error=str(e))

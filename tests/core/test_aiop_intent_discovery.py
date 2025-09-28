@@ -88,13 +88,10 @@ Some other content here.
 
         with patch("osiris.core.run_export_v2.redact_secrets") as mock_redact:
             mock_redact.side_effect = lambda x: {
-                k: v if k != "content" or "password" not in v else "[REDACTED]"
-                for k, v in x.items()
+                k: v if k != "content" or "password" not in v else "[REDACTED]" for k, v in x.items()
             }
 
-            intent, known, provenance = discover_intent(
-                manifest, chat_logs=chat_logs, config=config
-            )
+            intent, known, provenance = discover_intent(manifest, chat_logs=chat_logs, config=config)
 
             assert known is True
             # Check that redaction was called

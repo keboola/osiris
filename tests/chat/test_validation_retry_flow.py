@@ -126,9 +126,7 @@ steps:
             def mock_retry_callback(yaml_str, error_ctx, attempt):
                 return valid_pipeline, {"total_tokens": 100}
 
-            success, result, trail = manager.validate_with_retry(
-                invalid_pipeline, retry_callback=mock_retry_callback
-            )
+            success, result, trail = manager.validate_with_retry(invalid_pipeline, retry_callback=mock_retry_callback)
 
             assert success is True
             assert len(trail.attempts) == 2
@@ -161,9 +159,7 @@ steps:
             def mock_retry_callback(yaml_str, error_ctx, attempt):
                 return invalid_pipeline, {"total_tokens": 100}
 
-            success, result, trail = manager.validate_with_retry(
-                invalid_pipeline, retry_callback=mock_retry_callback
-            )
+            success, result, trail = manager.validate_with_retry(invalid_pipeline, retry_callback=mock_retry_callback)
 
             assert success is False
             assert len(trail.attempts) == 3  # Initial + 2 retries
@@ -292,9 +288,7 @@ steps:
 
     def test_hitl_prompt_generation(self):
         """Test HITL prompt generation."""
-        manager = ValidationRetryManager(
-            max_attempts=2, include_history_in_hitl=True, history_limit=3
-        )
+        manager = ValidationRetryManager(max_attempts=2, include_history_in_hitl=True, history_limit=3)
 
         # Create a retry trail with failures
         trail = RetryTrail()

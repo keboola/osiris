@@ -77,7 +77,7 @@ class TestAIOPAutopilot:
         # Run pipeline
         result = subprocess.run(
             [sys.executable, "-m", "osiris.cli.main", "run", str(simple_pipeline)],
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
             cwd=tmp_path,
         )
@@ -131,7 +131,7 @@ class TestAIOPAutopilot:
         # Run pipeline
         subprocess.run(
             [sys.executable, "-m", "osiris.cli.main", "run", str(simple_pipeline)],
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
             cwd=tmp_path,
         )
@@ -162,7 +162,7 @@ class TestAIOPAutopilot:
         # Run pipeline
         subprocess.run(
             [sys.executable, "-m", "osiris.cli.main", "run", str(simple_pipeline)],
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
             cwd=tmp_path,
         )
@@ -199,7 +199,7 @@ class TestAIOPAutopilot:
         # Run pipeline
         subprocess.run(
             [sys.executable, "-m", "osiris.cli.main", "run", str(simple_pipeline)],
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
             cwd=tmp_path,
         )
@@ -244,7 +244,7 @@ class TestAIOPAutopilot:
         # Run pipeline
         subprocess.run(
             [sys.executable, "-m", "osiris.cli.main", "run", str(simple_pipeline)],
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
             cwd=tmp_path,
         )
@@ -277,7 +277,7 @@ class TestAIOPAutopilot:
         for _ in range(2):
             subprocess.run(
                 [sys.executable, "-m", "osiris.cli.main", "run", str(simple_pipeline)],
-                capture_output=True,
+                check=False, capture_output=True,
                 text=True,
                 cwd=tmp_path,
             )
@@ -285,7 +285,5 @@ class TestAIOPAutopilot:
         # Check only 1 run directory remains
         aiop_dir = Path("logs/aiop")
         if aiop_dir.exists():
-            run_dirs = [
-                d for d in aiop_dir.iterdir() if d.is_dir() and d.name not in ["index", "latest"]
-            ]
+            run_dirs = [d for d in aiop_dir.iterdir() if d.is_dir() and d.name not in ["index", "latest"]]
             assert len(run_dirs) <= 1  # Should be at most 1 after retention

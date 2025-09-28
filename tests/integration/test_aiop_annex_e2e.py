@@ -25,8 +25,7 @@ class TestAIOPAnnexE2E:
             ]
 
             metrics = [
-                {"timestamp": f"2024-01-01T10:00:{i:02d}Z", "metric": "rows_read", "value": i * 100}
-                for i in range(10)
+                {"timestamp": f"2024-01-01T10:00:{i:02d}Z", "metric": "rows_read", "value": i * 100} for i in range(10)
             ]
 
             errors = [
@@ -67,7 +66,7 @@ class TestAIOPAnnexE2E:
             }
 
             # Build AIOP with annex policy
-            aiop = build_aiop(
+            build_aiop(
                 session_data=session_data,
                 manifest=manifest,
                 events=events,
@@ -123,10 +122,7 @@ class TestAIOPAnnexE2E:
     def test_annex_with_gzip_compression(self):
         """Test annex with --compress gzip option."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            events = [
-                {"timestamp": f"2024-01-01T10:00:{i:02d}Z", "event_type": "TEST", "value": i}
-                for i in range(50)
-            ]
+            events = [{"timestamp": f"2024-01-01T10:00:{i:02d}Z", "event_type": "TEST", "value": i} for i in range(50)]
 
             metrics = [
                 {

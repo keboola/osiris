@@ -19,9 +19,7 @@ class TestFriendlyErrorMapper:
             self.mapper.PATH_LABELS["/configSchema/properties/password"]  # pragma: allowlist secret
             == "Database Password"
         )
-        assert (
-            self.mapper.PATH_LABELS["/configSchema/properties/key"] == "API Key"
-        )  # pragma: allowlist secret
+        assert self.mapper.PATH_LABELS["/configSchema/properties/key"] == "API Key"  # pragma: allowlist secret
 
         # Test top-level field mappings
         assert self.mapper.PATH_LABELS["/name"] == "Component Name"

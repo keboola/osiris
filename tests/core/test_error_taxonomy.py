@@ -170,9 +170,7 @@ class TestErrorContext:
         ctx = ErrorContext(source="local")
 
         exc = ValueError("Invalid configuration")
-        event = ctx.handle_error(
-            "Config validation failed", exception=exc, step_id="validate_config"
-        )
+        event = ctx.handle_error("Config validation failed", exception=exc, step_id="validate_config")
 
         assert event["message"] == "Config validation failed"
         assert event["step_id"] == "validate_config"
@@ -185,9 +183,7 @@ class TestErrorContext:
 
         # Extract driver error
         exc = Exception("Query execution failed: syntax error")
-        event = ctx.wrap_driver_error(
-            driver_name="mysql.extractor", step_id="extract_data", exception=exc
-        )
+        event = ctx.wrap_driver_error(driver_name="mysql.extractor", step_id="extract_data", exception=exc)
 
         assert event["error_code"] == ErrorCode.EXTRACT_QUERY_FAILED.value
         assert event["driver"] == "mysql.extractor"
@@ -201,23 +197,17 @@ class TestErrorContext:
 
         # Write driver
         exc = Exception("Cannot write file")
-        event = ctx.wrap_driver_error(
-            driver_name="filesystem.csv_writer", step_id="write_output", exception=exc
-        )
+        event = ctx.wrap_driver_error(driver_name="filesystem.csv_writer", step_id="write_output", exception=exc)
         assert event["error_code"] == ErrorCode.WRITE_FAILED.value
 
         # Transform driver
         exc = Exception("Transform failed")
-        event = ctx.wrap_driver_error(
-            driver_name="duckdb.transformer", step_id="transform_data", exception=exc
-        )
+        event = ctx.wrap_driver_error(driver_name="duckdb.transformer", step_id="transform_data", exception=exc)
         assert event["error_code"] == ErrorCode.TRANSFORM_FAILED.value
 
         # Unknown driver defaults to runtime
         exc = Exception("Unknown error")
-        event = ctx.wrap_driver_error(
-            driver_name="custom.driver", step_id="custom_step", exception=exc
-        )
+        event = ctx.wrap_driver_error(driver_name="custom.driver", step_id="custom_step", exception=exc)
         # Should map to runtime or system error
         assert "error_code" in event
 
@@ -235,9 +225,7 @@ class TestErrorTaxonomyIntegration:
         ctx = ErrorContext(source="remote")
 
         # Handle the error
-        event = ctx.wrap_driver_error(
-            driver_name="mysql.extractor", step_id="extract_users", exception=exc
-        )
+        event = ctx.wrap_driver_error(driver_name="mysql.extractor", step_id="extract_users", exception=exc)
 
         # Verify error mapping
         assert event["error_code"] == ErrorCode.CONNECTION_FAILED.value
@@ -254,9 +242,7 @@ class TestErrorTaxonomyIntegration:
         ctx = ErrorContext(source="local")
 
         # Handle the error
-        event = ctx.wrap_driver_error(
-            driver_name="filesystem.csv_writer", step_id="write_results", exception=exc
-        )
+        event = ctx.wrap_driver_error(driver_name="filesystem.csv_writer", step_id="write_results", exception=exc)
 
         # Verify error mapping
         assert event["error_code"] == ErrorCode.WRITE_PERMISSION_DENIED.value

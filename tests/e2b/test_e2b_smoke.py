@@ -16,12 +16,7 @@ class TestE2BSmoke:
     @pytest.fixture
     def example_pipeline_path(self):
         """Path to the example pipeline."""
-        return (
-            Path(__file__).parent.parent.parent
-            / "docs"
-            / "examples"
-            / "mysql_to_local_csv_all_tables.yaml"
-        )
+        return Path(__file__).parent.parent.parent / "docs" / "examples" / "mysql_to_local_csv_all_tables.yaml"
 
     @pytest.fixture
     def compiled_manifest(self):
@@ -132,9 +127,7 @@ class TestE2BSmoke:
     @pytest.mark.skipif(not os.getenv("E2B_API_KEY"), reason="E2B_API_KEY not set")
     @pytest.mark.skipif(not os.getenv("E2B_LIVE_TESTS"), reason="E2B_LIVE_TESTS not enabled")
     @patch("osiris.remote.e2b_adapter.E2BClient")
-    def test_e2b_adapter_mock_execution(
-        self, mock_client_class, compiled_manifest, e2b_config, execution_context
-    ):
+    def test_e2b_adapter_mock_execution(self, mock_client_class, compiled_manifest, e2b_config, execution_context):
         """Test E2B adapter execution with mocked client (safer for CI)."""
         # Setup mock E2B client
         mock_client = MagicMock()
@@ -170,9 +163,7 @@ class TestE2BSmoke:
         assert result.error_message is None
 
         # Verify E2B client calls
-        mock_client.create_sandbox.assert_called_once_with(
-            cpu=2, mem_gb=4, env=e2b_config["env"], timeout=300
-        )
+        mock_client.create_sandbox.assert_called_once_with(cpu=2, mem_gb=4, env=e2b_config["env"], timeout=300)
         mock_client.upload_payload.assert_called_once()
         mock_client.start.assert_called_once()
         mock_client.poll_until_complete.assert_called_once()
@@ -181,9 +172,7 @@ class TestE2BSmoke:
     @pytest.mark.skipif(not os.getenv("E2B_API_KEY"), reason="E2B_API_KEY not set")
     @pytest.mark.skipif(not os.getenv("E2B_LIVE_TESTS"), reason="E2B_LIVE_TESTS not enabled")
     @patch("osiris.remote.e2b_adapter.E2BClient")
-    def test_e2b_adapter_collect_artifacts(
-        self, mock_client_class, compiled_manifest, e2b_config, execution_context
-    ):
+    def test_e2b_adapter_collect_artifacts(self, mock_client_class, compiled_manifest, e2b_config, execution_context):
         """Test E2B adapter artifact collection."""
         # Setup mock E2B client
         mock_client = MagicMock()
@@ -281,11 +270,7 @@ class TestE2BSmoke:
         assert "@mysql.db_movies" in steps_text
 
         # Verify filesystem outputs (should work in E2B)
-        filesystem_steps = [
-            step
-            for step in pipeline_data["steps"]
-            if step.get("component") == "filesystem.csv_writer"
-        ]
+        filesystem_steps = [step for step in pipeline_data["steps"] if step.get("component") == "filesystem.csv_writer"]
         assert len(filesystem_steps) > 0
 
         # All filesystem paths should be relative for E2B compatibility

@@ -80,9 +80,7 @@ CLAUDE_API_KEY=claude-test-key
         # Cleanup
         Path(temp_path).unlink(missing_ok=True)
 
-    def test_validate_without_env_file_json(
-        self, temp_config, monkeypatch, capsys, clean_project_root
-    ):
+    def test_validate_without_env_file_json(self, temp_config, monkeypatch, capsys, clean_project_root):
         """Test validate command without .env file using JSON output."""
         # Clear any existing environment variables
         env_vars = [
@@ -137,9 +135,7 @@ CLAUDE_API_KEY=claude-test-key
         assert result["llm_providers"]["openai"]["configured"] is False
         assert result["llm_providers"]["claude"]["configured"] is False
 
-    def test_validate_with_env_file_json(
-        self, temp_config, temp_env_file, monkeypatch, clean_project_root
-    ):
+    def test_validate_with_env_file_json(self, temp_config, temp_env_file, monkeypatch, clean_project_root):
         """Test validate command with .env file using JSON output."""
         # Clear any existing environment variables first
         env_vars = [
@@ -179,7 +175,7 @@ from osiris.cli.main import validate_command
 validate_command(['--config', '{temp_config}', '--json'])
 """,
                     ],
-                    capture_output=True,
+                    check=False, capture_output=True,
                     text=True,
                 )
 
@@ -196,9 +192,7 @@ validate_command(['--config', '{temp_config}', '--json'])
             finally:
                 os.chdir(original_cwd)
 
-    def test_validate_env_variables_directly_set_json(
-        self, temp_config, monkeypatch, capsys, clean_project_root
-    ):
+    def test_validate_env_variables_directly_set_json(self, temp_config, monkeypatch, capsys, clean_project_root):
         """Test validate command with environment variables set directly using JSON output."""
         # Set environment variables directly
         monkeypatch.setenv("MYSQL_HOST", "direct-host.example.com")
@@ -235,9 +229,7 @@ validate_command(['--config', '{temp_config}', '--json'])
         assert result["database_connections"]["supabase"]["configured"] is True
         assert result["llm_providers"]["openai"]["configured"] is True
 
-    def test_validate_partial_env_configuration_json(
-        self, temp_config, monkeypatch, capsys, clean_project_root
-    ):
+    def test_validate_partial_env_configuration_json(self, temp_config, monkeypatch, capsys, clean_project_root):
         """Test validate command with partial environment configuration using JSON output."""
         # Set only MySQL variables
         monkeypatch.setenv("MYSQL_HOST", "partial-host.example.com")
@@ -277,9 +269,7 @@ validate_command(['--config', '{temp_config}', '--json'])
         assert len(result["database_connections"]["supabase"]["missing_vars"]) > 0
         assert result["llm_providers"]["openai"]["configured"] is False
 
-    def test_validate_config_sections_json(
-        self, temp_config, monkeypatch, capsys, clean_project_root
-    ):
+    def test_validate_config_sections_json(self, temp_config, monkeypatch, capsys, clean_project_root):
         """Test that all config sections are properly validated in JSON output."""
         # Clear environment variables
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)

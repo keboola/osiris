@@ -183,14 +183,8 @@ class TestCompileIntegration:
         del manifest2["meta"]["generated_at"]
 
         # Fingerprints should match
-        assert (
-            manifest1["pipeline"]["fingerprints"]["oml_fp"]
-            == manifest2["pipeline"]["fingerprints"]["oml_fp"]
-        )
-        assert (
-            manifest1["pipeline"]["fingerprints"]["params_fp"]
-            == manifest2["pipeline"]["fingerprints"]["params_fp"]
-        )
+        assert manifest1["pipeline"]["fingerprints"]["oml_fp"] == manifest2["pipeline"]["fingerprints"]["oml_fp"]
+        assert manifest1["pipeline"]["fingerprints"]["params_fp"] == manifest2["pipeline"]["fingerprints"]["params_fp"]
 
 
 class TestRunnerIntegration:
@@ -272,9 +266,7 @@ class TestRunnerIntegration:
         import pandas as pd
 
         with patch("osiris.core.config.Path.cwd", return_value=tmp_path):
-            runner = RunnerV0(
-                manifest_path=str(manifest_path), output_dir=str(tmp_path / "_artifacts")
-            )
+            runner = RunnerV0(manifest_path=str(manifest_path), output_dir=str(tmp_path / "_artifacts"))
 
             # Mock all drivers for this test
             mock_driver = MagicMock()

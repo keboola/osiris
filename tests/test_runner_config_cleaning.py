@@ -177,9 +177,7 @@ def test_config_meta_stripped_event_logged(tmp_path):
     mock_driver = MagicMock()
     mock_driver.run.return_value = {}
 
-    with patch("osiris.core.runner_v0.ComponentRegistry"), patch(
-        "osiris.core.runner_v0.log_event"
-    ) as mock_log_event:
+    with patch("osiris.core.runner_v0.ComponentRegistry"), patch("osiris.core.runner_v0.log_event") as mock_log_event:
         runner = RunnerV0(str(manifest_path), str(tmp_path / "output"))
         runner.driver_registry = MagicMock()
         runner.driver_registry.get.return_value = mock_driver
@@ -192,9 +190,7 @@ def test_config_meta_stripped_event_logged(tmp_path):
 
             # Check that config_meta_stripped event was logged
             meta_stripped_calls = [
-                call
-                for call in mock_log_event.call_args_list
-                if call[0][0] == "config_meta_stripped"
+                call for call in mock_log_event.call_args_list if call[0][0] == "config_meta_stripped"
             ]
 
             assert len(meta_stripped_calls) == 1
@@ -237,9 +233,7 @@ def test_no_meta_keys_no_stripping(tmp_path):
     mock_driver = MagicMock()
     mock_driver.run.return_value = {}
 
-    with patch("osiris.core.runner_v0.ComponentRegistry"), patch(
-        "osiris.core.runner_v0.log_event"
-    ) as mock_log_event:
+    with patch("osiris.core.runner_v0.ComponentRegistry"), patch("osiris.core.runner_v0.log_event") as mock_log_event:
         runner = RunnerV0(str(manifest_path), str(tmp_path / "output"))
         runner.driver_registry = MagicMock()
         runner.driver_registry.get.return_value = mock_driver
@@ -253,9 +247,7 @@ def test_no_meta_keys_no_stripping(tmp_path):
 
             # Check that NO config_meta_stripped event was logged
             meta_stripped_calls = [
-                call
-                for call in mock_log_event.call_args_list
-                if call[0][0] == "config_meta_stripped"
+                call for call in mock_log_event.call_args_list if call[0][0] == "config_meta_stripped"
             ]
 
             assert len(meta_stripped_calls) == 0  # No stripping event

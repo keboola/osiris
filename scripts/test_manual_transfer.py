@@ -212,9 +212,7 @@ async def test_mysql_to_supabase_transfer():
 
         # If tables need to be created, show the helper
         if tables_need_creation:
-            logger.info(
-                f"\nFound {len(tables_need_creation)} missing tables: {tables_need_creation}"
-            )
+            logger.info(f"\nFound {len(tables_need_creation)} missing tables: {tables_need_creation}")
             await create_supabase_tables()
             print("\nPlease create the tables in Supabase and re-run this script.")
             return
@@ -262,9 +260,7 @@ async def test_mysql_to_supabase_transfer():
 
         # Example: Execute custom query and transfer results
         logger.info("\n--- Custom Query Example ---")
-        custom_query = (
-            "SELECT * FROM information_schema.tables WHERE table_schema = DATABASE() LIMIT 5"
-        )
+        custom_query = "SELECT * FROM information_schema.tables WHERE table_schema = DATABASE() LIMIT 5"
 
         try:
             custom_df = await mysql_extractor.execute_query(custom_query)
@@ -311,9 +307,7 @@ async def main():
     logger.info("2. Supabase project with matching tables created")
     logger.info("3. Environment variables set (see script comments)")
     logger.info("")
-    logger.info(
-        "TIP: Run 'python scripts/test_manual_transfer.py --create-tables' to get table creation SQL"
-    )
+    logger.info("TIP: Run 'python scripts/test_manual_transfer.py --create-tables' to get table creation SQL")
 
     await test_mysql_to_supabase_transfer()
 

@@ -15,7 +15,7 @@
 """MySQL writer for loading operations."""
 
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
 import pandas as pd
 from sqlalchemy import text
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 class MySQLWriter(ILoader):
     """MySQL writer for data loading operations."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         """Initialize MySQL writer.
 
         Args:
@@ -60,7 +60,7 @@ class MySQLWriter(ILoader):
         self.engine = None
         self._initialized = False
 
-    async def insert_data(self, table_name: str, data: List[Dict[str, Any]]) -> bool:
+    async def insert_data(self, table_name: str, data: list[dict[str, Any]]) -> bool:
         """Insert data into a MySQL table.
 
         Args:
@@ -97,9 +97,7 @@ class MySQLWriter(ILoader):
             logger.error(f"Failed to insert data into {table_name}: {e}")
             raise
 
-    async def upsert_data(
-        self, table_name: str, data: List[Dict[str, Any]], conflict_keys: List[str] = None
-    ) -> bool:
+    async def upsert_data(self, table_name: str, data: list[dict[str, Any]], conflict_keys: list[str] = None) -> bool:
         """Upsert data (insert or update on conflict).
 
         Uses MySQL's ON DUPLICATE KEY UPDATE syntax.
@@ -168,7 +166,7 @@ class MySQLWriter(ILoader):
             logger.error(f"Failed to upsert data into {table_name}: {e}")
             raise
 
-    async def replace_table(self, table_name: str, data: List[Dict[str, Any]]) -> bool:
+    async def replace_table(self, table_name: str, data: list[dict[str, Any]]) -> bool:
         """Replace entire table contents.
 
         WARNING: This deletes all existing data!
@@ -201,9 +199,7 @@ class MySQLWriter(ILoader):
             logger.error(f"Failed to replace table {table_name}: {e}")
             raise
 
-    async def update_data(
-        self, table_name: str, updates: Dict[str, Any], filters: Dict[str, Any]
-    ) -> bool:
+    async def update_data(self, table_name: str, updates: dict[str, Any], filters: dict[str, Any]) -> bool:
         """Update specific rows in a table.
 
         Args:
@@ -246,7 +242,7 @@ class MySQLWriter(ILoader):
             logger.error(f"Failed to update data in {table_name}: {e}")
             raise
 
-    async def delete_data(self, table_name: str, filters: Dict[str, Any]) -> bool:
+    async def delete_data(self, table_name: str, filters: dict[str, Any]) -> bool:
         """Delete specific rows from a table.
 
         Args:
@@ -310,7 +306,7 @@ class MySQLWriter(ILoader):
             logger.error(f"Failed to load DataFrame into {table_name}: {e}")
             raise
 
-    async def create_table(self, table_name: str, schema: Dict[str, str]) -> bool:
+    async def create_table(self, table_name: str, schema: dict[str, str]) -> bool:
         """Create a new table with given schema.
 
         Args:
@@ -348,7 +344,7 @@ class MySQLWriter(ILoader):
             logger.error(f"Failed to create table {table_name}: {e}")
             raise
 
-    async def execute_sql(self, sql: str, params: Dict[str, Any] = None) -> bool:
+    async def execute_sql(self, sql: str, params: dict[str, Any] = None) -> bool:
         """Execute custom SQL statement.
 
         Args:

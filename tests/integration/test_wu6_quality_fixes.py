@@ -77,7 +77,7 @@ class TestDurationAccuracy:
         start = datetime.now()
         end = start + timedelta(seconds=5.5)
 
-        session_data = {
+        {
             "started_at": start.isoformat(),
             "completed_at": end.isoformat(),
         }

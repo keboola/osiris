@@ -9,9 +9,7 @@ import pytest
 
 # Skip all tests in this file unless both conditions are met
 pytestmark = [
-    pytest.mark.skipif(
-        not os.environ.get("E2B_API_KEY"), reason="E2B_API_KEY not set - skipping live tests"
-    ),
+    pytest.mark.skipif(not os.environ.get("E2B_API_KEY"), reason="E2B_API_KEY not set - skipping live tests"),
     pytest.mark.skipif(
         os.environ.get("E2B_LIVE_TESTS") != "1",
         reason="E2B_LIVE_TESTS not set to 1 - skipping live tests",
@@ -210,9 +208,7 @@ class TestE2BLive:
             secret_value = "super-secret-key-12345"  # pragma: allowlist secret
 
             client = E2BClient()
-            handle = client.create_sandbox(
-                cpu=1, mem_gb=1, env={"SECRET_KEY": secret_value}, timeout=30
-            )
+            handle = client.create_sandbox(cpu=1, mem_gb=1, env={"SECRET_KEY": secret_value}, timeout=30)
 
             try:
                 # Run a simple command

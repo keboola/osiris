@@ -200,9 +200,7 @@ class TestSemanticLayer:
         # Check URIs match ADR rules (no trailing slash)
         json_str = json.dumps(result)
         assert "osiris://" in json_str
-        assert not any(
-            uri.endswith("/") for uri in json_str.split('"') if uri.startswith("osiris://")
-        )
+        assert not any(uri.endswith("/") for uri in json_str.split('"') if uri.startswith("osiris://"))
 
         # Keys should be sorted
         keys = list(result.keys())
@@ -270,7 +268,7 @@ class TestSemanticLayer:
                     assert isinstance(obj["@id"], str)
                     assert obj["@id"].startswith("osiris://")
                 if "@type" in obj:
-                    assert isinstance(obj["@type"], (str, list))
+                    assert isinstance(obj["@type"], str | list)
                 for value in obj.values():
                     check_ids(value)
             elif isinstance(obj, list):

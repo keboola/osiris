@@ -6,7 +6,7 @@ import logging
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
 
@@ -112,9 +112,7 @@ class RunnerV0:
             # Execute steps in order
             for step in self.manifest["steps"]:
                 if not self._execute_step(step):
-                    self._log_event(
-                        "run_error", {"step_id": step["id"], "message": "Step execution failed"}
-                    )
+                    self._log_event("run_error", {"step_id": step["id"], "message": "Step execution failed"})
                     return False
 
             # Log run complete
@@ -136,7 +134,7 @@ class RunnerV0:
             self._log_event("run_error", {"error": str(e)})
             return False
 
-    def _log_event(self, event_type: str, data: Dict[str, Any]):
+    def _log_event(self, event_type: str, data: dict[str, Any]):
         """Log an event."""
         event = {"timestamp": datetime.utcnow().isoformat(), "type": event_type, "data": data}
         self.events.append(event)
@@ -155,9 +153,7 @@ class RunnerV0:
         """
         return component.split(".", 1)[0]
 
-    def _resolve_step_connection(
-        self, step: Dict[str, Any], config: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+    def _resolve_step_connection(self, step: dict[str, Any], config: dict[str, Any]) -> dict[str, Any] | None:
         """Resolve connection for a step.
 
         Returns None if no connection needed (e.g., duckdb local operations).
@@ -190,9 +186,7 @@ class RunnerV0:
         if isinstance(conn_ref, str) and conn_ref.startswith("@"):
             ref_family, alias = parse_connection_ref(conn_ref)
             if ref_family and ref_family != family:
-                raise ValueError(
-                    f"Connection family mismatch: step uses {family}, ref is {ref_family}"
-                )
+                raise ValueError(f"Connection family mismatch: step uses {family}, ref is {ref_family}")
 
         # Log connection resolution start
         log_event(
@@ -227,7 +221,7 @@ class RunnerV0:
             )
             raise
 
-    def _execute_step(self, step: Dict[str, Any]) -> bool:
+    def _execute_step(self, step: dict[str, Any]) -> bool:
         """Execute a single step."""
         step_id = step["id"]
         driver = step.get("driver") or step.get("component", "unknown")
@@ -347,9 +341,7 @@ class RunnerV0:
             self._log_event("step_error", {"step_id": step_id, "error": str(e)})
             return False
 
-    def _run_with_driver(
-        self, step: Dict[str, Any], config: Dict, output_dir: Path
-    ) -> tuple[bool, Optional[str]]:
+    def _run_with_driver(self, step: dict[str, Any], config: dict, output_dir: Path) -> tuple[bool, str | None]:
         """Run a step using the driver registry.
 
         Args:
@@ -409,9 +401,7 @@ class RunnerV0:
             logger.error(f"Step {step_id} execution failed: {error_msg}")
             return False, error_msg
 
-    def _run_component(
-        self, driver: str, config: Dict, output_dir: Path, connection: Optional[Dict] = None
-    ) -> bool:
+    def _run_component(self, driver: str, config: dict, output_dir: Path, connection: dict | None = None) -> bool:
         """Run a specific component.
 
         Args:
@@ -422,15 +412,15 @@ class RunnerV0:
         """
 
         # Map drivers to component handlers
-        if driver == "extractors.supabase@0.1" or driver == "supabase.extractor":
+        if driver in {"extractors.supabase@0.1", "supabase.extractor"}:
             return self._run_supabase_extractor(config, output_dir, connection)
-        elif driver == "transforms.duckdb@0.1" or driver == "duckdb.transform":
+        elif driver in {"transforms.duckdb@0.1", "duckdb.transform"}:
             return self._run_duckdb_transform(config, output_dir, connection)
-        elif driver == "writers.mysql@0.1" or driver == "mysql.writer":
+        elif driver in {"writers.mysql@0.1", "mysql.writer"}:
             return self._run_mysql_writer(config, output_dir, connection)
-        elif driver == "mysql.extractor" or driver == "extractors.mysql@0.1":
+        elif driver in {"mysql.extractor", "extractors.mysql@0.1"}:
             return self._run_mysql_extractor(config, output_dir, connection)
-        elif driver == "supabase.writer" or driver == "writers.supabase@0.1":
+        elif driver in {"supabase.writer", "writers.supabase@0.1"}:
             return self._run_supabase_writer(config, output_dir, connection)
         elif driver == "duckdb.writer":
             return self._run_duckdb_writer(config, output_dir, connection)
@@ -440,9 +430,7 @@ class RunnerV0:
             logger.error(f"Unknown driver: {driver}")
             return False
 
-    def _run_supabase_extractor(
-        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
-    ) -> bool:
+    def _run_supabase_extractor(self, config: dict, output_dir: Path, connection: dict | None = None) -> bool:
         """Run Supabase extractor."""
         try:
             # Use real connector if available
@@ -485,9 +473,7 @@ class RunnerV0:
             logger.error(f"Supabase extraction failed: {str(e)}")
             return False
 
-    def _run_duckdb_transform(
-        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
-    ) -> bool:
+    def _run_duckdb_transform(self, config: dict, output_dir: Path, connection: dict | None = None) -> bool:
         """Run DuckDB transform."""
         try:
             import duckdb
@@ -543,9 +529,7 @@ class RunnerV0:
             logger.error(f"DuckDB transform failed: {str(e)}")
             return False
 
-    def _run_mysql_extractor(
-        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
-    ) -> bool:
+    def _run_mysql_extractor(self, config: dict, output_dir: Path, connection: dict | None = None) -> bool:
         """Run MySQL extractor."""
         try:
             # Use real connector if available
@@ -602,9 +586,7 @@ class RunnerV0:
             logger.error(f"MySQL extraction failed: {str(e)}")
             return False
 
-    def _run_mysql_writer(
-        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
-    ) -> bool:
+    def _run_mysql_writer(self, config: dict, output_dir: Path, connection: dict | None = None) -> bool:
         """Run MySQL writer."""
         try:
             # Use real connector if available
@@ -665,9 +647,7 @@ class RunnerV0:
             logger.error(f"MySQL write failed: {str(e)}")
             return False
 
-    def _run_supabase_writer(
-        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
-    ) -> bool:
+    def _run_supabase_writer(self, config: dict, output_dir: Path, connection: dict | None = None) -> bool:
         """Run Supabase writer."""
         try:
             # Use real connector if available
@@ -703,9 +683,7 @@ class RunnerV0:
             logger.error(f"Supabase write failed: {str(e)}")
             return False
 
-    def _run_duckdb_writer(
-        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
-    ) -> bool:
+    def _run_duckdb_writer(self, config: dict, output_dir: Path, connection: dict | None = None) -> bool:
         """Run DuckDB writer."""
         try:
             import duckdb
@@ -734,9 +712,7 @@ class RunnerV0:
             logger.error(f"DuckDB write failed: {str(e)}")
             return False
 
-    def _run_filesystem_csv_writer(
-        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
-    ) -> bool:
+    def _run_filesystem_csv_writer(self, config: dict, output_dir: Path, connection: dict | None = None) -> bool:
         """Run filesystem CSV writer."""
         try:
             from osiris.connectors.filesystem.writer import FilesystemCSVWriter
@@ -764,8 +740,7 @@ class RunnerV0:
             # Check for empty input data
             if not input_data:
                 error_msg = (
-                    "Upstream produced 0 rows or no data artifact for step. "
-                    "Check the mode and upstream step output."
+                    "Upstream produced 0 rows or no data artifact for step. " "Check the mode and upstream step output."
                 )
                 logger.error(error_msg)
                 raise ValueError(error_msg)

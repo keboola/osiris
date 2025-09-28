@@ -5,20 +5,20 @@ import tarfile
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
 class RunConfig:
     """Configuration for running a pipeline."""
 
-    seed: Optional[int] = None
+    seed: int | None = None
     profile: bool = False
-    manifest_path: Optional[str] = None
-    session_id: Optional[str] = None
+    manifest_path: str | None = None
+    session_id: str | None = None
     output_dir: str = "/home/user/artifacts"
     log_level: str = "INFO"
-    environment: Dict[str, str] = None
+    environment: dict[str, str] = None
 
     def __post_init__(self):
         if self.environment is None:
@@ -30,8 +30,8 @@ class PayloadManifest:
     """Manifest describing payload contents."""
 
     version: str = "1.0"
-    files: List[str] = None
-    directories: List[str] = None
+    files: list[str] = None
+    directories: list[str] = None
     entry_point: str = "mini_runner.py"
     run_config: RunConfig = None
 
@@ -41,7 +41,7 @@ class PayloadManifest:
         if self.directories is None:
             self.directories = []
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         data = {
             "version": self.version,
@@ -63,7 +63,7 @@ class PayloadManifest:
 class PayloadBuilder:
     """Builder for E2B execution payloads."""
 
-    def __init__(self, session_dir: Path, build_dir: Optional[Path] = None):
+    def __init__(self, session_dir: Path, build_dir: Path | None = None):
         """Initialize payload builder.
 
         Args:
@@ -266,10 +266,7 @@ def validate_payload(payload_dir: Path) -> None:
     # Check for extra items
     extra_items = actual_items - allowed_root_items
     if extra_items:
-        raise ValueError(
-            f"Unexpected items in payload root: {extra_items}. "
-            f"Only allowed: {allowed_root_items}"
-        )
+        raise ValueError(f"Unexpected items in payload root: {extra_items}. " f"Only allowed: {allowed_root_items}")
 
     # Check required files exist
     required_files = ["manifest.json", "mini_runner.py"]
@@ -291,9 +288,7 @@ def validate_payload(payload_dir: Path) -> None:
 
         # Validate entry point
         if manifest_data["entry_point"] != "mini_runner.py":
-            raise ValueError(
-                f"Invalid entry_point: {manifest_data['entry_point']}. " "Must be 'mini_runner.py'"
-            )
+            raise ValueError(f"Invalid entry_point: {manifest_data['entry_point']}. " "Must be 'mini_runner.py'")
 
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid manifest.json: {e}") from e

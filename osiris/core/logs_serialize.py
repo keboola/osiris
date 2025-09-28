@@ -7,12 +7,11 @@ that conforms to the defined schemas.
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import List
 
 from osiris.core.session_reader import SessionSummary
 
 
-def to_index_json(sessions: List[SessionSummary]) -> str:
+def to_index_json(sessions: list[SessionSummary]) -> str:
     """Serialize session list to JSON matching logs_index schema.
 
     Args:
@@ -34,11 +33,7 @@ def to_index_json(sessions: List[SessionSummary]) -> str:
             "started_at": session.started_at,
             "finished_at": session.finished_at,
             "duration_ms": session.duration_ms,
-            "status": (
-                session.status
-                if session.status in ["success", "failed", "running", "unknown"]
-                else "unknown"
-            ),
+            "status": (session.status if session.status in ["success", "failed", "running", "unknown"] else "unknown"),
             "labels": session.labels,
             "pipeline_name": session.pipeline_name,
             "steps_total": session.steps_total,
@@ -70,9 +65,7 @@ def to_session_json(session: SessionSummary, logs_dir: str = "./logs") -> str:
     artifacts = {}
 
     # Check for pipeline YAML
-    yaml_files = list(session_path.glob("artifacts/*.yaml")) + list(
-        session_path.glob("artifacts/*.yml")
-    )
+    yaml_files = list(session_path.glob("artifacts/*.yaml")) + list(session_path.glob("artifacts/*.yml"))
     if yaml_files:
         artifacts["pipeline_yaml"] = f"artifacts/{yaml_files[0].name}"
     else:
@@ -94,11 +87,7 @@ def to_session_json(session: SessionSummary, logs_dir: str = "./logs") -> str:
         "started_at": session.started_at,
         "finished_at": session.finished_at,
         "duration_ms": session.duration_ms,
-        "status": (
-            session.status
-            if session.status in ["success", "failed", "running", "unknown"]
-            else "unknown"
-        ),
+        "status": (session.status if session.status in ["success", "failed", "running", "unknown"] else "unknown"),
         "labels": session.labels,
         "pipeline_name": session.pipeline_name,
         "oml_version": session.oml_version,

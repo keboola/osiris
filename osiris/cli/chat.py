@@ -164,26 +164,16 @@ def show_epic_help(json_output=False):
 
     # Options
     console.print("[bold blue]Options[/bold blue]")
-    console.print(
-        "  [cyan]--session-id[/cyan], [cyan]-s[/cyan]   Session ID for conversation continuity"
-    )
+    console.print("  [cyan]--session-id[/cyan], [cyan]-s[/cyan]   Session ID for conversation continuity")
     console.print("  [cyan]--fast[/cyan]             Fast mode: skip questions, make assumptions")
-    console.print(
-        "  [cyan]--provider[/cyan], [cyan]-p[/cyan]     LLM provider (openai, claude, gemini)"
-    )
-    console.print(
-        "  [cyan]--interactive[/cyan], [cyan]-i[/cyan]  Start interactive conversation session"
-    )
+    console.print("  [cyan]--provider[/cyan], [cyan]-p[/cyan]     LLM provider (openai, claude, gemini)")
+    console.print("  [cyan]--interactive[/cyan], [cyan]-i[/cyan]  Start interactive conversation session")
     console.print("  [cyan]--sql[/cyan]              Direct SQL mode: provide SQL query directly")
     console.print("  [cyan]--config-file[/cyan], [cyan]-c[/cyan]  Configuration file path")
-    console.print(
-        "  [cyan]--pro-mode[/cyan]          Use custom prompts from .osiris_prompts/ directory"
-    )
+    console.print("  [cyan]--pro-mode[/cyan]          Use custom prompts from .osiris_prompts/ directory")
     console.print("  [cyan]--context-file[/cyan]     Path to component context JSON file")
     console.print("  [cyan]--no-context[/cyan]       Disable automatic component context injection")
-    console.print(
-        "  [cyan]--context-strategy[/cyan] Context strategy: 'full' or 'component-scoped'"
-    )
+    console.print("  [cyan]--context-strategy[/cyan] Context strategy: 'full' or 'component-scoped'")
     console.print("  [cyan]--context-components[/cyan] Specific components to include")
     console.print("  [cyan]--strict-context[/cyan]   Fail if context loading fails")
     console.print("  [cyan]--privacy[/cyan]          Privacy level for logs (standard/strict)")
@@ -219,12 +209,8 @@ def show_epic_help(json_output=False):
 
     # SQL Examples
     console.print("[bold blue]⚡ Direct SQL Mode (for experts)[/bold blue]")
-    console.print(
-        '  [green]osiris chat --sql "SELECT customer_id, SUM(amount) FROM orders \\[/green]'
-    )
-    console.print(
-        '  [green]                     GROUP BY customer_id ORDER BY SUM(amount) DESC LIMIT 10"[/green]'
-    )
+    console.print('  [green]osiris chat --sql "SELECT customer_id, SUM(amount) FROM orders \\[/green]')
+    console.print('  [green]                     GROUP BY customer_id ORDER BY SUM(amount) DESC LIMIT 10"[/green]')
     console.print('  [green]osiris chat --sql "SELECT * FROM users WHERE last_login < \\[/green]')
     console.print('  [green]                     DATE_SUB(NOW(), INTERVAL 90 DAY)" --fast[/green]')
     console.print()
@@ -234,12 +220,8 @@ def show_epic_help(json_output=False):
     console.print("  [yellow]•[/yellow] Use --interactive for complex multi-step analysis")
     console.print("  [yellow]•[/yellow] Use --fast when you know exactly what you want")
     console.print("  [yellow]•[/yellow] Use --session-id to continue previous conversations")
-    console.print(
-        "  [yellow]•[/yellow] Describe business goals, not technical details - let AI handle the SQL"
-    )
-    console.print(
-        "  [yellow]•[/yellow] Ask for schema discovery first if you're unsure about your data"
-    )
+    console.print("  [yellow]•[/yellow] Describe business goals, not technical details - let AI handle the SQL")
+    console.print("  [yellow]•[/yellow] Ask for schema discovery first if you're unsure about your data")
     console.print()
 
 
@@ -257,25 +239,17 @@ def parse_args(args=None) -> argparse.Namespace:
         action="store_true",
         help="Fast mode: skip questions, make assumptions",
     )
-    parser.add_argument(
-        "--provider", "-p", default="openai", help="LLM provider (openai, claude, gemini)"
-    )
-    parser.add_argument(
-        "--interactive", "-i", action="store_true", help="Start interactive conversation session"
-    )
+    parser.add_argument("--provider", "-p", default="openai", help="LLM provider (openai, claude, gemini)")
+    parser.add_argument("--interactive", "-i", action="store_true", help="Start interactive conversation session")
     parser.add_argument("--sql", help="Direct SQL mode: provide SQL query directly")
     parser.add_argument("--config-file", "-c", help="Configuration file path")
-    parser.add_argument(
-        "--pro-mode", action="store_true", help="Enable pro mode with custom prompts"
-    )
+    parser.add_argument("--pro-mode", action="store_true", help="Enable pro mode with custom prompts")
     parser.add_argument(
         "--context-file",
         default=".osiris_prompts/context.json",
         help="Path to component context JSON file",
     )
-    parser.add_argument(
-        "--no-context", action="store_true", help="Disable automatic component context injection"
-    )
+    parser.add_argument("--no-context", action="store_true", help="Disable automatic component context injection")
     parser.add_argument(
         "--context-strategy",
         default="full",
@@ -363,9 +337,7 @@ def chat(argv=None):
     # Remove any console handlers that might be showing INFO messages
     root_logger = logging.getLogger()
     console_handlers = [
-        h
-        for h in root_logger.handlers
-        if isinstance(h, logging.StreamHandler) and h.stream in (sys.stdout, sys.stderr)
+        h for h in root_logger.handlers if isinstance(h, logging.StreamHandler) and h.stream in (sys.stdout, sys.stderr)
     ]
     for handler in console_handlers:
         root_logger.removeHandler(handler)
@@ -394,9 +366,7 @@ def chat(argv=None):
             # Get the context based on strategy
             if args.context_strategy == "component-scoped" and args.context_components:
                 components = [c.strip() for c in args.context_components.split(",")]
-                context = prompt_manager.get_context(
-                    strategy="component-scoped", components=components
-                )
+                context = prompt_manager.get_context(strategy="component-scoped", components=components)
             else:
                 context = prompt_manager.get_context(strategy=args.context_strategy)
 
@@ -412,9 +382,7 @@ def chat(argv=None):
 
         except FileNotFoundError:
             error_msg = f"Context file not found: {context_file}"
-            session.log_event(
-                "context_load_failed", reason="file_not_found", file=str(context_file)
-            )
+            session.log_event("context_load_failed", reason="file_not_found", file=str(context_file))
 
             if args.strict_context:
                 console.print(f"❌ {error_msg}")
@@ -427,9 +395,7 @@ def chat(argv=None):
 
         except Exception as e:
             error_msg = f"Failed to load context: {e}"
-            session.log_event(
-                "context_load_failed", reason="load_error", error=str(e), file=str(context_file)
-            )
+            session.log_event("context_load_failed", reason="load_error", error=str(e), file=str(context_file))
 
             if args.strict_context:
                 console.print(f"❌ {error_msg}")
@@ -490,9 +456,7 @@ def chat(argv=None):
         sys.exit(0)
 
 
-async def _handle_sql_mode(
-    agent: ConversationalPipelineAgent, sql: str, session: SessionContext
-) -> None:
+async def _handle_sql_mode(agent: ConversationalPipelineAgent, sql: str, session: SessionContext) -> None:
     """Handle direct SQL mode."""
 
     # Log SQL mode start
@@ -549,9 +513,7 @@ async def _handle_single_message(
         if not response or not response.strip():
             session.log_event("single_message_empty_response")
             console.print("⚠️  No response generated. The system may be experiencing issues.")
-            console.print(
-                "💡 Try running the command again or use --interactive mode for more control."
-            )
+            console.print("💡 Try running the command again or use --interactive mode for more control.")
             return
 
         # Log single message response
@@ -632,9 +594,7 @@ async def _handle_interactive_mode(
                 continue
 
             # Log user message
-            session.log_event(
-                "user_message", message_length=len(user_input), session_name=current_session
-            )
+            session.log_event("user_message", message_length=len(user_input), session_name=current_session)
 
             # Process message with agent using consistent session
             try:
@@ -715,8 +675,7 @@ def _display_token_usage(session: SessionContext) -> None:
 
             # Create a simple token usage display
             console.print(
-                f"[dim]📊 Tokens: {total_tokens:,} "
-                f"(prompt: {prompt_tokens:,}, response: {response_tokens:,})[/dim]"
+                f"[dim]📊 Tokens: {total_tokens:,} " f"(prompt: {prompt_tokens:,}, response: {response_tokens:,})[/dim]"
             )
     except Exception as e:
         # Silently fail - token display is not critical
@@ -785,9 +744,7 @@ def _format_data_response(response: str) -> bool:
 
     # Clean up and print remaining text if there's meaningful content
     remaining_text = re.sub(r"\n\s*\n", "\n", remaining_text.strip())
-    if (
-        remaining_text and len(remaining_text) > 20
-    ):  # Only print if there's substantial remaining content
+    if remaining_text and len(remaining_text) > 20:  # Only print if there's substantial remaining content
         console.print(f"\n💬 {remaining_text}")
 
     return True
@@ -805,9 +762,7 @@ def _show_interactive_help():
     help_table.add_row("", '"Analyze user engagement trends"')
     help_table.add_row("", '"Export active users to CSV"')
     help_table.add_row("", "")
-    help_table.add_row(
-        "⚡ Quick Commands:", '"approve" / "looks good" - Execute generated pipeline'
-    )
+    help_table.add_row("⚡ Quick Commands:", '"approve" / "looks good" - Execute generated pipeline')
     help_table.add_row("", '"reject" / "cancel" - Discard current pipeline')
     help_table.add_row("", '"help" - Show this help')
     help_table.add_row("", '"exit" - Quit conversation')

@@ -22,10 +22,10 @@ import gzip
 import io
 import json
 import re
+from collections.abc import Generator
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Generator
 
 
 def build_evidence_layer(
@@ -202,18 +202,14 @@ def aggregate_metrics(metrics: list[dict], topk: int = 100, events: list[dict] =
                 step_id = event.get("step_id", "")
                 if step_id and timestamp:
                     with contextlib.suppress(builtins.BaseException):
-                        step_timings[step_id] = {
-                            "start": datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-                        }
+                        step_timings[step_id] = {"start": datetime.fromisoformat(timestamp.replace("Z", "+00:00"))}
             elif event_type == "STEP_COMPLETE":
                 step_id = event.get("step_id", "")
                 if step_id and timestamp and step_id in step_timings:
                     try:
                         end_time = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
                         if "start" in step_timings[step_id]:
-                            duration = (
-                                end_time - step_timings[step_id]["start"]
-                            ).total_seconds() * 1000
+                            duration = (end_time - step_timings[step_id]["start"]).total_seconds() * 1000
                             step_timings[step_id]["duration_ms"] = int(duration)
                     except Exception:
                         pass
@@ -259,7 +255,7 @@ def aggregate_metrics(metrics: list[dict], topk: int = 100, events: list[dict] =
             export_step_rows = rows_written
         elif rows_written > 0:
             last_writer_rows = rows_written
-        if isinstance(duration_ms, (int, float)) and duration_ms > 0:
+        if isinstance(duration_ms, int | float) and duration_ms > 0:
             total_duration_ms += duration_ms
 
         # Aggregate per-step metrics
@@ -346,7 +342,7 @@ def aggregate_metrics(metrics: list[dict], topk: int = 100, events: list[dict] =
         total_rows = sum(
             step.get("rows_written", 0)
             for step in step_metrics.values()
-            if isinstance(step.get("rows_written"), (int, float))
+            if isinstance(step.get("rows_written"), int | float)
         )
         rows_source = "sum_writers"
 
@@ -536,16 +532,12 @@ def apply_truncation(data: dict, max_bytes: int) -> tuple[dict, bool]:
                 if len(items) > 10:
                     # Progressively reduce items
                     timeline["items"] = items[:5] + items[-5:]
-                    timeline["dropped_events"] = timeline.get("dropped_events", 0) + (
-                        len(items) - 10
-                    )
+                    timeline["dropped_events"] = timeline.get("dropped_events", 0) + (len(items) - 10)
                     was_truncated = True
                 elif len(items) > 2:
                     # Keep just first and last
                     timeline["items"] = [items[0], items[-1]]
-                    timeline["dropped_events"] = timeline.get("dropped_events", 0) + (
-                        len(items) - 2
-                    )
+                    timeline["dropped_events"] = timeline.get("dropped_events", 0) + (len(items) - 2)
                     was_truncated = True
                 else:
                     # Remove all items
@@ -559,11 +551,7 @@ def apply_truncation(data: dict, max_bytes: int) -> tuple[dict, bool]:
             artifacts = result["evidence"]["artifacts"]
 
             # Convert list to object if still a list
-            if (
-                isinstance(artifacts, list)
-                or isinstance(artifacts, dict)
-                and artifacts.get("files")
-            ):
+            if isinstance(artifacts, list) or isinstance(artifacts, dict) and artifacts.get("files"):
                 result["evidence"]["artifacts"] = {
                     "files": [],
                     "truncated": True,
@@ -923,9 +911,7 @@ def generate_graph_hints(manifest: dict, run_data: dict | None = None) -> dict: 
     manifest_hash = manifest.get("manifest_hash", "unknown")
     if manifest_hash == "unknown" and manifest:
         # Extract from the correct location: pipeline.fingerprints.manifest_fp
-        manifest_hash = (
-            manifest.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp", "unknown")
-        )
+        manifest_hash = manifest.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp", "unknown")
     pipeline_uri = f"osiris://pipeline/@{manifest_hash}"
 
     steps = manifest.get("steps", [])
@@ -1055,9 +1041,7 @@ def discover_intent(
         if intent_text:
             intent_summary = intent_text
             intent_known = True
-            winning_source = make_provenance(
-                "manifest", intent_text, "high", "manifest.metadata.intent"
-            )
+            winning_source = make_provenance("manifest", intent_text, "high", "manifest.metadata.intent")
             return intent_summary, intent_known, [winning_source]
 
     # 2. Check pipeline description (high trust) - if found, stop here
@@ -1066,18 +1050,14 @@ def discover_intent(
         if description:
             intent_summary = description
             intent_known = True
-            winning_source = make_provenance(
-                "manifest_description", description, "high", "manifest.description"
-            )
+            winning_source = make_provenance("manifest_description", description, "high", "manifest.description")
             return intent_summary, intent_known, [winning_source]
 
     # 3. Check README.md for intent line (medium trust) - take first match
     if repo_readme and not intent_known:
         import re
 
-        intent_pattern = re.compile(
-            r"^(intent|purpose|objective|goal):\s*(.+)", re.IGNORECASE | re.MULTILINE
-        )
+        intent_pattern = re.compile(r"^(intent|purpose|objective|goal):\s*(.+)", re.IGNORECASE | re.MULTILINE)
         matches = intent_pattern.findall(repo_readme)
         if matches:
             intent_text = matches[0][1].strip()
@@ -1100,18 +1080,11 @@ def discover_intent(
                 if intent_text:
                     intent_summary = intent_text
                     intent_known = True
-                    winning_source = make_provenance(
-                        "commit_message", intent_text, "medium", "git commit"
-                    )
+                    winning_source = make_provenance("commit_message", intent_text, "medium", "git commit")
                     return intent_summary, intent_known, [winning_source]
 
     # 5. Check chat logs if enabled (low trust) - take first match
-    if (
-        chat_logs
-        and config
-        and config.get("narrative", {}).get("session_chat", {}).get("enabled")
-        and not intent_known
-    ):
+    if chat_logs and config and config.get("narrative", {}).get("session_chat", {}).get("enabled") and not intent_known:
         mode = config.get("narrative", {}).get("session_chat", {}).get("mode", "masked")
         for log_entry in chat_logs:
             if log_entry.get("role") == "user":
@@ -1119,20 +1092,14 @@ def discover_intent(
                 if mode == "masked":
                     content = redact_secrets({"content": content}).get("content", "")
 
-                if (
-                    "want to" in content.lower()
-                    or "need to" in content.lower()
-                    or "pipeline" in content.lower()
-                ):
+                if "want to" in content.lower() or "need to" in content.lower() or "pipeline" in content.lower():
                     sentences = content.split(".")
                     if sentences:
                         potential_intent = sentences[0].strip()
                         if potential_intent and len(potential_intent) < 200:
                             intent_summary = potential_intent
                             intent_known = True
-                            winning_source = make_provenance(
-                                "chat_log", potential_intent, "low", "session chat"
-                            )
+                            winning_source = make_provenance("chat_log", potential_intent, "low", "session chat")
                             return intent_summary, intent_known, [winning_source]
 
     # Fallback to generated summary if no intent found
@@ -1178,12 +1145,7 @@ def generate_intent_summary(manifest: dict) -> str:
                 has_extract = True
             if "transform" in combined or "process" in combined or "aggregate" in combined:
                 has_transform = True
-            if (
-                "export" in combined
-                or "write" in combined
-                or "load" in combined
-                or "save" in combined
-            ):
+            if "export" in combined or "write" in combined or "load" in combined or "save" in combined:
                 has_export = True
 
         # Build intent based on detected operations
@@ -1327,9 +1289,7 @@ def build_narrative_layer(
         Dictionary with paragraphs list, intent summary, and provenance
     """
     # Discover intent from multiple sources
-    intent_summary, intent_known, intent_provenance = discover_intent(
-        manifest, repo_readme, commits, chat_logs, config
-    )
+    intent_summary, intent_known, intent_provenance = discover_intent(manifest, repo_readme, commits, chat_logs, config)
 
     # Extract key information - use "name" field for pipeline name
     pipeline_name = manifest.get("name", manifest.get("pipeline", "unnamed pipeline"))
@@ -1653,9 +1613,7 @@ def generate_markdown_runcard(aiop: dict) -> str:
         pipeline_uri = aiop["@id"]
         if "pipeline/" in pipeline_uri:
             # Try to extract name from URI
-            pipeline_name = (
-                pipeline_uri.split("/")[-1].split("@")[0] if "@" in pipeline_uri else "Pipeline"
-            )
+            pipeline_name = pipeline_uri.split("/")[-1].split("@")[0] if "@" in pipeline_uri else "Pipeline"
 
     # Final fallback - ensure never empty
     if not pipeline_name:
@@ -1712,9 +1670,7 @@ def generate_markdown_runcard(aiop: dict) -> str:
         lines.append("")
 
     # Summary info
-    duration_ms = (
-        run_data.get("duration_ms") if isinstance(run_data, dict) else aiop.get("duration_ms", 0)
-    )
+    duration_ms = run_data.get("duration_ms") if isinstance(run_data, dict) else aiop.get("duration_ms", 0)
     duration = format_duration(duration_ms)
     lines.append(f"**Status:** {status}")
     lines.append(f"**Duration:** {duration}")
@@ -2001,9 +1957,7 @@ def _load_chat_logs(session_id: str, config: dict) -> list[dict] | None:
                 if total_chars + content_len > max_chars:
                     # Truncate the content
                     remaining = max_chars - total_chars
-                    redacted_entry["content"] = (
-                        redacted_entry.get("content", "")[:remaining] + "..."
-                    )
+                    redacted_entry["content"] = redacted_entry.get("content", "")[:remaining] + "..."
                     redacted_logs.append(redacted_entry)
                     break
                 redacted_logs.append(redacted_entry)
@@ -2089,9 +2043,7 @@ def _build_controls(session_id: str) -> dict:
     }
 
 
-def _find_previous_run_by_manifest(
-    manifest_hash: str, current_session_id: str = None
-) -> dict | None:
+def _find_previous_run_by_manifest(manifest_hash: str, current_session_id: str = None) -> dict | None:
     """Find the most recent previous run with the same manifest hash.
 
     Args:
@@ -2274,15 +2226,11 @@ def build_aiop(
             manifest_hash = manifest.get("manifest_hash", "")
             if not manifest_hash and manifest:
                 # Try pipeline.fingerprints.manifest_fp
-                manifest_hash = (
-                    manifest.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp", "")
-                )
+                manifest_hash = manifest.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp", "")
             # Load session_id before delta calculation
             session_id = session_data.get("session_id")
 
-            delta = calculate_delta(
-                {"metrics": aggregated_metrics, "errors": errors}, manifest_hash, session_id
-            )
+            delta = calculate_delta({"metrics": aggregated_metrics, "errors": errors}, manifest_hash, session_id)
 
             # Load chat logs if enabled
             chat_logs = _load_chat_logs(session_id, config) if session_id else None
@@ -2293,9 +2241,7 @@ def build_aiop(
                 "timeline_ids": [e.get("@id") for e in timeline[:3] if "@id" in e],
                 "metrics": aggregated_metrics,
             }
-            narrative = build_narrative_layer(
-                manifest, run_summary, evidence_refs, config=config, chat_logs=chat_logs
-            )
+            narrative = build_narrative_layer(manifest, run_summary, evidence_refs, config=config, chat_logs=chat_logs)
             progress.update(task_id, description="Narrative layer complete")
     else:
         # Build evidence layer (PR2)
@@ -2365,14 +2311,10 @@ def build_aiop(
         manifest_hash = manifest.get("manifest_hash", "")
         if not manifest_hash and manifest:
             # Try pipeline.fingerprints.manifest_fp
-            manifest_hash = (
-                manifest.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp", "")
-            )
+            manifest_hash = manifest.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp", "")
         # Load session_id before delta calculation
         session_id = session_data.get("session_id")
-        delta = calculate_delta(
-            {"metrics": aggregated_metrics, "errors": errors}, manifest_hash, session_id
-        )
+        delta = calculate_delta({"metrics": aggregated_metrics, "errors": errors}, manifest_hash, session_id)
 
         # Load chat logs if enabled
         chat_logs = _load_chat_logs(session_id, config) if session_id else None
@@ -2382,16 +2324,12 @@ def build_aiop(
             "timeline_ids": [e.get("@id") for e in timeline[:3] if "@id" in e],
             "metrics": aggregated_metrics,
         }
-        narrative = build_narrative_layer(
-            manifest, run_summary, evidence_refs, config=config, chat_logs=chat_logs
-        )
+        narrative = build_narrative_layer(manifest, run_summary, evidence_refs, config=config, chat_logs=chat_logs)
 
     # Compose AIOP
     aiop = {
         "@context": "https://osiris.io/schemas/aiop/v1",
-        "@id": (
-            f"osiris://pipeline/@{manifest_hash}" if manifest_hash else "osiris://pipeline/unknown"
-        ),
+        "@id": (f"osiris://pipeline/@{manifest_hash}" if manifest_hash else "osiris://pipeline/unknown"),
         "run": run_summary,
         "pipeline": {"name": manifest.get("name", "unnamed"), "manifest_hash": manifest_hash},
         "evidence": evidence,

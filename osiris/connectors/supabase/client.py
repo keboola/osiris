@@ -15,7 +15,7 @@
 """Shared Supabase client for connection management."""
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from supabase import Client, create_client
 
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class SupabaseClient:
     """Shared Supabase client for auth, session, and retries."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         """Initialize Supabase client configuration.
 
         Args:
@@ -37,7 +37,7 @@ class SupabaseClient:
                 - retries: Number of retries (default: 3)
         """
         self.config = config
-        self.client: Optional[Client] = None
+        self.client: Client | None = None
         self._initialized = False
 
         # Get credentials from config only (no ENV fallback for runtime)
@@ -118,11 +118,7 @@ class SupabaseClient:
             if not url and connection.get("project_id"):
                 url = f"https://{connection['project_id']}.supabase.co"
 
-            key = (
-                connection.get("service_role_key")
-                or connection.get("anon_key")
-                or connection.get("key")
-            )
+            key = connection.get("service_role_key") or connection.get("anon_key") or connection.get("key")
 
             if not url or not key:
                 return False, {

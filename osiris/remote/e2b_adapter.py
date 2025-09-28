@@ -10,7 +10,7 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
 
@@ -38,7 +38,7 @@ class E2BAdapter(ExecutionAdapter):
     and reproducible remote execution.
     """
 
-    def __init__(self, e2b_config: Optional[Dict[str, Any]] = None):
+    def __init__(self, e2b_config: dict[str, Any] | None = None):
         """Initialize E2B adapter.
 
         Args:
@@ -49,7 +49,7 @@ class E2BAdapter(ExecutionAdapter):
         self.sandbox_handle = None
         self.error_context = ErrorContext(source="remote")
 
-    def prepare(self, plan: Dict[str, Any], context: ExecutionContext) -> PreparedRun:
+    def prepare(self, plan: dict[str, Any], context: ExecutionContext) -> PreparedRun:
         """Prepare E2B execution package.
 
         Args:
@@ -356,9 +356,7 @@ class E2BAdapter(ExecutionAdapter):
                     "TypeError",
                     "ValueError",
                 ]
-                has_python_error = any(
-                    indicator in final_status.stderr for indicator in error_indicators
-                )
+                has_python_error = any(indicator in final_status.stderr for indicator in error_indicators)
                 if has_python_error:
                     success = False
 
@@ -375,9 +373,7 @@ class E2BAdapter(ExecutionAdapter):
 
             # If failed, map error with taxonomy
             if not success and final_status.stderr:
-                error_event = self.error_context.handle_error(
-                    final_status.stderr, step_id="e2b_execution"
-                )
+                error_event = self.error_context.handle_error(final_status.stderr, step_id="e2b_execution")
                 # Don't unpack error_event as it contains an 'event' key
                 log_event("e2b_error_mapped", error_details=error_event)
 
@@ -424,8 +420,7 @@ class E2BAdapter(ExecutionAdapter):
                     four_proof_success = (
                         status_data.get("ok", False)
                         and status_data.get("exit_code", -1) == 0
-                        and status_data.get("steps_completed", 0)
-                        == status_data.get("steps_total", -1)
+                        and status_data.get("steps_completed", 0) == status_data.get("steps_total", -1)
                         and status_data.get("session_copied", False)
                         and status_data.get("events_jsonl_exists", False)
                     )
@@ -462,9 +457,7 @@ class E2BAdapter(ExecutionAdapter):
                             failures = []
                             if status_data.get("exit_code", -1) != 0:
                                 failures.append(f"exit_code={status_data.get('exit_code', -1)}")
-                            if status_data.get("steps_completed", 0) != status_data.get(
-                                "steps_total", -1
-                            ):
+                            if status_data.get("steps_completed", 0) != status_data.get("steps_total", -1):
                                 failures.append("incomplete_steps")
                             if not status_data.get("session_copied", False):
                                 failures.append("session_not_copied")
@@ -481,11 +474,10 @@ class E2BAdapter(ExecutionAdapter):
                 except Exception as e:
                     if prepared.run_params.get("verbose"):
                         print(f"⚠️  Failed to parse status.json: {e}")
-            else:
-                if prepared.run_params.get("verbose"):
-                    print("✗ status.json not found - execution invalid")
-                    print("❌ Log transfer incomplete - missing status.json")
-                    success = False
+            elif prepared.run_params.get("verbose"):
+                print("✗ status.json not found - execution invalid")
+                print("❌ Log transfer incomplete - missing status.json")
+                success = False
 
             # Verify log transfer completeness if status indicates success
             if (
@@ -534,27 +526,26 @@ class E2BAdapter(ExecutionAdapter):
                             error_lines = final_status.stderr.strip().split("\n")[:5]
                             for line in error_lines:
                                 print(f"   {line}")
-                else:
-                    # Fallback to old behavior if status.json lacks counts
-                    if final_status.stderr:
-                        if success:
-                            # Classify manually for backward compatibility
-                            if self._has_real_errors(final_status.stderr):
-                                print("❌ Errors detected:")
-                                error_lines = final_status.stderr.strip().split("\n")[:5]
-                                for line in error_lines:
-                                    print(f"   {line}")
-                            elif self._has_warnings(final_status.stderr):
-                                print("⚠️  Warnings from sandbox:")
-                                warning_lines = self._extract_warning_lines(final_status.stderr)
-                                for line in warning_lines[-10:]:
-                                    print(f"   {line}")
-                        else:
-                            # Always show stderr on failure
+                # Fallback to old behavior if status.json lacks counts
+                elif final_status.stderr:
+                    if success:
+                        # Classify manually for backward compatibility
+                        if self._has_real_errors(final_status.stderr):
                             print("❌ Errors detected:")
                             error_lines = final_status.stderr.strip().split("\n")[:5]
                             for line in error_lines:
                                 print(f"   {line}")
+                        elif self._has_warnings(final_status.stderr):
+                            print("⚠️  Warnings from sandbox:")
+                            warning_lines = self._extract_warning_lines(final_status.stderr)
+                            for line in warning_lines[-10:]:
+                                print(f"   {line}")
+                    else:
+                        # Always show stderr on failure
+                        print("❌ Errors detected:")
+                        error_lines = final_status.stderr.strip().split("\n")[:5]
+                        for line in error_lines:
+                            print(f"   {line}")
 
             # Prepare error message for failed executions
             error_msg = None
@@ -565,7 +556,9 @@ class E2BAdapter(ExecutionAdapter):
                 # Include status.json details if available
                 if status_data:
                     error_msg += f"\nStatus: {status_data.get('reason', 'unknown')}"
-                    error_msg += f" (steps: {status_data.get('steps_completed', 0)}/{status_data.get('steps_total', 0)})"
+                    error_msg += (
+                        f" (steps: {status_data.get('steps_completed', 0)}/{status_data.get('steps_total', 0)})"
+                    )
                     error_msg += f", exit_code: {status_data.get('exit_code', 'unknown')}"
                     error_msg += f", events.jsonl: {'yes' if status_data.get('events_jsonl_exists') else 'no'}"
 
@@ -617,9 +610,7 @@ class E2BAdapter(ExecutionAdapter):
                     "stdout": final_status.stdout,
                     "stderr": final_status.stderr,
                     "sandbox_id": (
-                        self.sandbox_handle.sandbox_id
-                        if hasattr(self.sandbox_handle, "sandbox_id")
-                        else None
+                        self.sandbox_handle.sandbox_id if hasattr(self.sandbox_handle, "sandbox_id") else None
                     ),
                 },
             )
@@ -629,9 +620,7 @@ class E2BAdapter(ExecutionAdapter):
             error_msg = f"E2B execution failed: {e}"
 
             # Map error with taxonomy
-            error_event = self.error_context.handle_error(
-                error_msg, exception=e, step_id="e2b_execution"
-            )
+            error_event = self.error_context.handle_error(error_msg, exception=e, step_id="e2b_execution")
 
             log_event(
                 "e2b_execute_error",
@@ -766,36 +755,26 @@ class E2BAdapter(ExecutionAdapter):
                     else:
                         # Try to download as a file first
                         try:
-                            content = self.client.download_file(
-                                self.sandbox_handle, remote_item_path
-                            )
+                            content = self.client.download_file(self.sandbox_handle, remote_item_path)
                             if content:
                                 local_item_path.write_bytes(content)
                                 count += 1
                             else:
                                 # Empty content might mean it's a directory
                                 try:
-                                    sub_items = self.client.transport.list_files(
-                                        self.sandbox_handle, remote_item_path
-                                    )
+                                    sub_items = self.client.transport.list_files(self.sandbox_handle, remote_item_path)
                                     if sub_items is not None:
                                         # It's a directory, recurse
-                                        count += download_directory_recursive(
-                                            remote_item_path, local_item_path
-                                        )
+                                        count += download_directory_recursive(remote_item_path, local_item_path)
                                 except Exception:
                                     pass
                         except Exception:
                             # If download fails, try as directory
                             try:
-                                sub_items = self.client.transport.list_files(
-                                    self.sandbox_handle, remote_item_path
-                                )
+                                sub_items = self.client.transport.list_files(self.sandbox_handle, remote_item_path)
                                 if sub_items is not None:
                                     # It's a directory, recurse
-                                    count += download_directory_recursive(
-                                        remote_item_path, local_item_path
-                                    )
+                                    count += download_directory_recursive(remote_item_path, local_item_path)
                             except Exception:
                                 continue
             except Exception:
@@ -893,9 +872,7 @@ class E2BAdapter(ExecutionAdapter):
             log_event("e2b_collect_error", session_id=context.session_id, error=error_msg)
             raise CollectError(error_msg) from e
 
-    def _extract_connection_descriptors(
-        self, plan: Dict[str, Any]  # noqa: ARG002
-    ) -> Dict[str, Dict[str, Any]]:
+    def _extract_connection_descriptors(self, plan: dict[str, Any]) -> dict[str, dict[str, Any]]:  # noqa: ARG002
         """Extract connection descriptors with secret placeholders.
 
         This extracts connection references from the manifest and prepares them
@@ -927,7 +904,7 @@ class E2BAdapter(ExecutionAdapter):
             if log_path.exists():
                 self._tag_jsonl_file(log_path, {"source": "remote"})
 
-    def _tag_jsonl_file(self, file_path: Path, tags: Dict[str, Any]):
+    def _tag_jsonl_file(self, file_path: Path, tags: dict[str, Any]):
         """Add tags to each line in a JSONL file."""
         try:
             lines = []
@@ -950,8 +927,8 @@ class E2BAdapter(ExecutionAdapter):
             pass  # nosec B110
 
     def _extract_connections_from_steps(
-        self, plan: Dict[str, Any], cfg_index: Dict[str, Any]  # noqa: ARG002
-    ) -> Dict[str, Dict[str, Any]]:
+        self, plan: dict[str, Any], cfg_index: dict[str, Any]  # noqa: ARG002
+    ) -> dict[str, dict[str, Any]]:
         """Extract connection references from step configurations.
 
         This is a fallback when connections aren't in manifest metadata.
@@ -994,9 +971,7 @@ class E2BAdapter(ExecutionAdapter):
 
         return connections
 
-    def _load_cfg_file(
-        self, cfg_path: str, source_manifest_path: Optional[str]
-    ) -> Optional[Dict[str, Any]]:
+    def _load_cfg_file(self, cfg_path: str, source_manifest_path: str | None) -> dict[str, Any] | None:
         """Load cfg file content using manifest-relative resolution.
 
         Args:
@@ -1044,7 +1019,7 @@ class E2BAdapter(ExecutionAdapter):
 
         return None
 
-    def _get_connection_descriptor_raw(self, family: str, alias: str) -> Optional[Dict[str, Any]]:
+    def _get_connection_descriptor_raw(self, family: str, alias: str) -> dict[str, Any] | None:
         """Get connection descriptor directly from config file without environment resolution.
 
         Args:
@@ -1142,9 +1117,7 @@ class E2BAdapter(ExecutionAdapter):
                 continue
 
             # Skip if it matches warning allowlist
-            is_warning = any(
-                re.search(pattern, line, re.IGNORECASE) for pattern in warning_allowlist
-            )
+            is_warning = any(re.search(pattern, line, re.IGNORECASE) for pattern in warning_allowlist)
             if is_warning:
                 continue
 
@@ -1174,9 +1147,7 @@ class E2BAdapter(ExecutionAdapter):
                 continue
 
             # Check if it matches warning patterns
-            is_warning = any(
-                re.search(pattern, line, re.IGNORECASE) for pattern in warning_patterns
-            )
+            is_warning = any(re.search(pattern, line, re.IGNORECASE) for pattern in warning_patterns)
             if is_warning:
                 return True
 
@@ -1202,9 +1173,7 @@ class E2BAdapter(ExecutionAdapter):
                 continue
 
             # Check if it matches warning patterns
-            is_warning = any(
-                re.search(pattern, line, re.IGNORECASE) for pattern in warning_patterns
-            )
+            is_warning = any(re.search(pattern, line, re.IGNORECASE) for pattern in warning_patterns)
             if is_warning:
                 warning_lines.append(line)
 

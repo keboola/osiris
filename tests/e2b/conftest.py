@@ -115,9 +115,7 @@ def _create_test_e2b_adapter(use_real=False, api_key=None):
         # If no API key, mock the client to avoid real API calls
         if not api_key:
             mock_client = MagicMock(spec=E2BClient)
-            mock_handle = SandboxHandle(
-                sandbox_id="test-sandbox-123", status=SandboxStatus.RUNNING, metadata={}
-            )
+            mock_handle = SandboxHandle(sandbox_id="test-sandbox-123", status=SandboxStatus.RUNNING, metadata={})
             mock_client.create_sandbox.return_value = mock_handle
             mock_client.upload_payload.return_value = None
             mock_client.start.return_value = "process-123"

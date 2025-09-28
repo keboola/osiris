@@ -2,8 +2,8 @@
 """Tests for JSON serialization with snapshot testing."""
 
 import json
-import tempfile
 from pathlib import Path
+import tempfile
 
 from osiris.core.logs_serialize import to_index_json, to_session_json, validate_against_schema
 from osiris.core.session_reader import SessionSummary

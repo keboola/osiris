@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 @dataclass
@@ -22,31 +22,31 @@ class PreparedRun:
     """
 
     # Canonical compiled manifest as JSON dict
-    plan: Dict[str, Any]
+    plan: dict[str, Any]
 
     # Connection descriptors with secret placeholders only
     # Format: {"@mysql.db_movies": {"type": "mysql", "host": "localhost", "password": "${MYSQL_PASSWORD}"}}
-    resolved_connections: Dict[str, Dict[str, Any]]
+    resolved_connections: dict[str, dict[str, Any]]
 
     # Map of cfg/*.json paths to normalized step configurations
     # Format: {"cfg/step1.json": {"query": "SELECT * FROM table1", "connection": "@mysql.db_movies"}}
-    cfg_index: Dict[str, Dict[str, Any]]
+    cfg_index: dict[str, dict[str, Any]]
 
     # Relative paths for logs and artifacts layout
-    io_layout: Dict[str, str]
+    io_layout: dict[str, str]
 
     # Runtime parameters
-    run_params: Dict[str, Any]
+    run_params: dict[str, Any]
 
     # Execution limits and policies
-    constraints: Dict[str, Any]
+    constraints: dict[str, Any]
 
     # Execution metadata
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
     # Source directory for compiled assets (manifest, cfg files)
     # Used for manifest-relative cfg resolution
-    compiled_root: Optional[str] = None
+    compiled_root: str | None = None
 
 
 @dataclass
@@ -63,10 +63,10 @@ class ExecResult:
     duration_seconds: float
 
     # Error message if failed
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
     # Step-level results
-    step_results: Optional[Dict[str, Any]] = None
+    step_results: dict[str, Any] | None = None
 
 
 @dataclass
@@ -74,13 +74,13 @@ class CollectedArtifacts:
     """Artifacts collected after execution."""
 
     # Paths to collected files
-    events_log: Optional[Path] = None
-    metrics_log: Optional[Path] = None
-    execution_log: Optional[Path] = None
-    artifacts_dir: Optional[Path] = None
+    events_log: Path | None = None
+    metrics_log: Path | None = None
+    execution_log: Path | None = None
+    artifacts_dir: Path | None = None
 
     # Artifact metadata
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
 
 class ExecutionContext:
@@ -115,7 +115,7 @@ class ExecutionAdapter(ABC):
     """
 
     @abstractmethod
-    def prepare(self, plan: Dict[str, Any], context: ExecutionContext) -> PreparedRun:
+    def prepare(self, plan: dict[str, Any], context: ExecutionContext) -> PreparedRun:
         """Prepare execution package from compiled manifest.
 
         Args:

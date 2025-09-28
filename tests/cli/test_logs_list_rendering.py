@@ -47,9 +47,7 @@ class TestLogsListRendering:
 
         # Verify wrapping occurred (session ID appears across multiple lines)
         lines = result.split("\n")
-        session_id_lines = [
-            line for line in lines if "this_is" in line or "definitely" in line or "termi" in line
-        ]
+        session_id_lines = [line for line in lines if "this_is" in line or "definitely" in line or "termi" in line]
         assert len(session_id_lines) > 1, "Session ID should wrap to multiple lines"
 
     def test_session_id_single_line_with_no_wrap(self):
@@ -82,10 +80,7 @@ class TestLogsListRendering:
         assert "…" in result or "..." in result  # Rich may use either style
 
         # Full ID should NOT appear since it's truncated
-        assert (
-            "this_is_a_very_long_session_id_that_will_definitely_need_to_wrap_in_narrow_terminals"
-            not in result
-        )
+        assert "this_is_a_very_long_session_id_that_will_definitely_need_to_wrap_in_narrow_terminals" not in result
 
     def test_short_session_id_no_wrapping_needed(self):
         """Test that short session IDs don't wrap unnecessarily."""

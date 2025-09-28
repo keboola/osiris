@@ -51,9 +51,7 @@ class TestRegistryFriendlyErrors:
         )
         return mock_registry
 
-    def test_validation_with_friendly_errors_display(
-        self, mock_registry_with_friendly_errors, temp_logs_dir
-    ):
+    def test_validation_with_friendly_errors_display(self, mock_registry_with_friendly_errors, temp_logs_dir):
         """Test that friendly errors are displayed correctly in CLI output."""
 
         with patch("osiris.cli.components_cmd.get_registry") as mock_get_registry:
@@ -77,9 +75,7 @@ class TestRegistryFriendlyErrors:
         assert "Add 'host: your-server.com'" in all_output
         assert "host: localhost" in all_output
 
-    def test_validation_with_verbose_shows_technical(
-        self, mock_registry_with_friendly_errors, temp_logs_dir
-    ):
+    def test_validation_with_verbose_shows_technical(self, mock_registry_with_friendly_errors, temp_logs_dir):
         """Test that verbose mode shows technical details."""
 
         with patch("osiris.cli.components_cmd.get_registry") as mock_get_registry:
@@ -99,9 +95,7 @@ class TestRegistryFriendlyErrors:
         # Should show technical details
         assert "Technical Details" in all_output or "/configSchema/properties/host" in all_output
 
-    def test_validation_json_output_includes_friendly(
-        self, mock_registry_with_friendly_errors, temp_logs_dir
-    ):
+    def test_validation_json_output_includes_friendly(self, mock_registry_with_friendly_errors, temp_logs_dir):
         """Test that JSON output includes friendly error info."""
         captured_output = StringIO()
 
@@ -127,9 +121,7 @@ class TestRegistryFriendlyErrors:
         assert error["friendly"]["field"] == "Database Host"
         assert "technical" in error
 
-    def test_session_logs_contain_friendly_errors(
-        self, mock_registry_with_friendly_errors, temp_logs_dir
-    ):
+    def test_session_logs_contain_friendly_errors(self, mock_registry_with_friendly_errors, temp_logs_dir):
         """Test that session logs include friendly error details."""
         session_id = "test_session_123"
 
@@ -204,9 +196,7 @@ class TestRegistryFriendlyErrors:
         with patch("osiris.cli.components_cmd.get_registry") as mock_get_registry:
             mock_get_registry.return_value = mock_registry
             with patch("osiris.cli.components_cmd.rprint") as mock_print:
-                validate_component(
-                    "test.multi", level="enhanced", logs_dir=str(temp_logs_dir), json_output=False
-                )
+                validate_component("test.multi", level="enhanced", logs_dir=str(temp_logs_dir), json_output=False)
 
         print_calls = [str(call) for call in mock_print.call_args_list]
         all_output = " ".join(print_calls)
@@ -229,9 +219,7 @@ class TestRegistryFriendlyErrors:
         with patch("osiris.cli.components_cmd.get_registry") as mock_get_registry:
             mock_get_registry.return_value = mock_registry
             with patch("osiris.cli.components_cmd.rprint") as mock_print:
-                validate_component(
-                    "test.legacy", level="basic", logs_dir=str(temp_logs_dir), json_output=False
-                )
+                validate_component("test.legacy", level="basic", logs_dir=str(temp_logs_dir), json_output=False)
 
         print_calls = [str(call) for call in mock_print.call_args_list]
         all_output = " ".join(print_calls)
@@ -240,9 +228,7 @@ class TestRegistryFriendlyErrors:
         assert "Simple string error 1" in all_output
         assert "Simple string error 2" in all_output
 
-    def test_no_duplicate_events_with_friendly_errors(
-        self, mock_registry_with_friendly_errors, temp_logs_dir
-    ):
+    def test_no_duplicate_events_with_friendly_errors(self, mock_registry_with_friendly_errors, temp_logs_dir):
         """Test that friendly errors don't cause duplicate event emission."""
         session_id = "test_no_dup_123"
 

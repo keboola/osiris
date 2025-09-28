@@ -17,7 +17,7 @@
 import logging
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Union
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 class SupabaseWriter(ILoader):
     """Supabase writer for data loading operations."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         """Initialize Supabase writer.
 
         Args:
@@ -52,7 +52,7 @@ class SupabaseWriter(ILoader):
         self.primary_key = config.get("primary_key", [])
         self.create_if_missing = config.get("create_if_missing", False)
 
-    def _serialize_data(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _serialize_data(self, data: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Convert pandas/numpy types to JSON-serializable types.
 
         Args:
@@ -69,7 +69,7 @@ class SupabaseWriter(ILoader):
                 # Handle pandas Timestamp and numpy datetime64
                 if pd.isna(value):
                     serialized_record[key] = None
-                elif isinstance(value, (pd.Timestamp, np.datetime64)):
+                elif isinstance(value, pd.Timestamp | np.datetime64):
                     # Convert to ISO format string
                     if pd.isna(value):
                         serialized_record[key] = None
@@ -77,9 +77,9 @@ class SupabaseWriter(ILoader):
                         serialized_record[key] = pd.Timestamp(value).isoformat()
                 elif isinstance(value, datetime):
                     serialized_record[key] = value.isoformat()
-                elif isinstance(value, (np.integer, np.int64, np.int32)):
+                elif isinstance(value, np.integer | np.int64 | np.int32):
                     serialized_record[key] = int(value)
-                elif isinstance(value, (np.floating, np.float64, np.float32, Decimal)):
+                elif isinstance(value, np.floating | np.float64 | np.float32 | Decimal):
                     serialized_record[key] = float(value)
                 elif isinstance(value, np.bool_):
                     serialized_record[key] = bool(value)
@@ -161,9 +161,9 @@ class SupabaseWriter(ILoader):
         """
         if value is None or pd.isna(value):
             return "TEXT"  # Default for null values
-        elif isinstance(value, bool) or (isinstance(value, (int, np.integer)) and value in (0, 1)):
+        elif isinstance(value, bool) or (isinstance(value, int | np.integer) and value in (0, 1)):
             return "BOOLEAN"
-        elif isinstance(value, (int, np.integer)):
+        elif isinstance(value, int | np.integer):
             # Choose appropriate integer type based on value
             if -32768 <= value <= 32767:
                 return "SMALLINT"
@@ -171,9 +171,9 @@ class SupabaseWriter(ILoader):
                 return "INTEGER"
             else:
                 return "BIGINT"
-        elif isinstance(value, (float, np.floating, Decimal)):
+        elif isinstance(value, float | np.floating | Decimal):
             return "DOUBLE PRECISION"
-        elif isinstance(value, (datetime, pd.Timestamp, np.datetime64)):
+        elif isinstance(value, datetime | pd.Timestamp | np.datetime64):
             return "TIMESTAMPTZ"
         elif isinstance(value, str):
             # Use TEXT for strings, which is more flexible than VARCHAR
@@ -181,7 +181,7 @@ class SupabaseWriter(ILoader):
         else:
             return "TEXT"  # Default fallback
 
-    def _infer_table_schema(self, data: List[Dict[str, Any]]) -> Dict[str, str]:
+    def _infer_table_schema(self, data: list[dict[str, Any]]) -> dict[str, str]:
         """Infer table schema from sample data.
 
         Args:
@@ -244,9 +244,7 @@ class SupabaseWriter(ILoader):
             # For other errors, re-raise
             raise
 
-    async def _create_table_if_not_exists(
-        self, table_name: str, data: List[Dict[str, Any]]
-    ) -> bool:
+    async def _create_table_if_not_exists(self, table_name: str, data: list[dict[str, Any]]) -> bool:
         """Create table if it doesn't exist and auto_create_table is enabled.
 
         Args:
@@ -305,7 +303,7 @@ class SupabaseWriter(ILoader):
         self.client = None
         self._initialized = False
 
-    async def insert_data(self, table_name: str, data: List[Dict[str, Any]]) -> bool:
+    async def insert_data(self, table_name: str, data: list[dict[str, Any]]) -> bool:
         """Insert data into a table.
 
         Args:
@@ -347,7 +345,7 @@ class SupabaseWriter(ILoader):
             raise
 
     async def upsert_data(
-        self, table_name: str, data: List[Dict[str, Any]], primary_key: Union[str, List[str]] = None
+        self, table_name: str, data: list[dict[str, Any]], primary_key: str | list[str] = None
     ) -> bool:
         """Upsert data (insert or update on conflict).
 
@@ -403,7 +401,7 @@ class SupabaseWriter(ILoader):
             logger.error(f"Failed to upsert data into {table_name}: {e}")
             raise
 
-    async def replace_table(self, table_name: str, data: List[Dict[str, Any]]) -> bool:
+    async def replace_table(self, table_name: str, data: list[dict[str, Any]]) -> bool:
         """Replace entire table contents.
 
         WARNING: This deletes all existing data!
@@ -421,12 +419,7 @@ class SupabaseWriter(ILoader):
         try:
             # Delete all existing data (be very careful!)
             logger.warning(f"Deleting all data from {table_name}")
-            (
-                self.client.table(table_name)
-                .delete()
-                .neq("id", -999999)  # Trick to delete all rows
-                .execute()
-            )
+            (self.client.table(table_name).delete().neq("id", -999999).execute())  # Trick to delete all rows
 
             # Insert new data
             await self.insert_data(table_name, data)
@@ -438,9 +431,7 @@ class SupabaseWriter(ILoader):
             logger.error(f"Failed to replace table {table_name}: {e}")
             raise
 
-    async def update_data(
-        self, table_name: str, updates: Dict[str, Any], filters: Dict[str, Any]
-    ) -> bool:
+    async def update_data(self, table_name: str, updates: dict[str, Any], filters: dict[str, Any]) -> bool:
         """Update specific rows in a table.
 
         Args:
@@ -469,7 +460,7 @@ class SupabaseWriter(ILoader):
             logger.error(f"Failed to update data in {table_name}: {e}")
             raise
 
-    async def delete_data(self, table_name: str, filters: Dict[str, Any]) -> bool:
+    async def delete_data(self, table_name: str, filters: dict[str, Any]) -> bool:
         """Delete specific rows from a table.
 
         Args:
@@ -502,7 +493,7 @@ class SupabaseWriter(ILoader):
         table_name: str,
         df: pd.DataFrame,
         write_mode: str = None,
-        primary_key: Union[str, List[str]] = None,
+        primary_key: str | list[str] = None,
     ) -> bool:
         """Load a pandas DataFrame into a Supabase table.
 
@@ -535,7 +526,7 @@ class SupabaseWriter(ILoader):
             logger.error(f"Failed to load DataFrame into {table_name}: {e}")
             raise
 
-    async def create_table(self, table_name: str, schema: Dict[str, str]) -> bool:
+    async def create_table(self, table_name: str, schema: dict[str, str]) -> bool:
         """Create a new table with given schema.
 
         Note: This requires admin access or an RPC function in Supabase.

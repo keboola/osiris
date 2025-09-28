@@ -242,9 +242,7 @@ class TestSerialization:
 
     def test_command_serialization(self):
         """Test command serialization to JSON."""
-        cmd = PrepareCommand(
-            session_id="test_123", manifest={"pipeline": {"name": "test"}}, log_level="DEBUG"
-        )
+        cmd = PrepareCommand(session_id="test_123", manifest={"pipeline": {"name": "test"}}, log_level="DEBUG")
 
         # Serialize to JSON
         json_str = json.dumps(cmd.model_dump())
@@ -259,9 +257,7 @@ class TestSerialization:
 
     def test_response_serialization(self):
         """Test response serialization to JSON."""
-        resp = ExecStepResponse(
-            step_id="step-1", rows_processed=42, outputs={"df": "dataframe"}, duration_ms=123.45
-        )
+        resp = ExecStepResponse(step_id="step-1", rows_processed=42, outputs={"df": "dataframe"}, duration_ms=123.45)
 
         # Serialize to JSON
         json_str = json.dumps(resp.model_dump(exclude_none=True))
@@ -275,9 +271,7 @@ class TestSerialization:
 
     def test_event_serialization(self):
         """Test event message serialization."""
-        event = EventMessage(
-            name="step_complete", timestamp=1234567890.123, data={"step_id": "step-1", "rows": 42}
-        )
+        event = EventMessage(name="step_complete", timestamp=1234567890.123, data={"step_id": "step-1", "rows": 42})
 
         # Serialize to JSON
         json_str = json.dumps(event.model_dump())

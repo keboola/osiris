@@ -144,9 +144,7 @@ class TestSecretsMasking:
         for input_str, secret_value in test_cases:
             result = mask_sensitive_string(input_str)
             # The key requirement: no actual secret values in output
-            assert (
-                secret_value not in result
-            ), f"Secret '{secret_value}' should not be in result '{result}'"
+            assert secret_value not in result, f"Secret '{secret_value}' should not be in result '{result}'"
             # Should contain masked placeholder
             assert MASK_VALUE in result, f"Expected {MASK_VALUE} in result '{result}'"
 
@@ -176,9 +174,7 @@ class TestSecretsMasking:
 
     def test_safe_repr_masks_string_representation(self):
         """Test that safe_repr masks string patterns."""
-        conn_str = (
-            "mysql://user:password123@localhost/db?api_key=secret_value"  # pragma: allowlist secret
-        )
+        conn_str = "mysql://user:password123@localhost/db?api_key=secret_value"  # pragma: allowlist secret
         result = safe_repr(conn_str)
 
         # Should mask sensitive patterns

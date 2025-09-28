@@ -152,9 +152,7 @@ def test_retry_callback_no_warning():
         return yaml_str, {"tokens": 100}
 
     # This should not produce warnings
-    valid, result, trail = manager.validate_with_retry(
-        pipeline_yaml="test: yaml", retry_callback=sync_callback
-    )
+    valid, result, trail = manager.validate_with_retry(pipeline_yaml="test: yaml", retry_callback=sync_callback)
 
     # Basic assertions
     assert trail is not None

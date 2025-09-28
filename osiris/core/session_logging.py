@@ -26,9 +26,9 @@ import tempfile
 import time
 import uuid
 from contextlib import suppress
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .redaction import create_redactor
 
@@ -38,10 +38,10 @@ class SessionContext:
 
     def __init__(
         self,
-        session_id: Optional[str] = None,
-        base_logs_dir: Optional[Path] = None,
-        allowed_events: Optional[List[str]] = None,
-        privacy_level: Optional[str] = None,
+        session_id: str | None = None,
+        base_logs_dir: Path | None = None,
+        allowed_events: list[str] | None = None,
+        privacy_level: str | None = None,
     ):
         """Initialize session context.
 
@@ -54,7 +54,7 @@ class SessionContext:
         self.session_id = session_id or self._generate_session_id()
         self.base_logs_dir = base_logs_dir or Path("logs")
         self.session_dir = self.base_logs_dir / self.session_id
-        self.start_time = datetime.now(timezone.utc)
+        self.start_time = datetime.now(UTC)
         self.redactor = create_redactor(privacy_level)
 
         # Event filtering: None or ["*"] means log all events
@@ -71,8 +71,8 @@ class SessionContext:
         self.artifacts_dir = self.session_dir / "artifacts"
 
         # Logging handlers
-        self._handlers: List[logging.Handler] = []
-        self._fallback_temp_dir: Optional[Path] = None
+        self._handlers: list[logging.Handler] = []
+        self._fallback_temp_dir: Path | None = None
 
         # Initialize session directory
         self._setup_session_directory()
@@ -99,9 +99,7 @@ class SessionContext:
             self.artifacts_dir.mkdir(exist_ok=True)
         except (OSError, PermissionError):
             # Fallback to temp directory with warning
-            self._fallback_temp_dir = Path(
-                tempfile.mkdtemp(prefix=f"osiris-session-{self.session_id}-")
-            )
+            self._fallback_temp_dir = Path(tempfile.mkdtemp(prefix=f"osiris-session-{self.session_id}-"))
             self.session_dir = self._fallback_temp_dir
             self.artifacts_dir = self.session_dir / "artifacts"
             with suppress(OSError, PermissionError):
@@ -229,7 +227,7 @@ class SessionContext:
             return
         try:
             event_data = {
-                "ts": datetime.now(timezone.utc).isoformat(),
+                "ts": datetime.now(UTC).isoformat(),
                 "session": self.session_id,
                 "event": event_name,
                 **kwargs,
@@ -244,7 +242,7 @@ class SessionContext:
                     return {k: make_serializable(v) for k, v in obj.items()}
                 elif isinstance(obj, list):
                     return [make_serializable(item) for item in obj]
-                elif isinstance(obj, (str, int, float, bool)) or obj is None:
+                elif isinstance(obj, str | int | float | bool) or obj is None:
                     return obj
                 else:
                     return str(obj)
@@ -273,7 +271,7 @@ class SessionContext:
         """
         try:
             metric_data = {
-                "ts": datetime.now(timezone.utc).isoformat(),
+                "ts": datetime.now(UTC).isoformat(),
                 "session": self.session_id,
                 "metric": metric,
                 "value": value,
@@ -289,7 +287,7 @@ class SessionContext:
                     return {k: make_serializable(v) for k, v in obj.items()}
                 elif isinstance(obj, list):
                     return [make_serializable(item) for item in obj]
-                elif isinstance(obj, (str, int, float, bool)) or obj is None:
+                elif isinstance(obj, str | int | float | bool) or obj is None:
                     return obj
                 else:
                     return str(obj)
@@ -308,7 +306,7 @@ class SessionContext:
             # JSON serialization error
             print(f"WARNING: Could not serialize metric {metric}: {e}", file=sys.stderr)
 
-    def save_config(self, config: Dict[str, Any]) -> None:
+    def save_config(self, config: dict[str, Any]) -> None:
         """Save configuration to cfg.json (with secrets masked).
 
         Args:
@@ -321,7 +319,7 @@ class SessionContext:
         except (OSError, PermissionError) as e:
             print(f"WARNING: Could not save config: {e}", file=sys.stderr)
 
-    def save_manifest(self, manifest: Dict[str, Any]) -> None:
+    def save_manifest(self, manifest: dict[str, Any]) -> None:
         """Save run manifest to manifest.json (with secrets masked).
 
         Args:
@@ -334,7 +332,7 @@ class SessionContext:
         except (OSError, PermissionError) as e:
             print(f"WARNING: Could not save manifest: {e}", file=sys.stderr)
 
-    def save_fingerprints(self, fingerprints: Dict[str, Any]) -> None:
+    def save_fingerprints(self, fingerprints: dict[str, Any]) -> None:
         """Save fingerprint data to fingerprints.json.
 
         Args:
@@ -346,7 +344,7 @@ class SessionContext:
         except (OSError, PermissionError) as e:
             print(f"WARNING: Could not save fingerprints: {e}", file=sys.stderr)
 
-    def save_artifact(self, name: str, content: Any, content_type: str = "text") -> Optional[Path]:
+    def save_artifact(self, name: str, content: Any, content_type: str = "text") -> Path | None:
         """Save an artifact to the artifacts directory.
 
         Args:
@@ -361,9 +359,7 @@ class SessionContext:
             artifact_path = self.artifacts_dir / name
 
             if content_type == "json":
-                masked_content = (
-                    self.redactor.redact_dict(content) if isinstance(content, dict) else content
-                )
+                masked_content = self.redactor.redact_dict(content) if isinstance(content, dict) else content
                 with open(artifact_path, "w", encoding="utf-8") as f:
                     json.dump(masked_content, f, indent=2)
             elif content_type == "text":
@@ -383,7 +379,7 @@ class SessionContext:
 
     def close(self) -> None:
         """Close the session and log session end."""
-        end_time = datetime.now(timezone.utc)
+        end_time = datetime.now(UTC)
         duration_seconds = (end_time - self.start_time).total_seconds()
 
         self.log_event("run_end", duration_seconds=duration_seconds, end_time=end_time.isoformat())
@@ -405,15 +401,15 @@ class SessionContext:
 
 
 # Global session context (thread-local would be better for multi-threading)
-_current_session: Optional[SessionContext] = None
+_current_session: SessionContext | None = None
 
 
-def get_current_session() -> Optional[SessionContext]:
+def get_current_session() -> SessionContext | None:
     """Get the current active session context."""
     return _current_session
 
 
-def set_current_session(session: Optional[SessionContext]) -> None:
+def set_current_session(session: SessionContext | None) -> None:
     """Set the current active session context."""
     global _current_session
     _current_session = session

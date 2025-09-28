@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Fake Orchestrator - Host-side prototype that launches E2B sandbox and sends commands."""
 
+import builtins
+import contextlib
 import json
 import os
 import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 try:
     from e2b_code_interpreter import Sandbox
@@ -120,10 +122,8 @@ class FakeOrchestrator:
             # Cleanup
             if self.sandbox:
                 print("\n🧹 Cleaning up sandbox...")
-                try:
+                with contextlib.suppress(builtins.BaseException):
                     self.sandbox.kill()
-                except:
-                    pass
 
     def upload_proxy_worker(self):
         """Upload the proxy worker script to the sandbox."""
@@ -221,7 +221,7 @@ with open('/home/user/commands.jsonl', 'r') as f:
                 for line in execution.logs.stderr:
                     print(f"   {line}")
 
-    def handle_worker_message(self, msg: Dict[str, Any]):
+    def handle_worker_message(self, msg: dict[str, Any]):
         """Handle a message from the worker (event, metric, or response)."""
         msg_type = msg.get("type")
 

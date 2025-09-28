@@ -24,7 +24,7 @@ import time
 import uuid
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import pandas as pd
 
@@ -48,7 +48,7 @@ class DateTimeEncoder(json.JSONEncoder):
     """Custom JSON encoder that handles datetime objects and pandas Timestamps."""
 
     def default(self, obj):
-        if isinstance(obj, (pd.Timestamp, datetime, date)):
+        if isinstance(obj, pd.Timestamp | datetime | date):
             return obj.isoformat()
         elif pd.isna(obj):  # Handle pandas NaN/NaT values
             return None
@@ -65,8 +65,8 @@ class ProgressiveDiscovery(IDiscovery):
         component_type: str = "generic.table",
         component_version: str = "0.1.0",
         connection_ref: str = "@default",
-        session_id: Optional[str] = None,
-        ttl_seconds: Optional[int] = None,
+        session_id: str | None = None,
+        ttl_seconds: int | None = None,
     ):
         """Initialize discovery with an extractor.
 
@@ -125,17 +125,17 @@ class ProgressiveDiscovery(IDiscovery):
         self.component_type = component_type
         self.component_version = component_version
         self.connection_ref = connection_ref
-        self.spec_schema: Dict[str, Any] = {}  # Will be set by component registry
+        self.spec_schema: dict[str, Any] = {}  # Will be set by component registry
 
         # Test-only override for spec version (for testing cache invalidation)
-        self._spec_version_override: Optional[str] = None
+        self._spec_version_override: str | None = None
 
         # Discovery state
-        self.discovered_tables: Dict[str, TableInfo] = {}
+        self.discovered_tables: dict[str, TableInfo] = {}
         self.sample_sizes = [10, 100, 1000]  # Progressive sampling
         self.current_sample_level = 0
 
-    def set_spec_schema(self, spec_schema: Dict[str, Any]) -> None:
+    def set_spec_schema(self, spec_schema: dict[str, Any]) -> None:
         """Set the component spec schema for fingerprinting.
 
         Args:
@@ -200,7 +200,7 @@ class ProgressiveDiscovery(IDiscovery):
         # Also log to session-scoped structured events
         log_event(event, **kwargs)
 
-    async def list_tables(self) -> List[str]:
+    async def list_tables(self) -> list[str]:
         """List all available tables in the database.
 
         Returns:
@@ -221,9 +221,7 @@ class ProgressiveDiscovery(IDiscovery):
         logger.info(f"Discovered {len(tables)} tables")
         return tables
 
-    async def get_table_info(
-        self, table_name: str, options: Optional[Dict[str, Any]] = None
-    ) -> TableInfo:
+    async def get_table_info(self, table_name: str, options: dict[str, Any] | None = None) -> TableInfo:
         """Get detailed information about a table.
 
         This uses progressive sampling - starts with 10 rows,
@@ -309,11 +307,7 @@ class ProgressiveDiscovery(IDiscovery):
 
                 # Add specific change details based on reason
                 if reason == "options_changed":
-                    log_data.update(
-                        {
-                            "options_fp": f"old:{cached_fp.options_fp[:8]} new:{fingerprint.options_fp[:8]}"
-                        }
-                    )
+                    log_data.update({"options_fp": f"old:{cached_fp.options_fp[:8]} new:{fingerprint.options_fp[:8]}"})
                 elif reason == "spec_changed":
                     log_data.update({"options_fp": fingerprint.options_fp[:8]})
                 elif reason == "component_changed":
@@ -377,7 +371,7 @@ class ProgressiveDiscovery(IDiscovery):
 
         return table_info
 
-    async def discover_all_tables(self, max_tables: int = 10) -> Dict[str, TableInfo]:
+    async def discover_all_tables(self, max_tables: int = 10) -> dict[str, TableInfo]:
         """Discover all tables with basic sampling.
 
         Args:
@@ -401,7 +395,7 @@ class ProgressiveDiscovery(IDiscovery):
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         discovered = {}
-        for table, result in zip(tables, results):
+        for table, result in zip(tables, results, strict=False):
             if isinstance(result, Exception):
                 logger.warning(f"Failed to discover table {table}: {result}")
             else:
@@ -442,7 +436,7 @@ class ProgressiveDiscovery(IDiscovery):
 
         return self.discovered_tables.get(table_name)
 
-    async def search_tables(self, keywords: List[str]) -> List[Tuple[str, float]]:
+    async def search_tables(self, keywords: list[str]) -> list[tuple[str, float]]:
         """Search for tables matching keywords.
 
         Args:
@@ -491,7 +485,7 @@ class ProgressiveDiscovery(IDiscovery):
         age = time.time() - path.stat().st_mtime
         return age < self.cache_ttl
 
-    def _get_cached_tables(self) -> Optional[List[str]]:
+    def _get_cached_tables(self) -> list[str] | None:
         """Get cached table list if valid."""
         path = self._get_cache_path("tables_list")
 
@@ -504,7 +498,7 @@ class ProgressiveDiscovery(IDiscovery):
 
         return None
 
-    def _cache_tables(self, tables: List[str]) -> None:
+    def _cache_tables(self, tables: list[str]) -> None:
         """Cache table list."""
         path = self._get_cache_path("tables_list")
 
@@ -514,7 +508,7 @@ class ProgressiveDiscovery(IDiscovery):
         except Exception as e:
             logger.warning(f"Failed to cache tables: {e}")
 
-    def _get_cached_table_info(self, table_name: str) -> Optional[TableInfo]:
+    def _get_cached_table_info(self, table_name: str) -> TableInfo | None:
         """Get cached table info if valid (legacy method for backward compatibility)."""
         path = self._get_cache_path(f"table_{table_name}")
 
@@ -528,7 +522,7 @@ class ProgressiveDiscovery(IDiscovery):
 
         return None
 
-    def _get_cached_table_info_with_fingerprint(self, table_name: str) -> Optional[CacheEntry]:
+    def _get_cached_table_info_with_fingerprint(self, table_name: str) -> CacheEntry | None:
         """Get cached table info with fingerprint validation."""
         path = self._get_cache_path(f"table_{table_name}")
 
@@ -586,14 +580,10 @@ class ProgressiveDiscovery(IDiscovery):
         """Get cache age in seconds."""
         import time
 
-        created_timestamp = datetime.fromisoformat(
-            cache_entry.created_at.replace("Z", "+00:00")
-        ).timestamp()
+        created_timestamp = datetime.fromisoformat(cache_entry.created_at.replace("Z", "+00:00")).timestamp()
         return int(time.time() - created_timestamp)
 
-    def _determine_cache_miss_reason(
-        self, cached_fp: CacheFingerprint, current_fp: CacheFingerprint
-    ) -> str:
+    def _determine_cache_miss_reason(self, cached_fp: CacheFingerprint, current_fp: CacheFingerprint) -> str:
         """Determine the specific reason for cache miss between two fingerprints.
 
         Args:
@@ -678,7 +668,7 @@ class ExtractorFactory:
     """Factory for creating database extractors."""
 
     @staticmethod
-    def create_extractor(db_type: str, config: Dict[str, Any]) -> IExtractor:
+    def create_extractor(db_type: str, config: dict[str, Any]) -> IExtractor:
         """Create an extractor based on database type.
 
         Args:
@@ -703,7 +693,7 @@ class WriterFactory:
     """Factory for creating database writers."""
 
     @staticmethod
-    def create_writer(db_type: str, config: Dict[str, Any]) -> ILoader:
+    def create_writer(db_type: str, config: dict[str, Any]) -> ILoader:
         """Create a writer based on database type.
 
         Args:
@@ -725,8 +715,8 @@ class WriterFactory:
 
 
 async def discover_from_connection_strings(
-    connection_strings: List[Dict[str, Any]],
-) -> Dict[str, Any]:
+    connection_strings: list[dict[str, Any]],
+) -> dict[str, Any]:
     """Discover schemas from multiple connection strings.
 
     This is the main entry point for discovery in the MVP.

@@ -44,9 +44,7 @@ class TestOMLValidator:
 
         assert is_valid is False
         assert len(errors) == 2  # Missing oml_version and empty steps
-        assert any(
-            e["type"] == "missing_required_key" and "oml_version" in e["message"] for e in errors
-        )
+        assert any(e["type"] == "missing_required_key" and "oml_version" in e["message"] for e in errors)
         assert any(e["type"] == "empty_steps" for e in errors)
 
     def test_forbidden_keys(self):
@@ -66,9 +64,7 @@ class TestOMLValidator:
 
         assert is_valid is False
         assert len(errors) == 4
-        forbidden_keys = {
-            e["message"].split("'")[1] for e in errors if e["type"] == "forbidden_key"
-        }
+        forbidden_keys = {e["message"].split("'")[1] for e in errors if e["type"] == "forbidden_key"}
         assert forbidden_keys == {"version", "connectors", "tasks", "outputs"}
 
     def test_invalid_version(self):

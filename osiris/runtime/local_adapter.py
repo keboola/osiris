@@ -9,7 +9,7 @@ import json
 import shutil
 import time
 from pathlib import Path
-from typing import Any, Dict, Set
+from typing import Any
 
 from ..core.error_taxonomy import ErrorContext
 from ..core.execution_adapter import (
@@ -42,7 +42,7 @@ class LocalAdapter(ExecutionAdapter):
         self.error_context = ErrorContext(source="local")
         self.verbose = verbose
 
-    def prepare(self, plan: Dict[str, Any], context: ExecutionContext) -> PreparedRun:
+    def prepare(self, plan: dict[str, Any], context: ExecutionContext) -> PreparedRun:
         """Prepare local execution package.
 
         Args:
@@ -59,7 +59,7 @@ class LocalAdapter(ExecutionAdapter):
 
             # Build cfg_index from steps and collect cfg paths
             cfg_index = {}
-            cfg_paths: Set[str] = set()
+            cfg_paths: set[str] = set()
             for step in steps:
                 cfg_path = step.get("cfg_path")
                 if cfg_path:
@@ -256,9 +256,7 @@ class LocalAdapter(ExecutionAdapter):
                 core.session_logging.log_metric = verbose_log_metric
 
             # Create runner with existing implementation
-            runner = RunnerV0(
-                manifest_path=str(manifest_path), output_dir=str(context.artifacts_dir)
-            )
+            runner = RunnerV0(manifest_path=str(manifest_path), output_dir=str(context.artifacts_dir))
 
             try:
                 # Execute pipeline
@@ -320,17 +318,9 @@ class LocalAdapter(ExecutionAdapter):
 
             for step_id, rows in step_rows.items():
                 driver_name = step_driver_names.get(step_id, "")
-                if (
-                    ".writer" in driver_name
-                    or "write" in step_id.lower()
-                    or "load" in step_id.lower()
-                ):
+                if ".writer" in driver_name or "write" in step_id.lower() or "load" in step_id.lower():
                     sum_rows_written += rows
-                elif (
-                    ".extractor" in driver_name
-                    or "extract" in step_id.lower()
-                    or "read" in step_id.lower()
-                ):
+                elif ".extractor" in driver_name or "extract" in step_id.lower() or "read" in step_id.lower():
                     sum_rows_read += rows
                 else:
                     # Ambiguous step - for now count as extractor
@@ -365,9 +355,7 @@ class LocalAdapter(ExecutionAdapter):
                 recent_events = getattr(runner, "events", [])
                 for event in reversed(recent_events):
                     if event.get("type") == "step_error":
-                        error_message = event.get("data", {}).get(
-                            "error", "Unknown execution error"
-                        )
+                        error_message = event.get("data", {}).get("error", "Unknown execution error")
                         break
                 if not error_message:
                     error_message = "Pipeline execution failed"
@@ -381,9 +369,7 @@ class LocalAdapter(ExecutionAdapter):
 
             # Generate status.json for parity with E2B execution
             steps_total = len(prepared.plan.get("steps", []))
-            steps_completed = len(
-                [e for e in getattr(runner, "events", []) if e.get("type") == "step_complete"]
-            )
+            steps_completed = len([e for e in getattr(runner, "events", []) if e.get("type") == "step_complete"])
 
             # Check if events.jsonl exists in session logs
             events_jsonl_exists = False
@@ -402,12 +388,7 @@ class LocalAdapter(ExecutionAdapter):
                 pass
 
             # Generate status.json with four-proof rule
-            status_ok = (
-                success
-                and exit_code == 0
-                and steps_completed == steps_total
-                and events_jsonl_exists
-            )
+            status_ok = success and exit_code == 0 and steps_completed == steps_total and events_jsonl_exists
 
             status_reason = ""
             if not status_ok:
@@ -470,9 +451,7 @@ class LocalAdapter(ExecutionAdapter):
 
             raise ExecuteError(error_msg) from e
 
-    def collect(
-        self, prepared: PreparedRun, context: ExecutionContext  # noqa: ARG002
-    ) -> CollectedArtifacts:
+    def collect(self, prepared: PreparedRun, context: ExecutionContext) -> CollectedArtifacts:  # noqa: ARG002
         """Collect execution artifacts after local run.
 
         Args:
@@ -507,9 +486,7 @@ class LocalAdapter(ExecutionAdapter):
                 "adapter": "local",
                 "session_id": context.session_id,
                 "collected_at": time.time(),
-                "artifacts_count": (
-                    len(list(artifacts_dir.iterdir())) if artifacts_dir.exists() else 0
-                ),
+                "artifacts_count": (len(list(artifacts_dir.iterdir())) if artifacts_dir.exists() else 0),
             }
 
             # Add file sizes if files exist
@@ -537,9 +514,7 @@ class LocalAdapter(ExecutionAdapter):
             log_event("collect_error", adapter="local", error=error_msg)
             raise CollectError(error_msg) from e
 
-    def _preflight_validate_cfg_files(
-        self, prepared: PreparedRun, context: ExecutionContext
-    ) -> None:
+    def _preflight_validate_cfg_files(self, prepared: PreparedRun, context: ExecutionContext) -> None:
         """Validate that all required cfg files exist before execution.
 
         Args:
@@ -653,9 +628,7 @@ class LocalAdapter(ExecutionAdapter):
             session_id=context.session_id,
         )
 
-    def _extract_connection_descriptors(
-        self, cfg_index: Dict[str, Dict[str, Any]]
-    ) -> Dict[str, Dict[str, Any]]:
+    def _extract_connection_descriptors(self, cfg_index: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
         """Extract connection descriptors from cfg files.
 
         Args:
@@ -712,9 +685,7 @@ class LocalAdapter(ExecutionAdapter):
                     continue
 
                 family, alias = parts
-                connection_config = (
-                    connections_config.get("connections", {}).get(family, {}).get(alias)
-                )
+                connection_config = connections_config.get("connections", {}).get(family, {}).get(alias)
 
                 if connection_config:
                     # Store with the full reference as key
@@ -726,9 +697,7 @@ class LocalAdapter(ExecutionAdapter):
             log_event("connection_resolution_error", adapter="local", error=str(e))
             return {}
 
-    def _materialize_cfg_files(
-        self, prepared: PreparedRun, context: ExecutionContext, manifest_path: Path
-    ) -> None:
+    def _materialize_cfg_files(self, prepared: PreparedRun, context: ExecutionContext, manifest_path: Path) -> None:
         """Materialize cfg files from source to run session.
 
         Args:

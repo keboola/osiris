@@ -218,9 +218,10 @@ def test_supabase_writer_ddl_plan_generation():
         mock_ctx.output_dir = output_dir
 
         # Mock Supabase client - table doesn't exist
-        with patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient, patch(
-            "osiris.drivers.supabase_writer_driver.log_event"
-        ) as mock_log_event:
+        with (
+            patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient,
+            patch("osiris.drivers.supabase_writer_driver.log_event") as mock_log_event,
+        ):
             mock_client = MagicMock()
             mock_table = MagicMock()
 
@@ -275,9 +276,7 @@ def test_supabase_writer_ddl_plan_generation():
             assert "is_active BOOLEAN" in ddl
 
             # Check event was logged
-            ddl_events = [
-                call for call in mock_log_event.call_args_list if call[0][0] == "table.ddl_planned"
-            ]
+            ddl_events = [call for call in mock_log_event.call_args_list if call[0][0] == "table.ddl_planned"]
             assert len(ddl_events) == 1
             event_data = ddl_events[0][1]
             assert event_data["table"] == "users"

@@ -2,8 +2,8 @@
 """Tests for SessionReader class."""
 
 import json
-import tempfile
 from pathlib import Path
+import tempfile
 
 import pytest
 

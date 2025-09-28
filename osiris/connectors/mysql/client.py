@@ -15,7 +15,7 @@
 """Shared MySQL client for connection management."""
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class MySQLClient:
     """Shared MySQL client for connection management, pooling, and retries."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         """Initialize MySQL client configuration.
 
         Args:
@@ -42,7 +42,7 @@ class MySQLClient:
                 - echo: Enable SQL logging (default: False)
         """
         self.config = config
-        self.engine: Optional[Engine] = None
+        self.engine: Engine | None = None
         self._initialized = False
 
         # Connection parameters
@@ -70,8 +70,7 @@ class MySQLClient:
         try:
             # Build connection string
             connection_string = (
-                f"mysql+pymysql://{self.user}:{self.password}@"
-                f"{self.host}:{self.port}/{self.database}"
+                f"mysql+pymysql://{self.user}:{self.password}@" f"{self.host}:{self.port}/{self.database}"
             )
 
             # Create SQLAlchemy engine with connection pooling
