@@ -1262,12 +1262,7 @@ def aiop_export(args: list) -> None:
 
     # Import here to avoid circular imports
 
-    from osiris.core.run_export_v2 import (
-        build_aiop,
-        canonicalize_json,
-        export_annex_shards,
-        generate_markdown_runcard,
-    )
+    from osiris.core.run_export_v2 import build_aiop, canonicalize_json, export_annex_shards, generate_markdown_runcard
 
     # Validate required arguments
     if not (parsed_args.last or parsed_args.session):

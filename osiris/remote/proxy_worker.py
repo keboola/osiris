@@ -574,7 +574,6 @@ class ProxyWorker:
         # Use writers-only sum if available, else fall back to extractors
         final_total_rows = sum_rows_written if sum_rows_written > 0 else sum_rows_read
 
-
         try:
             # Ensure metrics.jsonl exists even if empty
             if hasattr(self, "metrics_file") and self.metrics_file:

@@ -9,11 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from osiris.cli.connections_cmd import (
-    check_duckdb_connection,
-    check_mysql_connection,
-    check_supabase_connection,
-)
+from osiris.cli.connections_cmd import check_duckdb_connection, check_mysql_connection, check_supabase_connection
 
 
 class TestConnectionsList:
