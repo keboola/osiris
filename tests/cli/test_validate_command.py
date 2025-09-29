@@ -175,7 +175,8 @@ from osiris.cli.main import validate_command
 validate_command(['--config', '{temp_config}', '--json'])
 """,
                     ],
-                    check=False, capture_output=True,
+                    check=False,
+                    capture_output=True,
                     text=True,
                 )
 

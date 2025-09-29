@@ -518,9 +518,7 @@ def gc_sessions(args: list) -> None:
             for item in to_delete:
                 session = item["session"]
                 console.print(f"   {session['id']} ({_format_size(session['size'])}) - {item['reason']}")
-            console.print(
-                f"Total space to free: {_format_size(sum(item['session']['size'] for item in to_delete))}"
-            )
+            console.print(f"Total space to free: {_format_size(sum(item['session']['size'] for item in to_delete))}")
         else:
             console.print("✅ No sessions need cleanup")
     else:

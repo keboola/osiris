@@ -4,17 +4,17 @@ This worker receives commands via stdin, executes drivers directly,
 and streams results back via stdout.
 """
 
-from collections.abc import Iterable, Mapping
 import copy
 import importlib
 import json
 import logging
 import os
-from pathlib import Path
 import subprocess
 import sys
 import time
 import traceback
+from collections.abc import Iterable, Mapping
+from pathlib import Path
 from typing import Any
 
 try:  # Python 3.11+
@@ -420,8 +420,6 @@ class ProxyWorker:
             )
 
             cached_output: dict[str, Any] = {}
-            if result and isinstance(result, dict):
-                cached_output = {k: v for k, v in result.items() if k != "df"}
 
             # Extract metrics from result (if any)
             # Extractors return {"df": DataFrame} and we count rows as rows_processed
@@ -438,17 +436,24 @@ class ProxyWorker:
 
                         if isinstance(result["df"], pd.DataFrame):
                             rows_processed = len(result["df"])
-                            parquet_path = step_artifacts_dir / "output.parquet"
-                            result["df"].to_parquet(parquet_path, index=False)
-                            cached_output["df_path"] = parquet_path
-                            self._emit_artifact_event(parquet_path, artifact_type="parquet", step_id=step_id)
+                            # Use pickle for DataFrame caching to handle all data types
+                            pickle_path = step_artifacts_dir / "output.pkl"
+                            result["df"].to_pickle(pickle_path)
+                            cached_output["df_path"] = pickle_path
+                            self._emit_artifact_event(pickle_path, artifact_type="pickle", step_id=step_id)
                             # Emit rows_read for extractors specifically (ONLY with step tag)
                             if driver_name.endswith(".extractor"):
                                 self.send_metric("rows_read", rows_processed, tags={"step": step_id})
                             # Release DataFrame reference held in result
                             del result["df"]
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        self.logger.error(f"Failed to cache DataFrame for step {step_id}: {exc}")
+
+                # Copy non-DataFrame keys from result to cached_output
+                if isinstance(result, dict):
+                    for k, v in result.items():
+                        if k != "df":  # Skip df as it's already saved to parquet
+                            cached_output[k] = v
 
             # Track driver type and rows for this step
             self.step_drivers[step_id] = driver_name
@@ -569,7 +574,6 @@ class ProxyWorker:
         # Use writers-only sum if available, else fall back to extractors
         final_total_rows = sum_rows_written if sum_rows_written > 0 else sum_rows_read
 
-        run_card_path: Path | None = None
 
         try:
             # Ensure metrics.jsonl exists even if empty
@@ -589,7 +593,7 @@ class ProxyWorker:
 
             if self.step_io:
                 try:
-                    run_card_path = self._write_run_card()
+                    self._write_run_card()
                 except Exception as card_error:  # pragma: no cover - best effort
                     self.logger.warning(f"Failed to write run card: {card_error}")
         finally:
@@ -1006,7 +1010,8 @@ class ProxyWorker:
                     try:
                         import pandas as pd
 
-                        df = pd.read_parquet(df_path)
+                        # Read pickle file
+                        df = pd.read_pickle(df_path)
                         resolved[input_key] = df
                         rows = len(df)
                         rows_total += rows
@@ -1019,7 +1024,7 @@ class ProxyWorker:
                             artifact=str(Path(df_path).relative_to(self.session_dir)),
                         )
                     except Exception as exc:
-                        self.logger.error(f"Failed to load input parquet {df_path}: {exc}")
+                        self.logger.error(f"Failed to load input DataFrame {df_path}: {exc}")
                 elif isinstance(step_output, dict) and from_key in step_output:
                     resolved[input_key] = step_output[from_key]
                     self.logger.debug(f"Resolved input '{input_key}' from step '{from_step}', key '{from_key}'")

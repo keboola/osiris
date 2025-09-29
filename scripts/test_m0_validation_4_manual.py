@@ -100,7 +100,8 @@ class LoggingConfigTester:
         try:
             result = subprocess.run(  # nosec B603
                 ["python", str(self.osiris_root / "osiris.py")] + args,
-                check=False, capture_output=True,
+                check=False,
+                capture_output=True,
                 text=True,
                 env=env,
                 timeout=10,

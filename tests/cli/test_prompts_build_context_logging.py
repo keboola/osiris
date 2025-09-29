@@ -30,7 +30,8 @@ class TestPromptsLogging:
                 "--out",
                 str(out_file),
             ],
-            check=False, capture_output=True,
+            check=False,
+            capture_output=True,
             text=True,
             cwd=project_root,  # Run from project root
         )
@@ -93,7 +94,8 @@ class TestPromptsLogging:
                 "--out",
                 str(out_file),
             ],
-            check=False, capture_output=True,
+            check=False,
+            capture_output=True,
             text=True,
             cwd=project_root,  # Run from project root
         )
@@ -146,7 +148,8 @@ class TestPromptsLogging:
                 "--out",
                 str(out_file),
             ],
-            check=False, capture_output=True,
+            check=False,
+            capture_output=True,
             text=True,
             cwd=project_root,  # Run from project root
         )

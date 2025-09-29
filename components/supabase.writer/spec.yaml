@@ -240,3 +240,9 @@ x-runtime:
       - supabase
       - psycopg2
       - requests
+    packages:
+      - pandas
+      - numpy
+      - supabase
+      - psycopg2-binary
+      - requests

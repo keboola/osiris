@@ -1,12 +1,12 @@
 """Supabase writer driver for runtime execution."""
 
-from datetime import date, datetime
-from decimal import Decimal
 import logging
-from pathlib import Path
 import random
 import socket
 import time
+from datetime import date, datetime
+from decimal import Decimal
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 

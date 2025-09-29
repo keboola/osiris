@@ -63,15 +63,11 @@ class E2BTransport(Protocol):
         """Check status of a running process."""
         ...
 
-    def get_process_output(
-        self, handle: SandboxHandle, process_id: str
-    ) -> tuple[str | None, str | None, int | None]:
+    def get_process_output(self, handle: SandboxHandle, process_id: str) -> tuple[str | None, str | None, int | None]:
         """Get stdout, stderr, and exit code of a process."""
         ...
 
-    def download_file(
-        self, handle: SandboxHandle, remote_path: str, local_path: Path | None = None
-    ) -> bytes | None:
+    def download_file(self, handle: SandboxHandle, remote_path: str, local_path: Path | None = None) -> bytes | None:
         """Download a file from the sandbox."""
         ...
 
@@ -282,9 +278,7 @@ if _exit_code != 0:
 
         return SandboxStatus.SUCCESS
 
-    def get_process_output(
-        self, handle: SandboxHandle, process_id: str
-    ) -> tuple[str | None, str | None, int | None]:
+    def get_process_output(self, handle: SandboxHandle, process_id: str) -> tuple[str | None, str | None, int | None]:
         """Get stdout, stderr, and exit code of a process.
 
         Maps E2B Execution object properties to our expected output format.
@@ -338,9 +332,7 @@ if _exit_code != 0:
 
         return stdout or None, stderr or None, exit_code
 
-    def download_file(
-        self, handle: SandboxHandle, remote_path: str, local_path: Path | None = None
-    ) -> bytes | None:
+    def download_file(self, handle: SandboxHandle, remote_path: str, local_path: Path | None = None) -> bytes | None:
         """Download a file from the sandbox.
 
         Args:

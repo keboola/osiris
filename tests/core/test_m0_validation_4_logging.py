@@ -57,7 +57,8 @@ class TestLoggingConfigurationPrecedence:
         """Test that YAML log level is used when no overrides exist."""
         result = subprocess.run(
             ["python", "osiris.py", "validate", "--json"],
-            check=False, cwd=Path(__file__).parent.parent.parent,
+            check=False,
+            cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env={**os.environ, "OSIRIS_CONFIG": str(osiris_config)},
@@ -80,7 +81,8 @@ class TestLoggingConfigurationPrecedence:
 
         result = subprocess.run(
             ["python", "osiris.py", "validate", "--json"],
-            check=False, cwd=Path(__file__).parent.parent.parent,
+            check=False,
+            cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env=env,
@@ -102,7 +104,8 @@ class TestLoggingConfigurationPrecedence:
 
         result = subprocess.run(
             ["python", "osiris.py", "validate", "--log-level", "ERROR", "--json"],
-            check=False, cwd=Path(__file__).parent.parent.parent,
+            check=False,
+            cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env=env,
@@ -127,7 +130,8 @@ class TestLoggingConfigurationPrecedence:
         # Test 1: YAML only
         result = subprocess.run(
             ["python", "osiris.py", "validate", "--mode", "warn", "--json"],
-            check=False, cwd=Path(__file__).parent.parent.parent,
+            check=False,
+            cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env={**os.environ, "OSIRIS_CONFIG": str(osiris_config)},
@@ -143,7 +147,8 @@ class TestLoggingConfigurationPrecedence:
         env = {**os.environ, "OSIRIS_CONFIG": str(osiris_config), "OSIRIS_LOGS_DIR": str(env_dir)}
         result = subprocess.run(
             ["python", "osiris.py", "validate", "--mode", "warn", "--json"],
-            check=False, cwd=Path(__file__).parent.parent.parent,
+            check=False,
+            cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env=env,
@@ -166,7 +171,8 @@ class TestLoggingConfigurationPrecedence:
                 str(cli_dir),
                 "--json",
             ],
-            check=False, cwd=Path(__file__).parent.parent.parent,
+            check=False,
+            cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env=env,
@@ -341,7 +347,8 @@ class TestEffectiveConfigurationReporting:
 
         result = subprocess.run(
             ["python", "osiris.py", "validate", "--json"],
-            check=False, cwd=Path(__file__).parent.parent.parent,
+            check=False,
+            cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env=env,
@@ -388,7 +395,8 @@ class TestLogLevelComparison:
                 str(logs_dir),
                 "--json",
             ],
-            check=False, cwd=Path(__file__).parent.parent.parent,
+            check=False,
+            cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env={**os.environ, "OSIRIS_CONFIG": str(config_path)},
@@ -534,7 +542,8 @@ class TestManualScenarios:
                 "--logs-dir",
                 str(workspace / "debug_logs"),
             ],
-            check=False, cwd=Path(__file__).parent.parent.parent,
+            check=False,
+            cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env={**os.environ, "OSIRIS_CONFIG": str(config_path)},
@@ -552,7 +561,8 @@ class TestManualScenarios:
                 "--logs-dir",
                 str(workspace / "critical_logs"),
             ],
-            check=False, cwd=Path(__file__).parent.parent.parent,
+            check=False,
+            cwd=Path(__file__).parent.parent.parent,
             capture_output=True,
             text=True,
             env={**os.environ, "OSIRIS_CONFIG": str(config_path)},

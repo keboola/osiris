@@ -1,10 +1,10 @@
 """Driver interface and registry for runtime execution."""
 
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
 import hashlib
 import importlib
 import logging
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)

@@ -59,7 +59,8 @@ connections:
         cmd = [sys.executable, "osiris.py"] + args
         result = subprocess.run(
             cmd,
-            check=False, cwd=cwd,
+            check=False,
+            cwd=cwd,
             capture_output=True,
             text=True,
             env={**os.environ, "PYTHONPATH": str(Path(__file__).parent.parent.parent)},

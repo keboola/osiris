@@ -31,10 +31,7 @@ from osiris.core.execution_adapter import (
     PreparedRun,
     PrepareError,
 )
-from osiris.remote.rpc_protocol import (
-    EventMessage,
-    MetricMessage,
-)
+from osiris.remote.rpc_protocol import EventMessage, MetricMessage
 
 # Get the ProxyWorker code path
 PROXY_WORKER_PATH = Path(__file__).parent / "proxy_worker.py"
@@ -494,6 +491,10 @@ class E2BTransparentProxy(ExecutionAdapter):
             "core/execution_adapter.py",
             "core/session_logging.py",
             "core/redaction.py",
+            "components/__init__.py",
+            "components/registry.py",
+            "components/error_mapper.py",
+            "components/utils.py",
         ]
 
         # Also upload connector modules that drivers might need
@@ -531,6 +532,7 @@ class E2BTransparentProxy(ExecutionAdapter):
         await self.sandbox.files.write("/home/user/osiris/connectors/__init__.py", init_content)
         await self.sandbox.files.write("/home/user/osiris/connectors/mysql/__init__.py", init_content)
         await self.sandbox.files.write("/home/user/osiris/connectors/supabase/__init__.py", init_content)
+        await self.sandbox.files.write("/home/user/osiris/components/__init__.py", init_content)
 
         # Upload all driver modules
         drivers_dir = osiris_root / "drivers"
@@ -546,6 +548,32 @@ class E2BTransparentProxy(ExecutionAdapter):
 
         # Upload worker script
         await self.sandbox.files.write("/home/user/proxy_worker.py", patched_worker_code)
+
+        # Upload component specs
+        components_dir = osiris_root.parent / "components"
+        if components_dir.exists():
+            # Create components directory structure
+            await self.sandbox.commands.run("mkdir -p /home/user/components")
+
+            # Upload each component spec
+            for comp_dir in components_dir.iterdir():
+                if comp_dir.is_dir() and not comp_dir.name.startswith("."):
+                    comp_name = comp_dir.name
+                    spec_file = comp_dir / "spec.yaml"
+                    if spec_file.exists():
+                        await self.sandbox.commands.run(f"mkdir -p /home/user/components/{comp_name}")
+                        with open(spec_file) as f:
+                            await self.sandbox.files.write(f"/home/user/components/{comp_name}/spec.yaml", f.read())
+                        logging.debug(f"Uploaded component spec: {comp_name}")
+
+            # Upload spec.schema.json if it exists
+            schema_file = components_dir / "spec.schema.json"
+            if schema_file.exists():
+                with open(schema_file) as f:
+                    await self.sandbox.files.write("/home/user/components/spec.schema.json", f.read())
+                logging.debug("Uploaded component spec schema")
+
+            logging.info("Component specs uploaded successfully")
 
         # Upload requirements.txt if auto-install is enabled
         if self.config.get("install_deps", False):

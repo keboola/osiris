@@ -66,7 +66,8 @@ steps:
         osiris_path = Path(__file__).parent.parent.parent / "osiris.py"
         compile_result = subprocess.run(
             [sys.executable, str(osiris_path), "compile", str(oml_file)],
-            check=False, capture_output=True,
+            check=False,
+            capture_output=True,
             text=True,
         )
 
@@ -89,7 +90,8 @@ steps:
         # Now run the compiled manifest with dry-run
         run_result = subprocess.run(
             [sys.executable, str(osiris_path), "run", "--last-compile", "--dry-run"],
-            check=False, capture_output=True,
+            check=False,
+            capture_output=True,
             text=True,
         )
 

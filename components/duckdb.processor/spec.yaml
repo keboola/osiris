@@ -79,3 +79,6 @@ x-runtime:
     imports:
       - duckdb
       - pandas
+    packages:
+      - duckdb
+      - pandas

@@ -77,7 +77,8 @@ class TestAIOPAutopilot:
         # Run pipeline
         result = subprocess.run(
             [sys.executable, "-m", "osiris.cli.main", "run", str(simple_pipeline)],
-            check=False, capture_output=True,
+            check=False,
+            capture_output=True,
             text=True,
             cwd=tmp_path,
         )
@@ -131,7 +132,8 @@ class TestAIOPAutopilot:
         # Run pipeline
         subprocess.run(
             [sys.executable, "-m", "osiris.cli.main", "run", str(simple_pipeline)],
-            check=False, capture_output=True,
+            check=False,
+            capture_output=True,
             text=True,
             cwd=tmp_path,
         )
@@ -162,7 +164,8 @@ class TestAIOPAutopilot:
         # Run pipeline
         subprocess.run(
             [sys.executable, "-m", "osiris.cli.main", "run", str(simple_pipeline)],
-            check=False, capture_output=True,
+            check=False,
+            capture_output=True,
             text=True,
             cwd=tmp_path,
         )
@@ -199,7 +202,8 @@ class TestAIOPAutopilot:
         # Run pipeline
         subprocess.run(
             [sys.executable, "-m", "osiris.cli.main", "run", str(simple_pipeline)],
-            check=False, capture_output=True,
+            check=False,
+            capture_output=True,
             text=True,
             cwd=tmp_path,
         )
@@ -244,7 +248,8 @@ class TestAIOPAutopilot:
         # Run pipeline
         subprocess.run(
             [sys.executable, "-m", "osiris.cli.main", "run", str(simple_pipeline)],
-            check=False, capture_output=True,
+            check=False,
+            capture_output=True,
             text=True,
             cwd=tmp_path,
         )
@@ -277,7 +282,8 @@ class TestAIOPAutopilot:
         for _ in range(2):
             subprocess.run(
                 [sys.executable, "-m", "osiris.cli.main", "run", str(simple_pipeline)],
-                check=False, capture_output=True,
+                check=False,
+                capture_output=True,
                 text=True,
                 cwd=tmp_path,
             )

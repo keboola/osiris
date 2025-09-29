@@ -1,7 +1,6 @@
 """Mode mapping utilities for OML v0.1.0 compatibility."""
 
 
-
 class ModeMapper:
     """Maps OML canonical modes to component-specific modes."""
 

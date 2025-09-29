@@ -217,3 +217,7 @@ x-runtime:
       - pandas
       - sqlalchemy
       - pymysql
+    packages:
+      - pandas
+      - sqlalchemy
+      - pymysql

@@ -23,7 +23,8 @@ class TestAllCommandsJSON:
         """Run an osiris command and return stdout."""
         result = subprocess.run(
             [sys.executable, str(osiris_path)] + list(args),
-            check=False, capture_output=True,
+            check=False,
+            capture_output=True,
             text=True,
             cwd=osiris_path.parent,
         )
