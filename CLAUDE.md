@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Osiris MVP is an **LLM-first conversational ETL pipeline generator**. It uses AI conversation to understand user intent, discover database schemas, generate SQL, and create YAML pipelines. This is an **agentic AI system** that replaces traditional template-based approaches with intelligent conversation.
 
 ### Project Status (September 2025)
-- **✅ v0.3.1 Released**: M2a AIOP Complete with WU7a/b/c stabilization - **PRODUCTION READY**
+- **✅ v0.3.1 Released**: Fixed validation warnings for ADR-0020 compliant configs - **CURRENT**
 - **✅ v0.3.0 Released**: Complete M2a AIOP implementation for LLM-friendly debugging
 - **✅ v0.2.0 Released**: Complete M1 implementation with all features production-ready
 - **✅ E2B Integration**: Full parity with local execution, <1% overhead
@@ -431,8 +431,8 @@ python osiris.py chat --pro-mode
 
 ## Version Management
 
-**Current Version**: v0.3.0 (Milestone M2a - AI Operation Package)
-**Branch**: feature/m2a-aiop-context (ready to merge to main)
+**Current Version**: v0.3.1 (Patch release - Fixed validation warnings)
+**Branch**: main
 
 ### Release Process
 
@@ -452,15 +452,24 @@ All changes to main MUST go through a pull request. This includes version bumps.
 
 ## Project Version
 
-**Current Version**: v0.3.0 (Released 2025-09-27)
-**Status**: Production-ready with AIOP for LLM-friendly debugging
+**Current Version**: v0.3.1 (Released 2025-09-29)
+**Status**: Production-ready with clean validation and AIOP debugging
 **Branch**: main
 
 ## MVP Status
 
-Osiris v0.3.0 is a **production-ready system** for LLM-first pipeline generation with comprehensive debugging capabilities. Core conversational AI, database discovery, component registry, both local/E2B execution, and AIOP export for LLM analysis are fully functional and tested.
+Osiris v0.3.1 is a **production-ready system** for LLM-first pipeline generation with comprehensive debugging capabilities. Core conversational AI, database discovery, component registry, both local/E2B execution, and AIOP export for LLM analysis are fully functional and tested. Validation now correctly handles ADR-0020 compliant connection configurations without spurious warnings.
 
 ## Current Development Context
+
+### v0.3.1 Patch Release (September 2025) - COMPLETED ✅
+- **✅ Fixed Validation Warnings**:
+  - Extended connection schemas to accept ADR-0020 fields (`default`, `alias`, `pg_dsn`, etc.)
+  - Eliminated spurious `additionalProperties` warnings for valid configurations
+  - Improved error messages to list unexpected keys and suggest allowed alternatives
+  - Added comprehensive test coverage (11 new tests)
+  - Created `docs/reference/connection-fields.md` reference documentation
+  - **Result**: Clean validation output for all standard connection configurations
 
 ### M2a AIOP Milestone (January 2025) - COMPLETED ✅
 - **✅ AI Operation Package Implementation**:
