@@ -640,6 +640,17 @@ class ProxyWorker:
                 "driver_registration_failed", driver="filesystem.csv_writer", error=str(e)
             )
 
+        # Import and register GraphQL extractor
+        try:
+            from osiris.drivers.graphql_extractor_driver import GraphQLExtractorDriver
+
+            self.driver_registry.register("graphql.extractor", lambda: GraphQLExtractorDriver())
+            self.logger.info("Registered driver: graphql.extractor")
+            self.send_event("driver_registered", driver="graphql.extractor", status="success")
+        except ImportError as e:
+            self.logger.warning(f"Failed to import GraphQLExtractorDriver: {e}")
+            self.send_event("driver_registration_failed", driver="graphql.extractor", error=str(e))
+
         # Import and register Supabase writer if available
         try:
             from osiris.drivers.supabase_writer_driver import SupabaseWriterDriver

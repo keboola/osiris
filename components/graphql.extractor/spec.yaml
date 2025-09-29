@@ -1,0 +1,359 @@
+# GraphQL API Extractor Component Specification
+name: graphql.extractor
+version: 1.0.0
+title: GraphQL API Extractor
+description: Extract data from any GraphQL API endpoint with support for queries, variables, authentication, and pagination
+
+modes:
+  - extract
+
+capabilities:
+  discover: false  # GraphQL schema introspection could be added later
+  adHocAnalytics: true  # can execute arbitrary GraphQL queries
+  inMemoryMove: false   # returns DataFrame but no direct move API
+  streaming: false      # no streaming support (batch only)
+  bulkOperations: true  # supports pagination for large datasets
+  transactions: false   # GraphQL doesn't typically use transactions
+  partitioning: true    # supports cursor-based pagination
+  customTransforms: false  # no custom transforms
+
+configSchema:
+  type: object
+  properties:
+    endpoint:
+      type: string
+      format: uri
+      description: GraphQL API endpoint URL
+      minLength: 1
+      example: "https://api.github.com/graphql"
+    query:
+      type: string
+      description: GraphQL query string
+      minLength: 1
+      example: |
+        query GetRepositories($first: Int!) {
+          viewer {
+            repositories(first: $first) {
+              nodes {
+                name
+                description
+                stargazerCount
+                forkCount
+              }
+            }
+          }
+        }
+    variables:
+      type: object
+      description: GraphQL query variables as key-value pairs
+      additionalProperties: true
+      default: {}
+      example: {"first": 10, "after": null}
+    headers:
+      type: object
+      description: HTTP headers for authentication and customization
+      additionalProperties:
+        type: string
+      default: {}
+      example: {"User-Agent": "Osiris/1.0"}
+    auth_type:
+      type: string
+      description: Authentication method
+      enum: ["none", "bearer", "basic", "api_key"]
+      default: "none"
+    auth_token:
+      type: string
+      description: Authentication token (for bearer, basic password, or API key)
+    auth_username:
+      type: string
+      description: Username for basic authentication
+    auth_header_name:
+      type: string
+      description: Custom header name for API key authentication
+      default: "X-API-Key"
+    timeout:
+      type: integer
+      description: Request timeout in seconds
+      default: 30
+      minimum: 5
+      maximum: 300
+    max_retries:
+      type: integer
+      description: Maximum number of retry attempts
+      default: 3
+      minimum: 0
+      maximum: 10
+    retry_delay:
+      type: number
+      description: Delay between retries in seconds
+      default: 1.0
+      minimum: 0.1
+      maximum: 60.0
+    pagination_enabled:
+      type: boolean
+      description: Enable automatic pagination for paginated GraphQL queries
+      default: false
+    pagination_path:
+      type: string
+      description: JSONPath to pagination info (e.g., "data.repositories.pageInfo")
+      default: "data.pageInfo"
+    pagination_cursor_field:
+      type: string
+      description: Name of cursor field in pageInfo
+      default: "endCursor"
+    pagination_has_next_field:
+      type: string
+      description: Name of hasNext field in pageInfo
+      default: "hasNextPage"
+    pagination_variable_name:
+      type: string
+      description: Name of the variable to update with cursor for next page
+      default: "after"
+    max_pages:
+      type: integer
+      description: Maximum number of pages to fetch (0 = unlimited)
+      default: 0
+      minimum: 0
+    data_path:
+      type: string
+      description: JSONPath to extract data from response (e.g., "data.repositories.nodes")
+      default: "data"
+    flatten_result:
+      type: boolean
+      description: Whether to flatten nested objects in the result
+      default: true
+    validate_ssl:
+      type: boolean
+      description: Whether to validate SSL certificates
+      default: true
+  required:
+    - endpoint
+    - query
+  additionalProperties: false
+
+secrets:
+  - /auth_token
+  - /auth_username
+  - /headers
+
+redaction:
+  strategy: mask
+  mask: "***"
+  extras:
+    - /auth_token
+    - /auth_username
+    - /headers/Authorization
+    - /headers/X-API-Key
+
+constraints:
+  required:
+    - when:
+        auth_type: "basic"
+      must:
+        auth_username:
+          minLength: 1
+        auth_token:
+          minLength: 1
+      error: "Basic authentication requires both username and password (auth_token)"
+    - when:
+        auth_type: "bearer"
+      must:
+        auth_token:
+          minLength: 1
+      error: "Bearer authentication requires auth_token"
+    - when:
+        auth_type: "api_key"
+      must:
+        auth_token:
+          minLength: 1
+      error: "API key authentication requires auth_token"
+    - when:
+        pagination_enabled: true
+      must:
+        pagination_path:
+          minLength: 1
+        pagination_cursor_field:
+          minLength: 1
+        pagination_variable_name:
+          minLength: 1
+      error: "Pagination requires pagination_path, cursor_field, and variable_name"
+
+examples:
+  - title: GitHub API - Get repositories
+    config:
+      endpoint: "https://api.github.com/graphql"
+      query: |
+        query GetRepositories($first: Int!) {
+          viewer {
+            repositories(first: $first) {
+              nodes {
+                name
+                description
+                stargazerCount
+                forkCount
+                primaryLanguage {
+                  name
+                }
+              }
+            }
+          }
+        }
+      variables:
+        first: 20
+      auth_type: "bearer"
+      auth_token: "ghp_your_token_here"  # pragma: allowlist secret
+      data_path: "data.viewer.repositories.nodes"
+      timeout: 60
+    notes: Extract user repositories from GitHub GraphQL API
+
+  - title: Shopify Admin API - Get products
+    config:
+      endpoint: "https://your-shop.myshopify.com/admin/api/2023-10/graphql.json"
+      query: |
+        query GetProducts($first: Int!, $after: String) {
+          products(first: $first, after: $after) {
+            edges {
+              node {
+                id
+                title
+                handle
+                productType
+                vendor
+                createdAt
+                updatedAt
+              }
+            }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+          }
+        }
+      variables:
+        first: 50
+      auth_type: "api_key"
+      auth_header_name: "X-Shopify-Access-Token"
+      auth_token: "your_access_token"  # pragma: allowlist secret
+      pagination_enabled: true
+      pagination_path: "data.products.pageInfo"
+      data_path: "data.products.edges[*].node"
+      max_pages: 10
+    notes: Extract products from Shopify with automatic pagination
+
+  - title: HasuraDB - Simple query
+    config:
+      endpoint: "https://your-hasura-app.hasura.app/v1/graphql"
+      query: |
+        query GetUsers {
+          users {
+            id
+            name
+            email
+            created_at
+          }
+        }
+      headers:
+        "X-Hasura-Admin-Secret": "your_admin_secret"  # pragma: allowlist secret
+      data_path: "data.users"
+    notes: Query users from Hasura GraphQL database
+
+  - title: GraphQL with custom authentication
+    config:
+      endpoint: "https://api.custom-service.com/graphql"
+      query: |
+        query GetData($filter: String) {
+          items(filter: $filter) {
+            id
+            name
+            value
+            metadata
+          }
+        }
+      variables:
+        filter: "active"
+      headers:
+        "Authorization": "Custom your-api-key"  # pragma: allowlist secret
+        "Content-Type": "application/json"
+        "User-Agent": "Osiris GraphQL Extractor/1.0"
+      timeout: 120
+      max_retries: 5
+    notes: Custom service with non-standard authentication
+
+compatibility:
+  requires:
+    - python>=3.10
+    - requests>=2.25.0
+    - jsonpath-ng>=1.5.0
+  platforms:
+    - linux
+    - darwin
+    - windows
+    - docker
+
+llmHints:
+  inputAliases:
+    endpoint:
+      - url
+      - api_url
+      - graphql_url
+      - graphql_endpoint
+    query:
+      - graphql_query
+      - gql_query
+      - gql
+    variables:
+      - query_variables
+      - graphql_variables
+      - params
+    auth_token:
+      - token
+      - api_key
+      - access_token
+      - bearer_token
+  promptGuidance: |
+    Use graphql.extractor to query any GraphQL API.
+    Requires endpoint URL and GraphQL query string.
+    Supports various authentication methods (bearer, basic, API key).
+    Can handle pagination automatically for large datasets.
+    Use data_path to extract specific data from nested responses.
+  yamlSnippets:
+    - "type: graphql.extractor"
+    - "endpoint: https://api.example.com/graphql"
+    - 'query: "query { users { id name } }"'
+    - "auth_type: bearer"
+  commonPatterns:
+    - pattern: simple_query
+      description: Basic GraphQL query without authentication
+    - pattern: authenticated_query
+      description: GraphQL query with bearer token authentication
+    - pattern: paginated_query
+      description: GraphQL query with automatic pagination
+    - pattern: complex_nested_query
+      description: Complex query with variables and nested data extraction
+
+loggingPolicy:
+  sensitivePaths:
+    - /auth_token
+    - /auth_username
+    - /headers/Authorization
+    - /headers/X-API-Key
+  eventDefaults:
+    - extraction.start
+    - extraction.query
+    - extraction.response
+    - extraction.page
+    - extraction.complete
+    - extraction.error
+  metricsToCapture:
+    - rows_read
+    - bytes_processed
+    - duration_ms
+
+limits:
+  maxRows: 1000000
+  maxSizeMB: 1024
+  maxDurationSeconds: 1800
+  maxConcurrency: 3
+
+x-runtime:
+  driver: osiris.drivers.graphql_extractor_driver.GraphQLExtractorDriver
