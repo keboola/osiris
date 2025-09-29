@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "osiris-pipeline"
-version = "0.3.0"
+version = "0.3.1"
 description = "LLM-first conversational ETL pipeline generator"
 readme = "README.md"
 license = {text = "Apache-2.0"}

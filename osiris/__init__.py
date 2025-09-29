@@ -14,7 +14,7 @@
 
 """Osiris MVP - Conversational ETL pipeline generator."""
 
-__version__ = "1.0.0-mvp"
+__version__ = "0.3.1"
 __author__ = "Osiris Team"
 __description__ = "LLM-first conversational ETL pipeline generator"
 
