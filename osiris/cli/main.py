@@ -698,30 +698,95 @@ def validate_command(args: list):
         else:
             validation_results["sections"]["pipeline"] = {"status": "missing"}
 
-        # Check environment variables for database connections
+        # Check database connections using modern osiris_connections.yaml system
         logger.info("Checking database connection configurations...")
 
-        # MySQL
-        mysql_vars = ["MYSQL_HOST", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE"]
-        mysql_configured = all(os.environ.get(var) for var in mysql_vars)
-        missing_mysql = [var for var in mysql_vars if not os.environ.get(var)]
-        validation_results["database_connections"]["mysql"] = {
-            "configured": mysql_configured,
-            "missing_vars": missing_mysql if not mysql_configured else [],
-        }
-        if mysql_configured:
-            logger.debug("MySQL configuration found")
-        else:
-            logger.warning(f"MySQL missing vars: {missing_mysql}")
+        # Load connections from osiris_connections.yaml
+        from ..core.config import load_connections_yaml
 
-        # Supabase
-        supabase_vars = ["SUPABASE_PROJECT_ID", "SUPABASE_ANON_PUBLIC_KEY"]
-        supabase_configured = all(os.environ.get(var) for var in supabase_vars)
-        missing_supabase = [var for var in supabase_vars if not os.environ.get(var)]
-        validation_results["database_connections"]["supabase"] = {
-            "configured": supabase_configured,
-            "missing_vars": missing_supabase if not supabase_configured else [],
-        }
+        # First load raw to check env vars, then load with substitution
+        raw_connections = load_connections_yaml(substitute_env=False)
+        connections = load_connections_yaml(substitute_env=True)
+
+        # Helper to extract env vars from config
+        def extract_env_vars(config_dict):
+            """Extract ${VAR} patterns from config."""
+            import re
+
+            env_vars = set()
+
+            def walk_dict(d):
+                for _key, value in d.items():
+                    if isinstance(value, str):
+                        # Find all ${VAR} patterns
+                        pattern = r"\$\{([^}]+)\}"
+                        matches = re.findall(pattern, value)
+                        env_vars.update(matches)
+                    elif isinstance(value, dict):
+                        walk_dict(value)
+
+            walk_dict(config_dict)
+            return list(env_vars)
+
+        # Check MySQL connections
+        mysql_connections = connections.get("mysql", {})
+        mysql_raw = raw_connections.get("mysql", {})
+        if mysql_connections:
+            # Get env vars used in MySQL connections
+            all_mysql_vars = set()
+            for _alias, config in mysql_raw.items():
+                vars_for_alias = extract_env_vars(config)
+                all_mysql_vars.update(vars_for_alias)
+
+            missing_mysql_vars = [var for var in all_mysql_vars if not os.environ.get(var)]
+
+            validation_results["database_connections"]["mysql"] = {
+                "configured": len(missing_mysql_vars) == 0,
+                "missing_vars": missing_mysql_vars,
+                "aliases": list(mysql_connections.keys()),
+            }
+
+            if missing_mysql_vars:
+                logger.warning(f"MySQL missing env vars: {missing_mysql_vars}")
+            else:
+                logger.debug(f"MySQL connections found: {list(mysql_connections.keys())}")
+        else:
+            validation_results["database_connections"]["mysql"] = {
+                "configured": False,
+                "missing_vars": [],
+                "aliases": [],
+                "note": "No MySQL connections defined in osiris_connections.yaml",
+            }
+
+        # Check Supabase connections
+        supabase_connections = connections.get("supabase", {})
+        supabase_raw = raw_connections.get("supabase", {})
+        if supabase_connections:
+            # Get env vars used in Supabase connections
+            all_supabase_vars = set()
+            for _alias, config in supabase_raw.items():
+                vars_for_alias = extract_env_vars(config)
+                all_supabase_vars.update(vars_for_alias)
+
+            missing_supabase_vars = [var for var in all_supabase_vars if not os.environ.get(var)]
+
+            validation_results["database_connections"]["supabase"] = {
+                "configured": len(missing_supabase_vars) == 0,
+                "missing_vars": missing_supabase_vars,
+                "aliases": list(supabase_connections.keys()),
+            }
+
+            if missing_supabase_vars:
+                logger.warning(f"Supabase missing env vars: {missing_supabase_vars}")
+            else:
+                logger.debug(f"Supabase connections found: {list(supabase_connections.keys())}")
+        else:
+            validation_results["database_connections"]["supabase"] = {
+                "configured": False,
+                "missing_vars": [],
+                "aliases": [],
+                "note": "No Supabase connections defined in osiris_connections.yaml",
+            }
 
         # LLM API Keys
         llm_keys = {
@@ -744,49 +809,29 @@ def validate_command(args: list):
             validator = ConnectionValidator.from_env()
             validation_mode = get_validation_mode()
 
-        # Test connection configurations if they exist in environment
-        connection_configs = []
+        # Test connection configurations if they exist in osiris_connections.yaml
+        # Validate each configured connection using the new validator
+        for family, aliases in connections.items():
+            if family in ["mysql", "supabase"]:  # Only validate supported types
+                for alias, config in aliases.items():
+                    # Add the type field that the validator expects
+                    config_with_type = {"type": family, **config}
 
-        # MySQL configuration from environment
-        if mysql_configured:
-            mysql_config = {
-                "type": "mysql",
-                "host": os.environ.get("MYSQL_HOST"),
-                "port": int(os.environ.get("MYSQL_PORT", "3306")),
-                "database": os.environ.get("MYSQL_DATABASE"),
-                "user": os.environ.get("MYSQL_USER"),
-                "password": os.environ.get("MYSQL_PASSWORD"),
-            }
-            result = validator.validate_connection(mysql_config)
-            validation_results["connection_validation"]["mysql"] = {
-                "is_valid": result.is_valid,
-                "errors": [
-                    {"path": e.path, "message": e.message, "fix": e.fix} for e in result.errors
-                ],
-                "warnings": [
-                    {"path": w.path, "message": w.message, "fix": w.fix} for w in result.warnings
-                ],
-            }
+                    result = validator.validate_connection(config_with_type)
 
-        # Supabase configuration from environment
-        if supabase_configured:
-            # Build URL from project ID
-            project_id = os.environ.get("SUPABASE_PROJECT_ID")
-            supabase_config = {
-                "type": "supabase",
-                "url": f"https://{project_id}.supabase.co",
-                "key": os.environ.get("SUPABASE_ANON_PUBLIC_KEY"),
-            }
-            result = validator.validate_connection(supabase_config)
-            validation_results["connection_validation"]["supabase"] = {
-                "is_valid": result.is_valid,
-                "errors": [
-                    {"path": e.path, "message": e.message, "fix": e.fix} for e in result.errors
-                ],
-                "warnings": [
-                    {"path": w.path, "message": w.message, "fix": w.fix} for w in result.warnings
-                ],
-            }
+                    # Store validation results per connection
+                    conn_key = f"{family}.{alias}"
+                    validation_results["connection_validation"][conn_key] = {
+                        "is_valid": result.is_valid,
+                        "errors": [
+                            {"path": e.path, "message": e.message, "fix": e.fix}
+                            for e in result.errors
+                        ],
+                        "warnings": [
+                            {"path": w.path, "message": w.message, "fix": w.fix}
+                            for w in result.warnings
+                        ],
+                    }
 
         # Set validation mode in results for reference
         validation_results["validation_mode"] = validation_mode.value
@@ -825,12 +870,21 @@ def validate_command(args: list):
 
             console.print("\n🔌 Database connection status:")
             for db, data in validation_results["database_connections"].items():
-                if data["configured"]:
-                    console.print(f"   {db.upper()}: ✅ Configured")
+                if data.get("aliases"):
+                    if data["configured"]:
+                        console.print(
+                            f"   {db.upper()}: ✅ Configured ({', '.join(data['aliases'])})"
+                        )
+                    else:
+                        console.print(f"   {db.upper()}: ⚠️ Found ({', '.join(data['aliases'])})")
+                        if data["missing_vars"]:
+                            console.print(
+                                f"      Missing env vars: {', '.join(data['missing_vars'])}"
+                            )
                 else:
-                    console.print(f"   {db.upper()}: ❌ Missing variables")
-                    if data["missing_vars"]:
-                        console.print(f"      Missing: {', '.join(data['missing_vars'])}")
+                    console.print(f"   {db.upper()}: ❌ Not configured")
+                    if data.get("note"):
+                        console.print(f"      {data['note']}")
 
             console.print("\n🤖 LLM API key status:")
             configured_llms = []
@@ -854,15 +908,15 @@ def validate_command(args: list):
                     f"\n🔍 Connection validation (mode: {validation_results['validation_mode']}):"
                 )
 
-                for db, result in validation_results["connection_validation"].items():
+                for conn_key, result in validation_results["connection_validation"].items():
                     if result["is_valid"] and not result["warnings"]:
-                        console.print(f"   {db.upper()}: ✅ Configuration valid")
+                        console.print(f"   {conn_key}: ✅ Configuration valid")
                     elif result["is_valid"] and result["warnings"]:
-                        console.print(f"   {db.upper()}: ⚠️  Configuration valid with warnings")
+                        console.print(f"   {conn_key}: ⚠️  Configuration valid with warnings")
                         for warning in result["warnings"]:
                             console.print(f"      WARN {warning['path']}: {warning['fix']}")
                     else:
-                        console.print(f"   {db.upper()}: ❌ Configuration invalid")
+                        console.print(f"   {conn_key}: ❌ Configuration invalid")
                         for error in result["errors"]:
                             console.print(f"      ERROR {error['path']}: {error['fix']}")
 
