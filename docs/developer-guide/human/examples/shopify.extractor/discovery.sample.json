@@ -1,0 +1,157 @@
+{
+  "discovered_at": "2025-09-30T12:00:00.000Z",
+  "shop_domain": "mystore.myshopify.com",
+  "api_version": "2024-01",
+  "resources": [
+    {
+      "name": "customers",
+      "endpoint": "/admin/api/2024-01/customers.json",
+      "estimated_count": 15000,
+      "supports_pagination": true,
+      "supports_filtering": true,
+      "rate_limit_tier": "standard",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "first_name",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "last_name",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": false
+        }
+      ]
+    },
+    {
+      "name": "orders",
+      "endpoint": "/admin/api/2024-01/orders.json",
+      "estimated_count": 50000,
+      "supports_pagination": true,
+      "supports_filtering": true,
+      "rate_limit_tier": "standard",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "order_number",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "customer_id",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "total_price",
+          "type": "decimal",
+          "nullable": false
+        },
+        {
+          "name": "currency",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": false
+        }
+      ]
+    },
+    {
+      "name": "products",
+      "endpoint": "/admin/api/2024-01/products.json",
+      "estimated_count": 5000,
+      "supports_pagination": true,
+      "supports_filtering": true,
+      "rate_limit_tier": "standard",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "vendor",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "product_type",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": false
+        }
+      ]
+    },
+    {
+      "name": "inventory_items",
+      "endpoint": "/admin/api/2024-01/inventory_items.json",
+      "estimated_count": 8000,
+      "supports_pagination": true,
+      "supports_filtering": false,
+      "rate_limit_tier": "standard",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "sku",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "tracked",
+          "type": "boolean",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": false
+        }
+      ]
+    }
+  ],
+  "fingerprint": "sha256:a3f5e7d9c2b1a8f4e6d3c9b5a7f2e8d4c1b9a6f3e5d7c2b8a4f6e3d9c5b7a2f8"
+}

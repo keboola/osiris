@@ -24,14 +24,8 @@ include:
 - components/*/**/spec.yaml
 
 # Docs – keep ADRs, milestones, roadmap + top-level docs + examples
-- docs/adr/*.md
-- docs/milestones/*.md
-- docs/roadmap/*.md
-- docs/*.md
-- docs/examples/*.yaml
-- docs/reference/aiop.*.json*
-- docs/examples/aiop-*.json
-- docs/examples/run-card-sample.md
+- docs/**/*.md
+- docs/**/*.yaml
 
 # E2B docs + CI skripty
 - docs/testing/e2b-testing-guide.md
@@ -72,6 +66,9 @@ include:
 exclude:
 # Coverage HTML reports (too large)
 - "docs/testing/research/coverage-*/html/**"
+
+# Archived docs
+- "docs/archive/**"
 
 # Python noise (still needed since .gitignore doesn't have these)
 - "**/__pycache__/**"

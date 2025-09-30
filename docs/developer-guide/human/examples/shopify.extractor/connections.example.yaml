@@ -1,0 +1,41 @@
+# Example Shopify Connection Configuration
+# Copy to osiris_connections.yaml in project root
+
+version: 1
+
+connections:
+  # Shopify connections
+  shopify:
+    # Default store
+    default:
+      shop_domain: "mystore.myshopify.com"
+      access_token: "${SHOPIFY_ACCESS_TOKEN}"  # Set in environment
+      api_version: "2024-01"
+      rate_limit: 2  # requests per second
+
+    # Production store
+    production:
+      shop_domain: "prod-store.myshopify.com"
+      access_token: "${SHOPIFY_PROD_ACCESS_TOKEN}"
+      api_version: "2024-01"
+      default: true  # Use this when no alias specified
+
+    # Development store
+    dev:
+      shop_domain: "dev-store.myshopify.com"
+      access_token: "${SHOPIFY_DEV_ACCESS_TOKEN}"
+      api_version: "2023-10"
+
+# Environment variable requirements:
+#   SHOPIFY_ACCESS_TOKEN - Default store access token
+#   SHOPIFY_PROD_ACCESS_TOKEN - Production store access token
+#   SHOPIFY_DEV_ACCESS_TOKEN - Development store access token
+#
+# To set:
+#   export SHOPIFY_ACCESS_TOKEN="shpat_xxxxx"  # pragma: allowlist secret
+#
+# Security notes:
+#   - Never commit actual tokens to git
+#   - Use environment variables for all secrets
+#   - Rotate tokens regularly
+#   - Use scoped tokens (minimal permissions)

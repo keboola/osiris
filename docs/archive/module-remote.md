@@ -56,7 +56,7 @@ class E2BTransparentProxy(ExecutionAdapter):
 **Configuration Options:**
 ```python
 {
-    "api_key": "e2b_...",        # E2B API key
+    "api_key": "e2b_...",        # E2B API key # pragma: allowlist secret
     "template": "base",          # Sandbox template
     "cpu": 2,                    # CPU cores
     "memory_gb": 4,              # RAM in GB
