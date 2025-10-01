@@ -127,7 +127,7 @@ class LocalAdapter(ExecutionAdapter):
         except Exception as e:
             raise PrepareError(f"Failed to prepare local execution: {e}") from e
 
-    def execute(self, prepared: PreparedRun, context: ExecutionContext) -> ExecResult:
+    def execute(self, prepared: PreparedRun, context: ExecutionContext) -> ExecResult:  # noqa: PLR0915
         """Execute prepared pipeline locally.
 
         Args:
@@ -532,6 +532,23 @@ class LocalAdapter(ExecutionAdapter):
         if not cfg_paths:
             return
 
+        run_cfg_dir = context.logs_dir / "cfg"
+
+        # If cfg files are already materialized alongside the prepared manifest,
+        # treat this as success. This enables self-contained runs where callers
+        # copy compiled assets directly into the session directory.
+        if run_cfg_dir.exists():
+            missing_in_run = [cfg_path for cfg_path in cfg_paths if not (run_cfg_dir / Path(cfg_path).name).exists()]
+            if not missing_in_run:
+                log_event(
+                    "preflight_validation_success",
+                    adapter="local",
+                    cfg_files_count=len(cfg_paths),
+                    source_base=str(run_cfg_dir),
+                    session_id=context.session_id,
+                )
+                return
+
         # Determine source location using same logic as _materialize_cfg_files
         source_base = None
 
@@ -589,9 +606,13 @@ class LocalAdapter(ExecutionAdapter):
 
             # Try same resolution order as _materialize_cfg_files
             if (
-                (source_base / cfg_path).exists()
-                or (source_base / "compiled" / cfg_path).exists()
-                or (source_base / "cfg" / Path(cfg_path).name).exists()
+                (
+                    (source_base / cfg_path).exists()
+                    or (source_base / "compiled" / cfg_path).exists()
+                    or (source_base / "cfg" / Path(cfg_path).name).exists()
+                )
+                or run_cfg_dir.exists()
+                and (run_cfg_dir / Path(cfg_path).name).exists()
             ):
                 source_cfg_found = True
 
