@@ -13,6 +13,29 @@ from .params_resolver import ParamsResolver
 from .session_logging import log_event
 
 
+COMMON_SECRET_NAMES = {
+    "password",
+    "passwd",
+    "pwd",
+    "token",
+    "secret",
+    "secret_key",
+    "service_key",
+    "service_role_key",
+    "api_key",
+    "access_token",
+    "refresh_token",
+    "auth_token",
+    "bearer_token",
+    "client_secret",
+    "client_key",
+    "key",
+    "dsn",
+    "connection_string",
+    "anon_key",
+}
+
+
 class CompilerV0:
     """Minimal compiler for linear pipelines only."""
 
@@ -132,6 +155,7 @@ class CompilerV0:
                 key_lower = key.lower()
                 if (
                     key_lower in self.secret_field_names
+                    and key_lower not in {"primary_key", "url"}
                     and isinstance(value, str)
                     and value
                     and not value.startswith("${")
@@ -304,7 +328,7 @@ class CompilerV0:
                 schema = component_spec.get("configSchema", {}) or {}
                 allowed_fields = set((schema.get("properties", {}) or {}).keys())
 
-            secret_keys = self._secret_keys_for_component(component_spec)
+            secret_keys = {key.lower() for key in self._secret_keys_for_component(component_spec)}
             reserved_keys = {"connection"}
 
             # Filter out secrets (they'll be resolved at runtime)
@@ -312,7 +336,10 @@ class CompilerV0:
                 if allowed_fields and key not in allowed_fields and key not in reserved_keys:
                     raise ConfigError(f"Unknown configuration key '{key}' for component '{component_name}'")
 
-                if key in secret_keys:
+                key_lower = key.lower()
+                if key_lower in secret_keys or (
+                    key_lower in self.secret_field_names and key_lower not in {"primary_key", "url"}
+                ):
                     continue
 
                 step_config[key] = value
@@ -334,18 +361,21 @@ class CompilerV0:
         for spec in specs.values():
             for key in self._secret_keys_for_component(spec):
                 keys.add(key.lower())
+        keys.update(name.lower() for name in COMMON_SECRET_NAMES)
+        keys.discard("primary_key")
         return keys
 
     def _secret_keys_for_component(self, spec: dict[str, Any] | None) -> set[str]:
+        base_keys = {name.lower() for name in COMMON_SECRET_NAMES}
         if not spec:
-            return set()
+            return base_keys
 
-        secret_keys: set[str] = set()
+        secret_keys: set[str] = set(base_keys)
         for field in ("secrets", "x-secret"):
             for pointer in spec.get(field, []) or []:
                 segments = self._pointer_to_segments(pointer)
                 if segments:
-                    secret_keys.add(segments[0])
+                    secret_keys.add(segments[0].lower())
         return secret_keys
 
     @staticmethod

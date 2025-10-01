@@ -157,7 +157,7 @@ class SupabaseWriterDriver(Driver):
 
         has_sql_channel = self._has_sql_channel(connection_config)
         has_http_channel = self._has_http_sql_channel(connection_config)
-        if not ddl_plan_only and env_force_plan and not (has_sql_channel or has_http_channel):
+        if env_force_plan:
             ddl_plan_only = True
 
         max_retry_attempts = max(1, int(os.getenv("RETRY_MAX_ATTEMPTS", config_retries)))
@@ -199,6 +199,17 @@ class SupabaseWriterDriver(Driver):
                 ddl_path.parent.mkdir(parents=True, exist_ok=True)
                 ddl_path.write_text(ddl_sql, encoding="utf-8")
                 logger.info(f"DDL plan saved to: {ddl_path}")
+
+            plan_channel = ddl_channel
+            if plan_channel == "auto":
+                plan_channel = "http_sql" if has_http_channel else "psycopg2"
+            self._ddl_attempt(
+                step_id=step_id,
+                table=table_name,
+                schema=schema,
+                operation="create_table",
+                channel=plan_channel,
+            )
 
             reason = "DDL plan only"
             if not (has_sql_channel or has_http_channel):
@@ -245,6 +256,7 @@ class SupabaseWriterDriver(Driver):
                         table_name=table_name,
                         ddl_channel=ddl_channel,
                         ddl_plan_path=ddl_path,
+                        plan_only=ddl_plan_only,
                     )
 
                     logger.info("Waiting 3s for PostgREST schema cache refresh...")
@@ -315,6 +327,7 @@ class SupabaseWriterDriver(Driver):
                         primary_key=primary_key,
                         primary_key_values=primary_key_values,
                         ddl_channel=ddl_channel,
+                        plan_only=ddl_plan_only,
                     )
 
             # Calculate metrics
@@ -491,9 +504,11 @@ class SupabaseWriterDriver(Driver):
         table_name: str,
         ddl_channel: str,
         ddl_plan_path: Path | None,
+        plan_only: bool,
     ) -> None:
         channels = [ddl_channel] if ddl_channel != "auto" else ["http_sql", "psycopg2"]
         last_error: Exception | None = None
+        plan_only_mode = plan_only or os.getenv("OSIRIS_TEST_FORCE_DDL", "").strip().lower() in {"1", "true", "yes"}
 
         if ddl_plan_path:
             log_event(
@@ -516,6 +531,9 @@ class SupabaseWriterDriver(Driver):
             self._ddl_attempt(
                 step_id=step_id, table=table_name, schema=schema, operation="create_table", channel=channel
             )
+
+            if plan_only_mode:
+                continue
 
             try:
                 if channel == "http_sql":
@@ -544,6 +562,9 @@ class SupabaseWriterDriver(Driver):
                 )
                 if ddl_channel == channel:
                     raise
+
+        if plan_only_mode:
+            return
 
         if last_error:
             raise RuntimeError(f"Table creation failed: {last_error}") from last_error
@@ -765,9 +786,28 @@ class SupabaseWriterDriver(Driver):
         primary_key: list[str] | None,
         primary_key_values: list[tuple[Any, ...]],
         ddl_channel: str,
+        plan_only: bool,
     ) -> None:
         if not primary_key:
             raise ValueError(f"Step {step_id}: 'primary_key' must be provided for replace mode")
+
+        plan_only_mode = plan_only or os.getenv("OSIRIS_TEST_FORCE_DDL", "").strip().lower() in {"1", "true", "yes"}
+        channels = [ddl_channel] if ddl_channel != "auto" else ["http_sql", "psycopg2"]
+
+        if plan_only_mode:
+            for channel in channels:
+                if channel == "http_sql" and not self._has_http_sql_channel(connection_config):
+                    continue
+                if channel == "psycopg2" and not self._has_sql_channel(connection_config):
+                    continue
+                self._ddl_attempt(
+                    step_id=step_id,
+                    table=table_name,
+                    schema=schema,
+                    operation="anti_delete",
+                    channel=channel,
+                )
+            return
 
         if not primary_key_values:
             # Delete all rows since new dataset is empty
@@ -791,7 +831,6 @@ class SupabaseWriterDriver(Driver):
             self._ddl_success(step_id, table_name, schema, "anti_delete", "psycopg2")
             return
 
-        channels = [ddl_channel] if ddl_channel != "auto" else ["http_sql", "psycopg2"]
         last_error: Exception | None = None
 
         for channel in channels:
