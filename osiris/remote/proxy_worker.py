@@ -531,6 +531,7 @@ class ProxyWorker:
             )
 
             cached_output: dict[str, Any] = {}
+            force_spill = os.getenv("E2B_FORCE_SPILL", "").strip().lower() in {"1", "true", "yes"}
 
             # Extract metrics from result (if any)
             # Extractors return {"df": DataFrame} and we count rows as rows_processed
@@ -545,18 +546,33 @@ class ProxyWorker:
                     try:
                         import pandas as pd
 
-                        if isinstance(result["df"], pd.DataFrame):
-                            rows_processed = len(result["df"])
-                            # Use pickle for DataFrame caching to handle all data types
-                            pickle_path = step_artifacts_dir / "output.pkl"
-                            result["df"].to_pickle(pickle_path)
-                            cached_output["df_path"] = pickle_path
-                            self._emit_artifact_event(pickle_path, artifact_type="pickle", step_id=step_id)
-                            # Emit rows_read for extractors specifically (ONLY with step tag)
+                        df_value = result["df"]
+                        if isinstance(df_value, pd.DataFrame):
+                            rows_processed = len(df_value)
+                            if force_spill:
+                                parquet_path = step_artifacts_dir / "output.parquet"
+                                df_value.to_parquet(parquet_path)
+                                self._emit_artifact_event(parquet_path, artifact_type="parquet", step_id=step_id)
+
+                                schema_path = step_artifacts_dir / "schema.json"
+                                try:
+                                    schema = {column: str(dtype) for column, dtype in df_value.dtypes.items()}
+                                    schema_path.write_text(json.dumps(schema, indent=2), encoding="utf-8")
+                                    cached_output["schema_path"] = schema_path
+                                    self._emit_artifact_event(schema_path, artifact_type="schema", step_id=step_id)
+                                except Exception as exc:  # pragma: no cover - best effort
+                                    self.logger.debug(f"Failed to write schema for {step_id}: {exc}")
+
+                                cached_output["df_path"] = parquet_path
+                                cached_output["spilled"] = True
+                                # Drop the in-memory DataFrame reference
+                                result["df"] = None
+                            else:
+                                cached_output["df"] = df_value
+                                cached_output["spilled"] = False
+
                             if driver_name.endswith(".extractor"):
                                 self.send_metric("rows_read", rows_processed, tags={"step": step_id})
-                            # Release DataFrame reference held in result
-                            del result["df"]
                     except Exception as exc:
                         self.logger.error(f"Failed to cache DataFrame for step {step_id}: {exc}")
 
@@ -597,6 +613,7 @@ class ProxyWorker:
             self.send_metric("steps_completed", self.step_count)
             if rows_processed > 0:
                 self.send_metric("rows_processed", rows_processed, tags={"step": step_id})
+                self.send_metric("rows_out", rows_processed, tags={"step": step_id})
             self.send_metric("step_duration_ms", duration_ms, tags={"step": step_id})
 
             self.step_outputs[step_id] = cached_output
@@ -1194,8 +1211,7 @@ class ProxyWorker:
                     try:
                         import pandas as pd
 
-                        # Read pickle file
-                        df = pd.read_pickle(df_path)
+                        df = pd.read_parquet(df_path)
                         resolved[input_key] = df
                         rows = len(df)
                         rows_total += rows
@@ -1206,12 +1222,33 @@ class ProxyWorker:
                             key=from_key,
                             rows=rows,
                             artifact=str(Path(df_path).relative_to(self.session_dir)),
+                            from_memory=False,
+                            from_spill=True,
                         )
                     except Exception as exc:
                         self.logger.error(f"Failed to load input DataFrame {df_path}: {exc}")
                 elif isinstance(step_output, dict) and from_key in step_output:
-                    resolved[input_key] = step_output[from_key]
+                    value = step_output[from_key]
+                    resolved[input_key] = value
                     self.logger.debug(f"Resolved input '{input_key}' from step '{from_step}', key '{from_key}'")
+                    if from_key == "df":
+                        try:
+                            import pandas as pd
+
+                            if isinstance(value, pd.DataFrame):
+                                rows = len(value)
+                                rows_total += rows
+                                self.send_event(
+                                    "inputs_resolved",
+                                    step_id=step_id,
+                                    from_step=from_step,
+                                    key=from_key,
+                                    rows=rows,
+                                    from_memory=True,
+                                    from_spill=False,
+                                )
+                        except Exception as exc:  # pragma: no cover - telemetry best effort
+                            self.logger.debug(f"Failed to emit inputs_resolved for {from_step}: {exc}")
                 else:
                     available_keys = list(step_output.keys()) if isinstance(step_output, dict) else []
                     self.logger.warning(
