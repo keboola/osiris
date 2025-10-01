@@ -1,10 +1,10 @@
 """Driver interface and registry for runtime execution."""
 
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 import hashlib
 import importlib
 import logging
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
@@ -64,6 +64,27 @@ class DriverRegistry:
     def __init__(self):
         self._drivers: dict[str, Callable[[], Driver]] = {}
         self._metadata: dict[str, dict[str, Any]] = {}
+        self._loaded_specs: Mapping[str, dict[str, Any]] | None = None
+
+    def load_specs(self, component_registry: Any | None = None) -> Mapping[str, dict[str, Any]]:
+        """Load component specifications destined for driver registration.
+
+        Args:
+            component_registry: Optional ComponentRegistry-like object. When omitted the
+                default ComponentRegistry is instantiated.
+
+        Returns:
+            Mapping of component name to loaded specification.
+        """
+
+        if component_registry is None:
+            from osiris.components.registry import ComponentRegistry
+
+            component_registry = ComponentRegistry()
+
+        specs = component_registry.load_specs()
+        self._loaded_specs = specs
+        return specs
 
     def register(self, name: str, factory: Callable[[], Driver], *, info: dict[str, Any] | None = None) -> None:
         """Register a driver factory.
@@ -107,7 +128,7 @@ class DriverRegistry:
         """Return metadata for a registered driver."""
         return dict(self._metadata.get(name, {}))
 
-    def populate_from_component_specs(
+    def populate_from_component_specs(  # noqa: PLR0915
         self,
         specs: Mapping[str, dict[str, Any]],
         *,

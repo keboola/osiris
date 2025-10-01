@@ -1,10 +1,10 @@
 """Minimal local runner for compiled manifests."""
 
-from datetime import datetime
 import json
 import logging
-from pathlib import Path
 import time
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -49,7 +49,7 @@ class RunnerV0:
 
         # Load component registry
         component_registry = ComponentRegistry()
-        specs = component_registry.load_specs()
+        specs = registry.load_specs(component_registry)
 
         summary = registry.populate_from_component_specs(
             specs,
