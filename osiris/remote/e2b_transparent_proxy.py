@@ -5,6 +5,7 @@ and orchestrates execution via JSON-RPC protocol.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -74,6 +75,9 @@ class E2BTransparentProxy(ExecutionAdapter):
         self.session_context = None
         self.batch_responses = []
         self.execution_complete = False
+
+        for logger_name in ("httpx", "httpcore", "httpcore.http11", "httpcore.h11", "httpcore.h2", "httpcore.hpack"):
+            logging.getLogger(logger_name).setLevel(logging.INFO)
 
     def prepare(self, plan: dict[str, Any], context: ExecutionContext) -> PreparedRun:
         """Prepare execution package from compiled manifest.
@@ -233,7 +237,7 @@ class E2BTransparentProxy(ExecutionAdapter):
                 error_message=str(e),
             )
 
-    async def _execute_async(self, prepared: PreparedRun, context: ExecutionContext) -> dict[str, Any]:
+    async def _execute_async(self, prepared: PreparedRun, context: ExecutionContext) -> dict[str, Any]:  # noqa: PLR0915
         """Async execution implementation using batch file communication."""
         sandbox_start_time = time.time()
         self.session_id = context.session_id
@@ -456,7 +460,7 @@ class E2BTransparentProxy(ExecutionAdapter):
 
         logging.info(f"Sandbox created: {self.sandbox_id}")
 
-    async def _upload_worker(self):
+    async def _upload_worker(self):  # noqa: PLR0915
         """Upload ProxyWorker script and dependencies to sandbox."""
         logging.info("Uploading ProxyWorker to sandbox...")
 
@@ -644,7 +648,7 @@ class E2BTransparentProxy(ExecutionAdapter):
         except Exception as e:
             logging.debug(f"Error showing heartbeat: {e}")
 
-    async def _download_artifacts(self, context: ExecutionContext):
+    async def _download_artifacts(self, context: ExecutionContext):  # noqa: PLR0915
         """Download artifacts from sandbox to host.
 
         Args:
@@ -657,6 +661,14 @@ class E2BTransparentProxy(ExecutionAdapter):
         artifacts_start_time = time.time()
         sandbox_artifacts_dir = f"/home/user/session/{context.session_id}/artifacts"
         host_artifacts_dir = context.logs_dir / "artifacts"
+
+        download_data = os.environ.get("E2B_DOWNLOAD_DATA_ARTIFACTS", "0") == "1"
+        max_mb_default = 5
+        try:
+            max_mb = float(os.environ.get("E2B_ARTIFACT_MAX_MB", max_mb_default))
+        except (TypeError, ValueError):
+            max_mb = max_mb_default
+        max_bytes = max_mb * 1024 * 1024
 
         try:
             # Check if artifacts directory exists in sandbox
@@ -688,33 +700,70 @@ class E2BTransparentProxy(ExecutionAdapter):
             downloaded_count = 0
             total_bytes = 0
 
+            def should_download(rel_path: str, size: int) -> bool:
+                if rel_path.startswith("_system/"):
+                    return True
+                if rel_path.endswith("run_card.json"):
+                    return True
+                if rel_path.endswith("cleaned_config.json"):
+                    return True
+
+                if size > max_bytes and not download_data:
+                    logging.debug(
+                        "Skipping artifact %s due to size %.2f MB > limit %.2f MB",
+                        rel_path,
+                        size / (1024 * 1024),
+                        max_mb,
+                    )
+                    return False
+
+                lower_path = rel_path.lower()
+                if not download_data and (
+                    lower_path.endswith("output.pkl")
+                    or lower_path.endswith("output.parquet")
+                    or lower_path.endswith(".feather")
+                ):
+                    logging.debug("Skipping data artifact %s (data downloads disabled)", rel_path)
+                    return False
+
+                if lower_path.endswith((".txt", ".json", ".sql")):
+                    return True
+
+                return download_data
+
             for relative_path in files:
                 sandbox_file_path = f"{sandbox_artifacts_dir}/{relative_path}"
                 host_file_path = host_artifacts_dir / relative_path
 
                 try:
-                    # Create parent directory
+                    stat_result = await self.sandbox.commands.run(f"stat -c %s {sandbox_file_path}")
+                    file_size = 0
+                    if stat_result.stdout:
+                        try:
+                            file_size = int(stat_result.stdout.strip())
+                        except ValueError:
+                            file_size = 0
+
+                    if not should_download(relative_path, file_size):
+                        logging.debug("Skipping artifact: %s", relative_path)
+                        continue
+
                     host_file_path.parent.mkdir(parents=True, exist_ok=True)
 
-                    # Read file content from sandbox
                     content = await self.sandbox.files.read(sandbox_file_path)
 
-                    # Write to host (handle both text and binary)
                     if isinstance(content, str):
-                        # Text file
                         host_file_path.write_text(content, encoding="utf-8")
-                        file_size = len(content.encode("utf-8"))
+                        written_bytes = len(content.encode("utf-8"))
                     elif isinstance(content, bytes):
-                        # Binary file
                         host_file_path.write_bytes(content)
-                        file_size = len(content)
+                        written_bytes = len(content)
                     else:
-                        # Try to convert to string as fallback
                         content_str = str(content)
                         host_file_path.write_text(content_str, encoding="utf-8")
-                        file_size = len(content_str.encode("utf-8"))
+                        written_bytes = len(content_str.encode("utf-8"))
 
-                    total_bytes += file_size
+                    total_bytes += written_bytes
                     downloaded_count += 1
 
                     logging.debug(f"Downloaded artifact: {relative_path} ({file_size} bytes)")
@@ -1010,7 +1059,7 @@ class E2BTransparentProxy(ExecutionAdapter):
         # Parse final results from responses
         return self._parse_batch_results()
 
-    async def _handle_batch_output(self, data: str):
+    async def _handle_batch_output(self, data: str):  # noqa: PLR0915
         """Handle stdout from batch runner with verbose passthrough."""
         # Update watchdog timer
         self._last_output_time = time.time()
@@ -1184,11 +1233,17 @@ class E2BTransparentProxy(ExecutionAdapter):
             ts = datetime.now(UTC).isoformat()
 
         # Build event matching LocalAdapter schema exactly
+        event_name = event_data.get("name", event_data.get("event"))
+        event_payload = dict(event_data.get("data") or {})
+
+        if event_name == "driver_file_verified":
+            event_payload = self._augment_driver_file_event(event_payload)
+
         event_dict = {
             "ts": ts,
             "session": self.session_id,
-            "event": event_data.get("name", event_data.get("event")),
-            **event_data.get("data", {}),  # All event data preserved
+            "event": event_name,
+            **event_payload,
         }
 
         # Write to host events.jsonl
@@ -1199,6 +1254,75 @@ class E2BTransparentProxy(ExecutionAdapter):
                     f.write(json.dumps(event_dict) + "\n")
             except Exception as e:
                 logging.warning(f"Failed to forward event to host: {e}")
+
+    def _augment_driver_file_event(self, event_data: dict[str, Any]) -> dict[str, Any]:
+        """Enrich driver_file_verified events with host-side verification results."""
+
+        remote_path = event_data.get("path")
+        if not remote_path:
+            return {**event_data, "host_error": "missing_path", "match": False, "sha256_match": False}
+
+        repo_root = Path(__file__).resolve().parents[2]
+        relative_path = remote_path
+        sandbox_prefix = "/home/user/"
+        if remote_path.startswith(sandbox_prefix):
+            relative_path = remote_path[len(sandbox_prefix) :]
+        else:
+            relative_path = remote_path.lstrip("/")
+
+        local_path = repo_root / relative_path
+
+        with contextlib.suppress(FileNotFoundError):
+            local_path = local_path.resolve()
+
+        if not local_path.exists():
+            logging.warning(f"Host driver file missing for verification: {local_path}")
+            return {
+                **event_data,
+                "host_error": "missing",
+                "host_path": str(local_path),
+                "match": False,
+                "sha256_match": False,
+            }
+
+        try:
+            size_bytes = local_path.stat().st_size
+            sha256 = hashlib.sha256()
+            with open(local_path, "rb") as fh:
+                for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                    if not chunk:
+                        break
+                    sha256.update(chunk)
+
+            host_sha = sha256.hexdigest()
+        except OSError as exc:
+            logging.warning(f"Failed to hash host driver file {local_path}: {exc}")
+            return {
+                **event_data,
+                "host_error": str(exc),
+                "host_path": str(local_path),
+                "match": False,
+                "sha256_match": False,
+            }
+
+        remote_sha = event_data.get("sha256")
+        match = bool(remote_sha) and remote_sha == host_sha
+        if not match:
+            logging.error(
+                "Driver file SHA mismatch for %s: sandbox=%s host=%s",
+                remote_path,
+                remote_sha,
+                host_sha,
+            )
+
+        return {
+            **event_data,
+            "host_path": str(local_path),
+            "host_sha256": host_sha,
+            "host_size_bytes": size_bytes,
+            "match": match,
+            "sha256_match": match,
+        }
 
     def _forward_metric_to_host(self, metric_data: dict[str, Any]):
         """Forward ProxyWorker metric to host metrics.jsonl."""

@@ -5,10 +5,12 @@ and streams results back via stdout.
 """
 
 import copy
+import hashlib
 import importlib
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import time
@@ -42,6 +44,88 @@ from osiris.remote.rpc_protocol import (
 )
 
 
+class _E2BLogSanitizer:
+    """Sanitize log payloads to prevent secret leakage."""
+
+    _AUTH_JSON_RE = re.compile(r'(?i)(["\']Authorization["\']\s*:\s*["\'])(Bearer\s+[^"\']+)(["\'])')
+    _AUTH_PLAIN_RE = re.compile(r"(?i)(Authorization\s*[:=]\s*)(Bearer\s+[A-Za-z0-9\-._~+/=]+)")
+    _APIKEY_JSON_RE = re.compile(r'(?i)(["\'](?:x-)?api[-_]?key["\']\s*:\s*["\'])([^"\']+)(["\'])')
+    _APIKEY_PLAIN_RE = re.compile(r'(?i)((?:x-)?api[-_]?key\s*[:=]\s*)([^\s"\']+)')
+    _JWT_TOKEN_RE = re.compile(r"eyJhbGciOi[A-Za-z0-9_\-\.]*")
+    _PG_DSN_RE = re.compile(r"(postgres(?:ql)?://[^:/?#]+:)([^@]+)(@)")
+
+    _SENSITIVE_HEADER_TOKENS = {
+        "authorization",
+        "proxyauthorization",
+        "apikey",
+        "xapikey",
+        "xsupabaseapikey",
+    }
+
+    def sanitize_text(self, text: str) -> str:
+        if not text:
+            return text
+
+        text = self._AUTH_JSON_RE.sub(lambda m: f"{m.group(1)}**REDACTED**{m.group(3)}", text)
+        text = self._AUTH_PLAIN_RE.sub(lambda m: f"{m.group(1)}**REDACTED**", text)
+        text = self._APIKEY_JSON_RE.sub(lambda m: f"{m.group(1)}**REDACTED**{m.group(3)}", text)
+        text = self._APIKEY_PLAIN_RE.sub(lambda m: f"{m.group(1)}**REDACTED**", text)
+        text = self._PG_DSN_RE.sub(lambda m: f"{m.group(1)}***{m.group(3)}", text)
+        text = self._JWT_TOKEN_RE.sub("**REDACTED**", text)
+        return text
+
+    def sanitize_structure(self, value: Any, *, key_hint: str | None = None) -> Any:
+        if isinstance(value, dict):
+            return {k: self.sanitize_structure(v, key_hint=self._canonical_key(k)) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self.sanitize_structure(item, key_hint=key_hint) for item in value]
+        if isinstance(value, tuple):
+            if len(value) == 2:
+                return (
+                    value[0],
+                    self.sanitize_structure(value[1], key_hint=self._canonical_key(value[0])),
+                )
+            return tuple(self.sanitize_structure(item, key_hint=key_hint) for item in value)
+        if isinstance(value, bytes):
+            decoded = value.decode("utf-8", errors="replace")
+            return self.sanitize_text(decoded)
+        if isinstance(value, str):
+            if key_hint and self._is_sensitive_header_key(key_hint):
+                return "**REDACTED**"
+            if key_hint == "pg_dsn":
+                return self._sanitize_pg_dsn(value)
+            return self.sanitize_text(value)
+        return value
+
+    def _sanitize_pg_dsn(self, value: str) -> str:
+        return self._PG_DSN_RE.sub(lambda m: f"{m.group(1)}***{m.group(3)}", value)
+
+    @staticmethod
+    def _canonical_key(key: Any) -> str:
+        text = key.decode("utf-8", errors="replace") if isinstance(key, bytes) else str(key)
+        return text.strip(" '\"").lower()
+
+    def _is_sensitive_header_key(self, key: str) -> bool:
+        token = key.lstrip(":").replace("-", "").replace("_", "")
+        return token in self._SENSITIVE_HEADER_TOKENS
+
+
+class _E2BRedactionFilter(logging.Filter):
+    """Logging filter that sanitizes records before emission."""
+
+    def __init__(self, sanitizer: _E2BLogSanitizer):
+        super().__init__(name="e2b_redaction")
+        self._sanitizer = sanitizer
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        sanitized = self._sanitizer.sanitize_text(message)
+        if sanitized != message:
+            record.msg = sanitized
+            record.args = ()
+        return True
+
+
 class ProxyWorker:
     """Worker that executes pipeline steps inside E2B sandbox."""
 
@@ -72,6 +156,10 @@ class ProxyWorker:
             stream=sys.stderr,
         )
         self.logger = logging.getLogger(__name__)
+        self._log_sanitizer = _E2BLogSanitizer()
+        self.enable_redaction = self._should_enable_redaction()
+        if self.enable_redaction:
+            self._install_log_redaction()
 
         # Log Python path for debugging
         self.logger.info(f"Python path: {sys.path}")
@@ -127,7 +215,24 @@ class ProxyWorker:
         else:
             raise ValueError(f"Unknown command type: {type(command)}")
 
-    def handle_prepare(self, cmd: PrepareCommand) -> PrepareResponse:
+    @staticmethod
+    def _should_enable_redaction() -> bool:
+        value = os.getenv("E2B_LOG_REDACT", "1")
+        return value.strip().lower() not in {"0", "false", "off", "no"}
+
+    def _install_log_redaction(self) -> None:
+        root_logger = logging.getLogger()
+        if not any(isinstance(f, _E2BRedactionFilter) for f in root_logger.filters):
+            root_logger.addFilter(_E2BRedactionFilter(self._log_sanitizer))
+
+        for handler in root_logger.handlers:
+            if not any(isinstance(f, _E2BRedactionFilter) for f in handler.filters):
+                handler.addFilter(_E2BRedactionFilter(self._log_sanitizer))
+
+        for logger_name in ("httpx", "httpcore", "httpcore.http11", "httpcore.h11", "httpcore.h2", "httpcore.hpack"):
+            logging.getLogger(logger_name).setLevel(logging.INFO)
+
+    def handle_prepare(self, cmd: PrepareCommand) -> PrepareResponse:  # noqa: PLR0915
         """Initialize session and load drivers."""
         self.session_id = cmd.session_id
         self.manifest = cmd.manifest or {}
@@ -231,6 +336,12 @@ class ProxyWorker:
                 status="success",
             )
 
+            if driver_name == "supabase.writer":
+                self._emit_driver_file_verification(
+                    driver_name=driver_name,
+                    sandbox_path=Path("/home/user/osiris/drivers/supabase_writer_driver.py"),
+                )
+
         self.driver_summary.compute_fingerprint()
         self.send_event(
             "drivers_registered",
@@ -266,7 +377,7 @@ class ProxyWorker:
             drivers_loaded=drivers_loaded,
         )
 
-    def handle_exec_step(self, cmd: ExecStepCommand) -> ExecStepResponse:
+    def handle_exec_step(self, cmd: ExecStepCommand) -> ExecStepResponse:  # noqa: PLR0915
         """Execute a pipeline step using the appropriate driver."""
         step_id = cmd.step_id
         driver_name = cmd.driver
@@ -618,12 +729,16 @@ class ProxyWorker:
     def send_response(self, response):
         """Send a response to the host."""
         msg = response.model_dump(exclude_none=True)
+        if getattr(self, "enable_redaction", False):
+            msg = self._log_sanitizer.sanitize_structure(msg)
         print(json.dumps(msg), flush=True)
 
     def send_event(self, event_name: str, **kwargs):
         """Send an event to the host and write to events file."""
         msg = EventMessage(name=event_name, timestamp=time.time(), data=kwargs)
         event_data = msg.model_dump()
+        if getattr(self, "enable_redaction", False):
+            event_data = self._log_sanitizer.sanitize_structure(event_data)
 
         # Send to stdout for real-time monitoring
         print(json.dumps(event_data), flush=True)
@@ -640,6 +755,8 @@ class ProxyWorker:
         """Send a metric to the host and write to metrics file."""
         msg = MetricMessage(name=metric_name, value=value, timestamp=time.time(), tags=tags)
         metric_data = msg.model_dump(exclude_none=True)
+        if getattr(self, "enable_redaction", False):
+            metric_data = self._log_sanitizer.sanitize_structure(metric_data)
 
         # Send to stdout for real-time monitoring
         print(json.dumps(metric_data), flush=True)
@@ -658,10 +775,14 @@ class ProxyWorker:
         if include_traceback:
             context["traceback"] = traceback.format_exc()
 
+        if getattr(self, "enable_redaction", False):
+            error_msg = self._log_sanitizer.sanitize_text(error_msg)
+            context = self._log_sanitizer.sanitize_structure(context)
+
         msg = ErrorMessage(error=error_msg, timestamp=time.time(), context=context if context else None)
         print(json.dumps(msg.model_dump(exclude_none=True)), flush=True)
 
-    def _register_drivers(self):
+    def _register_drivers(self):  # noqa: PLR0915
         """Register known drivers explicitly for M1f."""
         # Import and register MySQL extractor
         try:
@@ -692,6 +813,10 @@ class ProxyWorker:
             self.driver_registry.register("supabase.writer", lambda: SupabaseWriterDriver())
             self.logger.info("Registered driver: supabase.writer")
             self.send_event("driver_registered", driver="supabase.writer", status="success")
+            self._emit_driver_file_verification(
+                driver_name="supabase.writer",
+                sandbox_path=Path("/home/user/osiris/drivers/supabase_writer_driver.py"),
+            )
         except ImportError as e:
             # Check if supabase is actually needed in the plan
             steps = self.manifest.get("steps", []) if hasattr(self, "manifest") else []
@@ -719,6 +844,10 @@ class ProxyWorker:
                                 "driver_registered",
                                 driver="supabase.writer",
                                 status="success_after_install",
+                            )
+                            self._emit_driver_file_verification(
+                                driver_name="supabase.writer",
+                                sandbox_path=Path("/home/user/osiris/drivers/supabase_writer_driver.py"),
                             )
                         except ImportError as e2:
                             self.logger.error(f"Still unable to register supabase.writer after install: {e2}")
@@ -782,6 +911,62 @@ class ProxyWorker:
     def list_registered_drivers(self) -> list:
         """Get list of registered driver names."""
         return sorted(self.driver_registry._drivers.keys())
+
+    def _emit_driver_file_verification(self, *, driver_name: str, sandbox_path: Path) -> None:
+        """Emit an event with SHA256 + size for a driver file inside the sandbox."""
+
+        if os.getenv("E2B_DRIVER_VERIFY", "1").strip().lower() in {"0", "false", "off", "no"}:
+            self.logger.debug("driver_file_verified: verification disabled via E2B_DRIVER_VERIFY")
+            return
+
+        file_path = sandbox_path
+        try:
+            file_path = sandbox_path.resolve()
+        except FileNotFoundError:
+            file_path = sandbox_path
+
+        if not file_path.exists():
+            self.logger.warning(f"Driver file missing for verification: {sandbox_path}")
+            self.send_event(
+                "driver_file_verified",
+                driver=driver_name,
+                path=str(sandbox_path),
+                error="not_found",
+            )
+            return
+
+        sha256 = hashlib.sha256()
+        size_bytes = 0
+        try:
+            with open(file_path, "rb") as fh:
+                for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                    if not chunk:
+                        break
+                    sha256.update(chunk)
+                    size_bytes += len(chunk)
+        except OSError as exc:
+            self.logger.error(f"Failed to hash driver file {sandbox_path}: {exc}")
+            self.send_event(
+                "driver_file_verified",
+                driver=driver_name,
+                path=str(sandbox_path),
+                error="not_found",
+            )
+            return
+
+        sha_hex = sha256.hexdigest()
+        self.logger.debug(
+            "driver_file_verified: emitting",
+            extra={"path": str(file_path), "size": size_bytes, "sha": sha_hex[:12]},
+        )
+
+        self.send_event(
+            "driver_file_verified",
+            driver=driver_name,
+            path=str(sandbox_path),
+            sha256=sha_hex,
+            size_bytes=size_bytes,
+        )
 
     def _env_set(self, env_var: str) -> set[str]:
         raw = os.environ.get(env_var, "")
@@ -930,8 +1115,8 @@ class ProxyWorker:
         if not trimmed:
             return []
         parts: list[str] = []
-        for segment in trimmed.split("/"):
-            segment = segment.replace("~1", "/").replace("~0", "~")
+        for raw_segment in trimmed.split("/"):
+            segment = raw_segment.replace("~1", "/").replace("~0", "~")
             if segment:
                 parts.append(segment)
         return parts
@@ -1110,7 +1295,7 @@ class ProxyWorker:
                 }
                 with open(status_file, "w") as f:
                     json.dump(minimal_status, f)
-            except:
+            except Exception:
                 pass  # Give up if we can't write at all
 
 

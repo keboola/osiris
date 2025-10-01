@@ -192,6 +192,27 @@ tests/writers/test_supabase_ipv6_fallback.py::TestSupabaseIPv6Fallback::test_psy
 
 All acceptance criteria met. The fix is surgical, maintains local↔E2B parity, and adds test coverage to prevent regression.
 
+### Sandbox Driver Verification
+
+- Added `driver_file_verified` event emitted by `ProxyWorker` after registering `supabase.writer`.
+- Event payload captures sandbox path, SHA256, and byte length for `/home/user/osiris/drivers/supabase_writer_driver.py`.
+- Host adapter enriches the event with local `host_sha256`, `host_size_bytes`, and `sha256_match` flag.
+- Current driver hash: `9451a0a7a2bc633ff8369aab2602f039f18f946ca5515103cddd921006a98c41` (2,054 bytes).
+- Verified parity: sandbox hash matches host hash (`sha256_match == true`) in `logs/run_*/events.jsonl`.
+- Set `E2B_DRIVER_VERIFY=0` to temporarily disable sandbox hash emission (default `1`).
+
+### Artifact Download Policy
+
+- Default behavior skips large data artifacts (`output.pkl`, `output.parquet`, `*.feather`) to keep downloads lean.
+- Set `E2B_DOWNLOAD_DATA_ARTIFACTS=1` to opt in to full data transfer for debugging.
+- `E2B_ARTIFACT_MAX_MB` (default `5`) limits per-file download size; increase to fetch bigger diagnostics.
+- Diagnostic files (`cleaned_config.json`, `run_card.json`, `_system/**`, small `.txt/.json/.sql`) always sync.
+
+### Log Redaction Policy
+
+- `E2B_LOG_REDACT` defaults to `1`, enabling automatic masking of `Authorization`/`apikey` headers and Postgres DSNs inside E2B logs.
+- Proxy worker forces `httpx`, `httpcore`, and `httpcore.hpack` loggers to `INFO` to avoid header dumps that might include sensitive data.
+
 **Files modified**:
 - `osiris/drivers/supabase_writer_driver.py` (signature fix + IPv4 logic)
 - `tests/writers/test_supabase_writer_ddl_signature.py` (new)

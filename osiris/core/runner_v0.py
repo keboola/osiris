@@ -124,6 +124,46 @@ class RunnerV0:
         # Also emit to session logging
         log_event(event_type, **data)
 
+    def _emit_inputs_resolved(
+        self,
+        *,
+        step_id: str,
+        from_step: str,
+        key: str,
+        rows: int,
+        from_memory: bool,
+    ) -> None:
+        """Emit inputs_resolved telemetry mirroring sandbox semantics."""
+
+        payload = {
+            "step_id": step_id,
+            "from_step": from_step,
+            "key": key,
+            "rows": rows,
+            "from_memory": from_memory,
+        }
+
+        log_event("inputs_resolved", **payload)
+
+    def _count_rows(self, data: Any) -> int:
+        """Best-effort row counter for tabular inputs."""
+
+        if data is None:
+            return 0
+
+        try:
+            import pandas as pd  # type: ignore
+
+            if isinstance(data, pd.DataFrame):
+                return int(len(data.index))
+        except Exception:  # pragma: no cover - pandas optional in runtime
+            pass
+
+        try:
+            return int(len(data))  # type: ignore[arg-type]
+        except Exception:
+            return 0
+
     def _family_from_component(self, component: str) -> str:
         """Extract family from component name.
 
@@ -202,7 +242,7 @@ class RunnerV0:
             )
             raise
 
-    def _execute_step(self, step: dict[str, Any]) -> bool:
+    def _execute_step(self, step: dict[str, Any]) -> bool:  # noqa: PLR0915
         """Execute a single step."""
         step_id = step["id"]
         driver = step.get("driver") or step.get("component", "unknown")
@@ -350,7 +390,16 @@ class RunnerV0:
                         upstream_result = self.results[upstream_id]
                         if "df" in upstream_result:
                             # For now, assume single upstream for writers
-                            inputs["df"] = upstream_result["df"]
+                            df_value = upstream_result["df"]
+                            inputs["df"] = df_value
+                            rows = self._count_rows(df_value)
+                            self._emit_inputs_resolved(
+                                step_id=step_id,
+                                from_step=upstream_id,
+                                key="df",
+                                rows=rows,
+                                from_memory=True,
+                            )
 
             # Create context for metrics and output
             class RunnerContext:
