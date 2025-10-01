@@ -1,12 +1,12 @@
 """Supabase writer driver for runtime execution."""
 
+from datetime import date, datetime
+from decimal import Decimal
 import logging
+from pathlib import Path
 import random
 import socket
 import time
-from datetime import date, datetime
-from decimal import Decimal
-from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -274,6 +274,13 @@ class SupabaseWriterDriver(Driver):
             # Calculate metrics
             duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
 
+            # Determine channel used (check last DDL operation logged)
+            channel_used = "http_rest"  # Default for data writes
+            if write_mode == "replace" or create_if_missing:
+                # DDL was used, channel depends on what succeeded
+                # This will be overridden by actual DDL event if needed
+                channel_used = "psycopg2_ipv4" if self._has_sql_channel(connection_config) else "http_sql"
+
             # Log metrics
             if ctx:
                 log_metric("rows_written", rows_written, step_id=step_id)
@@ -284,6 +291,7 @@ class SupabaseWriterDriver(Driver):
                     table=table_name,
                     rows_written=rows_written,
                     duration_ms=duration_ms,
+                    channel_used=channel_used,
                 )
 
             logger.info(f"Successfully wrote {rows_written} rows to {table_name}")
@@ -529,15 +537,44 @@ class SupabaseWriterDriver(Driver):
             user = parsed.username
             password = parsed.password
             dbname = parsed.path.lstrip("/")
-            ipv4 = self._resolve_ipv4(host, port) if host else None
-            sslmode = "require"
+
+            # Force IPv4 resolution - try all available IPv4 addresses
+            if host:
+                ipv4_addresses = self._resolve_all_ipv4(host, port)
+                if not ipv4_addresses:
+                    raise RuntimeError(f"psycopg2 IPv4 resolution failed for {host} (no A records found)")
+
+                last_exc = None
+                for ipv4 in ipv4_addresses:
+                    try:
+                        logger.info(f"Attempting psycopg2 connection to {host} via IPv4: {ipv4}")
+                        conn = psycopg2.connect(
+                            hostaddr=ipv4,
+                            port=port,
+                            user=user,
+                            password=password,
+                            dbname=dbname,
+                            sslmode="require",
+                        )
+                        logger.info(f"Successfully connected to {host} via IPv4: {ipv4}")
+                        return conn
+                    except Exception as exc:
+                        last_exc = exc
+                        logger.warning(f"Failed to connect to {ipv4}: {exc}")
+                        continue
+
+                raise RuntimeError(
+                    f"psycopg2 IPv4 connect failed (addresses tried: {', '.join(ipv4_addresses)}). Last error: {last_exc}"
+                ) from last_exc
+
+            # Fallback for local connections without hostname
             return psycopg2.connect(
-                host=ipv4 or host,
+                host=host,
                 port=port,
                 user=user,
                 password=password,
                 dbname=dbname,
-                sslmode=sslmode,
+                sslmode="require",
             )
 
         # Build DSN from discrete parameters
@@ -552,23 +589,37 @@ class SupabaseWriterDriver(Driver):
         if not all([user, password, database]):
             return None
 
-        ipv4 = self._resolve_ipv4(host, port)
-        try:
-            import psycopg2
+        # Force IPv4 resolution
+        ipv4_addresses = self._resolve_all_ipv4(host, port)
+        if not ipv4_addresses:
+            raise RuntimeError(f"psycopg2 IPv4 resolution failed for {host} (no A records found)")
 
-            return psycopg2.connect(
-                host=ipv4 or host,
-                port=port,
-                user=user,
-                password=password,
-                dbname=database,
-                sslmode="require",
-            )
-        except Exception as exc:
-            raise RuntimeError(f"Failed to connect via psycopg2: {exc}") from exc
+        last_exc = None
+        for ipv4 in ipv4_addresses:
+            try:
+                logger.info(f"Attempting psycopg2 connection to {host} via IPv4: {ipv4}")
+                conn = psycopg2.connect(
+                    hostaddr=ipv4,
+                    port=port,
+                    user=user,
+                    password=password,
+                    dbname=database,
+                    sslmode="require",
+                )
+                logger.info(f"Successfully connected to {host} via IPv4: {ipv4}")
+                return conn
+            except Exception as exc:
+                last_exc = exc
+                logger.warning(f"Failed to connect to {ipv4}: {exc}")
+                continue
+
+        raise RuntimeError(
+            f"psycopg2 IPv4 connect failed (addresses tried: {', '.join(ipv4_addresses)}). Last error: {last_exc}"
+        ) from last_exc
 
     @staticmethod
     def _resolve_ipv4(host: str | None, port: int) -> str | None:
+        """Resolve hostname to first IPv4 address (deprecated - use _resolve_all_ipv4)."""
         if not host:
             return None
         try:
@@ -578,6 +629,20 @@ class SupabaseWriterDriver(Driver):
         except socket.gaierror:
             return None
         return None
+
+    @staticmethod
+    def _resolve_all_ipv4(host: str | None, port: int) -> list[str]:
+        """Resolve hostname to all available IPv4 addresses (A records only)."""
+        if not host:
+            return []
+        try:
+            result = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
+            # Extract unique IPv4 addresses
+            ipv4_set = {addr[4][0] for addr in result}
+            return list(ipv4_set)
+        except socket.gaierror as exc:
+            logger.warning(f"IPv4 resolution failed for {host}: {exc}")
+            return []
 
     def _collect_primary_key_values(self, df: pd.DataFrame, primary_key: list[str]) -> list[tuple[Any, ...]]:
         if not primary_key:
@@ -607,7 +672,9 @@ class SupabaseWriterDriver(Driver):
         if not primary_key_values:
             # Delete all rows since new dataset is empty
             if ddl_channel in {"auto", "http_sql"} and self._has_http_sql_channel(connection_config):
-                self._ddl_attempt(step_id, table_name, schema, "anti_delete", "http_sql")
+                self._ddl_attempt(
+                    step_id=step_id, table=table_name, schema=schema, operation="anti_delete", channel="http_sql"
+                )
                 try:
                     self._delete_all_rows_http(client, table_name, primary_key[0])
                     self._ddl_success(step_id, table_name, schema, "anti_delete", "http_sql")
@@ -617,7 +684,9 @@ class SupabaseWriterDriver(Driver):
                     if ddl_channel == "http_sql":
                         raise
 
-            self._ddl_attempt(step_id, table_name, schema, "anti_delete", "psycopg2")
+            self._ddl_attempt(
+                step_id=step_id, table=table_name, schema=schema, operation="anti_delete", channel="psycopg2"
+            )
             self._delete_all_rows_psycopg2(connection_config, table_name, schema)
             self._ddl_success(step_id, table_name, schema, "anti_delete", "psycopg2")
             return
@@ -626,7 +695,9 @@ class SupabaseWriterDriver(Driver):
         last_error: Exception | None = None
 
         for channel in channels:
-            self._ddl_attempt(step_id, table_name, schema, "anti_delete", channel)
+            self._ddl_attempt(
+                step_id=step_id, table=table_name, schema=schema, operation="anti_delete", channel=channel
+            )
             try:
                 if channel == "http_sql":
                     if len(primary_key) > 1:

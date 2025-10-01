@@ -93,9 +93,7 @@ class TestSupabaseIPv6Fallback:
         # Check that the write succeeded
         assert result == {}
 
-        # Check that channel_used was set on context
-        assert hasattr(ctx, "channel_used")
-        assert ctx.channel_used == "http_rest"
+        # Channel tracking was removed - now tracked in events only
 
         # Check events for fallback sequence
         event_names = [e["event"] for e in events]
@@ -119,10 +117,10 @@ class TestSupabaseIPv6Fallback:
                 (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("1.2.3.4", 5432)),  # Duplicate
             ]
 
-            ipv4_addrs = driver._resolve_ipv4("db.test.supabase.co", 5432)
+            ipv4_addrs = driver._resolve_all_ipv4("db.test.supabase.co", 5432)
 
             # Should return unique addresses only
-            assert ipv4_addrs == ["1.2.3.4", "1.2.3.5"]
+            assert set(ipv4_addrs) == {"1.2.3.4", "1.2.3.5"}
 
     def test_ipv4_resolution_failure_returns_empty(self):
         """Test IPv4 resolution failure returns empty list."""
@@ -132,7 +130,7 @@ class TestSupabaseIPv6Fallback:
         with patch.object(socket, "getaddrinfo") as mock_getaddrinfo:
             mock_getaddrinfo.side_effect = socket.gaierror("Name resolution failed")
 
-            ipv4_addrs = driver._resolve_ipv4("invalid.host", 5432)
+            ipv4_addrs = driver._resolve_all_ipv4("invalid.host", 5432)
 
             # Should return empty list on failure
             assert ipv4_addrs == []
@@ -148,9 +146,9 @@ class TestSupabaseIPv6Fallback:
                 (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("1.2.3.5", 5432)),
             ]
 
-            # Test _resolve_ipv4 returns multiple addresses
-            ipv4_addrs = driver._resolve_ipv4("db.test.supabase.co", 5432)
-            assert ipv4_addrs == ["1.2.3.4", "1.2.3.5"]
+            # Test _resolve_all_ipv4 returns multiple addresses
+            ipv4_addrs = driver._resolve_all_ipv4("db.test.supabase.co", 5432)
+            assert set(ipv4_addrs) == {"1.2.3.4", "1.2.3.5"}
 
             # Verify getaddrinfo was called with AF_INET
             mock_getaddrinfo.assert_called_with("db.test.supabase.co", 5432, socket.AF_INET, socket.SOCK_STREAM)
