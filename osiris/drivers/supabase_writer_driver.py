@@ -2,8 +2,10 @@
 
 from datetime import date, datetime
 from decimal import Decimal
+import json
 import logging
 from pathlib import Path
+import os
 import random
 import socket
 import time
@@ -143,12 +145,24 @@ class SupabaseWriterDriver(Driver):
         batch_size = config.get("batch_size", 500)
         create_if_missing = config.get("create_if_missing", False)
         timeout = config.get("timeout", 30)
-        retries = config.get("retries", 3)
+        config_retries = config.get("retries", 3)
         ddl_channel = config.get("ddl_channel", "auto").lower()
         if ddl_channel not in {"auto", "http_sql", "psycopg2"}:
             raise ValueError(
                 f"Step {step_id}: Invalid ddl_channel '{ddl_channel}'. Expected auto, http_sql, or psycopg2"
             )
+
+        ddl_plan_only = bool(config.get("ddl_plan_only", False))
+        env_force_plan = os.getenv("OSIRIS_TEST_FORCE_DDL", "").strip().lower() in {"1", "true", "yes"}
+
+        has_sql_channel = self._has_sql_channel(connection_config)
+        has_http_channel = self._has_http_sql_channel(connection_config)
+        if not ddl_plan_only and env_force_plan and not (has_sql_channel or has_http_channel):
+            ddl_plan_only = True
+
+        max_retry_attempts = max(1, int(os.getenv("RETRY_MAX_ATTEMPTS", config_retries)))
+        base_retry_sleep = max(0.0, float(os.getenv("RETRY_BASE_SLEEP", 1.0)))
+        retries = max(0, max_retry_attempts - 1)
 
         # Log operation start
         if ctx:
@@ -171,10 +185,38 @@ class SupabaseWriterDriver(Driver):
         elif step_id:
             # Try to infer from step_id
             output_dir = Path(f"logs/run_{int(datetime.now().timestamp() * 1000)}/artifacts/{step_id}")
+        if output_dir is not None:
             output_dir.mkdir(parents=True, exist_ok=True)
 
         effective_mode = "upsert" if write_mode == "replace" else write_mode
         primary_key_values = self._collect_primary_key_values(df, primary_key) if primary_key else []
+
+        if ddl_plan_only and create_if_missing:
+            ddl_sql = self._generate_create_table_sql(df, table_name, schema, primary_key)
+            ddl_path = None
+            if output_dir:
+                ddl_path = output_dir / "ddl_plan.sql"
+                ddl_path.parent.mkdir(parents=True, exist_ok=True)
+                ddl_path.write_text(ddl_sql, encoding="utf-8")
+                logger.info(f"DDL plan saved to: {ddl_path}")
+
+            reason = "DDL plan only"
+            if not (has_sql_channel or has_http_channel):
+                reason = "No SQL channel available"
+
+            log_event(
+                "table.ddl_planned",
+                step_id=step_id,
+                table=table_name,
+                schema=schema,
+                ddl_path=str(ddl_path) if ddl_path else None,
+                executed=False,
+                reason=reason,
+            )
+
+            return {}
+
+        force_spill = os.getenv("E2B_FORCE_SPILL", "").strip().lower() in {"1", "true", "yes"}
 
         try:
             # Initialize Supabase client
@@ -230,7 +272,11 @@ class SupabaseWriterDriver(Driver):
                                 raise ValueError(f"Unsupported write mode: {effective_mode}")
 
                         # Execute with retry
-                        retry_with_backoff(write_batch, max_attempts=3)
+                        retry_with_backoff(
+                            write_batch,
+                            max_attempts=max_retry_attempts,
+                            initial_delay=base_retry_sleep,
+                        )
 
                         rows_written += len(batch)
 
@@ -540,9 +586,28 @@ class SupabaseWriterDriver(Driver):
 
             # Force IPv4 resolution - try all available IPv4 addresses
             if host:
+                if self._is_placeholder_host(host):
+                    logger.debug("Placeholder host detected; skipping IPv4 resolution for psycopg2 DSN")
+                    return psycopg2.connect(
+                        host=host,
+                        port=port,
+                        user=user,
+                        password=password,
+                        dbname=dbname,
+                        sslmode="require",
+                    )
+
                 ipv4_addresses = self._resolve_all_ipv4(host, port)
                 if not ipv4_addresses:
-                    raise RuntimeError(f"psycopg2 IPv4 resolution failed for {host} (no A records found)")
+                    logger.warning(f"IPv4 resolution failed for {host}; falling back to hostname connection")
+                    return psycopg2.connect(
+                        host=host,
+                        port=port,
+                        user=user,
+                        password=password,
+                        dbname=dbname,
+                        sslmode="require",
+                    )
 
                 last_exc = None
                 for ipv4 in ipv4_addresses:
@@ -590,9 +655,28 @@ class SupabaseWriterDriver(Driver):
             return None
 
         # Force IPv4 resolution
+        if self._is_placeholder_host(host):
+            logger.debug("Placeholder host detected; skipping IPv4 resolution for psycopg2 connection")
+            return psycopg2.connect(
+                host=host,
+                port=port,
+                user=user,
+                password=password,
+                dbname=database,
+                sslmode="require",
+            )
+
         ipv4_addresses = self._resolve_all_ipv4(host, port)
         if not ipv4_addresses:
-            raise RuntimeError(f"psycopg2 IPv4 resolution failed for {host} (no A records found)")
+            logger.warning(f"IPv4 resolution failed for {host}; falling back to hostname connection")
+            return psycopg2.connect(
+                host=host,
+                port=port,
+                user=user,
+                password=password,
+                dbname=database,
+                sslmode="require",
+            )
 
         last_exc = None
         for ipv4 in ipv4_addresses:
@@ -635,6 +719,8 @@ class SupabaseWriterDriver(Driver):
         """Resolve hostname to all available IPv4 addresses (A records only)."""
         if not host:
             return []
+        if SupabaseWriterDriver._is_placeholder_host(host):
+            return []
         try:
             result = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
             # Extract unique IPv4 addresses
@@ -643,6 +729,20 @@ class SupabaseWriterDriver(Driver):
         except socket.gaierror as exc:
             logger.warning(f"IPv4 resolution failed for {host}: {exc}")
             return []
+
+    @staticmethod
+    def _is_placeholder_host(host: str | None) -> bool:
+        if not host:
+            return True
+        normalized = host.strip().lower()
+        placeholder_tokens = {
+            "host",
+            "hostname",
+            "placeholder",
+            "example",
+            "example.com",
+        }
+        return normalized in placeholder_tokens or normalized.startswith("placeholder")
 
     def _collect_primary_key_values(self, df: pd.DataFrame, primary_key: list[str]) -> list[tuple[Any, ...]]:
         if not primary_key:
