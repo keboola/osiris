@@ -17,8 +17,8 @@
 import contextlib
 import datetime
 import os
-import re
 from pathlib import Path
+import re
 from typing import Any
 
 import yaml
@@ -245,8 +245,8 @@ aiop:
   run_card: true           # Also write Markdown run-card for PR/Slack
 
   output:
-    core_path: "logs/aiop/{session_id}/aiop.json"         # Where to write Core JSON
-    run_card_path: "logs/aiop/{session_id}/run-card.md"   # Where to write Markdown run-card
+    core_path: "logs/aiop/aiop.json"            # Default core output (use AIOP_USE_SESSION_DIR=1 for per-session dir)
+    run_card_path: "logs/aiop/run-card.md"       # Where to write Markdown run-card (customizable)
 
   annex:
     enabled: false         # Enable NDJSON Annex (timeline/metrics/errors shards)
@@ -483,7 +483,7 @@ def parse_connection_ref(ref: str) -> tuple[str | None, str | None]:
     return family, alias
 
 
-def resolve_connection(family: str, alias: str | None = None) -> dict[str, Any]:
+def resolve_connection(family: str, alias: str | None = None) -> dict[str, Any]:  # noqa: PLR0915
     """Resolve connection by family and optional alias.
 
     Args:
@@ -629,7 +629,16 @@ def resolve_connection(family: str, alias: str | None = None) -> dict[str, Any]:
 # AIOP Configuration Functions
 # ============================================================================
 
+
 # Define AIOP defaults
+def _env_truthy(value: str | None) -> bool:
+    """Return True if environment-like string is truthy."""
+
+    if value is None:
+        return False
+    return value.strip().lower() not in {"", "0", "false", "off", "no"}
+
+
 AIOP_DEFAULTS = {
     "enabled": True,
     "policy": "core",
@@ -639,16 +648,17 @@ AIOP_DEFAULTS = {
     "schema_mode": "summary",
     "delta": "previous",
     "run_card": True,
+    "use_session_dir": False,
     "path_vars": {
         "ts_format": "%Y%m%d-%H%M%S",
     },
     "output": {
-        "core_path": "logs/aiop/{session_id}/aiop.json",
-        "run_card_path": "logs/aiop/{session_id}/run-card.md",
+        "core_path": "logs/aiop/aiop.json",
+        "run_card_path": "logs/aiop/run-card.md",
     },
     "annex": {
         "enabled": False,
-        "dir": "logs/aiop/{session_id}/annex",
+        "dir": "logs/aiop/annex",
         "compress": "none",
     },
     "index": {
@@ -713,6 +723,7 @@ def load_aiop_env() -> dict[str, Any]:
         ("OSIRIS_AIOP_SCHEMA_MODE", "schema_mode", str),
         ("OSIRIS_AIOP_DELTA", "delta", str),
         ("OSIRIS_AIOP_RUN_CARD", "run_card", lambda x: x.lower() == "true"),
+        ("OSIRIS_AIOP_USE_SESSION_DIR", "use_session_dir", _env_truthy),
     ]
 
     for env_key, config_key, converter in env_mappings:
@@ -773,6 +784,10 @@ def load_aiop_env() -> dict[str, Any]:
     # Path vars
     if "OSIRIS_AIOP_PATH_VARS_TS_FORMAT" in os.environ:
         config.setdefault("path_vars", {})["ts_format"] = os.environ["OSIRIS_AIOP_PATH_VARS_TS_FORMAT"]
+
+    # Support legacy flag (without OSIRIS_ prefix) for per-session directories
+    if "AIOP_USE_SESSION_DIR" in os.environ:
+        config["use_session_dir"] = _env_truthy(os.environ["AIOP_USE_SESSION_DIR"])
 
     # Index configuration
     if "OSIRIS_AIOP_INDEX_ENABLED" in os.environ:
@@ -869,7 +884,48 @@ def resolve_aiop_config(
             for k, v in _flatten_dict(cli_config).items():
                 sources[_flatten_key(k, v)] = "CLI"
 
+    effective, sources = _apply_aiop_session_dir(effective, sources)
     return effective, sources
+
+
+def _apply_aiop_session_dir(config: dict[str, Any], sources: dict[str, str]) -> tuple[dict[str, Any], dict[str, str]]:
+    """Apply session-aware path overrides when requested.
+
+    When `use_session_dir` (or env `AIOP_USE_SESSION_DIR`) is truthy we rewrite the
+    default paths to include `{session_id}` placeholders. This keeps legacy
+    defaults stable while opt-in builds can still segregate outputs per run.
+    """
+
+    default_core = "logs/aiop/aiop.json"
+    default_run_card = "logs/aiop/run-card.md"
+    default_annex = "logs/aiop/annex"
+
+    session_core = "logs/aiop/{session_id}/aiop.json"
+    session_run_card = "logs/aiop/{session_id}/run-card.md"
+    session_annex = "logs/aiop/{session_id}/annex"
+
+    use_session_dir = bool(config.get("use_session_dir"))
+
+    # Environment flag takes precedence over config for toggling behaviour
+    if "AIOP_USE_SESSION_DIR" in os.environ:
+        use_session_dir = _env_truthy(os.environ.get("AIOP_USE_SESSION_DIR"))
+        sources["use_session_dir"] = "ENV"
+
+    output_cfg = config.setdefault("output", {})
+    annex_cfg = config.setdefault("annex", {})
+
+    if use_session_dir:
+        if output_cfg.get("core_path") == default_core:
+            output_cfg["core_path"] = session_core
+            sources["output.core_path"] = sources.get("output.core_path", "DEFAULT")
+        if output_cfg.get("run_card_path") == default_run_card:
+            output_cfg["run_card_path"] = session_run_card
+            sources["output.run_card_path"] = sources.get("output.run_card_path", "DEFAULT")
+        if annex_cfg.get("dir") == default_annex:
+            annex_cfg["dir"] = session_annex
+            sources["annex.dir"] = sources.get("annex.dir", "DEFAULT")
+
+    return config, sources
 
 
 def _flatten_dict(d: dict[str, Any], parent_key: str = "") -> dict[str, Any]:
