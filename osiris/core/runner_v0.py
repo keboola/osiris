@@ -1,10 +1,10 @@
 """Minimal local runner for compiled manifests."""
 
+from datetime import datetime
 import json
 import logging
-import time
-from datetime import datetime
 from pathlib import Path
+import time
 from typing import Any
 
 import yaml
@@ -143,7 +143,7 @@ class RunnerV0:
             "from_memory": from_memory,
         }
 
-        log_event("inputs_resolved", **payload)
+        self._log_event("inputs_resolved", payload)
 
     def _count_rows(self, data: Any) -> int:
         """Best-effort row counter for tabular inputs."""
