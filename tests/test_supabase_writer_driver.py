@@ -9,6 +9,8 @@ import pytest
 
 from osiris.drivers.supabase_writer_driver import SupabaseWriterDriver
 
+pytestmark = pytest.mark.supabase
+
 
 class TestSupabaseWriterDriver:
     """Test suite for SupabaseWriterDriver."""
@@ -111,8 +113,11 @@ class TestSupabaseWriterDriver:
         assert records[2]["float_col"] is None  # Third row has NaN
         assert records[1]["datetime_col"] is None  # Second row has NaT
 
-    def test_mode_mapping(self):
+    def test_mode_mapping(self, monkeypatch):
         """Test that OML modes are mapped correctly."""
+        # Force real client for this test so MagicMock behavior works
+        monkeypatch.setenv("OSIRIS_TEST_SUPABASE_FORCE_REAL_CLIENT", "1")
+
         driver = SupabaseWriterDriver()
         df = pd.DataFrame({"col1": [1, 2, 3]})
 
@@ -149,8 +154,11 @@ class TestSupabaseWriterDriver:
             # Check insert was called (append maps to insert)
             mock_table.insert.assert_called()
 
-    def test_batch_processing(self):
+    def test_batch_processing(self, monkeypatch):
         """Test that data is processed in batches."""
+        # Force real client for this test so MagicMock behavior works
+        monkeypatch.setenv("OSIRIS_TEST_SUPABASE_FORCE_REAL_CLIENT", "1")
+
         driver = SupabaseWriterDriver()
 
         # Create DataFrame with 10 rows
@@ -186,8 +194,11 @@ class TestSupabaseWriterDriver:
             # Should be called 4 times (10 rows / 3 per batch = 4 batches)
             assert mock_table.insert.call_count == 4
 
-    def test_primary_key_normalization(self):
+    def test_primary_key_normalization(self, monkeypatch):
         """Test that primary_key is normalized to list."""
+        # Force real client for this test so MagicMock behavior works
+        monkeypatch.setenv("OSIRIS_TEST_SUPABASE_FORCE_REAL_CLIENT", "1")
+
         driver = SupabaseWriterDriver()
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})
 
@@ -225,8 +236,11 @@ class TestSupabaseWriterDriver:
             call_args = mock_table.upsert.call_args
             assert call_args[1]["on_conflict"] == "id"
 
-    def test_metrics_logging(self):
+    def test_metrics_logging(self, monkeypatch):
         """Test that metrics are logged correctly."""
+        # Force real client for this test so MagicMock behavior works
+        monkeypatch.setenv("OSIRIS_TEST_SUPABASE_FORCE_REAL_CLIENT", "1")
+
         driver = SupabaseWriterDriver()
         df = pd.DataFrame({"col1": [1, 2, 3]})
 
@@ -281,8 +295,11 @@ class TestSupabaseWriterDriver:
             # Check result is empty dict (writers return {})
             assert result == {}
 
-    def test_context_manager_usage(self):
+    def test_context_manager_usage(self, monkeypatch):
         """Test that SupabaseClient is used as a context manager."""
+        # Force real client for this test so MagicMock behavior works
+        monkeypatch.setenv("OSIRIS_TEST_SUPABASE_FORCE_REAL_CLIENT", "1")
+
         driver = SupabaseWriterDriver()
         df = pd.DataFrame({"col1": [1, 2, 3]})
 

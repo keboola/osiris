@@ -9,6 +9,8 @@ import pytest
 
 from osiris.connectors.supabase.writer import SupabaseWriter
 
+pytestmark = pytest.mark.supabase
+
 
 class TestMySQLToSupabaseIntegration:
     """Integration tests for MySQL → Supabase (Postgres) pipelines."""

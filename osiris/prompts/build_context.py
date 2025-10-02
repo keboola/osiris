@@ -4,12 +4,12 @@ This module extracts essential component information from the registry
 and creates a compact JSON context optimized for token efficiency.
 """
 
+from datetime import UTC, datetime
 import hashlib
 import json
 import logging
-import re
-from datetime import UTC, datetime
 from pathlib import Path
+import re
 from typing import Any
 
 from jsonschema import Draft202012Validator, ValidationError
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 CONTEXT_SCHEMA_VERSION = "1.0.0"
 
 # Secret filtering version - increment when filtering logic changes
-SECRET_FILTER_VERSION = "1.0.0"
+SECRET_FILTER_VERSION = "1.1.0"
 
 
 class ContextBuilder:
@@ -146,6 +146,31 @@ class ContextBuilder:
 
         return value
 
+    def _get_display_fields(self, spec: dict[str, Any]) -> list[str]:
+        """Determine which config fields should appear in prompt context."""
+        config_schema = spec.get("configSchema", {})
+        properties: dict[str, Any] = config_schema.get("properties", {})
+        required = set(config_schema.get("required", []))
+
+        # Include fields showcased in examples or LLM hints so optional-but-core
+        # settings (like Supabase URL) are retained.
+        example_fields: set[str] = set()
+        for example in spec.get("examples", []) or []:
+            example_fields.update(example.get("config", {}).keys())
+
+        hint_fields = set((spec.get("llmHints", {}) or {}).get("inputAliases", {}).keys())
+
+        candidate_fields = required | (example_fields & properties.keys()) | (hint_fields & properties.keys())
+
+        if not candidate_fields:
+            candidate_fields = set(properties.keys())
+
+        ordered_fields: list[str] = []
+        for field_name in properties:  # preserve spec order
+            if field_name in candidate_fields:
+                ordered_fields.append(field_name)
+        return ordered_fields
+
     def _extract_minimal_config(self, spec: dict[str, Any]) -> list[dict[str, Any]]:
         """Extract minimal required configuration from component spec.
 
@@ -157,27 +182,28 @@ class ContextBuilder:
         """
         config_schema = spec.get("configSchema", {})
         properties = config_schema.get("properties", {})
-        required = set(config_schema.get("required", []))
 
         minimal_config = []
-        for field_name in required:
+        for field_name in self._get_display_fields(spec):
+            if field_name not in properties:
+                continue
+
             # Skip secret fields entirely
             if self._is_secret_field(field_name, spec):
                 continue
 
-            if field_name in properties:
-                field_spec = properties[field_name]
-                field_info = {"field": field_name, "type": field_spec.get("type", "string")}
+            field_spec = properties.get(field_name, {})
+            field_info = {"field": field_name, "type": field_spec.get("type", "string")}
 
-                # Include enum if present (important for LLM) but redact suspicious values
-                if "enum" in field_spec:
-                    field_info["enum"] = [self._redact_suspicious_value(v) for v in field_spec["enum"]]
+            # Include enum if present (important for LLM) but redact suspicious values
+            if "enum" in field_spec:
+                field_info["enum"] = [self._redact_suspicious_value(v) for v in field_spec["enum"]]
 
-                # Include default if present but redact if suspicious
-                if "default" in field_spec:
-                    field_info["default"] = self._redact_suspicious_value(field_spec["default"])
+            # Include default if present but redact if suspicious
+            if "default" in field_spec:
+                field_info["default"] = self._redact_suspicious_value(field_spec["default"])
 
-                minimal_config.append(field_info)
+            minimal_config.append(field_info)
 
         return minimal_config
 
@@ -199,17 +225,14 @@ class ContextBuilder:
         config = example.get("config", {})
 
         # Filter to only required fields, exclude secrets, and redact suspicious values
-        required = set(spec.get("configSchema", {}).get("required", []))
+        display_fields = set(self._get_display_fields(spec))
         minimal_config = {}
 
         for k, v in config.items():
-            # Skip if not required
-            if k not in required:
+            if k not in display_fields:
                 continue
-            # Skip if it's a secret field
             if self._is_secret_field(k, spec):
                 continue
-            # Add with redacted value if suspicious
             minimal_config[k] = self._redact_suspicious_value(v)
 
         return minimal_config if minimal_config else None

@@ -1,12 +1,15 @@
 """E2E test for MySQL to Supabase pipeline."""
 
 import json
-import tempfile
 from pathlib import Path
+import tempfile
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
 import yaml
+
+pytestmark = pytest.mark.supabase
 
 
 def test_mysql_to_supabase_e2e_flow():
@@ -194,8 +197,11 @@ def test_mysql_to_supabase_e2e_flow():
                     assert cleaned["resolved_connection"]["key"] == "***MASKED***"
 
 
-def test_supabase_writer_ddl_plan_generation():
+def test_supabase_writer_ddl_plan_generation(monkeypatch):
     """Test that Supabase writer generates DDL plan when table is missing."""
+    # Force use of real client (MagicMock) instead of offline stub
+    monkeypatch.setenv("OSIRIS_TEST_SUPABASE_FORCE_REAL_CLIENT", "1")
+
     from osiris.drivers.supabase_writer_driver import SupabaseWriterDriver
 
     driver = SupabaseWriterDriver()

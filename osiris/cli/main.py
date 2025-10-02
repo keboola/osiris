@@ -422,6 +422,15 @@ def init_command(args: list):
         sys.exit(1)
 
 
+def _safe_log_event(session, *args, **kwargs):
+    """Safely log an event, handling cases where session may not be initialized yet.
+
+    This is needed when errors occur before session creation in validate_command.
+    """
+    if session is not None:
+        session.log_event(*args, **kwargs)
+
+
 def validate_command(args: list):
     """Validate Osiris configuration file and environment setup."""
     # Check for help flag first
@@ -505,6 +514,9 @@ def validate_command(args: list):
         return
 
     use_json = json_output or parsed_args.json
+
+    # Initialize session to None; may remain undefined if error occurs before session init
+    session = None
 
     try:
         import os
@@ -827,7 +839,8 @@ def validate_command(args: list):
                     console.print("   💡 Strict mode: validation errors will block execution")
 
     except FileNotFoundError:
-        session.log_event("validate_error", error_type="file_not_found", config_file=parsed_args.config)
+        # Use safe logging since session may not be initialized yet
+        _safe_log_event(session, "validate_error", error_type="file_not_found", config_file=parsed_args.config)
         if use_json:
             print(
                 json.dumps(
@@ -838,19 +851,20 @@ def validate_command(args: list):
                 )
             )
         else:
-            console.print(f"❌ Configuration file '{parsed_args.config}' not found")
-            console.print("💡 Run 'osiris init' to create a sample configuration")
+            # Print user-friendly error to stderr without traceback
+            print(f"Configuration file '{parsed_args.config}' not found.", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
-        session.log_event("validate_error", error_type="validation_failed", error_message=str(e))
+        # Use safe logging since session may not be initialized yet
+        _safe_log_event(session, "validate_error", error_type="validation_failed", error_message=str(e))
         if use_json:
             print(json.dumps({"error": f"Configuration validation failed: {str(e)}"}))
         else:
             console.print(f"❌ Configuration validation failed: {e}")
         sys.exit(1)
     finally:
-        # Always close the session
-        if "session" in locals():
+        # Always close the session if it was created
+        if session is not None:
             session.close()
 
 
@@ -1598,8 +1612,8 @@ def prompts_command(args: list):
     if subcommand == "build-context":
         # Parse arguments for build-context
         import os
-        import time
         from pathlib import Path
+        import time
 
         from ..core.session_logging import SessionContext, set_current_session
 

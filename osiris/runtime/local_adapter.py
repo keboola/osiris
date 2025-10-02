@@ -6,9 +6,9 @@ a stable execution boundary.
 """
 
 import json
+from pathlib import Path
 import shutil
 import time
-from pathlib import Path
 from typing import Any
 
 from ..core.error_taxonomy import ErrorContext
@@ -609,6 +609,7 @@ class LocalAdapter(ExecutionAdapter):
                 (
                     (source_base / cfg_path).exists()
                     or (source_base / "compiled" / cfg_path).exists()
+                    or (source_base / Path(cfg_path).name).exists()
                     or (source_base / "cfg" / Path(cfg_path).name).exists()
                 )
                 or run_cfg_dir.exists()
@@ -733,8 +734,28 @@ class LocalAdapter(ExecutionAdapter):
         if not cfg_paths:
             return
 
+        run_cfg_dir = manifest_path.parent / "cfg"
+
         # Determine source location with clean manifest-relative resolution
         source_base = None
+        pre_materialized_base = None
+
+        # Tests and some compilers may pre-materialize cfg files and pass the
+        # directory via PreparedRun metadata. Prefer that when present so we do
+        # not fail just because the compiled manifest tree is absent.
+        metadata_cfg_dir = (
+            prepared.metadata.get("materialized_cfg_dir") if isinstance(prepared.metadata, dict) else None
+        )
+        if not metadata_cfg_dir:
+            metadata_cfg_dir = (
+                prepared.plan.get("metadata", {}).get("materialized_cfg_dir")
+                if isinstance(prepared.plan, dict)
+                else None
+            )
+        if metadata_cfg_dir:
+            candidate = Path(metadata_cfg_dir).expanduser()
+            if candidate.exists():
+                pre_materialized_base = candidate
 
         # For --manifest execution: use cleaner resolution without legacy session hunting
         if prepared.compiled_root:
@@ -768,7 +789,38 @@ class LocalAdapter(ExecutionAdapter):
                 if compile_dirs:
                     source_base = compile_dirs[0] / "compiled"
 
+        # Option 4: pre-materialized cfg directory supplied in metadata
+        if not source_base and pre_materialized_base:
+            source_base = pre_materialized_base
+            log_event(
+                "cfg_pre_materialized_used",
+                adapter="local",
+                path=str(source_base),
+                session_id=context.session_id,
+            )
+
         if not source_base or not source_base.exists():
+            # Allow callers (tests, prepared manifests) to pre-provide cfg files directly
+            # in the run directory. If every required cfg already exists, skip copying.
+            existing_ok = True
+            if not run_cfg_dir.exists():
+                existing_ok = False
+            else:
+                for cfg_path in sorted(cfg_paths):
+                    if not (run_cfg_dir / Path(cfg_path).name).exists():
+                        existing_ok = False
+                        break
+
+            if existing_ok:
+                log_event(
+                    "cfg_pre_materialized_used",
+                    adapter="local",
+                    path=str(run_cfg_dir),
+                    session_id=context.session_id,
+                    source="run_dir",
+                )
+                return
+
             raise PrepareError(
                 "Cannot find source location for cfg files. "
                 "Expected compiled manifest directory but found none. "
@@ -776,7 +828,6 @@ class LocalAdapter(ExecutionAdapter):
             )
 
         # Create cfg directory in run session
-        run_cfg_dir = manifest_path.parent / "cfg"
         run_cfg_dir.mkdir(parents=True, exist_ok=True)
 
         # Copy each cfg file using clean resolution order
@@ -791,6 +842,9 @@ class LocalAdapter(ExecutionAdapter):
             # 2. Legacy fallback patterns for compatibility
             elif (source_base / "compiled" / cfg_path).exists():
                 source_cfg = source_base / "compiled" / cfg_path
+            # 2b. Direct file inside supplied directory (pre-materialized cfg dir)
+            elif (source_base / Path(cfg_path).name).exists():
+                source_cfg = source_base / Path(cfg_path).name
             # 3. Direct cfg directory (for some legacy structures)
             elif (source_base / "cfg" / Path(cfg_path).name).exists():
                 source_cfg = source_base / "cfg" / Path(cfg_path).name

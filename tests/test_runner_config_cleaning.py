@@ -1,15 +1,19 @@
 """Tests for runner config cleaning (meta key stripping)."""
 
+import importlib
 import json
 from unittest.mock import MagicMock, patch
 
 import yaml
 
-from osiris.core.runner_v0 import RunnerV0
-
 
 def test_runner_strips_meta_keys(tmp_path):
     """Test that runner strips component and connection keys before passing to driver."""
+    # Reload module to ensure clean state
+    import osiris.core.runner_v0 as runner_module
+
+    importlib.reload(runner_module)
+
     # Create a manifest
     manifest_path = tmp_path / "manifest.yaml"
     manifest = {
@@ -45,7 +49,7 @@ def test_runner_strips_meta_keys(tmp_path):
     mock_driver.run.return_value = {}
 
     with patch("osiris.core.runner_v0.ComponentRegistry"):
-        runner = RunnerV0(str(manifest_path), str(tmp_path / "output"))
+        runner = runner_module.RunnerV0(str(manifest_path), str(tmp_path / "output"))
         runner.driver_registry = MagicMock()
         runner.driver_registry.get.return_value = mock_driver
 
@@ -78,6 +82,11 @@ def test_runner_strips_meta_keys(tmp_path):
 
 def test_cleaned_config_artifact_saved(tmp_path):
     """Test that cleaned config is saved as artifact without secrets."""
+    # Reload module to ensure clean state
+    import osiris.core.runner_v0 as runner_module
+
+    importlib.reload(runner_module)
+
     # Create a manifest
     manifest_path = tmp_path / "manifest.yaml"
     manifest = {
@@ -110,7 +119,7 @@ def test_cleaned_config_artifact_saved(tmp_path):
     output_dir = tmp_path / "output"
 
     with patch("osiris.core.runner_v0.ComponentRegistry"):
-        runner = RunnerV0(str(manifest_path), str(output_dir))
+        runner = runner_module.RunnerV0(str(manifest_path), str(output_dir))
         runner.driver_registry = MagicMock()
         runner.driver_registry.get.return_value = mock_driver
 
@@ -125,9 +134,9 @@ def test_cleaned_config_artifact_saved(tmp_path):
             # Run the pipeline
             runner.run()
 
-            # Check cleaned config artifact was saved
-            cleaned_config_path = output_dir / "test_step" / "cleaned_config.json"
-            assert cleaned_config_path.exists()
+            # Check cleaned config artifact was saved (use actual runner output dir)
+            cleaned_config_path = runner.output_dir / "test_step" / "cleaned_config.json"
+            assert cleaned_config_path.exists(), f"Expected cleaned_config.json at {cleaned_config_path}"
 
             # Load and verify cleaned config
             with open(cleaned_config_path) as f:
@@ -148,6 +157,11 @@ def test_cleaned_config_artifact_saved(tmp_path):
 
 def test_config_meta_stripped_event_logged(tmp_path):
     """Test that config_meta_stripped event is logged when meta keys are removed."""
+    # Reload module to ensure clean state
+    import osiris.core.runner_v0 as runner_module
+
+    importlib.reload(runner_module)
+
     # Create a manifest
     manifest_path = tmp_path / "manifest.yaml"
     manifest = {
@@ -178,7 +192,7 @@ def test_config_meta_stripped_event_logged(tmp_path):
     mock_driver.run.return_value = {}
 
     with patch("osiris.core.runner_v0.ComponentRegistry"), patch("osiris.core.runner_v0.log_event") as mock_log_event:
-        runner = RunnerV0(str(manifest_path), str(tmp_path / "output"))
+        runner = runner_module.RunnerV0(str(manifest_path), str(tmp_path / "output"))
         runner.driver_registry = MagicMock()
         runner.driver_registry.get.return_value = mock_driver
 
@@ -188,15 +202,13 @@ def test_config_meta_stripped_event_logged(tmp_path):
             # Run the pipeline
             runner.run()
 
-            # Check that config_meta_stripped event was logged
-            meta_stripped_calls = [
-                call for call in mock_log_event.call_args_list if call[0][0] == "config_meta_stripped"
-            ]
+            # Read directly from runner.events (robust against global mock pollution)
+            runner_events = [evt for evt in runner.events if evt.get("type") == "config_meta_stripped"]
 
-            assert len(meta_stripped_calls) == 1
-            event_call = meta_stripped_calls[0]
-            event_data = event_call[1]
+            assert len(runner_events) == 1, f"Expected 1 config_meta_stripped event, got {len(runner_events)}"
 
+            # Extract data payload from the event structure
+            event_data = runner_events[0]["data"]
             assert event_data["step_id"] == "test_step"
             assert event_data["keys_removed"] == ["component", "connection"]
             assert event_data["config_meta_stripped"] is True
@@ -204,6 +216,11 @@ def test_config_meta_stripped_event_logged(tmp_path):
 
 def test_no_meta_keys_no_stripping(tmp_path):
     """Test that when config has no meta keys, nothing is stripped."""
+    # Reload module to ensure clean state
+    import osiris.core.runner_v0 as runner_module
+
+    importlib.reload(runner_module)
+
     # Create a manifest
     manifest_path = tmp_path / "manifest.yaml"
     manifest = {
@@ -234,7 +251,7 @@ def test_no_meta_keys_no_stripping(tmp_path):
     mock_driver.run.return_value = {}
 
     with patch("osiris.core.runner_v0.ComponentRegistry"), patch("osiris.core.runner_v0.log_event") as mock_log_event:
-        runner = RunnerV0(str(manifest_path), str(tmp_path / "output"))
+        runner = runner_module.RunnerV0(str(manifest_path), str(tmp_path / "output"))
         runner.driver_registry = MagicMock()
         runner.driver_registry.get.return_value = mock_driver
 
@@ -246,8 +263,7 @@ def test_no_meta_keys_no_stripping(tmp_path):
             runner.run()
 
             # Check that NO config_meta_stripped event was logged
-            meta_stripped_calls = [
-                call for call in mock_log_event.call_args_list if call[0][0] == "config_meta_stripped"
-            ]
+            # Read directly from runner.events
+            runner_events = [evt for evt in runner.events if evt.get("type") == "config_meta_stripped"]
 
-            assert len(meta_stripped_calls) == 0  # No stripping event
+            assert len(runner_events) == 0  # No stripping event

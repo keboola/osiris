@@ -6,6 +6,8 @@ import pytest
 
 from osiris.drivers.supabase_writer_driver import SupabaseWriterDriver
 
+pytestmark = pytest.mark.supabase
+
 
 def test_ddl_attempt_signature_is_correct():
     """Verify _ddl_attempt has the exact signature expected by all call sites.

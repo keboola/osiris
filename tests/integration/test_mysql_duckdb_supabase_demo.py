@@ -10,8 +10,9 @@ import yaml
 from osiris.core.compiler_v0 import CompilerV0
 from osiris.core.runner_v0 import RunnerV0
 
+pytestmark = [pytest.mark.supabase, pytest.mark.integration]
 
-@pytest.mark.integration
+
 @pytest.mark.skipif(
     not os.getenv("MYSQL_PASSWORD") or not os.getenv("SUPABASE_SERVICE_ROLE_KEY"),
     reason="Missing required credentials (MYSQL_PASSWORD or SUPABASE_SERVICE_ROLE_KEY)",

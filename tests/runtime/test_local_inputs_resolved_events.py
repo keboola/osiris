@@ -44,14 +44,18 @@ def test_runner_emits_inputs_resolved_for_memory_inputs(tmp_path, monkeypatch):
     assert success is True
     assert error is None
 
-    input_events = [event for event in events if event["event"] == "inputs_resolved"]
-    assert len(input_events) == 1
-    inputs_event = input_events[0]
-    assert inputs_event["step_id"] == "process-step"
-    assert inputs_event["from_step"] == "extract-step"
-    assert inputs_event["key"] == "df"
-    assert inputs_event["from_memory"] is True
-    assert inputs_event["rows"] == 3
+    # Read directly from runner.events (robust against global mock pollution)
+    runner_events = [evt for evt in runner.events if evt.get("type") == "inputs_resolved"]
+
+    assert len(runner_events) == 1, f"Expected 1 inputs_resolved event, got {len(runner_events)}"
+
+    # Extract data payload from the event structure
+    inputs_event = runner_events[0]["data"]
+    assert inputs_event.get("step_id") == "process-step"
+    assert inputs_event.get("from_step") == "extract-step"
+    assert inputs_event.get("key") == "df"
+    assert inputs_event.get("from_memory") is True
+    assert inputs_event.get("rows") == 3
 
     assert driver.calls, "Driver should have been invoked"
     call_inputs = driver.calls[0][2]

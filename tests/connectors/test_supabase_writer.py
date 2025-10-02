@@ -9,6 +9,8 @@ import pytest
 
 from osiris.connectors.supabase.writer import SupabaseWriter
 
+pytestmark = pytest.mark.supabase
+
 
 class TestSupabaseWriter:
     """Test suite for Supabase writer."""

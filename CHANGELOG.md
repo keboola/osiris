@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Tests
+- **Quarantined slow IPv6 fallback test** - Moved `test_supabase_ipv6_fallback.py` to quarantine due to multi-minute stalls and flakiness
+  - Renamed to `_quarantined__test_supabase_ipv6_fallback.py` with module-level skip
+  - Added fast unit test replacement: `test_supabase_ipv4_fallback_unit.py` (< 1s, fully mocked)
+  - See ADR-0034 for context on driver behavior and E2B runtime parity
+  - TODO: Revisit when IPv6 fallback path is refactored
+
 #### DuckDB Processor Support
 - **DuckDB processor component** - SQL transformation processor for in-pipeline data manipulation
   - New driver: `osiris/drivers/duckdb_processor_driver.py`

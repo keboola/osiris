@@ -38,9 +38,13 @@ dev-install: ## Install package with development dependencies
 	@echo "✅ Development installation complete!"
 
 # Testing
-test: ## Run all tests
-	@echo "🧪 Running tests..."
-	python -m pytest tests/ -v
+test: ## Run all tests (split run: non-Supabase + Supabase)
+	@echo "🧪 Running tests (split-run approach)..."
+	@echo "Phase A: Running non-Supabase tests..."
+	python -m pytest -m "not supabase" -q
+	@echo "Phase B: Running Supabase tests..."
+	python -m pytest -m supabase -q
+	@echo "✅ All tests passed!"
 
 test-fast: ## Run tests (exclude slow tests)
 	@echo "⚡ Running fast tests..."

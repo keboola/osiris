@@ -3,8 +3,11 @@
 from types import SimpleNamespace
 
 import pandas as pd
+import pytest
 
 import osiris.drivers.supabase_writer_driver as supabase_driver
+
+pytestmark = pytest.mark.supabase
 
 
 class FakeTable:

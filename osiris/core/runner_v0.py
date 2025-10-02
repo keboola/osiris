@@ -1,10 +1,10 @@
 """Minimal local runner for compiled manifests."""
 
+from datetime import datetime
 import json
 import logging
-import time
-from datetime import datetime
 from pathlib import Path
+import time
 from typing import Any
 
 import yaml
@@ -47,8 +47,12 @@ class RunnerV0:
         """Build and populate the driver registry from component specs."""
         registry = DriverRegistry()
 
-        # Load component registry
+        # Load component registry fresh, bypassing any cached specs
         component_registry = ComponentRegistry()
+
+        # Clear any cached specs in the registry to prevent test pollution
+        registry._loaded_specs = None
+
         specs = registry.load_specs(component_registry)
 
         summary = registry.populate_from_component_specs(
@@ -164,6 +168,29 @@ class RunnerV0:
         except Exception:
             return 0
 
+    def _write_cleaned_config_artifact(self, clean_config: dict[str, Any], cleaned_path: Path) -> bool:
+        """Persist cleaned config artifact with masked secrets.
+
+        Returns True if the artifact was created, False if it already existed.
+        """
+
+        cleaned_path.parent.mkdir(parents=True, exist_ok=True)
+
+        artifact_config = json.loads(json.dumps(clean_config)) if clean_config else {}
+        resolved = artifact_config.get("resolved_connection")
+        if isinstance(resolved, dict):
+            masked = resolved.copy()
+            for key in ["password", "key", "token", "secret", "service_role_key", "anon_key"]:
+                if key in masked:
+                    masked[key] = "***MASKED***"
+            artifact_config["resolved_connection"] = masked
+
+        created = not cleaned_path.exists()
+        with open(cleaned_path, "w") as f:
+            json.dump(artifact_config, f, indent=2)
+
+        return created
+
     def _family_from_component(self, component: str) -> str:
         """Extract family from component name.
 
@@ -275,11 +302,6 @@ class RunnerV0:
             with open(cfg_full_path) as f:
                 config = json.load(f)
 
-            # Resolve connection if needed
-            connection = self._resolve_step_connection(step, config)
-            if connection:
-                config["resolved_connection"] = connection
-
             # Clean config for driver (strip meta keys)
             clean_config = config.copy()
             meta_keys_removed = []
@@ -294,35 +316,33 @@ class RunnerV0:
 
             # Log that meta keys were stripped
             if meta_keys_removed:
-                log_event(
+                self._log_event(
                     "config_meta_stripped",
-                    step_id=step_id,
-                    keys_removed=meta_keys_removed,
-                    config_meta_stripped=True,
+                    {
+                        "step_id": step_id,
+                        "keys_removed": meta_keys_removed,
+                        "config_meta_stripped": True,
+                    },
                 )
 
             # Save cleaned config as artifact (no secrets in resolved_connection)
             cleaned_config_path = step_output_dir / "cleaned_config.json"
-            with open(cleaned_config_path, "w") as f:
-                # Create a version without secrets for artifact
-                artifact_config = clean_config.copy()
-                if "resolved_connection" in artifact_config:
-                    # Mask sensitive fields in resolved connection
-                    conn = artifact_config["resolved_connection"].copy()
-                    for key in ["password", "key", "token", "secret"]:
-                        if key in conn:
-                            conn[key] = "***MASKED***"
-                    artifact_config["resolved_connection"] = conn
-                json.dump(artifact_config, f, indent=2)
+            artifact_created = self._write_cleaned_config_artifact(clean_config, cleaned_config_path)
+            if artifact_created:
+                logger.debug(f"Created artifact: {cleaned_config_path}")
+                log_event(
+                    "artifact_created",
+                    step_id=step_id,
+                    artifact_type="cleaned_config",
+                    path=str(cleaned_config_path),
+                )
 
-            # Log artifact creation
-            logger.debug(f"Created artifact: {cleaned_config_path}")
-            log_event(
-                "artifact_created",
-                step_id=step_id,
-                artifact_type="cleaned_config",
-                path=str(cleaned_config_path),
-            )
+            # Resolve connection after artifact creation so tests can observe
+            # cleaned configs even when resolution fails.
+            connection = self._resolve_step_connection(step, config)
+            if connection:
+                clean_config["resolved_connection"] = connection
+                self._write_cleaned_config_artifact(clean_config, cleaned_config_path)
 
             # Execute using driver registry with cleaned config
             success, error_message = self._run_with_driver(step, clean_config, step_output_dir)

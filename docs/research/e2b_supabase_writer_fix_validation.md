@@ -201,6 +201,12 @@ All acceptance criteria met. The fix is surgical, maintains local↔E2B parity, 
 - Verified parity: sandbox hash matches host hash (`sha256_match == true`) in `logs/run_*/events.jsonl`.
 - Set `E2B_DRIVER_VERIFY=0` to temporarily disable sandbox hash emission (default `1`).
 
+### DDL parity fixes
+
+- DDL planning now runs only when Supabase reports the table missing, eliminating spurious `table.ddl_planned` events for existing tables.
+- `OSIRIS_TEST_FORCE_DDL=1` guarantees plan artifacts without suppressing psycopg2 execution when a SQL channel is present, satisfying the SQL-channel smoke test.
+- Plan-only flows still short-circuit before data writes and emit `reason="No SQL channel available"` when neither SQL nor HTTP channels are configured.
+
 ### Artifact Download Policy
 
 - Default behavior skips large data artifacts (`output.pkl`, `output.parquet`, `*.feather`) to keep downloads lean.
