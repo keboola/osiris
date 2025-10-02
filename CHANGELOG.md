@@ -88,11 +88,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-#### Testing
+#### Testing Infrastructure
+- **Supabase driver stateless testing** - Eliminated test isolation issues causing 9 test failures
+  - Added `_reset_test_state()` function to clear module-level state between tests
+  - Updated `_table_exists()` to respect offline mode and `FORCE_REAL_CLIENT` env variables
+  - All env reads now at call-time instead of module import time, ensuring stateless behavior
+  - Created unified `supabase_test_guard` autouse fixture in `tests/conftest.py`
+  - Added `@pytest.mark.supabase` marker to all Supabase test modules (9 files)
+  - Updated Makefile test target for split-run approach:
+    * Phase A: `pytest -m "not supabase"` → 917 tests pass
+    * Phase B: `pytest -m supabase` → 54 tests pass
+    * Total: **971 tests passing** ✅ (up from 962)
+  - Removed redundant per-file fixtures and centralized all setup logic
+  - Fast execution: Supabase test suite completes in <1 second (was 3+ minutes)
+  - No more test ordering dependencies or cross-contamination issues
+
+- **Validate command error handling** - Fixed UnboundLocalError crash when config file missing
+  - Added `_safe_log_event()` helper in `osiris/cli/main.py` to safely log when session may not exist
+  - Initialize `session=None` before try block to prevent UnboundLocalError on early failures
+  - Clean single-line error messages to stderr without Python tracebacks
+  - FileNotFoundError now shows: "Configuration file 'X' not found." instead of full traceback
+  - Tests now skip cleanly with user-friendly messages instead of scary UnboundLocalError dumps
+  - Improved user experience when running commands without `osiris.yaml`
+
+#### E2B and Telemetry
+- **Supabase writer E2B parity** - Fixed signature mismatch causing E2B execution failures
+  - Broadened secret filtering in compiler to catch more sensitive patterns
+  - Added offline DDL plan-only mode for tests without network access
+  - Enhanced DDL generation to work consistently across local and E2B environments
+  - Comprehensive research comparing Codex vs Claude solutions (3 documents, 2,000+ lines)
+
+- **E2B telemetry and artifact hardening** - Improved reliability and data quality
+  - Proxy worker DataFrame telemetry now matches local execution exactly
+  - Local inputs_resolved telemetry recorded once per step (was duplicated)
+  - Local preflight accepts self-contained cfg files for better test isolation
+  - Session-scoped AIOP paths toggle for flexible artifact organization
+
 - **test_parity_e2b_vs_local.py** - Fixed cfg file format issue
   - Test was writing full step definition instead of just config to cfg files
   - Runner expects cfg files to contain only configuration portion
-  - All 938 tests now pass (was 3 failures)
+  - All tests now pass with correct config format
 
 #### Pre-commit Issues
 - **Hook infinite loops** - Ruff no longer causes re-formatting loops
@@ -107,6 +142,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Quick commit helper documentation
 - **README.md** - Added Contributing section linking to CONTRIBUTING.md
 - **E2B doctor script** - Added diagnostic tool for E2B sandbox debugging
+- **Developer documentation restructure** - Reorganized into human/AI-focused trees
+  - Created `docs/COMPONENT_AI_CHECKLIST.md` for LLM-assisted component development
+  - Added `docs/COMPONENT_DEVELOPER_AUDIT.md` for systematic component reviews
+  - Archived legacy documentation to `docs/archive/` for reference
+  - Preserved all LLM contracts (llms.txt, llms-drivers.txt, etc.) in archive
+- **ADR documentation** - Added two new Architecture Decision Records
+  - ADR-0034: E2B Runtime Unification with Local Runner (proposed)
+  - ADR-0035: Compiler Secret Detection via Specs and Connections (proposed)
+- **Research documentation** - Comprehensive E2B Supabase writer investigation
+  - Codex vs Claude-Opus vs Claude-Sonnet comparison (3 documents, 2,000+ lines)
+  - Detailed validation of driver signatures and E2B parity
+  - Test planning documents for Supabase driver refactoring
 
 ### CI/CD
 - **Non-blocking Research workflow** (.github/workflows/research.yml)
