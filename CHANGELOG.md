@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **GraphQL Extractor Component** (`graphql.extractor`)
+  - New driver: `osiris/drivers/graphql_extractor_driver.py` for GraphQL API data extraction
+  - Component spec: `components/graphql.extractor/spec.yaml` with authentication support (Bearer, Basic, API Key)
+  - Support for complex GraphQL queries with variables and nested field extraction
+  - JSONPath-based data extraction from GraphQL responses
+  - Comprehensive test coverage with 16 passing tests
+  - Integration with existing component registry
+
+- **Connection-aware CLI Validation** (ADR-0020)
+  - `osiris validate` now reads from `osiris_connections.yaml` for connection validation
+  - Shows configured aliases and missing environment variables per connection
+  - Connection validation integrated into JSON output structure
+
+### Changed
+- **Validation Command Updates** (ADR-0020)
+  - `osiris validate` now uses connection-based validation from `osiris_connections.yaml`
+  - Removed legacy environment-only probing in favor of connection definitions
+  - Validation output includes connection aliases and per-connection status
+
+- **Test Infrastructure Improvements**
+  - Supabase tests isolated via `@pytest.mark.supabase` marker for clean separation
+  - Split-run test execution: `make test` orchestrates both non-Supabase and Supabase phases
+  - Test suite now at 1001+ passing tests with improved isolation
+
+### Fixed
+- **Secret Detection Improvements** (ADR-0035)
+  - Fixed false-positive secret detection for standalone "Bearer" keyword
+  - Pattern now only flags "Bearer" when followed by actual token-like strings (16+ chars)
+  - Aligns with ADR-0035 principle: detect real secrets, not keywords
+
+- **Test Warning Fixes**
+  - Fixed `PytestReturnNotNoneWarning` in `test_m0_validation_4_logging.py::test_scenario_log_level_comparison`
+  - Test now properly uses assertions instead of returning boolean values
+
+- **CLI Validation Test Updates**
+  - Fixed 5 CLI validation tests to work with ADR-0020 connection-based validation
+  - Tests now use `temp_connections_yaml` fixture for proper osiris_connections.yaml setup
+  - Updated assertions to check for connection aliases instead of legacy missing_vars
+
+### Documentation
+- **ADR Status Updates** reflecting actual implementation state:
+  - **ADR-0031** (OML Control Flow): Status changed to "Proposed (Deferred to M2+)" - 0% implemented
+  - **ADR-0032** (Runtime Parameters): Status changed to "Accepted" - 90% implemented, core features production-ready
+  - **ADR-0034** (E2B Runtime Parity): Status changed to "Accepted (Amended)" - 85% implemented via Transparent Proxy architecture
+  - **ADR-0035** (Compiler Secret Detection): Status changed to "Accepted (Phase 1)" - 80% implemented, x-secret parsing complete
+  - Each ADR now includes detailed implementation status sections with code references and test coverage
+
 ## [0.3.1] - 2025-09-29
 ### Fixed
 - `osiris validate`: removed spurious `additionalProperties` warnings for ADR-0020 compliant configs (schema whitelist; `additionalProperties: false` retained).
