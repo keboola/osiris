@@ -12,12 +12,7 @@ import pytest
 # Import real E2B components
 from osiris.core.execution_adapter import ExecutionContext
 from osiris.remote.e2b_adapter import E2BAdapter
-from osiris.remote.e2b_client import (
-    E2BClient,
-    FinalStatus,
-    SandboxHandle,
-    SandboxStatus,
-)
+from osiris.remote.e2b_client import E2BClient, FinalStatus, SandboxHandle, SandboxStatus
 
 
 def make_execution_context(tmpdir: Path, **extras) -> ExecutionContext:

@@ -10,11 +10,7 @@ import pytest
 pytest_plugins = ("pytest_asyncio",)
 
 try:
-    from osiris.cli.chat import (
-        SessionAwareFormatter,
-        SessionLogFilter,
-        set_session_context,
-    )
+    from osiris.cli.chat import SessionAwareFormatter, SessionLogFilter, set_session_context
     from osiris.cli.chat import chat as chat_main
 
     MODULES_AVAILABLE = True

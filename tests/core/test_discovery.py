@@ -14,10 +14,7 @@ import pytest
 pytest_plugins = ("pytest_asyncio",)
 
 try:
-    from osiris.core.discovery import (
-        DateTimeEncoder,
-        ProgressiveDiscovery,
-    )
+    from osiris.core.discovery import DateTimeEncoder, ProgressiveDiscovery
     from osiris.core.interfaces import TableInfo
 
     MODULES_AVAILABLE = True
