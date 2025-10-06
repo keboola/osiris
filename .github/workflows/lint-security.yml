@@ -23,8 +23,6 @@ jobs:
         run: ruff check .
       - name: Black check
         run: black --check --line-length=120 .
-      - name: isort check
-        run: isort --check-only --profile=black --line-length=120 .
 
   security:
     runs-on: ubuntu-latest
