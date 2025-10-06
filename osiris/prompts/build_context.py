@@ -4,12 +4,12 @@ This module extracts essential component information from the registry
 and creates a compact JSON context optimized for token efficiency.
 """
 
-from datetime import UTC, datetime
 import hashlib
 import json
 import logging
-from pathlib import Path
 import re
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from jsonschema import Draft202012Validator, ValidationError
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 CONTEXT_SCHEMA_VERSION = "1.0.0"
 
 # Secret filtering version - increment when filtering logic changes
-SECRET_FILTER_VERSION = "1.1.0"
+SECRET_FILTER_VERSION = "1.1.0"  # nosec B105 - version string, not a password
 
 
 class ContextBuilder:

@@ -776,7 +776,8 @@ class E2BAdapter(ExecutionAdapter):
                                     # It's a directory, recurse
                                     count += download_directory_recursive(remote_item_path, local_item_path)
                             except Exception:
-                                continue
+                                # Skip files that can't be downloaded (permissions, corrupted, etc)
+                                continue  # nosec B112 - best effort artifact collection
             except Exception:
                 pass
 
