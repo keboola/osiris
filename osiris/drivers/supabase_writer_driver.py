@@ -1,13 +1,13 @@
 """Supabase writer driver for runtime execution."""
 
-from datetime import date, datetime
-from decimal import Decimal
 import logging
 import os
-from pathlib import Path
-import random
+import secrets
 import socket
 import time
+from datetime import date, datetime
+from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
@@ -67,8 +67,8 @@ def retry_with_backoff(func, max_attempts=3, initial_delay=1.0, max_delay=10.0):
         except Exception as e:
             last_exception = e
             if attempt < max_attempts - 1:
-                # Add jitter: 0.5x to 1.5x the base delay
-                jittered_delay = delay * (0.5 + random.random())
+                # Add jitter: 0.5x to 1.5x the base delay (using secure random for non-cryptographic jitter)
+                jittered_delay = delay * (0.5 + secrets.SystemRandom().random())
                 logger.warning(
                     f"Attempt {attempt + 1} failed: {str(e)[:100]}. " f"Retrying in {jittered_delay:.2f}s..."
                 )
@@ -941,7 +941,14 @@ class SupabaseWriterDriver(Driver):
 
         with conn:
             with conn.cursor() as cur:
-                select_sql = f"SELECT {', '.join(primary_key)} FROM {schema}.{table_name}"
+                # Use psycopg2.sql for safe identifier handling
+                from psycopg2 import sql
+
+                select_sql = sql.SQL("SELECT {} FROM {}.{}").format(
+                    sql.SQL(", ").join([sql.Identifier(col) for col in primary_key]),
+                    sql.Identifier(schema),
+                    sql.Identifier(table_name),
+                )
                 cur.execute(select_sql)
                 existing = cur.fetchall()
 
@@ -956,11 +963,17 @@ class SupabaseWriterDriver(Driver):
                     conditions = []
                     params: list[Any] = []
                     for row in chunk:
-                        condition = " AND ".join([f"{col} = %s" for col in primary_key])
-                        conditions.append(f"({condition})")
+                        # Build conditions with properly quoted column names
+                        condition_parts = []
+                        for col in primary_key:
+                            condition_parts.append(sql.SQL("{} = %s").format(sql.Identifier(col)))
+                        conditions.append(sql.SQL("({})").format(sql.SQL(" AND ").join(condition_parts)))
                         params.extend(row)
 
-                    delete_sql = f"DELETE FROM {schema}.{table_name} WHERE " + " OR ".join(conditions)
+                    # Build DELETE statement with properly quoted identifiers
+                    delete_sql = sql.SQL("DELETE FROM {}.{} WHERE {}").format(
+                        sql.Identifier(schema), sql.Identifier(table_name), sql.SQL(" OR ").join(conditions)
+                    )
                     cur.execute(delete_sql, params)
 
             conn.commit()
@@ -980,7 +993,11 @@ class SupabaseWriterDriver(Driver):
 
         with conn:
             with conn.cursor() as cur:
-                cur.execute(f"DELETE FROM {schema}.{table_name}")
+                # Use psycopg2.sql for safe identifier handling
+                from psycopg2 import sql
+
+                delete_sql = sql.SQL("DELETE FROM {}.{}").format(sql.Identifier(schema), sql.Identifier(table_name))
+                cur.execute(delete_sql)
             conn.commit()
 
     @staticmethod
