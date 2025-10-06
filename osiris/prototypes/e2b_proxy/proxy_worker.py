@@ -2,7 +2,9 @@
 """ProxyWorker - Runs inside E2B sandbox and handles JSON-RPC commands."""
 
 import json
+import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -64,9 +66,10 @@ class ProxyWorker:
         self.session_id = cmd.get("session_id", "unknown")
         manifest = cmd.get("manifest", {})
 
-        # Create session directory
-        self.session_dir = Path(f"/tmp/session_{self.session_id}")
-        self.session_dir.mkdir(parents=True, exist_ok=True)
+        # Create session directory securely using tempfile
+        # This ensures proper permissions and avoids symlink attacks
+        temp_dir = tempfile.mkdtemp(prefix=f"osiris-session-{self.session_id}-")
+        self.session_dir = Path(temp_dir)
 
         # Send event
         self.send_event("session_initialized", session_id=self.session_id)
@@ -114,8 +117,8 @@ class ProxyWorker:
 
         # Clean up session directory
         if self.session_dir and self.session_dir.exists():
-            # In real implementation, would clean up
-            pass
+            # Safely remove temporary directory and all contents
+            shutil.rmtree(self.session_dir, ignore_errors=True)
 
         self.send_event("cleanup_complete", steps_executed=self.step_count)
 
