@@ -16,8 +16,8 @@
 """Tests for run_export_v2 (PR2 - Evidence Layer functions only)."""
 
 import json
-import tempfile
 from pathlib import Path
+import tempfile
 
 
 class TestRunExportV2:

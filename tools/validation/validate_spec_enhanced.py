@@ -7,11 +7,11 @@ Usage:
 """
 
 import json
-import sys
 from pathlib import Path
+import sys
 
-import yaml
 from jsonschema import Draft202012Validator, ValidationError
+import yaml
 
 
 def load_file(path: Path):

@@ -13,10 +13,10 @@ This test suite validates:
 
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 

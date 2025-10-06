@@ -17,8 +17,8 @@
 
 import datetime
 import os
-import time
 from pathlib import Path
+import time
 from unittest.mock import patch
 
 from osiris.core.aiop_export import _apply_retention, export_aiop_auto

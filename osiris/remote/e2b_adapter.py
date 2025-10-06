@@ -8,8 +8,8 @@ prototype infrastructure.
 import contextlib
 import json
 import os
-import time
 from pathlib import Path
+import time
 from typing import Any
 
 import yaml

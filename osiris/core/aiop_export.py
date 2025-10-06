@@ -3,8 +3,8 @@
 import datetime
 import gzip
 import json
-import shutil
 from pathlib import Path
+import shutil
 from typing import Any
 
 from .config import render_path, resolve_aiop_config

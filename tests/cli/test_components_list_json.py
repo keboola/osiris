@@ -1,7 +1,7 @@
 """Tests for components list JSON output."""
 
-import json
 from io import StringIO
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest

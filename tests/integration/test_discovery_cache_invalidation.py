@@ -15,8 +15,8 @@
 """Integration tests for discovery cache invalidation (M0.2)."""
 
 import json
-import tempfile
 from pathlib import Path
+import tempfile
 
 import pytest
 

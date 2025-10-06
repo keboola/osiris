@@ -2,8 +2,8 @@
 
 import json
 
-import pytest
 from pydantic import ValidationError
+import pytest
 
 from osiris.remote.rpc_protocol import (
     CleanupCommand,

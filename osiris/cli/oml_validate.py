@@ -2,11 +2,11 @@
 
 from pathlib import Path
 
-import yaml
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+import yaml
 
 from osiris.core.oml_validator import OMLValidator
 

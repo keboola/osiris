@@ -1,7 +1,7 @@
 """Test that chat generates valid OML for MySQL to CSV export."""
 
-import tempfile
 from pathlib import Path
+import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

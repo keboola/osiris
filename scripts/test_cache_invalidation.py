@@ -27,9 +27,9 @@ Then monitor logs with:
 
 import asyncio
 import logging
+from pathlib import Path
 import sys
 import tempfile
-from pathlib import Path
 
 # Add parent directory to Python path to import osiris modules
 sys.path.insert(0, str(Path(__file__).parent.parent))

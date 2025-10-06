@@ -5,9 +5,9 @@ Verifies DuckDB is available and functional in the execution environment.
 No Osiris imports - standalone script for E2B environment validation.
 """
 
+from pathlib import Path
 import sys
 import tempfile
-from pathlib import Path
 
 
 def test_duckdb_import():

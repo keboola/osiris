@@ -2,11 +2,11 @@
 """ProxyWorker - Runs inside E2B sandbox and handles JSON-RPC commands."""
 
 import json
+from pathlib import Path
 import shutil
 import sys
 import tempfile
 import time
-from pathlib import Path
 from typing import Any
 
 

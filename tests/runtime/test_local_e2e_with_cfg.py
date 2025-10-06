@@ -5,8 +5,8 @@ Tests the complete flow from compile to run with cfg files.
 
 import json
 import os
-import tempfile
 from pathlib import Path
+import tempfile
 
 import pytest
 

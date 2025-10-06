@@ -1,9 +1,9 @@
 """Tests for secret filtering in context builder."""
 
 import json
+from pathlib import Path
 import re
 import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest

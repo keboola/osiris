@@ -3,9 +3,9 @@
 Provides functionality to run end-to-end validation scenarios for M1b.3.
 """
 
+from datetime import datetime
 import json
 import logging
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 

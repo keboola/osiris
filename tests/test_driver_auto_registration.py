@@ -1,8 +1,8 @@
 """Tests for driver auto-registration from component specs."""
 
 import importlib
-import tempfile
 from pathlib import Path
+import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
