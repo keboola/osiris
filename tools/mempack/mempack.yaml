@@ -18,10 +18,12 @@ include:
 - osiris/prompts/*
 - osiris/runtime/*.py
 - osiris/remote/*.py
+- osiris/drivers/graphql_extractor_driver.py # added GraphQL driver
 
 # Components registry/specs
 - components/spec.schema.json
 - components/*/**/spec.yaml
+- components/graphql.extractor/spec.yaml # added GraphQL component spec
 
 # Docs – keep ADRs, milestones, roadmap + top-level docs + examples
 - docs/**/*.md
@@ -328,4 +330,23 @@ commands:
   with_cmd: true
   shell: bash
   timeout: 15s
+  on_error: keep
+
+# --- Split-run summary (short reports for non-supabase and supabase suites) ---
+- output_path: tools/mempack/gen/tests-splitrun-non-supabase.txt
+  run: |
+    source .venv/bin/activate
+    pytest -m "not supabase" -q > ../tools/mempack/gen/tests-splitrun-non-supabase.txt || true
+  with_cmd: true
+  shell: bash
+  timeout: 120s
+  on_error: keep
+
+- output_path: tools/mempack/gen/tests-splitrun-supabase.txt
+  run: |
+    source .venv/bin/activate
+    pytest -m supabase -q > ../tools/mempack/gen/tests-splitrun-supabase.txt || true
+  with_cmd: true
+  shell: bash
+  timeout: 60s
   on_error: keep
