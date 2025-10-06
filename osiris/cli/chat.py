@@ -115,8 +115,6 @@ def show_epic_help(json_output=False):
     """Display clean help using simple Rich formatting or JSON."""
 
     if json_output:
-        import json
-
         help_data = {
             "command": "chat",
             "description": "Conversational pipeline generation with LLM",
@@ -302,8 +300,6 @@ def chat(argv=None):
         allowed_events = config["logging"]["events"]
 
     # Create session context for chat with correct logs directory and event filter
-    from pathlib import Path
-
     session_id = getattr(args, "session_id", None) or f"chat_{int(time.time())}"
     session = SessionContext(
         session_id=session_id,
@@ -422,8 +418,6 @@ def chat(argv=None):
         if args.pro_mode:
             console.print("🤖 Pro mode enabled - using custom prompts from .osiris_prompts/")
             # Check if prompts directory exists
-            from pathlib import Path
-
             prompts_dir = Path(".osiris_prompts")
             if not prompts_dir.exists():
                 console.print("⚠️  .osiris_prompts/ directory not found")

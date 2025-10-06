@@ -4,6 +4,7 @@ import json
 import shutil
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 from rich.console import Console
@@ -285,8 +286,6 @@ def compile_command(args: list[str]):
             log_event("compile_complete", message=message, duration=duration)
 
             # Write pointer files for successful compilation
-            from datetime import datetime
-
             pointer_data = {
                 "session_id": session_id,
                 "manifest_path": f"logs/{session_id}/compiled/manifest.yaml",
