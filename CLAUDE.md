@@ -453,6 +453,7 @@ Only run `detect-secrets scan > .secrets.baseline` when:
 - **`debug/codex-test`** - Test infrastructure fixes, E2B parity improvements, DuckDB processor (24 commits, ready for review)
 - **`feat/graphql-extractor-component`** - GraphQL API extractor component (1 commit, ready for merge)
 
+
 ## E2B Cloud Execution
 
 Osiris supports transparent execution in E2B cloud sandboxes with full parity to local execution (<1% overhead).

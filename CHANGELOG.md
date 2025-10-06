@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2025-09-29
+### Fixed
+- `osiris validate`: removed spurious `additionalProperties` warnings for ADR-0020 compliant configs (schema whitelist; `additionalProperties: false` retained).
+
+### Added
+- `docs/reference/connection-fields.md`: allowed fields for MySQL & Supabase connections.
+
+### Tests
+- 11 new cases in `tests/core/test_validation_connections.py`.
+
+### Notes
+- Backward compatible; NO-SECRETS posture preserved.
+
+## Previous Unreleased Content
+
 ### Added
 
 ### Tests

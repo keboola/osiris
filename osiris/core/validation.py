@@ -18,9 +18,9 @@ This module provides JSON Schema-based validation for connection configurations
 with friendly error messages and validation modes (warn/strict/off).
 """
 
-import os
 from dataclasses import dataclass
 from enum import Enum
+import os
 from typing import Any
 
 # Basic JSON schemas for connection validation
@@ -38,6 +38,11 @@ MYSQL_CONNECTION_SCHEMA = {
         "connect_timeout": {"type": "integer", "minimum": 1, "default": 10},
         "read_timeout": {"type": "integer", "minimum": 1, "default": 10},
         "write_timeout": {"type": "integer", "minimum": 1, "default": 10},
+        # Connection management fields per ADR-0020
+        "default": {"type": "boolean", "description": "Mark as default connection for family"},
+        "alias": {"type": "string", "description": "Connection alias name (metadata only)"},
+        # Alternative connection methods
+        "dsn": {"type": "string", "description": "Alternative DSN connection string"},
     },
     "additionalProperties": False,
 }
@@ -50,6 +55,14 @@ SUPABASE_CONNECTION_SCHEMA = {
         "url": {"type": "string", "format": "uri"},
         "key": {"type": "string", "minLength": 1},
         "schema": {"type": "string", "default": "public"},
+        # Connection management fields per ADR-0020
+        "default": {"type": "boolean", "description": "Mark as default connection for family"},
+        "alias": {"type": "string", "description": "Connection alias name (metadata only)"},
+        # Alternative connection methods and metadata
+        "pg_dsn": {"type": "string", "description": "PostgreSQL DSN for direct connection"},
+        "service_role_key": {"type": "string", "description": "Alternative: service role key"},
+        "anon_key": {"type": "string", "description": "Alternative: anonymous/public key"},
+        "password": {"type": "string", "description": "Database password for pg_dsn"},
     },
     "additionalProperties": False,
 }
@@ -344,12 +357,30 @@ class ConnectionValidator:
         # Look up friendly mapping
         mapping = self.error_mappings.get((path, rule), {})
         if not mapping:
-            # Generic fallback
-            mapping = {
-                "why": f"Validation rule '{rule}' failed",
-                "fix": "Check the configuration value",
-                "example": None,
-            }
+            # Special handling for additionalProperties
+            if rule == "additionalProperties":
+                # Extract the unexpected keys from the error message
+                import re
+
+                match = re.search(r"Additional properties are not allowed \((.*?)\)", json_error.message)
+                unexpected_keys = match.group(1) if match else "unknown keys"
+
+                # Get allowed keys from schema
+                schema_props = json_error.schema.get("properties", {})
+                allowed_keys = ", ".join(sorted(schema_props.keys()))
+
+                mapping = {
+                    "why": f"Configuration contains unexpected keys: {unexpected_keys}",
+                    "fix": f"Remove unexpected keys or use only allowed keys: {allowed_keys}",
+                    "example": None,
+                }
+            else:
+                # Generic fallback
+                mapping = {
+                    "why": f"Validation rule '{rule}' failed",
+                    "fix": "Check the configuration value",
+                    "example": None,
+                }
 
         return ValidationError(
             path=path,
