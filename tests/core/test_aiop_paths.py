@@ -16,8 +16,8 @@
 """Tests for AIOP path templating."""
 
 import datetime
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
 import pytest
 

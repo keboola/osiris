@@ -5,8 +5,8 @@ the component registry specifications, ensuring that generated pipelines
 are valid before presentation to users.
 """
 
-from dataclasses import dataclass, field
 import logging
+from dataclasses import dataclass, field
 from typing import Any
 
 import jsonschema

@@ -8,8 +8,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator, ValidationError
 import yaml
+from jsonschema import Draft202012Validator, ValidationError
 
 
 class ComponentSpecValidator:

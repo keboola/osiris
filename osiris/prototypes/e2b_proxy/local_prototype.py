@@ -2,13 +2,13 @@
 """Local Prototype - Demonstrates JSON-RPC transparent proxy pattern without E2B."""
 
 import json
-from pathlib import Path
-from queue import Queue
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+from pathlib import Path
+from queue import Queue
 from typing import Any
 
 

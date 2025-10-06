@@ -18,13 +18,13 @@ Discovers database schemas progressively: 10 → 100 → 1000 rows as needed.
 """
 
 import asyncio
-from datetime import date, datetime
 import json
 import logging
-from pathlib import Path
 import time
-from typing import Any
 import uuid
+from datetime import date, datetime
+from pathlib import Path
+from typing import Any
 
 import pandas as pd
 

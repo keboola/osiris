@@ -17,11 +17,11 @@
 
 import json
 import os
-from pathlib import Path
 import tempfile
 import time
-from unittest.mock import patch
 import zipfile
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 

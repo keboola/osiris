@@ -16,9 +16,9 @@
 """Integration tests for AIOP automatic export on run completion."""
 
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 import yaml

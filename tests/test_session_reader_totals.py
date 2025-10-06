@@ -2,8 +2,8 @@
 """Unit tests for SessionReader row totals normalization."""
 
 import json
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
 from osiris.core.session_reader import SessionReader
 

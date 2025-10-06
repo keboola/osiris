@@ -3,8 +3,8 @@
 
 import json
 import os
-from pathlib import Path
 import re
+from pathlib import Path
 from typing import Any
 
 from osiris.core.session_reader import SessionReader

@@ -1664,8 +1664,8 @@ def prompts_command(args: list):
     if subcommand == "build-context":
         # Parse arguments for build-context
         import os
-        from pathlib import Path
         import time
+        from pathlib import Path
 
         from ..core.session_logging import SessionContext, set_current_session
 

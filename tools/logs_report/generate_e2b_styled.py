@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Enhanced HTML generator with e2b.dev-inspired design and session type classification."""
 
-from datetime import datetime
 import json
+from datetime import datetime
 from pathlib import Path
 
 from osiris.core.logs_serialize import to_index_json, to_session_json

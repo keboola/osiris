@@ -4,9 +4,9 @@ import argparse
 import json
 import logging
 import os
-from pathlib import Path
 import re
 import time
+from pathlib import Path
 from typing import Any
 
 import pymysql

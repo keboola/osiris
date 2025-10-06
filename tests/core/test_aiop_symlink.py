@@ -1,7 +1,7 @@
 """Test for platform-safe symlink/fallback functionality."""
 
-from pathlib import Path
 import platform
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest

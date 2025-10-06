@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Enhanced HTML generator with comprehensive session details for developers."""
 
-from datetime import datetime
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 

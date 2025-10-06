@@ -1,9 +1,9 @@
 """Test E2B full CLI execution in sandbox."""
 
 import os
-from pathlib import Path
 import tarfile
 import tempfile
+from pathlib import Path
 
 import pytest
 

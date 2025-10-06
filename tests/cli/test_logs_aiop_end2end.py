@@ -1,9 +1,9 @@
 """End-to-end tests for osiris logs aiop CLI command."""
 
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 
 def create_test_session(logs_dir: Path) -> str:

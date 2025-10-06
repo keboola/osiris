@@ -15,8 +15,8 @@
 """Advanced redaction system with configurable privacy levels."""
 
 import os
-from pathlib import Path
 import re
+from pathlib import Path
 from typing import Any
 
 # Privacy levels

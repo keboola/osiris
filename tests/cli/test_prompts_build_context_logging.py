@@ -1,9 +1,9 @@
 """Test logging behavior for prompts build-context command."""
 
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 

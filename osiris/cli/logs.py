@@ -16,14 +16,14 @@
 """CLI commands for session log management."""
 
 import argparse
-from datetime import datetime, timedelta
 import json
-from pathlib import Path
 import shutil
 import sys
 import time
-from typing import Any
 import zipfile
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel

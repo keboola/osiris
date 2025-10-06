@@ -18,8 +18,8 @@ import argparse
 import asyncio
 import logging
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
 # Add the parent directory to Python path so we can import osiris
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))

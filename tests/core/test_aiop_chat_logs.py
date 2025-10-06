@@ -1,8 +1,8 @@
 """Tests for AIOP Chat Logs Integration functionality."""
 
 import json
-from pathlib import Path
 import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from osiris.core.aiop_export import _export_annex

@@ -1,7 +1,7 @@
 """Canonical serialization for deterministic output."""
 
-from collections import OrderedDict
 import json
+from collections import OrderedDict
 from typing import Any
 
 import yaml

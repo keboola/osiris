@@ -1,9 +1,9 @@
 """Tests for friendly error handling in registry and CLI."""
 
-from io import StringIO
 import json
-from pathlib import Path
 import tempfile
+from io import StringIO
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest

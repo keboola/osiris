@@ -5,15 +5,15 @@ Supports command execution to generate dynamic content before packing.
 No external dependencies - stdlib only.
 """
 import argparse
-from fnmatch import fnmatch, fnmatchcase
 import hashlib
 import io
 import json
 import os
-from pathlib import Path
 import subprocess  # nosec B404
 import sys
 import time
+from fnmatch import fnmatch, fnmatchcase
+from pathlib import Path
 from typing import Any
 
 BANNER = "=" * 80

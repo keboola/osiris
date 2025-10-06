@@ -5,8 +5,8 @@ Run from testing_env to use local connections.
 """
 
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))

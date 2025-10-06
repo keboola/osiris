@@ -14,9 +14,9 @@
 
 """Supabase data writer for loading operations."""
 
+import logging
 from datetime import datetime
 from decimal import Decimal
-import logging
 from typing import Any
 
 import numpy as np

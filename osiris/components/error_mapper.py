@@ -1,7 +1,7 @@
 """Friendly error mapper for component validation failures."""
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from typing import Any
 
 

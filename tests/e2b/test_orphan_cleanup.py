@@ -1,7 +1,7 @@
 """Test orphan sandbox detection and cleanup for E2B."""
 
-from datetime import datetime, timedelta
 import os
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest

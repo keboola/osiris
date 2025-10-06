@@ -2,9 +2,9 @@
 
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -70,8 +70,8 @@ connections:
         with patch("osiris.core.config.Path.cwd", return_value=sample_connections_file):
             # Import and call the function directly for unit testing
             # Capture output
-            from contextlib import redirect_stdout
             import io
+            from contextlib import redirect_stdout
 
             from osiris.cli.connections_cmd import list_connections
 
@@ -94,8 +94,8 @@ connections:
         with patch("osiris.core.config.Path.cwd", return_value=sample_connections_file):
             # Import and call the function directly
             # Capture output
-            from contextlib import redirect_stdout
             import io
+            from contextlib import redirect_stdout
 
             from osiris.cli.connections_cmd import list_connections
 
@@ -124,8 +124,8 @@ connections:
         """Test listing when no connections file exists."""
         with patch("osiris.core.config.Path.cwd", return_value=tmp_path):
             # Capture output
-            from contextlib import redirect_stdout
             import io
+            from contextlib import redirect_stdout
 
             from osiris.cli.connections_cmd import list_connections
 
@@ -140,8 +140,8 @@ connections:
         """Test that actual secrets are masked in output."""
         with patch("osiris.core.config.Path.cwd", return_value=sample_connections_file):
             # Capture output
-            from contextlib import redirect_stdout
             import io
+            from contextlib import redirect_stdout
 
             from osiris.cli.connections_cmd import list_connections
 
@@ -213,8 +213,8 @@ connections:
                     }
 
                     # Capture output
-                    from contextlib import redirect_stdout
                     import io
+                    from contextlib import redirect_stdout
 
                     from osiris.cli.connections_cmd import doctor_connections
 
@@ -242,8 +242,8 @@ connections:
                         mock_duckdb.return_value = {"status": "success", "message": "OK"}
 
                         # Capture output
-                        from contextlib import redirect_stdout
                         import io
+                        from contextlib import redirect_stdout
 
                         from osiris.cli.connections_cmd import doctor_connections
 
@@ -273,8 +273,8 @@ connections:
                 mock_duckdb.return_value = {"status": "success", "message": "OK"}
 
                 # Capture output
-                from contextlib import redirect_stdout
                 import io
+                from contextlib import redirect_stdout
 
                 from osiris.cli.connections_cmd import doctor_connections
 
@@ -294,8 +294,8 @@ connections:
                 mock_duckdb.return_value = {"status": "success", "message": "OK"}
 
                 # Capture output
-                from contextlib import redirect_stdout
                 import io
+                from contextlib import redirect_stdout
 
                 from osiris.cli.connections_cmd import doctor_connections
 
@@ -323,8 +323,8 @@ connections:
 
         with patch("osiris.core.config.Path.cwd", return_value=tmp_path):
             # Capture output
-            from contextlib import redirect_stdout
             import io
+            from contextlib import redirect_stdout
 
             from osiris.cli.connections_cmd import doctor_connections
 

@@ -1,8 +1,8 @@
 """Tests for filesystem CSV writer component."""
 
 import csv
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
 from osiris.connectors.filesystem.writer import FilesystemCSVWriter
 

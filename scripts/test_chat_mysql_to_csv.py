@@ -2,8 +2,8 @@
 """Test script to verify chat generates valid OML for MySQL to CSV export."""
 
 import asyncio
-from pathlib import Path
 import sys
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Add parent to path

@@ -16,16 +16,16 @@
 """PR2 - Evidence Layer implementation for AIOP."""
 
 import builtins
-from collections.abc import Generator
 import contextlib
 import copy
-from datetime import datetime
-from functools import lru_cache
 import gzip
 import io
 import json
-from pathlib import Path
 import re
+from collections.abc import Generator
+from datetime import datetime
+from functools import lru_cache
+from pathlib import Path
 
 
 def build_evidence_layer(

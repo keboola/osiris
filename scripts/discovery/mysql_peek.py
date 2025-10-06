@@ -4,8 +4,8 @@ MySQL Data Discovery Helper
 Explores available tables and suggests DuckDB transformations.
 """
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 # Add parent directories to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))

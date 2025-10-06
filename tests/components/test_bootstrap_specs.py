@@ -3,9 +3,9 @@
 import json
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
 import pytest
 import yaml
+from jsonschema import Draft202012Validator
 
 
 class TestBootstrapSpecs:
@@ -307,8 +307,8 @@ class TestBootstrapSpecs:
 
     def test_cli_required_config_rendering(self):
         """Test CLI shows correct required configuration."""
-        from contextlib import redirect_stdout
         import io
+        from contextlib import redirect_stdout
 
         from osiris.cli.components_cmd import show_component
 

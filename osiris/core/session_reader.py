@@ -4,10 +4,10 @@ This module provides functionality to read session data from the ./logs director
 aggregate metrics, compute summaries, and handle redaction of sensitive information.
 """
 
-from dataclasses import dataclass, field
 import json
-from pathlib import Path
 import re
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 

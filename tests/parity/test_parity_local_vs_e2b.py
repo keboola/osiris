@@ -6,8 +6,8 @@ the outputs using a normalized diff that allows for expected differences.
 
 import json
 import os
-from pathlib import Path
 import tempfile
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 

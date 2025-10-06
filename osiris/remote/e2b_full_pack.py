@@ -2,9 +2,9 @@
 
 import json
 import logging
-from pathlib import Path
 import tarfile
 import tempfile
+from pathlib import Path
 from typing import Any
 
 from osiris.core.execution_adapter import PreparedRun

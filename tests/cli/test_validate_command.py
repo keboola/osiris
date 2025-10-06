@@ -2,10 +2,10 @@
 
 import json
 import os
-from pathlib import Path
 import sys
 import tempfile
 import textwrap
+from pathlib import Path
 from unittest import mock
 
 import pytest

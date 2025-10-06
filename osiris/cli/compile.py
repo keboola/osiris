@@ -1,11 +1,11 @@
 """CLI command for compiling OML to manifest with Rich formatting."""
 
-from datetime import datetime
 import json
-from pathlib import Path
 import shutil
 import sys
 import time
+from datetime import datetime
+from pathlib import Path
 
 from rich.console import Console
 

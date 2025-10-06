@@ -1,9 +1,9 @@
 """Tests for latest symlink robustness across OS."""
 
 import os
-from pathlib import Path
 import platform
 import tempfile
+from pathlib import Path
 
 import pytest
 

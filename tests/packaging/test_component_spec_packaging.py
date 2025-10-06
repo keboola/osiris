@@ -5,9 +5,9 @@ components can be imported and specs can be loaded.
 No E2B_API_KEY required - this tests packaging logic only.
 """
 
-from pathlib import Path
 import shutil
 import sys
+from pathlib import Path
 
 import pytest
 import yaml

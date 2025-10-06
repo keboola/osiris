@@ -28,11 +28,11 @@
 
 """LLM adapter for multi-provider AI integration."""
 
-from dataclasses import dataclass
-from enum import Enum
 import json
 import logging
 import os
+from dataclasses import dataclass
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
