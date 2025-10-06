@@ -1,7 +1,7 @@
 """Tests for Supabase writer DDL generation and planning."""
 
-from pathlib import Path
 import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pandas as pd

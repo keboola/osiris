@@ -1,11 +1,9 @@
 """GraphQL API extractor driver implementation."""
 
-import logging
-import json
 import base64
+import logging
 import time
-from typing import Any, Optional, Dict, List, Union
-from urllib.parse import urljoin
+from typing import Any
 
 import pandas as pd
 import requests
@@ -25,7 +23,7 @@ class GraphQLExtractorDriver:
         *,
         step_id: str,
         config: dict,
-        inputs: Optional[dict] = None,  # noqa: ARG002
+        inputs: dict | None = None,  # noqa: ARG002
         ctx: Any = None,
     ) -> dict:
         """Extract data from GraphQL API.
@@ -223,7 +221,7 @@ class GraphQLExtractorDriver:
 
     def _execute_paginated_query(
         self, step_id: str, endpoint: str, query: str, config: dict, ctx: Any = None
-    ) -> tuple[List[Any], int, int]:
+    ) -> tuple[list[Any], int, int]:
         """Execute a paginated GraphQL query."""
         all_data = []
         total_requests = 0

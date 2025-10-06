@@ -12,7 +12,6 @@ from .mode_mapper import ModeMapper
 from .params_resolver import ParamsResolver
 from .session_logging import log_event
 
-
 COMMON_SECRET_NAMES = {
     "password",
     "passwd",
