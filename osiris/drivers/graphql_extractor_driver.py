@@ -53,11 +53,14 @@ class GraphQLExtractorDriver:
             # Log start
             logger.info(f"Step {step_id}: Starting GraphQL extraction from {endpoint}")
             if ctx and hasattr(ctx, "log_event"):
-                ctx.log_event("extraction.start", {
-                    "endpoint": endpoint,
-                    "auth_type": config.get("auth_type", "none"),
-                    "pagination_enabled": config.get("pagination_enabled", False)
-                })
+                ctx.log_event(
+                    "extraction.start",
+                    {
+                        "endpoint": endpoint,
+                        "auth_type": config.get("auth_type", "none"),
+                        "pagination_enabled": config.get("pagination_enabled", False),
+                    },
+                )
 
             # Execute query (with pagination if enabled)
             all_data = []
@@ -69,9 +72,7 @@ class GraphQLExtractorDriver:
                     step_id, endpoint, query, config, ctx
                 )
             else:
-                result_data, requests_made = self._execute_single_query(
-                    step_id, endpoint, query, config, ctx
-                )
+                result_data, requests_made = self._execute_single_query(step_id, endpoint, query, config, ctx)
                 all_data = [result_data] if result_data else []
                 pages_fetched = 1 if result_data else 0
 
@@ -87,11 +88,17 @@ class GraphQLExtractorDriver:
                     else:
                         combined_data.append(page_data)
 
-                df = pd.json_normalize(combined_data) if config.get("flatten_result", True) else pd.DataFrame(combined_data)
+                df = (
+                    pd.json_normalize(combined_data)
+                    if config.get("flatten_result", True)
+                    else pd.DataFrame(combined_data)
+                )
 
             # Log metrics
             rows_read = len(df)
-            logger.info(f"Step {step_id}: Extracted {rows_read} rows from GraphQL API ({pages_fetched} pages, {requests_made} requests)")
+            logger.info(
+                f"Step {step_id}: Extracted {rows_read} rows from GraphQL API ({pages_fetched} pages, {requests_made} requests)"
+            )
 
             if ctx and hasattr(ctx, "log_metric"):
                 ctx.log_metric("rows_read", rows_read)
@@ -99,11 +106,9 @@ class GraphQLExtractorDriver:
                 ctx.log_metric("pages_fetched", pages_fetched)
 
             if ctx and hasattr(ctx, "log_event"):
-                ctx.log_event("extraction.complete", {
-                    "rows": rows_read,
-                    "pages": pages_fetched,
-                    "requests": requests_made
-                })
+                ctx.log_event(
+                    "extraction.complete", {"rows": rows_read, "pages": pages_fetched, "requests": requests_made}
+                )
 
             return {"df": df}
 
@@ -166,10 +171,7 @@ class GraphQLExtractorDriver:
         max_retries = config.get("max_retries", 3)
         retry_delay = config.get("retry_delay", 1.0)
 
-        payload = {
-            "query": query,
-            "variables": variables
-        }
+        payload = {"query": query, "variables": variables}
 
         logger.info(f"Step {step_id}: Executing GraphQL query")
         if ctx and hasattr(ctx, "log_event"):
@@ -180,10 +182,7 @@ class GraphQLExtractorDriver:
         for attempt in range(max_retries + 1):
             try:
                 response = self.session.post(
-                    endpoint,
-                    json=payload,
-                    timeout=timeout,
-                    verify=config.get("validate_ssl", True)
+                    endpoint, json=payload, timeout=timeout, verify=config.get("validate_ssl", True)
                 )
                 response.raise_for_status()
 
@@ -196,10 +195,10 @@ class GraphQLExtractorDriver:
                     raise RuntimeError(f"GraphQL errors: {error_details}")
 
                 if ctx and hasattr(ctx, "log_event"):
-                    ctx.log_event("extraction.response", {
-                        "status_code": response.status_code,
-                        "response_size": len(response.content)
-                    })
+                    ctx.log_event(
+                        "extraction.response",
+                        {"status_code": response.status_code, "response_size": len(response.content)},
+                    )
 
                 # Extract data using configured path
                 data_path = config.get("data_path", "data")
@@ -210,7 +209,9 @@ class GraphQLExtractorDriver:
             except Exception as e:
                 last_exception = e
                 if attempt < max_retries:
-                    logger.warning(f"Step {step_id}: Request failed (attempt {attempt + 1}/{max_retries + 1}), retrying in {retry_delay}s: {e}")
+                    logger.warning(
+                        f"Step {step_id}: Request failed (attempt {attempt + 1}/{max_retries + 1}), retrying in {retry_delay}s: {e}"
+                    )
                     time.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
                 else:
@@ -246,9 +247,7 @@ class GraphQLExtractorDriver:
             temp_config["variables"] = current_variables
 
             # Execute single page
-            page_data, requests_for_page = self._execute_single_query(
-                step_id, endpoint, query, temp_config, ctx
-            )
+            page_data, requests_for_page = self._execute_single_query(step_id, endpoint, query, temp_config, ctx)
 
             total_requests += requests_for_page
             pages_fetched += 1
@@ -257,11 +256,14 @@ class GraphQLExtractorDriver:
                 all_data.append(page_data)
 
             if ctx and hasattr(ctx, "log_event"):
-                ctx.log_event("extraction.page", {
-                    "page": pages_fetched,
-                    "cursor": current_variables.get(cursor_variable),
-                    "data_count": len(page_data) if isinstance(page_data, list) else 1
-                })
+                ctx.log_event(
+                    "extraction.page",
+                    {
+                        "page": pages_fetched,
+                        "cursor": current_variables.get(cursor_variable),
+                        "data_count": len(page_data) if isinstance(page_data, list) else 1,
+                    },
+                )
 
             # Get pagination info for next page
             try:
@@ -271,16 +273,10 @@ class GraphQLExtractorDriver:
                 temp_config_for_pagination["data_path"] = ""  # Get full response
 
                 # Re-execute to get pagination info (this is a limitation - ideally we'd cache the response)
-                payload = {
-                    "query": query,
-                    "variables": current_variables
-                }
+                payload = {"query": query, "variables": current_variables}
 
                 response = self.session.post(
-                    endpoint,
-                    json=payload,
-                    timeout=config.get("timeout", 30),
-                    verify=config.get("validate_ssl", True)
+                    endpoint, json=payload, timeout=config.get("timeout", 30), verify=config.get("validate_ssl", True)
                 )
                 response.raise_for_status()
                 response_data = response.json()
@@ -345,10 +341,7 @@ class GraphQLExtractorDriver:
 
     def doctor(self, config: dict) -> dict:
         """Health check for GraphQL API connectivity."""
-        results = {
-            "status": "healthy",
-            "checks": {}
-        }
+        results = {"status": "healthy", "checks": {}}
 
         endpoint = config.get("endpoint")
         if not endpoint:
@@ -375,7 +368,7 @@ class GraphQLExtractorDriver:
                 endpoint,
                 json={"query": introspection_query},
                 timeout=config.get("timeout", 30),
-                verify=config.get("validate_ssl", True)
+                verify=config.get("validate_ssl", True),
             )
 
             if response.status_code == 200:
