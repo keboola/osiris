@@ -102,7 +102,7 @@ steps:
         assert len(run_dirs) >= 1
 
         # Step 5: Write to index
-        index_writer = RunIndexWriter(fs_contract)
+        index_writer = RunIndexWriter(fs_contract.index_paths()["base"])
         record = RunRecord(
             run_id=run_id,
             pipeline_slug="test_pipeline",

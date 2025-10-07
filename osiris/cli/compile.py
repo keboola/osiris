@@ -281,7 +281,7 @@ def compile_command(args: list[str]):
         if success:
             # Write to index
             index_paths = fs_contract.index_paths()
-            index_writer = RunIndexWriter(fs_contract)
+            index_writer = RunIndexWriter(index_paths["base"])
 
             # Write latest manifest pointer
             index_writer.write_latest_manifest(
@@ -349,8 +349,11 @@ def compile_command(args: list[str]):
                 sys.exit(1)
     except Exception as e:
         # Unexpected errors
+        import traceback
+
         if use_json:
-            print(json.dumps({"status": "error", "message": str(e), "pipeline": pipeline_file}))
+            print(json.dumps({"status": "error", "message": str(e), "pipeline": pipeline_file, "traceback": traceback.format_exc()}))
         else:
             console.print(f"[red]❌ Unexpected error: {str(e)}[/red]")
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
         sys.exit(1)

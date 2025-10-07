@@ -625,7 +625,7 @@ def run_command(args: list[str]):
 
                 run_id_final = run_id_gen.generate(pipeline_slug_final)
 
-                index_writer = RunIndexWriter(contract)
+                index_writer = RunIndexWriter(contract.index_paths()["base"])
                 index_writer.append(
                     run_id=run_id_final,
                     pipeline_slug=pipeline_slug_final,

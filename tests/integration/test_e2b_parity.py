@@ -234,7 +234,7 @@ def test_e2b_and_local_index_compatibility(tmp_path):
 
         from osiris.core.run_index import RunIndexWriter, RunRecord
 
-        index_writer = RunIndexWriter(fs_contract)
+        index_writer = RunIndexWriter(fs_contract.index_paths()["base"])
 
         # Simulate local run
         local_record = RunRecord(
