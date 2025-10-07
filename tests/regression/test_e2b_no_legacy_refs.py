@@ -21,6 +21,7 @@ ALLOWLIST_PATTERNS = [
     r"'''.*logs/",  # Docstrings
     r'\.\/compiled/',  # ./compiled/ is OK (sandbox path)
     r'"compiled/manifest\.yaml"',  # Sandbox manifest path is OK
+    r"'compiled/manifest\.yaml'",  # Sandbox manifest path (single quotes) is OK
     r'io_layout.*logs/',  # io_layout defines sandbox paths
 ]
 

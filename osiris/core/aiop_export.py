@@ -221,7 +221,7 @@ def export_aiop_auto(
         if config.get("annex", {}).get("enabled", False):
             annex_dir = render_path(config["annex"]["dir"], ctx, ts_format)
             Path(annex_dir).mkdir(parents=True, exist_ok=True)
-            annex_size = _export_annex(session_id, annex_dir, config.get("annex", {}))
+            annex_size = _export_annex(session_id, annex_dir, config.get("annex", {}), session_path=session_path)
 
         # Extract started_at, total_rows, and duration_ms from AIOP for index
         started_at = None
@@ -275,13 +275,14 @@ def export_aiop_auto(
         return False, str(e)
 
 
-def _export_annex(session_id: str, annex_dir: str, annex_config: dict[str, Any]) -> int:
+def _export_annex(session_id: str, annex_dir: str, annex_config: dict[str, Any], session_path: Path | None = None) -> int:
     """Export NDJSON annex shards.
 
     Args:
         session_id: Session ID
         annex_dir: Directory for annex files
         annex_config: Annex configuration
+        session_path: Optional path to session directory (overrides session_id lookup)
 
     Returns:
         Total bytes written to annex
@@ -290,7 +291,11 @@ def _export_annex(session_id: str, annex_dir: str, annex_config: dict[str, Any])
     compress = annex_config.get("compress", "none")
 
     # Read session data
-    session_dir = Path(f"logs/{session_id}")
+    if session_path:
+        session_dir = session_path
+    else:
+        session_dir = Path(f"run_logs/{session_id}")  # Legacy fallback
+
     if not session_dir.exists():
         return 0
 
