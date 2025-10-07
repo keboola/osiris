@@ -36,16 +36,26 @@ console = Console()
 
 
 def _get_logs_dir_from_config() -> str:
-    """Get logs directory from configuration file, with fallback to 'logs'."""
-    try:
-        from ..core.config import load_config
+    """Get logs directory from configuration file.
 
-        config_data = load_config("osiris.yaml")
-        if "logging" in config_data and "logs_dir" in config_data["logging"]:
-            return config_data["logging"]["logs_dir"]
+    Returns run_logs for FilesystemContract v1, falls back to legacy logs.
+    """
+    try:
+        from ..core.fs_config import load_osiris_config
+
+        fs_config, _, _ = load_osiris_config()
+        # FilesystemContract v1 uses run_logs
+        return "run_logs"
     except (FileNotFoundError, KeyError, Exception):
-        # If config file doesn't exist or has issues, fall back to default
-        pass
+        # Fallback to legacy structure
+        try:
+            from ..core.config import load_config
+
+            config_data = load_config("osiris.yaml")
+            if "logging" in config_data and "logs_dir" in config_data["logging"]:
+                return config_data["logging"]["logs_dir"]
+        except (FileNotFoundError, KeyError, Exception):
+            pass
     return "logs"
 
 
