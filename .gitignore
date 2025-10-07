@@ -47,7 +47,7 @@ htmlcov/
 # Internal tools
 .claude/
 .audit/
-.playwright-mcp/*
+.playwright-mcp/
 
 # Python artifacts
 __pycache__/
