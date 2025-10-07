@@ -86,10 +86,7 @@ def test_aiop_session_empty():
 
         # Verify error message - empty session triggers the general error
         calls = str(mock_console.print.call_args_list)
-        assert (
-            "Error: session id required" in calls
-            or "Either --session or --last is required" in calls
-        )
+        assert "Error: session id required" in calls or "Either --session or --last is required" in calls
 
 
 def test_aiop_missing_required():

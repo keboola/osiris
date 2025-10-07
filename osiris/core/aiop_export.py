@@ -5,17 +5,17 @@ import gzip
 import json
 import shutil
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from .config import render_path, resolve_aiop_config
 
 
 def export_aiop_auto(
     session_id: str,
-    manifest_hash: Optional[str] = None,
+    manifest_hash: str | None = None,
     status: str = "completed",
-    end_time: Optional[datetime.datetime] = None,
-) -> Tuple[bool, Optional[str]]:
+    end_time: datetime.datetime | None = None,
+) -> tuple[bool, str | None]:
     """Automatically export AIOP at the end of a run.
 
     Args:
@@ -123,9 +123,7 @@ def export_aiop_auto(
         # Just ensure manifest_hash is available for build_aiop to find
         if not manifest.get("manifest_hash"):
             # Extract manifest hash from pipeline.fingerprints if not at root
-            manifest_hash = (
-                manifest.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp", "unknown")
-            )
+            manifest_hash = manifest.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp", "unknown")
             if manifest_hash != "unknown":
                 # Add to root for easy access by build_aiop
                 manifest["manifest_hash"] = manifest_hash
@@ -145,18 +143,14 @@ def export_aiop_auto(
         # Build session data (convert datetime to ISO string for JSON serialization)
         session_data = {
             "session_id": session_id,
-            "started_at": (
-                started_at.isoformat() if hasattr(started_at, "isoformat") else started_at
-            ),
+            "started_at": (started_at.isoformat() if hasattr(started_at, "isoformat") else started_at),
             "completed_at": (
                 (completed_at or end_time).isoformat()
                 if hasattr(completed_at or end_time, "isoformat")
                 else (completed_at or end_time)
             ),
             "status": status,  # Use provided status
-            "environment": (
-                "e2b" if session_summary and session_summary.adapter_type == "E2B" else "local"
-            ),
+            "environment": ("e2b" if session_summary and session_summary.adapter_type == "E2B" else "local"),
         }
 
         # Build AIOP using existing builder
@@ -207,9 +201,7 @@ def export_aiop_auto(
             started_at_str = aiop["run"]["started_at"]
             if started_at_str:
                 try:
-                    started_at = datetime.datetime.fromisoformat(
-                        started_at_str.replace("Z", "+00:00")
-                    )
+                    started_at = datetime.datetime.fromisoformat(started_at_str.replace("Z", "+00:00"))
                 except Exception:
                     pass  # Keep None if parsing fails
 
@@ -255,7 +247,7 @@ def export_aiop_auto(
         return False, str(e)
 
 
-def _export_annex(session_id: str, annex_dir: str, annex_config: Dict[str, Any]) -> int:
+def _export_annex(session_id: str, annex_dir: str, annex_config: dict[str, Any]) -> int:
     """Export NDJSON annex shards.
 
     Args:
@@ -280,9 +272,8 @@ def _export_annex(session_id: str, annex_dir: str, annex_config: Dict[str, Any])
         target = Path(annex_dir) / "timeline.ndjson"
         if compress == "gzip":
             target = target.with_suffix(".ndjson.gz")
-            with open(events_file, "rb") as src:
-                with gzip.open(target, "wb") as dst:
-                    dst.write(src.read())
+            with open(events_file, "rb") as src, gzip.open(target, "wb") as dst:
+                dst.write(src.read())
         else:
             shutil.copy(events_file, target)
         total_bytes += target.stat().st_size
@@ -293,9 +284,8 @@ def _export_annex(session_id: str, annex_dir: str, annex_config: Dict[str, Any])
         target = Path(annex_dir) / "metrics.ndjson"
         if compress == "gzip":
             target = target.with_suffix(".ndjson.gz")
-            with open(metrics_file, "rb") as src:
-                with gzip.open(target, "wb") as dst:
-                    dst.write(src.read())
+            with open(metrics_file, "rb") as src, gzip.open(target, "wb") as dst:
+                dst.write(src.read())
         else:
             shutil.copy(metrics_file, target)
         total_bytes += target.stat().st_size
@@ -346,9 +336,7 @@ def _export_annex(session_id: str, annex_dir: str, annex_config: Dict[str, Any])
 
                 # Apply redaction based on mode
                 mode = config.get("narrative", {}).get("session_chat", {}).get("mode", "masked")
-                max_chars = (
-                    config.get("narrative", {}).get("session_chat", {}).get("max_chars", 10000)
-                )
+                max_chars = config.get("narrative", {}).get("session_chat", {}).get("max_chars", 10000)
 
                 if mode == "masked":
                     # Apply PII redaction
@@ -363,9 +351,7 @@ def _export_annex(session_id: str, annex_dir: str, annex_config: Dict[str, Any])
                         content_len = len(str(redacted_entry.get("content", "")))
                         if total_chars + content_len > max_chars:
                             remaining = max_chars - total_chars
-                            redacted_entry["content"] = (
-                                redacted_entry.get("content", "")[:remaining] + "..."
-                            )
+                            redacted_entry["content"] = redacted_entry.get("content", "")[:remaining] + "..."
                             redacted_logs.append(redacted_entry)
                             break
                         redacted_logs.append(redacted_entry)
@@ -410,18 +396,18 @@ def _export_annex(session_id: str, annex_dir: str, annex_config: Dict[str, Any])
 
 def _update_indexes(
     session_id: str,
-    manifest_hash: Optional[str],
+    manifest_hash: str | None,
     status: str,
-    started_at: Optional[datetime.datetime],
+    started_at: datetime.datetime | None,
     ended_at: datetime.datetime,
-    total_rows: Optional[int],
-    duration_ms: Optional[int],
+    total_rows: int | None,
+    duration_ms: int | None,
     bytes_core: int,
     bytes_annex: int,
     core_path: str,
-    run_card_path: Optional[str],
-    annex_dir: Optional[str],
-    config: Dict[str, Any],
+    run_card_path: str | None,
+    annex_dir: str | None,
+    config: dict[str, Any],
 ) -> None:
     """Update index files with run information.
 
@@ -457,9 +443,7 @@ def _update_indexes(
 
     # Append to by_pipeline index
     if manifest_hash and manifest_hash != "unknown":
-        by_pipeline_dir = config.get("index", {}).get(
-            "by_pipeline_dir", "logs/aiop/index/by_pipeline"
-        )
+        by_pipeline_dir = config.get("index", {}).get("by_pipeline_dir", "logs/aiop/index/by_pipeline")
         Path(by_pipeline_dir).mkdir(parents=True, exist_ok=True)
         pipeline_index = Path(by_pipeline_dir) / f"{manifest_hash}.jsonl"
         with open(pipeline_index, "a") as f:
@@ -507,7 +491,7 @@ def _update_latest_symlink(latest_path: str, run_dir: str) -> None:
         pass
 
 
-def _apply_retention(config: Dict[str, Any]) -> None:
+def _apply_retention(config: dict[str, Any]) -> None:
     """Apply retention policies to AIOP outputs.
 
     Args:
@@ -551,7 +535,7 @@ def _apply_retention(config: Dict[str, Any]) -> None:
                     shutil.rmtree(annex_dir, ignore_errors=True)
 
 
-def prune_aiop() -> Tuple[bool, Optional[str]]:
+def prune_aiop() -> tuple[bool, str | None]:
     """Manually run AIOP retention policies.
 
     Returns:

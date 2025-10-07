@@ -207,21 +207,12 @@ def test_redact_dsn_credentials_extended():
 
     # Check DSN credential masking
     assert result["connections"]["postgres_full"] == "postgresql://***@host.com:5432/database"
-    assert (
-        result["connections"]["mysql_with_options"]
-        == "mysql://***@db.example.com/mydb?charset=utf8"
-    )
-    assert (
-        result["connections"]["mongodb_srv"]
-        == "mongodb+srv://***@cluster.mongodb.net/test?retryWrites=true"
-    )
+    assert result["connections"]["mysql_with_options"] == "mysql://***@db.example.com/mydb?charset=utf8"
+    assert result["connections"]["mongodb_srv"] == "mongodb+srv://***@cluster.mongodb.net/test?retryWrites=true"
     assert result["connections"]["redis_auth"] == "redis://***@redis.example.com:6379/0"
 
     # No password cases should be unchanged
-    assert (
-        result["connections"]["no_password"]
-        == "postgresql://user@host.com/db"  # pragma: allowlist secret
-    )
+    assert result["connections"]["no_password"] == "postgresql://user@host.com/db"  # pragma: allowlist secret
     assert result["connections"]["no_auth"] == "postgresql://localhost/db"
 
 

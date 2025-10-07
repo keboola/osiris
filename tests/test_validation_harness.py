@@ -34,7 +34,7 @@ class TestValidationHarness:
         ]
         # Get project root (where osiris.py is located)
         project_root = Path(__file__).parent.parent
-        return subprocess.run(cmd, capture_output=True, text=True, cwd=str(project_root))
+        return subprocess.run(cmd, check=False, capture_output=True, text=True, cwd=str(project_root))
 
     def test_valid_scenario(self, artifacts_dir, clean_project_root):
         """Test that valid scenario passes on first attempt."""
@@ -133,7 +133,7 @@ class TestValidationHarness:
             "--max-attempts",
             "3",
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
         # Check exit code (should fail with code 1)
         assert result.returncode == 1, f"Unfixable scenario should fail. Output: {result.stdout}"
@@ -164,9 +164,7 @@ class TestValidationHarness:
             retry_trail = json.load(f)
 
         # Check that all attempts are invalid
-        assert all(
-            not attempt["valid"] for attempt in retry_trail["attempts"]
-        ), "All attempts should be invalid"
+        assert all(not attempt["valid"] for attempt in retry_trail["attempts"]), "All attempts should be invalid"
         assert retry_trail["attempts"][-1]["valid"] is False, "Last attempt should be invalid"
         assert retry_trail["final_status"] == "failed"
 
@@ -213,7 +211,7 @@ class TestValidationHarness:
             "--max-attempts",
             "1",  # Only initial attempt, no retries
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
         # Should fail because no retries allowed
         assert result.returncode == 1
@@ -255,7 +253,7 @@ class TestValidationHarness:
             "--max-attempts",
             "1",
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
 
         # Check that "Failed to map error" doesn't appear
         assert "Failed to map error" not in result.stdout

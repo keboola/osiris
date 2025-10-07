@@ -31,9 +31,7 @@ class TestChatLogsIntegration:
 
     def test_load_chat_logs_with_masking(self):
         """Test loading chat logs with PII masking."""
-        config = {
-            "narrative": {"session_chat": {"enabled": True, "mode": "masked", "max_chars": 1000}}
-        }
+        config = {"narrative": {"session_chat": {"enabled": True, "mode": "masked", "max_chars": 1000}}}
 
         chat_logs = [
             {"role": "user", "content": "Process data with password: secret123"},
@@ -66,9 +64,7 @@ class TestChatLogsIntegration:
 
     def test_load_chat_logs_truncation(self):
         """Test that chat logs are truncated at max_chars."""
-        config = {
-            "narrative": {"session_chat": {"enabled": True, "mode": "quotes", "max_chars": 100}}
-        }
+        config = {"narrative": {"session_chat": {"enabled": True, "mode": "quotes", "max_chars": 100}}}
 
         # Create logs that exceed max_chars
         chat_logs = [
@@ -241,9 +237,7 @@ class TestChatLogsIntegration:
         config = {"narrative": {"session_chat": {"enabled": True, "mode": "masked"}}}
         chat_logs = [{"role": "user", "content": "I want to migrate customer data to new system"}]
 
-        narrative = build_narrative_layer(
-            manifest, run_summary, evidence_refs, config=config, chat_logs=chat_logs
-        )
+        narrative = build_narrative_layer(manifest, run_summary, evidence_refs, config=config, chat_logs=chat_logs)
 
         # Check that narrative includes intent discovery
         assert "intent_summary" in narrative

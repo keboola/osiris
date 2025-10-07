@@ -63,9 +63,7 @@ class TestSessionContext:
         with patch("pathlib.Path.mkdir") as mock_mkdir:
             mock_mkdir.side_effect = PermissionError("Access denied")
 
-            session = SessionContext(
-                session_id="test_session", base_logs_dir=Path("/nonexistent/readonly")
-            )
+            session = SessionContext(session_id="test_session", base_logs_dir=Path("/nonexistent/readonly"))
 
             # Should fallback to temp directory
             assert session._fallback_temp_dir is not None
@@ -472,9 +470,7 @@ class TestSecretsMaskingInSession:
                         content = file_path.read_bytes()
                         for secret in secret_values:
                             secret_bytes = secret.encode("utf-8")
-                            assert (
-                                secret_bytes not in content
-                            ), f"Secret bytes '{secret}' found in {file_path}"
+                            assert secret_bytes not in content, f"Secret bytes '{secret}' found in {file_path}"
 
 
 class TestErrorHandling:

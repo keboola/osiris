@@ -14,7 +14,7 @@ import sys
 import time
 from fnmatch import fnmatch, fnmatchcase
 from pathlib import Path
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any
 
 BANNER = "=" * 80
 FILE_BEGIN = "===== FILE BEGIN ====="
@@ -113,7 +113,7 @@ def sha256_bytes(data: bytes) -> str:
     return h.hexdigest()
 
 
-def parse_gitignore(gitignore_path: Path) -> List[str]:
+def parse_gitignore(gitignore_path: Path) -> list[str]:
     """
     Parse .gitignore file and return list of patterns.
     Handles comments, blank lines, and basic gitignore syntax.
@@ -178,7 +178,7 @@ def matches_gitignore_pattern(path: Path, pattern: str, root: Path) -> bool:
     return False
 
 
-def parse_yaml_simple(text: str) -> Dict[str, Any]:
+def parse_yaml_simple(text: str) -> dict[str, Any]:
     """
     Simple YAML parser for our specific needs.
     Handles strings, lists, booleans, numbers, and multiline strings with |.
@@ -237,7 +237,7 @@ def parse_yaml_simple(text: str) -> Dict[str, Any]:
                 continue  # Reprocess this line
 
             # Handle command list items
-            if stripped.startswith("- ") and (spaces == 0 or spaces == 2):
+            if stripped.startswith("- ") and (spaces in {0, 2}):
                 # Save previous command if exists
                 if current_command:
                     if "commands" not in result:
@@ -275,7 +275,7 @@ def parse_yaml_simple(text: str) -> Dict[str, Any]:
                             indent_level = len(next_line) - len(next_line.lstrip())
                             break
                         j += 1
-                elif value == "" or value == "[]" or value.startswith("#"):
+                elif value in {"", "[]"} or value.startswith("#"):
                     # Start a list for command property (handle inline comments)
                     current_command[key] = []
                     # Read list items
@@ -317,12 +317,7 @@ def parse_yaml_simple(text: str) -> Dict[str, Any]:
         if stripped.startswith("- "):
             value = stripped[2:].strip()
             # Remove quotes if present
-            if (
-                value.startswith('"')
-                and value.endswith('"')
-                or value.startswith("'")
-                and value.endswith("'")
-            ):
+            if value.startswith('"') and value.endswith('"') or value.startswith("'") and value.endswith("'"):
                 value = value[1:-1]
 
             if current_list is not None:
@@ -366,7 +361,7 @@ def parse_yaml_simple(text: str) -> Dict[str, Any]:
                         indent_level = len(next_line) - len(next_line.lstrip())
                         break
                     j += 1
-            elif value == "" or value == "[]":
+            elif value in {"", "[]"}:
                 # Start a list
                 current_list = []
             else:
@@ -377,12 +372,7 @@ def parse_yaml_simple(text: str) -> Dict[str, Any]:
                     result[key] = False
                 elif value.isdigit():
                     result[key] = int(value)
-                elif (
-                    value.startswith('"')
-                    and value.endswith('"')
-                    or value.startswith("'")
-                    and value.endswith("'")
-                ):
+                elif value.startswith('"') and value.endswith('"') or value.startswith("'") and value.endswith("'"):
                     result[key] = value[1:-1]
                 else:
                     # Handle inline comments
@@ -413,22 +403,22 @@ def parse_yaml_simple(text: str) -> Dict[str, Any]:
 
 
 def iter_paths(
-    root: Path, patterns: List[str], excludes: List[str], use_gitignore: bool = False
-) -> Tuple[List[Path], List[str]]:
+    root: Path, patterns: list[str], excludes: list[str], use_gitignore: bool = False
+) -> tuple[list[Path], list[str]]:
     """Expand include globs relative to repo root, filter with excludes, sort.
     Returns (list_of_paths, list_of_collision_warnings).
     """
     collisions = []
 
     # Step 1: Collect all included files
-    included_paths: Set[Path] = set()
+    included_paths: set[Path] = set()
     for pat in patterns:
         for p in root.glob(pat):
             if p.is_file():
                 included_paths.add(p.resolve())
 
     # Step 2: Apply gitignore patterns if enabled
-    gitignored: Set[Path] = set()
+    gitignored: set[Path] = set()
     if use_gitignore:
         gitignore_path = root / ".gitignore"
         gitignore_patterns = parse_gitignore(gitignore_path)
@@ -444,7 +434,7 @@ def iter_paths(
                     break
 
     # Step 3: Apply explicit excludes
-    explicitly_excluded: Set[Path] = set()
+    explicitly_excluded: set[Path] = set()
     for pat in excludes:
         for p in root.glob(pat):
             if p.exists():
@@ -475,7 +465,7 @@ def iter_paths(
     return final, collisions
 
 
-def build_tree(root: Path, use_gitignore: bool = False, excludes: List[str] = None) -> str:
+def build_tree(root: Path, use_gitignore: bool = False, excludes: list[str] = None) -> str:
     """Compact tree without external deps; directories first, then files (sorted).
     Respects gitignore patterns if enabled.
     """
@@ -603,7 +593,7 @@ def parse_timeout(timeout_str: str) -> int:
         return int(timeout_str)
 
 
-def _run_command_item(item: Dict[str, Any]) -> List[str]:
+def _run_command_item(item: dict[str, Any]) -> list[str]:
     """
     Executes a single command item (see schema).
     Returns the list of produced file paths for inclusion in the pack.
@@ -638,7 +628,7 @@ def _run_command_item(item: Dict[str, Any]) -> List[str]:
     # Run command
     try:
         result = subprocess.run(  # nosec B603
-            shell_cmd, cwd=workdir, env=clean_env, capture_output=True, text=True, timeout=timeout
+            shell_cmd, check=False, cwd=workdir, env=clean_env, capture_output=True, text=True, timeout=timeout
         )
 
         exit_code = result.returncode
@@ -702,7 +692,7 @@ def _run_command_item(item: Dict[str, Any]) -> List[str]:
             return [str(output_path)]
 
 
-def generate_command_outputs_and_collect(mempack_yaml_path: str = "mempack.yaml") -> List[str]:
+def generate_command_outputs_and_collect(mempack_yaml_path: str = "mempack.yaml") -> list[str]:
     """
     Executes all `commands` from mempack.yaml, writes outputs to disk,
     logs to console (including EXIT=<code>), and returns a list of produced file paths
@@ -745,9 +735,7 @@ def cmd_init(args):
     print("[OK] Created mempack.yaml")
 
 
-def validate_config(
-    config_path: str, print_output: bool = True
-) -> tuple[bool, List[str], List[str], dict]:
+def validate_config(config_path: str, print_output: bool = True) -> tuple[bool, list[str], list[str], dict]:
     """
     Validate mempack.yaml configuration.
     Returns (is_valid, list_of_errors, list_of_warnings, config_dict).
@@ -827,9 +815,7 @@ def validate_config(
 
                 # Validate shell
                 if "shell" in cmd and cmd["shell"] not in ["bash", "sh"]:
-                    warnings.append(
-                        f"Command {idx}: unusual shell '{cmd['shell']}', expected 'bash' or 'sh'"
-                    )
+                    warnings.append(f"Command {idx}: unusual shell '{cmd['shell']}', expected 'bash' or 'sh'")
 
                 # Validate boolean fields
                 for bool_field in ["with_cmd", "capture_stderr"]:
@@ -1122,9 +1108,7 @@ EXAMPLES:
         help="Initialize a new mempack.yaml configuration file",
         description="Creates a starter mempack.yaml file with sensible defaults for Python projects.",
     )
-    init_parser.add_argument(
-        "--force", "-f", action="store_true", help="Overwrite existing mempack.yaml if it exists"
-    )
+    init_parser.add_argument("--force", "-f", action="store_true", help="Overwrite existing mempack.yaml if it exists")
 
     # Validate subcommand - inherits --config from parent
     validate_parser = subparsers.add_parser(
@@ -1133,9 +1117,7 @@ EXAMPLES:
         help="Validate mempack.yaml configuration",
         description="Checks the configuration file for errors and warnings before packing.",
     )
-    validate_parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Show detailed configuration summary"
-    )
+    validate_parser.add_argument("--verbose", "-v", action="store_true", help="Show detailed configuration summary")
 
     # Add arguments for main pack command (when no subcommand is given)
     parser.add_argument(
@@ -1150,9 +1132,7 @@ EXAMPLES:
         default=".",
         help="Root directory for file resolution (default: current directory)",
     )
-    parser.add_argument(
-        "--no-validate", action="store_true", help="Skip configuration validation (not recommended)"
-    )
+    parser.add_argument("--no-validate", action="store_true", help="Skip configuration validation (not recommended)")
 
     args = parser.parse_args()
 

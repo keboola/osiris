@@ -18,7 +18,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 import yaml
 from jsonschema import Draft202012Validator, ValidationError
@@ -51,11 +51,11 @@ class PromptManager:
         }
 
         # Component context caching
-        self._context_cache: Optional[Dict[str, Any]] = None
-        self._cache_path: Optional[Path] = None
-        self._cache_mtime: Optional[float] = None
-        self._cache_fingerprint: Optional[str] = None
-        self._schema_validator: Optional[Draft202012Validator] = None
+        self._context_cache: dict[str, Any] | None = None
+        self._cache_path: Path | None = None
+        self._cache_mtime: float | None = None
+        self._cache_fingerprint: str | None = None
+        self._schema_validator: Draft202012Validator | None = None
 
     def dump_prompts(self) -> str:
         """Export current system prompts to files for customization.
@@ -152,9 +152,7 @@ class PromptManager:
             console.print()
 
             # Pro tip
-            console.print(
-                "💡 [bold yellow]Pro tip:[/bold yellow] Back up your customizations before updating Osiris!"
-            )
+            console.print("💡 [bold yellow]Pro tip:[/bold yellow] Back up your customizations before updating Osiris!")
 
             return ""  # Return empty since we're printing directly
 
@@ -162,7 +160,7 @@ class PromptManager:
             logger.error(f"Failed to dump prompts: {e}")
             return f"❌ Failed to export prompts: {str(e)}"
 
-    def load_custom_prompts(self) -> Dict[str, str]:
+    def load_custom_prompts(self) -> dict[str, str]:
         """Load custom prompts from files if they exist.
 
         Returns:
@@ -401,7 +399,7 @@ Return only the SQL query, no additional text."""
             self._schema_validator = Draft202012Validator(schema)
         return self._schema_validator
 
-    def load_context(self, path: Path | str) -> Dict[str, Any]:
+    def load_context(self, path: Path | str) -> dict[str, Any]:
         """Load component context from file and validate against schema.
 
         Args:
@@ -455,8 +453,7 @@ Return only the SQL query, no additional text."""
             logger.warning(f"Context validation failed: {e.message}")
             # Re-raise for strict mode (handled by caller)
             raise ValidationError(
-                f"Invalid context format: {e.message}. "
-                f"Regenerate with 'osiris prompts build-context --force'"
+                f"Invalid context format: {e.message}. " f"Regenerate with 'osiris prompts build-context --force'"
             ) from e
 
         # Update cache
@@ -514,8 +511,8 @@ Return only the SQL query, no additional text."""
     def get_context(
         self,
         strategy: Literal["full", "component-scoped"] = "full",
-        components: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        components: list[str] | None = None,
+    ) -> dict[str, Any]:
         """Get context based on strategy.
 
         Args:
@@ -526,18 +523,14 @@ Return only the SQL query, no additional text."""
             Context dictionary (full or filtered)
         """
         if self._context_cache is None:
-            raise RuntimeError(
-                "No context loaded. Call load_context() first or check --no-context flag."
-            )
+            raise RuntimeError("No context loaded. Call load_context() first or check --no-context flag.")
 
         if strategy == "full":
             return self._context_cache
 
         if strategy == "component-scoped":
             if not components:
-                logger.warning(
-                    "Component-scoped strategy requested but no components specified. Using full context."
-                )
+                logger.warning("Component-scoped strategy requested but no components specified. Using full context.")
                 return self._context_cache
 
             # Filter to specified components
@@ -546,16 +539,14 @@ Return only the SQL query, no additional text."""
                 "generated_at": self._context_cache.get("generated_at"),
                 "fingerprint": self._context_cache.get("fingerprint"),
                 "components": [
-                    comp
-                    for comp in self._context_cache.get("components", [])
-                    if comp.get("name") in components
+                    comp for comp in self._context_cache.get("components", []) if comp.get("name") in components
                 ],
             }
             return filtered_context
 
         raise ValueError(f"Unknown strategy: {strategy}")
 
-    def inject_context(self, system_template: str, context: Dict[str, Any]) -> str:
+    def inject_context(self, system_template: str, context: dict[str, Any]) -> str:
         """Inject context into system prompt template.
 
         Args:
@@ -575,7 +566,7 @@ Return only the SQL query, no additional text."""
         context_str = self._format_context_for_injection(context)
         return system_template.replace(CONTEXT_PLACEHOLDER, context_str)
 
-    def _format_context_for_injection(self, context: Dict[str, Any]) -> str:
+    def _format_context_for_injection(self, context: dict[str, Any]) -> str:
         """Format context for injection into prompt.
 
         Args:
@@ -605,9 +596,7 @@ Return only the SQL query, no additional text."""
                         enum_values = ", ".join(str(v) for v in field["enum"])
                         lines.append(f"  - {field_name}: {field_type} (options: {enum_values})")
                     elif "default" in field:
-                        lines.append(
-                            f"  - {field_name}: {field_type} (default: {field['default']})"
-                        )
+                        lines.append(f"  - {field_name}: {field_type} (default: {field['default']})")
                     else:
                         lines.append(f"  - {field_name}: {field_type}")
 

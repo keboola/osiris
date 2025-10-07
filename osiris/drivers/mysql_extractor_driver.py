@@ -1,7 +1,7 @@
 """MySQL extractor driver implementation."""
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import pandas as pd
 import sqlalchemy as sa
@@ -17,7 +17,7 @@ class MySQLExtractorDriver:
         *,
         step_id: str,
         config: dict,
-        inputs: Optional[dict] = None,  # noqa: ARG002
+        inputs: dict | None = None,  # noqa: ARG002
         ctx: Any = None,
     ) -> dict:
         """Extract data from MySQL using SQL query.
@@ -57,9 +57,7 @@ class MySQLExtractorDriver:
 
         try:
             # Test connection first
-            logger.info(
-                f"Testing MySQL connection for step {step_id}: {user}@{host}:{port}/{database}"
-            )
+            logger.info(f"Testing MySQL connection for step {step_id}: {user}@{host}:{port}/{database}")
             with engine.connect() as conn:
                 # Test basic connection
                 result = conn.execute(sa.text("SELECT 1 as test"))

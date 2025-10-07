@@ -5,8 +5,11 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
 
 from osiris.drivers.supabase_writer_driver import SupabaseWriterDriver
+
+pytestmark = pytest.mark.supabase
 
 
 class TestSupabaseDDLGeneration:
@@ -59,17 +62,9 @@ class TestSupabaseDDLGeneration:
         driver = SupabaseWriterDriver()
 
         # Test with DSN
+        assert driver._has_sql_channel({"dsn": "postgresql://user:pass@host/db"}) is True  # pragma: allowlist secret
         assert (
-            driver._has_sql_channel(
-                {"dsn": "postgresql://user:pass@host/db"}  # pragma: allowlist secret
-            )
-            is True
-        )
-        assert (
-            driver._has_sql_channel(
-                {"sql_dsn": "postgresql://user:pass@host/db"}  # pragma: allowlist secret
-            )
-            is True
+            driver._has_sql_channel({"sql_dsn": "postgresql://user:pass@host/db"}) is True  # pragma: allowlist secret
         )
 
         # Test with full SQL parameters
@@ -94,8 +89,11 @@ class TestSupabaseDDLGeneration:
         assert driver._has_sql_channel({"url": "https://api.supabase.co", "key": "key"}) is False
         assert driver._has_sql_channel({}) is False
 
-    def test_ddl_plan_saved_when_table_missing(self):
+    def test_ddl_plan_saved_when_table_missing(self, monkeypatch):
         """Test that DDL plan is saved when table doesn't exist."""
+        # Force real client for this test so MagicMock behavior works
+        monkeypatch.setenv("OSIRIS_TEST_SUPABASE_FORCE_REAL_CLIENT", "1")
+
         driver = SupabaseWriterDriver()
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})
 
@@ -112,9 +110,7 @@ class TestSupabaseDDLGeneration:
                 mock_table = MagicMock()
 
                 # First check fails (table doesn't exist)
-                mock_table.select.return_value.limit.return_value.execute.side_effect = Exception(
-                    "Table not found"
-                )
+                mock_table.select.return_value.limit.return_value.execute.side_effect = Exception("Table not found")
 
                 mock_client_instance = MagicMock()
                 mock_client_instance.table.return_value = mock_table
@@ -151,8 +147,11 @@ class TestSupabaseDDLGeneration:
                 assert "id INTEGER" in ddl_content
                 assert "name TEXT" in ddl_content
 
-    def test_ddl_execute_attempt_with_sql_channel(self):
+    def test_ddl_execute_attempt_with_sql_channel(self, monkeypatch):
         """Test that DDL execution is attempted when SQL channel is available."""
+        # Force real client for this test so MagicMock behavior works
+        monkeypatch.setenv("OSIRIS_TEST_SUPABASE_FORCE_REAL_CLIENT", "1")
+
         driver = SupabaseWriterDriver()
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})
 
@@ -161,8 +160,9 @@ class TestSupabaseDDLGeneration:
             mock_ctx = MagicMock()
             mock_ctx.output_dir = output_dir
 
-            with patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient, patch(
-                "osiris.drivers.supabase_writer_driver.log_event"
+            with (
+                patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient,
+                patch("osiris.drivers.supabase_writer_driver.log_event"),
             ):
                 mock_client = MagicMock()
                 mock_table = MagicMock()
@@ -194,7 +194,8 @@ class TestSupabaseDDLGeneration:
                     "dsn": "postgresql://user:pass@host/db",  # pragma: allowlist secret
                 }
 
-                # Mock psycopg2 to avoid actual connection - patch where it's imported
+                # Mock psycopg2 to avoid actual connection
+                # psycopg2 is imported inside _ddl_attempt, so patch at top level
                 with patch("psycopg2.connect") as mock_connect:
                     mock_conn = MagicMock()
                     mock_cursor = MagicMock()
@@ -222,8 +223,11 @@ class TestSupabaseDDLGeneration:
                     ddl_path = output_dir / "ddl_plan.sql"
                     assert ddl_path.exists()
 
-    def test_ddl_plan_only_without_sql_channel(self):
+    def test_ddl_plan_only_without_sql_channel(self, monkeypatch):
         """Test that only DDL plan is created when no SQL channel available."""
+        # Force real client for this test so MagicMock behavior works
+        monkeypatch.setenv("OSIRIS_TEST_SUPABASE_FORCE_REAL_CLIENT", "1")
+
         driver = SupabaseWriterDriver()
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})
 
@@ -232,9 +236,10 @@ class TestSupabaseDDLGeneration:
             mock_ctx = MagicMock()
             mock_ctx.output_dir = output_dir
 
-            with patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient, patch(
-                "osiris.drivers.supabase_writer_driver.log_event"
-            ) as mock_log_event:
+            with (
+                patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient,
+                patch("osiris.drivers.supabase_writer_driver.log_event") as mock_log_event,
+            ):
                 mock_client = MagicMock()
                 mock_table = MagicMock()
 
@@ -279,9 +284,7 @@ class TestSupabaseDDLGeneration:
 
                 # Check that ddl_planned event was logged
                 ddl_planned_calls = [
-                    call
-                    for call in mock_log_event.call_args_list
-                    if call[0][0] == "table.ddl_planned"
+                    call for call in mock_log_event.call_args_list if call[0][0] == "table.ddl_planned"
                 ]
 
                 assert len(ddl_planned_calls) == 1
@@ -289,14 +292,18 @@ class TestSupabaseDDLGeneration:
                 assert event_data["executed"] is False
                 assert event_data["reason"] == "No SQL channel available"
 
-    def test_no_ddl_when_table_exists(self):
+    def test_no_ddl_when_table_exists(self, monkeypatch):
         """Test that no DDL is generated when table already exists."""
+        # Force real client for this test so MagicMock behavior works
+        monkeypatch.setenv("OSIRIS_TEST_SUPABASE_FORCE_REAL_CLIENT", "1")
+
         driver = SupabaseWriterDriver()
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})
 
-        with patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient, patch(
-            "osiris.drivers.supabase_writer_driver.log_event"
-        ) as mock_log_event:
+        with (
+            patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient,
+            patch("osiris.drivers.supabase_writer_driver.log_event") as mock_log_event,
+        ):
             mock_client = MagicMock()
             mock_table = MagicMock()
 
@@ -326,8 +333,7 @@ class TestSupabaseDDLGeneration:
             ddl_events = [
                 call
                 for call in mock_log_event.call_args_list
-                if call[0][0]
-                in ["table.ddl_planned", "table.ddl_executed", "table.creation_suggested"]
+                if call[0][0] in ["table.ddl_planned", "table.ddl_executed", "table.creation_suggested"]
             ]
 
             assert len(ddl_events) == 0  # No DDL events

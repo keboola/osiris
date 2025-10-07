@@ -62,17 +62,9 @@ class TestNarrativeLayer:
 
         # Check content requirements
         # The narrative should contain the pipeline description/intent
-        assert (
-            "extract" in narrative.lower()
-            and "transform" in narrative.lower()
-            and "export" in narrative.lower()
-        )
+        assert "extract" in narrative.lower() and "transform" in narrative.lower() and "export" in narrative.lower()
         assert "execution" in narrative.lower() or "executed" in narrative.lower()
-        assert (
-            "outcome" in narrative.lower()
-            or "result" in narrative.lower()
-            or "completed" in narrative.lower()
-        )
+        assert "outcome" in narrative.lower() or "result" in narrative.lower() or "completed" in narrative.lower()
 
         # Check evidence citations
         assert "[ev.metric.rows_read.extract" in narrative or "[ev.metric" in narrative
@@ -200,9 +192,7 @@ class TestNarrativeLayer:
                 "api_key": "sk-abc123",  # pragma: allowlist secret
                 "connection": "mysql://user:pass@host",  # pragma: allowlist secret
             },
-            "steps": [
-                {"id": "extract", "config": {"token": "bearer-xyz"}}
-            ],  # pragma: allowlist secret
+            "steps": [{"id": "extract", "config": {"token": "bearer-xyz"}}],  # pragma: allowlist secret
         }
 
         run_summary = {"status": "success", "duration_ms": 5000}
@@ -242,11 +232,7 @@ class TestNarrativeLayer:
         assert "failed" in narrative.lower() or "failure" in narrative.lower()
 
         # Should handle missing fields gracefully
-        assert (
-            "unknown" in narrative.lower()
-            or "unspecified" in narrative.lower()
-            or "unnamed" in narrative.lower()
-        )
+        assert "unknown" in narrative.lower() or "unspecified" in narrative.lower() or "unnamed" in narrative.lower()
 
     def test_markdown_runcard_with_failure_status(self):
         """Test 5: Markdown run-card for failed pipeline."""

@@ -12,12 +12,7 @@ import pytest
 # Import real E2B components
 from osiris.core.execution_adapter import ExecutionContext
 from osiris.remote.e2b_adapter import E2BAdapter
-from osiris.remote.e2b_client import (
-    E2BClient,
-    FinalStatus,
-    SandboxHandle,
-    SandboxStatus,
-)
+from osiris.remote.e2b_client import E2BClient, FinalStatus, SandboxHandle, SandboxStatus
 
 
 def make_execution_context(tmpdir: Path, **extras) -> ExecutionContext:
@@ -115,9 +110,7 @@ def _create_test_e2b_adapter(use_real=False, api_key=None):
         # If no API key, mock the client to avoid real API calls
         if not api_key:
             mock_client = MagicMock(spec=E2BClient)
-            mock_handle = SandboxHandle(
-                sandbox_id="test-sandbox-123", status=SandboxStatus.RUNNING, metadata={}
-            )
+            mock_handle = SandboxHandle(sandbox_id="test-sandbox-123", status=SandboxStatus.RUNNING, metadata={})
             mock_client.create_sandbox.return_value = mock_handle
             mock_client.upload_payload.return_value = None
             mock_client.start.return_value = "process-123"

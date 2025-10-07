@@ -1,7 +1,5 @@
 """Mode mapping utilities for OML v0.1.0 compatibility."""
 
-from typing import Optional
-
 
 class ModeMapper:
     """Maps OML canonical modes to component-specific modes."""
@@ -34,7 +32,7 @@ class ModeMapper:
         return cls.MODE_ALIASES.get(oml_mode, oml_mode)
 
     @classmethod
-    def to_canonical_mode(cls, component_mode: str) -> Optional[str]:
+    def to_canonical_mode(cls, component_mode: str) -> str | None:
         """Convert component mode to OML canonical mode.
 
         Args:

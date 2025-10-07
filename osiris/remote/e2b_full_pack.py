@@ -5,7 +5,7 @@ import logging
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import Any, Set
+from typing import Any
 
 from osiris.core.execution_adapter import PreparedRun
 
@@ -76,9 +76,7 @@ def _copy_osiris_source(staging: Path) -> None:
     shutil.copytree(
         osiris_package,
         dest_osiris,
-        ignore=shutil.ignore_patterns(
-            "__pycache__", "*.pyc", ".pytest_cache", "*.egg-info", ".DS_Store"
-        ),
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache", "*.egg-info", ".DS_Store"),
     )
 
     # Copy components directory (required for driver registry)
@@ -188,11 +186,7 @@ def _create_prepared_run_metadata(staging: Path, prepared: PreparedRun) -> None:
     metadata = {
         "manifest_id": prepared.plan.get("pipeline", {}).get("id", "unknown"),
         "total_steps": len(prepared.plan.get("steps", [])),
-        "run_params": {
-            k: v
-            for k, v in prepared.run_params.items()
-            if k not in ["env_vars", "secrets", "credentials"]
-        },
+        "run_params": {k: v for k, v in prepared.run_params.items() if k not in ["env_vars", "secrets", "credentials"]},
         "constraints": prepared.constraints,
         "metadata": prepared.metadata,
     }
@@ -529,7 +523,7 @@ def _create_requirements(staging: Path) -> None:
         f.write("\n".join(requirements))
 
 
-def get_required_env_vars(prepared: PreparedRun) -> Set[str]:
+def get_required_env_vars(prepared: PreparedRun) -> set[str]:
     """Extract required environment variables from manifest connections.
 
     This function determines the precise set of environment variables needed
@@ -555,7 +549,7 @@ def get_required_env_vars(prepared: PreparedRun) -> Set[str]:
     return env_vars
 
 
-def _extract_env_vars_from_dict(data: Any, env_vars: Set[str]) -> None:
+def _extract_env_vars_from_dict(data: Any, env_vars: set[str]) -> None:
     """Recursively extract environment variable references."""
     if isinstance(data, dict):
         for value in data.values():

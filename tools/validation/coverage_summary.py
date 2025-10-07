@@ -24,7 +24,6 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 
 class CoverageSummary:
@@ -41,7 +40,7 @@ class CoverageSummary:
 
         self.modules = self._analyze_modules()
 
-    def _analyze_modules(self) -> Dict[str, Dict]:
+    def _analyze_modules(self) -> dict[str, dict]:
         """Analyze coverage by module/folder."""
         modules = {}
 
@@ -87,7 +86,7 @@ class CoverageSummary:
 
         return modules
 
-    def get_overall_coverage(self) -> Tuple[float, int, int]:
+    def get_overall_coverage(self) -> tuple[float, int, int]:
         """Get overall coverage statistics."""
         totals = self.data["totals"]
         percent = totals["percent_covered"] / 100.0
@@ -95,7 +94,7 @@ class CoverageSummary:
         total = totals["num_statements"]
         return percent, covered, total
 
-    def get_module_table(self, sort_by="coverage", ascending=True) -> List[Dict]:
+    def get_module_table(self, sort_by="coverage", ascending=True) -> list[dict]:
         """Get module coverage as sortable table."""
         table = []
         for name, stats in self.modules.items():
@@ -111,7 +110,7 @@ class CoverageSummary:
 
         return sorted(table, key=lambda x: x[sort_by], reverse=not ascending)
 
-    def get_low_coverage_files(self, threshold: float = 0.6) -> List[Dict]:
+    def get_low_coverage_files(self, threshold: float = 0.6) -> list[dict]:
         """Get files below coverage threshold."""
         low_coverage = []
 
@@ -130,7 +129,7 @@ class CoverageSummary:
 
         return sorted(low_coverage, key=lambda x: x["coverage"])
 
-    def check_thresholds(self, thresholds: Dict[str, float]) -> Tuple[bool, List[str]]:
+    def check_thresholds(self, thresholds: dict[str, float]) -> tuple[bool, list[str]]:
         """Check if modules meet minimum thresholds."""
         failures = []
 
@@ -142,9 +141,7 @@ class CoverageSummary:
             elif module_name in self.modules:
                 actual = self.modules[module_name]["coverage"]
                 if actual < min_coverage:
-                    failures.append(
-                        f"Module '{module_name}' coverage {actual:.1%} < {min_coverage:.1%}"
-                    )
+                    failures.append(f"Module '{module_name}' coverage {actual:.1%} < {min_coverage:.1%}")
 
         return len(failures) == 0, failures
 
@@ -224,26 +221,14 @@ def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Analyze test coverage")
     parser.add_argument("coverage_file", help="Path to coverage.json")
-    parser.add_argument(
-        "--remote-min", type=float, default=0.8, help="Minimum coverage for remote/ module"
-    )
-    parser.add_argument(
-        "--llm-min", type=float, default=0.75, help="Minimum coverage for llm/prompts modules"
-    )
-    parser.add_argument(
-        "--cli-min", type=float, default=0.7, help="Minimum coverage for cli/ module"
-    )
-    parser.add_argument(
-        "--core-min", type=float, default=0.7, help="Minimum coverage for core/ module"
-    )
+    parser.add_argument("--remote-min", type=float, default=0.8, help="Minimum coverage for remote/ module")
+    parser.add_argument("--llm-min", type=float, default=0.75, help="Minimum coverage for llm/prompts modules")
+    parser.add_argument("--cli-min", type=float, default=0.7, help="Minimum coverage for cli/ module")
+    parser.add_argument("--core-min", type=float, default=0.7, help="Minimum coverage for core/ module")
     parser.add_argument("--overall-min", type=float, default=0.5, help="Minimum overall coverage")
-    parser.add_argument(
-        "--format", choices=["markdown", "json", "text"], default="markdown", help="Output format"
-    )
+    parser.add_argument("--format", choices=["markdown", "json", "text"], default="markdown", help="Output format")
     parser.add_argument("--output", help="Output file (default: stdout)")
-    parser.add_argument(
-        "--threshold", type=float, default=0.6, help="Show files below this threshold"
-    )
+    parser.add_argument("--threshold", type=float, default=0.6, help="Show files below this threshold")
 
     args = parser.parse_args()
 

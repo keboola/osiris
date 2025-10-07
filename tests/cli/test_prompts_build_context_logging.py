@@ -30,6 +30,7 @@ class TestPromptsLogging:
                 "--out",
                 str(out_file),
             ],
+            check=False,
             capture_output=True,
             text=True,
             cwd=project_root,  # Run from project root
@@ -41,9 +42,7 @@ class TestPromptsLogging:
 
         # If test fails, provide debug info
         if not stdout or "✓ Context built successfully" not in stdout:
-            pytest.fail(
-                f"Command failed!\nSTDOUT: '{stdout}'\nSTDERR: '{stderr}'\nReturn code: {result.returncode}"
-            )
+            pytest.fail(f"Command failed!\nSTDOUT: '{stdout}'\nSTDERR: '{stderr}'\nReturn code: {result.returncode}")
 
         # Should contain success message
         assert "✓ Context built successfully" in stdout
@@ -95,6 +94,7 @@ class TestPromptsLogging:
                 "--out",
                 str(out_file),
             ],
+            check=False,
             capture_output=True,
             text=True,
             cwd=project_root,  # Run from project root
@@ -106,9 +106,7 @@ class TestPromptsLogging:
 
         # If test fails, provide debug info
         if not stdout or "✓ Context built successfully" not in stdout:
-            pytest.fail(
-                f"Command failed!\nSTDOUT: '{stdout}'\nSTDERR: '{stderr}'\nReturn code: {result.returncode}"
-            )
+            pytest.fail(f"Command failed!\nSTDOUT: '{stdout}'\nSTDERR: '{stderr}'\nReturn code: {result.returncode}")
 
         # Should contain success message
         assert "✓ Context built successfully" in stdout
@@ -150,6 +148,7 @@ class TestPromptsLogging:
                 "--out",
                 str(out_file),
             ],
+            check=False,
             capture_output=True,
             text=True,
             cwd=project_root,  # Run from project root

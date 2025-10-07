@@ -8,7 +8,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -43,7 +43,7 @@ class ParityValidator:
     # Tolerance for numeric differences (e.g., durations)
     NUMERIC_TOLERANCE = 0.05  # 5% tolerance
 
-    def normalize_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
+    def normalize_event(self, event: dict[str, Any]) -> dict[str, Any]:
         """Normalize an event for comparison.
 
         Args:
@@ -68,7 +68,7 @@ class ParityValidator:
 
         return normalized
 
-    def normalize_metric(self, metric: Dict[str, Any]) -> Dict[str, Any]:
+    def normalize_metric(self, metric: dict[str, Any]) -> dict[str, Any]:
         """Normalize a metric for comparison.
 
         Args:
@@ -93,9 +93,7 @@ class ParityValidator:
 
         return normalized
 
-    def compare_events(
-        self, local_events: List[Dict], remote_events: List[Dict]
-    ) -> Tuple[bool, List[str]]:
+    def compare_events(self, local_events: list[dict], remote_events: list[dict]) -> tuple[bool, list[str]]:
         """Compare event streams from local and E2B execution.
 
         Args:
@@ -112,7 +110,7 @@ class ParityValidator:
         remote_normalized = [self.normalize_event(e) for e in remote_events]
 
         # Filter out adapter-specific events
-        def is_common_event(event: Dict) -> bool:
+        def is_common_event(event: dict) -> bool:
             event_type = event.get("event", "")
             # Skip adapter-specific events
             return not (event_type.startswith("adapter_") or event_type.startswith("e2b_"))
@@ -122,22 +120,16 @@ class ParityValidator:
 
         # Compare event counts
         if len(local_common) != len(remote_common):
-            differences.append(
-                f"Event count mismatch: local={len(local_common)}, remote={len(remote_common)}"
-            )
+            differences.append(f"Event count mismatch: local={len(local_common)}, remote={len(remote_common)}")
 
         # Compare individual events
-        for i, (local_evt, remote_evt) in enumerate(zip(local_common, remote_common)):
+        for i, (local_evt, remote_evt) in enumerate(zip(local_common, remote_common, strict=False)):
             if local_evt != remote_evt:
-                differences.append(
-                    f"Event {i} differs:\n  Local: {local_evt}\n  Remote: {remote_evt}"
-                )
+                differences.append(f"Event {i} differs:\n  Local: {local_evt}\n  Remote: {remote_evt}")
 
         return len(differences) == 0, differences
 
-    def compare_metrics(
-        self, local_metrics: List[Dict], remote_metrics: List[Dict]
-    ) -> Tuple[bool, List[str]]:
+    def compare_metrics(self, local_metrics: list[dict], remote_metrics: list[dict]) -> tuple[bool, list[str]]:
         """Compare metric streams from local and E2B execution.
 
         Args:
@@ -187,22 +179,17 @@ class ParityValidator:
 
             if len(local_values) != len(remote_values):
                 differences.append(
-                    f"Metric count mismatch for '{name}': "
-                    f"local={len(local_values)}, remote={len(remote_values)}"
+                    f"Metric count mismatch for '{name}': " f"local={len(local_values)}, remote={len(remote_values)}"
                 )
 
             # For non-duration metrics, values should match exactly
-            for local_m, remote_m in zip(local_values, remote_values):
+            for local_m, remote_m in zip(local_values, remote_values, strict=False):
                 if "__duration_value__" not in local_m and local_m != remote_m:
-                    differences.append(
-                        f"Metric '{name}' differs:\n  Local: {local_m}\n  Remote: {remote_m}"
-                    )
+                    differences.append(f"Metric '{name}' differs:\n  Local: {local_m}\n  Remote: {remote_m}")
 
         return len(differences) == 0, differences
 
-    def compare_artifacts(
-        self, local_artifacts_dir: Path, remote_artifacts_dir: Path
-    ) -> Tuple[bool, List[str]]:
+    def compare_artifacts(self, local_artifacts_dir: Path, remote_artifacts_dir: Path) -> tuple[bool, list[str]]:
         """Compare artifacts produced by local and E2B execution.
 
         Args:
@@ -217,19 +204,11 @@ class ParityValidator:
         # Get list of files in each directory
         local_files = set()
         if local_artifacts_dir.exists():
-            local_files = {
-                f.relative_to(local_artifacts_dir)
-                for f in local_artifacts_dir.rglob("*")
-                if f.is_file()
-            }
+            local_files = {f.relative_to(local_artifacts_dir) for f in local_artifacts_dir.rglob("*") if f.is_file()}
 
         remote_files = set()
         if remote_artifacts_dir.exists():
-            remote_files = {
-                f.relative_to(remote_artifacts_dir)
-                for f in remote_artifacts_dir.rglob("*")
-                if f.is_file()
-            }
+            remote_files = {f.relative_to(remote_artifacts_dir) for f in remote_artifacts_dir.rglob("*") if f.is_file()}
 
         # Compare file sets
         if local_files != remote_files:
@@ -266,12 +245,7 @@ class TestParityLocalVsE2B:
     @pytest.fixture
     def example_pipeline_path(self):
         """Path to the example pipeline."""
-        return (
-            Path(__file__).parent.parent.parent
-            / "docs"
-            / "examples"
-            / "mysql_to_local_csv_all_tables.yaml"
-        )
+        return Path(__file__).parent.parent.parent / "docs" / "examples" / "mysql_to_local_csv_all_tables.yaml"
 
     @pytest.fixture
     def parity_validator(self):
@@ -310,9 +284,7 @@ class TestParityLocalVsE2B:
                 # Return consistent test data
                 import pandas as pd
 
-                test_df = pd.DataFrame(
-                    {"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"], "value": [100, 200, 300]}
-                )
+                test_df = pd.DataFrame({"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"], "value": [100, 200, 300]})
                 mock_read_sql.return_value = test_df
 
                 # Execute locally
@@ -403,17 +375,13 @@ class TestParityLocalVsE2B:
 
             # Compare outputs
             events_match, event_diffs = parity_validator.compare_events(local_events, e2b_events)
-            metrics_match, metric_diffs = parity_validator.compare_metrics(
-                local_metrics, e2b_metrics
-            )
+            metrics_match, metric_diffs = parity_validator.compare_metrics(local_metrics, e2b_metrics)
 
             # For artifacts comparison, use the actual directories
             local_artifacts_dir = local_artifacts.artifacts_dir or temp_path / "local" / "artifacts"
             e2b_artifacts_dir = e2b_artifacts.artifacts_dir or e2b_artifacts_dir
 
-            artifacts_match, artifact_diffs = parity_validator.compare_artifacts(
-                local_artifacts_dir, e2b_artifacts_dir
-            )
+            artifacts_match, artifact_diffs = parity_validator.compare_artifacts(local_artifacts_dir, e2b_artifacts_dir)
 
             # Report results
             all_diffs = []

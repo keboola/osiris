@@ -18,7 +18,7 @@ def _normalize_value(value: Any) -> Any:
     elif isinstance(value, bool):
         # Booleans before numbers (Python's bool is subclass of int)
         return value
-    elif isinstance(value, (int, float)):
+    elif isinstance(value, int | float):
         # Normalize numbers
         return value
     elif value is None:
@@ -63,9 +63,7 @@ def canonical_yaml(data: Any) -> str:
 
     # Custom YAML representer to maintain order
     def ordered_dict_representer(dumper, data):
-        return dumper.represent_mapping(
-            yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, data.items()
-        )
+        return dumper.represent_mapping(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, data.items())
 
     yaml.add_representer(OrderedDict, ordered_dict_representer)
 

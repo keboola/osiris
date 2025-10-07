@@ -34,7 +34,7 @@ import uuid
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import yaml
 
@@ -69,10 +69,10 @@ class ConversationalPipelineAgent:
     def __init__(
         self,
         llm_provider: str = "openai",
-        config: Optional[Dict] = None,
+        config: dict | None = None,
         pro_mode: bool = False,
-        prompt_manager: Optional[Any] = None,
-        context: Optional[Dict[str, Any]] = None,
+        prompt_manager: Any | None = None,
+        context: dict[str, Any] | None = None,
     ):
         """Initialize conversational pipeline agent.
 
@@ -131,9 +131,7 @@ class ConversationalPipelineAgent:
         logger.info(f"State transition: {old_state.value} -> {new_state.value}")
 
         if session_ctx:
-            session_ctx.log_event(
-                "state_transition", from_state=old_state.value, to_state=new_state.value, **kwargs
-            )
+            session_ctx.log_event("state_transition", from_state=old_state.value, to_state=new_state.value, **kwargs)
 
         return new_state
 
@@ -155,9 +153,7 @@ class ConversationalPipelineAgent:
                 for key, value in metadata.items():
                     f.write(f"{key}: {value}\n")
 
-    async def chat(
-        self, user_message: str, session_id: Optional[str] = None, fast_mode: bool = False
-    ) -> str:
+    async def chat(self, user_message: str, session_id: str | None = None, fast_mode: bool = False) -> str:
         """Main conversation interface.
 
         Args:
@@ -210,9 +206,7 @@ class ConversationalPipelineAgent:
 
         # Track intent capture
         if self.current_state == ChatState.INIT:
-            self._transition_state(
-                ChatState.INTENT_CAPTURED, session_ctx, intent=user_message[:100]
-            )
+            self._transition_state(ChatState.INTENT_CAPTURED, session_ctx, intent=user_message[:100])
             if session_ctx:
                 session_ctx.log_event("intent_captured", message_preview=user_message[:100])
 
@@ -278,9 +272,7 @@ class ConversationalPipelineAgent:
             logger.error(f"Conversation processing failed: {e}")
             return f"I encountered an error: {str(e)}. Please try again or rephrase your request."
 
-    async def _execute_action(
-        self, response: LLMResponse, context: ConversationContext, fast_mode: bool
-    ) -> str:
+    async def _execute_action(self, response: LLMResponse, context: ConversationContext, fast_mode: bool) -> str:
         """Execute the action requested by LLM."""
 
         if response.action == "discover":
@@ -305,19 +297,13 @@ class ConversationalPipelineAgent:
                 return await self._generate_pipeline({"intent": context.user_input}, context)
 
             # Check if this should have been a pipeline generation instead
-            if self._should_force_pipeline_generation(
-                context.user_input, context, response.message
-            ):
-                logger.info(
-                    f"Forcing pipeline generation for analytical request: {context.user_input}"
-                )
+            if self._should_force_pipeline_generation(context.user_input, context, response.message):
+                logger.info(f"Forcing pipeline generation for analytical request: {context.user_input}")
                 return await self._generate_pipeline({"intent": context.user_input}, context)
 
             # Ensure we never return empty messages
             if not response.message or not response.message.strip():
-                logger.warning(
-                    f"Empty message after discovery flow, generating fallback for action: {response.action}"
-                )
+                logger.warning(f"Empty message after discovery flow, generating fallback for action: {response.action}")
                 return "I need more information to help you. Could you please provide more details about what you'd like to do with the data?"
             return response.message
 
@@ -392,14 +378,10 @@ class ConversationalPipelineAgent:
             "these movies",
         ]
 
-        is_manual_analysis = any(
-            indicator in response_lower for indicator in manual_analysis_indicators
-        )
+        is_manual_analysis = any(indicator in response_lower for indicator in manual_analysis_indicators)
 
         # Force pipeline if: analytical intent + manual analysis + discovery complete
-        should_force = (
-            has_analytical_intent and is_manual_analysis and len(context.discovery_data) > 0
-        )
+        should_force = has_analytical_intent and is_manual_analysis and len(context.discovery_data) > 0
 
         if should_force:
             logger.info(
@@ -408,7 +390,7 @@ class ConversationalPipelineAgent:
 
         return should_force
 
-    async def _run_discovery(self, params: Dict, context: ConversationContext) -> str:
+    async def _run_discovery(self, params: dict, context: ConversationContext) -> str:
         """Run database discovery."""
         try:
             # Get database configuration
@@ -452,9 +434,7 @@ class ConversationalPipelineAgent:
                         # Convert sample data to JSON-serializable format
                         sample_data = []
                         if table_info.sample_data:
-                            for row in table_info.sample_data[
-                                :10
-                            ]:  # First 10 sample rows for better coverage
+                            for row in table_info.sample_data[:10]:  # First 10 sample rows for better coverage
                                 json_row = {}
                                 for k, v in row.items():
                                     # Convert non-JSON serializable types
@@ -495,10 +475,7 @@ class ConversationalPipelineAgent:
                     try:
                         table_info = await discovery.get_table_info(table)
                         discovery_data["tables"][table] = {
-                            "columns": [
-                                {"name": col.name, "type": str(col.type)}
-                                for col in table_info.columns
-                            ],
+                            "columns": [{"name": col.name, "type": str(col.type)} for col in table_info.columns],
                             "row_count": table_info.row_count,
                             "sample_available": table_info.sample_data is not None,
                         }
@@ -585,9 +562,7 @@ CRITICAL:
 
             # If LLM still doesn't generate pipeline, force it
             if response.action != "generate_pipeline":
-                logger.warning(
-                    f"LLM returned {response.action} instead of generate_pipeline, forcing synthesis"
-                )
+                logger.warning(f"LLM returned {response.action} instead of generate_pipeline, forcing synthesis")
 
                 # Create a deterministic template based on intent
                 if "csv" in context.user_input.lower() and "table" in context.user_input.lower():
@@ -619,17 +594,15 @@ CRITICAL:
             return f"I encountered an error during discovery: {str(e)}. Please check your database connection settings."
 
     async def _validate_and_retry_pipeline(
-        self, pipeline_yaml: str, context: ConversationContext, session_ctx: Optional[Any] = None
-    ) -> Tuple[bool, str, Optional[Any]]:
+        self, pipeline_yaml: str, context: ConversationContext, session_ctx: Any | None = None
+    ) -> tuple[bool, str, Any | None]:
         """Validate pipeline with retry mechanism.
 
         Returns:
             Tuple of (valid, final_yaml, retry_trail)
         """
 
-        def retry_callback(
-            current_yaml: str, error_context: str, attempt: int  # noqa: ARG001
-        ) -> Tuple[str, Dict]:
+        def retry_callback(current_yaml: str, error_context: str, attempt: int) -> tuple[str, dict]:  # noqa: ARG001
             """Generate retry with error context (sync wrapper)."""
             # Import here to avoid circular imports
             import asyncio
@@ -692,7 +665,7 @@ Please generate a corrected version that fixes only these validation errors. Kee
 
         return valid, final_yaml, retry_trail
 
-    async def _generate_pipeline(self, params: Dict, context: ConversationContext) -> str:
+    async def _generate_pipeline(self, params: dict, context: ConversationContext) -> str:
         """Generate pipeline YAML configuration."""
         logger.info(f"_generate_pipeline called with params keys: {params.keys()}")
         try:
@@ -724,9 +697,7 @@ Please generate a corrected version that fixes only these validation errors. Kee
                         )
 
                     # Attempt ONE regeneration with directed prompt
-                    regeneration_prompt = create_oml_regeneration_prompt(
-                        pipeline_yaml, schema_error, parsed_data
-                    )
+                    regeneration_prompt = create_oml_regeneration_prompt(pipeline_yaml, schema_error, parsed_data)
 
                     logger.info("Attempting OML schema regeneration")
                     regen_response = await self.llm.chat(
@@ -736,18 +707,13 @@ Please generate a corrected version that fixes only these validation errors. Kee
                     )
 
                     # Extract YAML from regeneration response
-                    if (
-                        hasattr(regen_response, "params")
-                        and "pipeline_yaml" in regen_response.params
-                    ):
+                    if hasattr(regen_response, "params") and "pipeline_yaml" in regen_response.params:
                         pipeline_yaml = regen_response.params["pipeline_yaml"]
                     elif hasattr(regen_response, "message"):
                         # Try to extract YAML from message
                         import re
 
-                        yaml_match = re.search(
-                            r"```yaml\n(.*?)\n```", regen_response.message, re.DOTALL
-                        )
+                        yaml_match = re.search(r"```yaml\n(.*?)\n```", regen_response.message, re.DOTALL)
                         if yaml_match:
                             pipeline_yaml = yaml_match.group(1)
                         else:
@@ -798,9 +764,7 @@ Please describe your pipeline requirements again, and I'll generate valid OML fo
                             "hitl_prompt_shown",
                             retry_attempts=len(retry_trail.attempts),
                             final_error_count=(
-                                len(retry_trail.attempts[-1].validation_result.errors)
-                                if retry_trail.attempts
-                                else 0
+                                len(retry_trail.attempts[-1].validation_result.errors) if retry_trail.attempts else 0
                             ),
                         )
 
@@ -844,9 +808,7 @@ You can:
 
                 session = get_current_session()
                 if session:
-                    artifact_path = session.save_artifact(
-                        f"{pipeline_name}.yaml", pipeline_yaml, "text"
-                    )
+                    artifact_path = session.save_artifact(f"{pipeline_name}.yaml", pipeline_yaml, "text")
                     logger.info(f"Saved pipeline as session artifact: {artifact_path}")
                 else:
                     logger.warning("No current session found, cannot save artifact")
@@ -926,9 +888,7 @@ Would you like me to:
                         "hitl_prompt_shown",
                         retry_attempts=len(retry_trail.attempts),
                         final_error_count=(
-                            len(retry_trail.attempts[-1].validation_result.errors)
-                            if retry_trail.attempts
-                            else 0
+                            len(retry_trail.attempts[-1].validation_result.errors) if retry_trail.attempts else 0
                         ),
                     )
 
@@ -986,9 +946,7 @@ The pipeline will:
             logger.error(f"Pipeline generation failed: {e}")
             return f"I encountered an error generating the pipeline: {str(e)}. Please try rephrasing your request or providing more details."
 
-    def _create_pipeline_config(
-        self, intent: str, sql_query: str, params: Dict, context: ConversationContext
-    ) -> Dict:
+    def _create_pipeline_config(self, intent: str, sql_query: str, params: dict, context: ConversationContext) -> dict:
         """Create pipeline configuration dictionary."""
 
         # Determine source configuration with database credentials (secrets masked)
@@ -1080,9 +1038,7 @@ Would you like to:
             logger.error(f"Pipeline execution failed: {e}")
             return f"Pipeline execution failed: {str(e)}. Please check your configuration and try again."
 
-    async def _make_assumptions_and_continue(
-        self, _response: LLMResponse, context: ConversationContext
-    ) -> str:
+    async def _make_assumptions_and_continue(self, _response: LLMResponse, context: ConversationContext) -> str:
         """In fast mode, make reasonable assumptions instead of asking questions."""
 
         # Common assumptions for fast mode
@@ -1101,7 +1057,7 @@ Would you like to:
             # Generate pipeline with assumptions
             return await self._generate_pipeline(assumptions, context)
 
-    async def _validate_configuration(self, _params: Dict, context: ConversationContext) -> str:
+    async def _validate_configuration(self, _params: dict, context: ConversationContext) -> str:
         """Validate pipeline configuration."""
 
         if not context.pipeline_config:
@@ -1201,7 +1157,7 @@ Say 'approve' to execute or ask me to modify anything."""
             logger.error(f"Direct SQL processing failed: {e}")
             return f"Error processing SQL: {str(e)}"
 
-    def _get_database_config(self) -> Dict[str, Any]:
+    def _get_database_config(self) -> dict[str, Any]:
         """Get database configuration from environment first, then config file."""
 
         # PRIORITY 1: Environment variables (for real database connections)

@@ -6,6 +6,7 @@ Example pipeline files and AI Operation Package (AIOP) exports demonstrating Osi
 
 - **`mysql_to_local_csv_all_tables.yaml`** - MySQL to CSV export pipeline
 - **`mysql_to_supabase_all_tables.yaml`** - MySQL to Supabase migration pipeline
+- **`mysql_duckdb_supabase_demo.yaml`** - MySQL → DuckDB → Supabase transformation pipeline (NEW)
 
 ## AIOP Examples
 
@@ -31,6 +32,45 @@ python osiris.py chat
 # Run example pipeline with dry-run
 python osiris.py run examples/mysql_to_local_csv_all_tables.yaml --dry-run
 ```
+
+### MySQL → DuckDB → Supabase Demo
+
+The `mysql_duckdb_supabase_demo.yaml` demonstrates data transformation using DuckDB:
+
+**Purpose**: Extract movie data from MySQL, compute director statistics using DuckDB SQL, and write results to Supabase.
+
+**Quick Start**:
+```bash
+# Using make target (recommended)
+make demo-mysql-duckdb-supabase
+
+# Or manually from testing_env
+cd testing_env
+python ../osiris.py compile ../docs/examples/mysql_duckdb_supabase_demo.yaml
+python ../osiris.py run --last-compile
+```
+
+**Expected Output**:
+- Extracts ~14 movies from MySQL
+- Computes statistics per director (movie count, avg runtime, total box office, ROI)
+- Creates/updates `director_stats_demo` table in Supabase with aggregated results
+
+**Running in E2B Sandbox**:
+```bash
+# Requires E2B_API_KEY environment variable
+make demo-mysql-duckdb-supabase-e2b
+
+# Or manually
+cd testing_env
+python ../osiris.py compile ../docs/examples/mysql_duckdb_supabase_demo.yaml
+python ../osiris.py run --last-compile --e2b --verbose
+```
+
+**Troubleshooting**:
+- **Missing connections**: Ensure `osiris_connections.yaml` exists with MySQL and Supabase configs
+- **Authentication errors**: Check `MYSQL_PASSWORD` and `SUPABASE_SERVICE_ROLE_KEY` environment variables
+- **Table exists error**: The pipeline uses `write_mode: replace` to overwrite existing data
+- **DuckDB not found**: The driver is now registered in both local and E2B execution paths
 
 ### AIOP Examples
 

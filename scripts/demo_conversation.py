@@ -205,12 +205,8 @@ The pipeline will automatically:
 
     show_osiris_message(osiris_final)
 
-    console.print(
-        "\n[dim]💡 This demo shows how Osiris uses natural conversation to understand intent,[/dim]"
-    )
-    console.print(
-        "[dim]   discovers database schemas automatically, and generates technical YAML[/dim]"
-    )
+    console.print("\n[dim]💡 This demo shows how Osiris uses natural conversation to understand intent,[/dim]")
+    console.print("[dim]   discovers database schemas automatically, and generates technical YAML[/dim]")
     console.print("[dim]   without requiring users to know SQL or pipeline syntax.[/dim]\n")
 
 

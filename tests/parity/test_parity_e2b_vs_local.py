@@ -20,9 +20,7 @@ def _disable_preflight_in_parity(monkeypatch):
     """
     if os.environ.get("OSIRIS_TEST_DISABLE_PREFLIGHT", "1") != "0":
         # Disable preflight validation
-        monkeypatch.setattr(
-            LocalAdapter, "_preflight_validate_cfg_files", lambda *args: None  # noqa: ARG005
-        )
+        monkeypatch.setattr(LocalAdapter, "_preflight_validate_cfg_files", lambda *args: None)  # noqa: ARG005
         # Also disable cfg file materialization which expects compiled artifacts
         monkeypatch.setattr(
             LocalAdapter,
@@ -61,9 +59,7 @@ def cfg_root(tmp_path: Path):
     for cfg_name in dummy_cfgs:
         cfg_file = cfg_dir / cfg_name
         cfg_file.write_text(
-            json.dumps(
-                {"id": cfg_name.replace(".json", ""), "component": "dummy.component", "config": {}}
-            )
+            json.dumps({"id": cfg_name.replace(".json", ""), "component": "dummy.component", "config": {}})
         )
 
     return root
@@ -201,15 +197,11 @@ class TestExecutionParity:
                 local_content = local_file.read_text().strip()
                 e2b_content = e2b_file.read_text().strip()
                 if local_content != e2b_content:
-                    comparison["content_differences"].append(
-                        {"file": filename, "difference": "content mismatch"}
-                    )
+                    comparison["content_differences"].append({"file": filename, "difference": "content mismatch"})
 
         return comparison
 
-    @pytest.mark.skipif(
-        not os.getenv("E2B_API_KEY"), reason="E2B_API_KEY required for parity tests"
-    )
+    @pytest.mark.skipif(not os.getenv("E2B_API_KEY"), reason="E2B_API_KEY required for parity tests")
     def test_execution_parity(self, parity_pipeline, cfg_root):
         """Test that local and E2B execution produce identical results."""
         # Create separate contexts for each execution
@@ -231,9 +223,7 @@ class TestExecutionParity:
 
             # Execute on E2B (only if live tests enabled)
             if os.getenv("E2B_LIVE_TESTS") == "1":
-                e2b_adapter = get_execution_adapter(
-                    "e2b", {"timeout": 300, "cpu": 2, "memory": 4, "verbose": False}
-                )
+                e2b_adapter = get_execution_adapter("e2b", {"timeout": 300, "cpu": 2, "memory": 4, "verbose": False})
                 e2b_prepared = e2b_adapter.prepare(parity_pipeline, e2b_context)
                 e2b_result = e2b_adapter.execute(e2b_prepared, e2b_context)
             else:
@@ -331,9 +321,7 @@ class TestExecutionParity:
                     "component": "duckdb.processor",
                     "driver": "duckdb.processor",
                     "mode": "transform",
-                    "config": {
-                        "query": f"SELECT i as id FROM generate_series(1, {num_rows}) as s(i)"
-                    },
+                    "config": {"query": f"SELECT i as id FROM generate_series(1, {num_rows}) as s(i)"},
                     "needs": [],
                     "cfg_path": "cfg/generate_large.json",
                 }
@@ -362,17 +350,7 @@ class TestExecutionParity:
             expected_cfg_dir = Path(tmpdir) / "logs" / f"volume-{num_rows}" / "cfg"
             expected_cfg_dir.mkdir(parents=True, exist_ok=True)
             (expected_cfg_dir / "generate_large.json").write_text(
-                json.dumps(
-                    {
-                        "id": "generate_large",
-                        "component": "duckdb.processor",
-                        "driver": "duckdb.processor",
-                        "mode": "transform",
-                        "config": {
-                            "query": f"SELECT i as id FROM generate_series(1, {num_rows}) as s(i)"
-                        },
-                    }
-                )
+                json.dumps({"query": f"SELECT i as id FROM generate_series(1, {num_rows}) as s(i)"})
             )
 
             # Execute locally

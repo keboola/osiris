@@ -233,9 +233,7 @@ class TestBootstrapSpecs:
             assert "key" in required, f"{spec['name']} must require 'key'"
             assert "table" in required, f"{spec['name']} must require 'table'"
 
-    def test_supabase_url_or_project_id_constraint(
-        self, supabase_extractor_spec, supabase_writer_spec
-    ):
+    def test_supabase_url_or_project_id_constraint(self, supabase_extractor_spec, supabase_writer_spec):
         """Test Supabase specs have url XOR project_id constraint."""
         specs = [supabase_extractor_spec, supabase_writer_spec]
 

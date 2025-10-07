@@ -9,6 +9,8 @@ import pytest
 
 from osiris.connectors.supabase.writer import SupabaseWriter
 
+pytestmark = pytest.mark.supabase
+
 
 class TestMySQLToSupabaseIntegration:
     """Integration tests for MySQL → Supabase (Postgres) pipelines."""
@@ -365,9 +367,7 @@ class TestMySQLToSupabaseIntegration:
             mock_client.table.return_value = mock_table
 
             # Simulate table not found error
-            mock_table.insert.return_value.execute.side_effect = Exception(
-                "PGRST205: Table 'nonexistent' not found"
-            )
+            mock_table.insert.return_value.execute.side_effect = Exception("PGRST205: Table 'nonexistent' not found")
             mock_connect.return_value = mock_client
 
             data = [{"id": 1, "name": "Test"}]

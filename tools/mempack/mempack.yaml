@@ -18,20 +18,22 @@ include:
 - osiris/prompts/*
 - osiris/runtime/*.py
 - osiris/remote/*.py
+- osiris/drivers/graphql_extractor_driver.py # added GraphQL driver
 
 # Components registry/specs
 - components/spec.schema.json
 - components/*/**/spec.yaml
+- components/graphql.extractor/spec.yaml # added GraphQL component spec
 
 # Docs – keep ADRs, milestones, roadmap + top-level docs + examples
-- docs/adr/*.md
-- docs/milestones/*.md
-- docs/roadmap/*.md
-- docs/*.md
-- docs/examples/*.yaml
-- docs/reference/aiop.*.json*
-- docs/examples/aiop-*.json
-- docs/examples/run-card-sample.md
+- docs/**/*.md
+- docs/**/*.yaml
+
+# E2B docs + CI skripty
+- docs/testing/e2b-testing-guide.md
+- .github/workflows/e2b-tests.yml
+- .github/workflows/e2b-manual.yml
+- .github/scripts/verify_redaction.py
 
 # Test coverage research (exclude HTML)
 - docs/testing/research/coverage-*/README.md
@@ -66,6 +68,9 @@ include:
 exclude:
 # Coverage HTML reports (too large)
 - "docs/testing/research/coverage-*/html/**"
+
+# Archived docs
+- "docs/archive/**"
 
 # Python noise (still needed since .gitignore doesn't have these)
 - "**/__pycache__/**"
@@ -304,4 +309,44 @@ commands:
   with_cmd: true
   shell: bash
   timeout: 45s
+  on_error: keep
+
+- output_path: tools/mempack/gen/tests-e2b-inventory.txt
+  run: |
+    source .venv/bin/activate
+    pytest --collect-only -q -m e2b_smoke > ../tools/mempack/gen/tests-e2b-inventory.txt || true
+    echo "" >> ../tools/mempack/gen/tests-e2b-inventory.txt
+    echo "---- PARITY ----" >> ../tools/mempack/gen/tests-e2b-inventory.txt
+    pytest --collect-only -q -m parity >> ../tools/mempack/gen/tests-e2b-inventory.txt || true
+  with_cmd: true
+  shell: bash
+  timeout: 30s
+  on_error: keep
+
+- output_path: tools/mempack/gen/pytest-markers.txt
+  run: |
+    source .venv/bin/activate
+    pytest --markers > ../tools/mempack/gen/pytest-markers.txt || true
+  with_cmd: true
+  shell: bash
+  timeout: 15s
+  on_error: keep
+
+# --- Split-run summary (short reports for non-supabase and supabase suites) ---
+- output_path: tools/mempack/gen/tests-splitrun-non-supabase.txt
+  run: |
+    source .venv/bin/activate
+    pytest -m "not supabase" -q > ../tools/mempack/gen/tests-splitrun-non-supabase.txt || true
+  with_cmd: true
+  shell: bash
+  timeout: 120s
+  on_error: keep
+
+- output_path: tools/mempack/gen/tests-splitrun-supabase.txt
+  run: |
+    source .venv/bin/activate
+    pytest -m supabase -q > ../tools/mempack/gen/tests-splitrun-supabase.txt || true
+  with_cmd: true
+  shell: bash
+  timeout: 60s
   on_error: keep

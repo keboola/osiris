@@ -8,9 +8,9 @@ import hashlib
 import json
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from jsonschema import Draft202012Validator, ValidationError
 
@@ -23,13 +23,13 @@ logger = logging.getLogger(__name__)
 CONTEXT_SCHEMA_VERSION = "1.0.0"
 
 # Secret filtering version - increment when filtering logic changes
-SECRET_FILTER_VERSION = "1.0.0"
+SECRET_FILTER_VERSION = "1.1.0"  # nosec B105 - version string, not a password
 
 
 class ContextBuilder:
     """Build minimal component context for LLM consumption."""
 
-    def __init__(self, cache_dir: Optional[Path] = None):
+    def __init__(self, cache_dir: Path | None = None):
         """Initialize the context builder.
 
         Args:
@@ -46,7 +46,7 @@ class ContextBuilder:
             self.schema = json.load(f)
         self.validator = Draft202012Validator(self.schema)
 
-    def _compute_fingerprint(self, components: Dict[str, Any]) -> str:
+    def _compute_fingerprint(self, components: dict[str, Any]) -> str:
         """Compute SHA-256 fingerprint of component specs.
 
         Args:
@@ -74,7 +74,7 @@ class ContextBuilder:
         json_str = json.dumps(fingerprint_data, sort_keys=True)
         return hashlib.sha256(json_str.encode()).hexdigest()
 
-    def _is_secret_field(self, field_path: str, spec: Dict[str, Any]) -> bool:
+    def _is_secret_field(self, field_path: str, spec: dict[str, Any]) -> bool:
         """Check if a field path is a secret field.
 
         Args:
@@ -136,9 +136,7 @@ class ContextBuilder:
         # Check for hex strings that could be keys (but not SHA hashes in fingerprints)
         # Only redact hex strings that are exactly 32 or 64 chars (common key lengths)
         # but not those that are clearly SHA-256 (64 chars) in a fingerprint context
-        if re.match(r"^[A-Fa-f0-9]+$", value) and (
-            len(value) in [32, 40, 48] or len(value) >= 80
-        ):  # Not 64 (SHA-256)
+        if re.match(r"^[A-Fa-f0-9]+$", value) and (len(value) in [32, 40, 48] or len(value) >= 80):  # Not 64 (SHA-256)
             return "***redacted***"
 
         # Check for base64-encoded strings (but be conservative)
@@ -148,7 +146,32 @@ class ContextBuilder:
 
         return value
 
-    def _extract_minimal_config(self, spec: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _get_display_fields(self, spec: dict[str, Any]) -> list[str]:
+        """Determine which config fields should appear in prompt context."""
+        config_schema = spec.get("configSchema", {})
+        properties: dict[str, Any] = config_schema.get("properties", {})
+        required = set(config_schema.get("required", []))
+
+        # Include fields showcased in examples or LLM hints so optional-but-core
+        # settings (like Supabase URL) are retained.
+        example_fields: set[str] = set()
+        for example in spec.get("examples", []) or []:
+            example_fields.update(example.get("config", {}).keys())
+
+        hint_fields = set((spec.get("llmHints", {}) or {}).get("inputAliases", {}).keys())
+
+        candidate_fields = required | (example_fields & properties.keys()) | (hint_fields & properties.keys())
+
+        if not candidate_fields:
+            candidate_fields = set(properties.keys())
+
+        ordered_fields: list[str] = []
+        for field_name in properties:  # preserve spec order
+            if field_name in candidate_fields:
+                ordered_fields.append(field_name)
+        return ordered_fields
+
+    def _extract_minimal_config(self, spec: dict[str, Any]) -> list[dict[str, Any]]:
         """Extract minimal required configuration from component spec.
 
         Args:
@@ -159,33 +182,32 @@ class ContextBuilder:
         """
         config_schema = spec.get("configSchema", {})
         properties = config_schema.get("properties", {})
-        required = set(config_schema.get("required", []))
 
         minimal_config = []
-        for field_name in required:
+        for field_name in self._get_display_fields(spec):
+            if field_name not in properties:
+                continue
+
             # Skip secret fields entirely
             if self._is_secret_field(field_name, spec):
                 continue
 
-            if field_name in properties:
-                field_spec = properties[field_name]
-                field_info = {"field": field_name, "type": field_spec.get("type", "string")}
+            field_spec = properties.get(field_name, {})
+            field_info = {"field": field_name, "type": field_spec.get("type", "string")}
 
-                # Include enum if present (important for LLM) but redact suspicious values
-                if "enum" in field_spec:
-                    field_info["enum"] = [
-                        self._redact_suspicious_value(v) for v in field_spec["enum"]
-                    ]
+            # Include enum if present (important for LLM) but redact suspicious values
+            if "enum" in field_spec:
+                field_info["enum"] = [self._redact_suspicious_value(v) for v in field_spec["enum"]]
 
-                # Include default if present but redact if suspicious
-                if "default" in field_spec:
-                    field_info["default"] = self._redact_suspicious_value(field_spec["default"])
+            # Include default if present but redact if suspicious
+            if "default" in field_spec:
+                field_info["default"] = self._redact_suspicious_value(field_spec["default"])
 
-                minimal_config.append(field_info)
+            minimal_config.append(field_info)
 
         return minimal_config
 
-    def _extract_minimal_example(self, spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _extract_minimal_example(self, spec: dict[str, Any]) -> dict[str, Any] | None:
         """Extract a single minimal example from component spec.
 
         Args:
@@ -203,17 +225,14 @@ class ContextBuilder:
         config = example.get("config", {})
 
         # Filter to only required fields, exclude secrets, and redact suspicious values
-        required = set(spec.get("configSchema", {}).get("required", []))
+        display_fields = set(self._get_display_fields(spec))
         minimal_config = {}
 
         for k, v in config.items():
-            # Skip if not required
-            if k not in required:
+            if k not in display_fields:
                 continue
-            # Skip if it's a secret field
             if self._is_secret_field(k, spec):
                 continue
-            # Add with redacted value if suspicious
             minimal_config[k] = self._redact_suspicious_value(v)
 
         return minimal_config if minimal_config else None
@@ -261,7 +280,7 @@ class ContextBuilder:
             logger.debug(f"Cache validation error: {e}")
             return False
 
-    def build_context(self, force_rebuild: bool = False) -> Dict[str, Any]:
+    def build_context(self, force_rebuild: bool = False) -> dict[str, Any]:
         """Build minimal component context for LLM.
 
         Args:
@@ -341,7 +360,7 @@ class ContextBuilder:
         # Build final context
         context = {
             "version": CONTEXT_SCHEMA_VERSION,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "fingerprint": fingerprint,
             "components": context_components,
         }
@@ -376,7 +395,7 @@ class ContextBuilder:
 
         return context
 
-    def _save_cache(self, context: Dict[str, Any], fingerprint: str):
+    def _save_cache(self, context: dict[str, Any], fingerprint: str):
         """Save context and metadata to cache.
 
         Args:
@@ -394,7 +413,7 @@ class ContextBuilder:
         meta = {
             "fingerprint": fingerprint,
             "schema_version": CONTEXT_SCHEMA_VERSION,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
         }
         with open(self.cache_meta_file, "w") as f:
             json.dump(meta, f, indent=2)
@@ -403,11 +422,11 @@ class ContextBuilder:
 
 
 def main(
-    output_path: Optional[str] = None,
+    output_path: str | None = None,
     force: bool = False,
     json_output: bool = False,
-    session: Optional[SessionContext] = None,
-) -> Optional[Dict[str, Any]]:
+    session: SessionContext | None = None,
+) -> dict[str, Any] | None:
     """Build component context from CLI.
 
     Args:

@@ -137,9 +137,7 @@ class TestRunnerConnections:
 
         return connections_path
 
-    def test_runner_resolves_explicit_connections(
-        self, manifest_with_connections, connections_yaml, temp_dir
-    ):
+    def test_runner_resolves_explicit_connections(self, manifest_with_connections, connections_yaml, temp_dir):
         """Test runner resolves explicit @family.alias connections."""
         # Patch cwd to use temp_dir with connections
         with patch("osiris.core.config.Path.cwd", return_value=temp_dir):
@@ -168,33 +166,25 @@ class TestRunnerConnections:
 
                     # Check MySQL connection resolution
                     mysql_start = next(
-                        e
-                        for e in conn_events
-                        if e["type"] == "connection_resolve_start" and e["family"] == "mysql"
+                        e for e in conn_events if e["type"] == "connection_resolve_start" and e["family"] == "mysql"
                     )
                     assert mysql_start["alias"] == "primary"
 
                     mysql_complete = next(
-                        e
-                        for e in conn_events
-                        if e["type"] == "connection_resolve_complete" and e["family"] == "mysql"
+                        e for e in conn_events if e["type"] == "connection_resolve_complete" and e["family"] == "mysql"
                     )
                     assert mysql_complete["ok"] is True
 
                     # Check Supabase connection resolution
                     supabase_start = next(
-                        e
-                        for e in conn_events
-                        if e["type"] == "connection_resolve_start" and e["family"] == "supabase"
+                        e for e in conn_events if e["type"] == "connection_resolve_start" and e["family"] == "supabase"
                     )
                     assert supabase_start["alias"] == "prod"
 
                     # Verify driver was called (connection resolution happens internally)
                     assert mock_driver.run.call_count >= 1  # At least one step executed
 
-    def test_runner_resolves_default_connections(
-        self, manifest_with_defaults, connections_yaml, temp_dir
-    ):
+    def test_runner_resolves_default_connections(self, manifest_with_defaults, connections_yaml, temp_dir):
         """Test runner resolves default connections when no alias specified."""
         with patch("osiris.core.config.Path.cwd", return_value=temp_dir):
             runner = RunnerV0(str(manifest_with_defaults), str(temp_dir / "_artifacts"))
@@ -256,9 +246,7 @@ class TestRunnerConnections:
         # Create dummy connections
         connections = {
             "version": 1,
-            "connections": {
-                "supabase": {"prod": {"url": "https://test.supabase.co", "key": "test"}}
-            },
+            "connections": {"supabase": {"prod": {"url": "https://test.supabase.co", "key": "test"}}},
         }
         connections_path = temp_dir / "osiris_connections.yaml"
         with open(connections_path, "w") as f:
@@ -269,9 +257,7 @@ class TestRunnerConnections:
 
             events = []
             with patch("osiris.core.runner_v0.log_event") as mock_log_event:
-                mock_log_event.side_effect = lambda event_type, **kwargs: events.append(
-                    {"type": event_type, **kwargs}
-                )
+                mock_log_event.side_effect = lambda event_type, **kwargs: events.append({"type": event_type, **kwargs})
 
                 success = runner.run()
                 assert not success  # Should fail
@@ -316,9 +302,7 @@ class TestRunnerConnections:
         with patch.object(runner.driver_registry, "get", return_value=mock_driver):
             events = []
             with patch("osiris.core.runner_v0.log_event") as mock_log_event:
-                mock_log_event.side_effect = lambda event_type, **kwargs: events.append(
-                    {"type": event_type, **kwargs}
-                )
+                mock_log_event.side_effect = lambda event_type, **kwargs: events.append({"type": event_type, **kwargs})
 
                 success = runner.run()
                 assert success

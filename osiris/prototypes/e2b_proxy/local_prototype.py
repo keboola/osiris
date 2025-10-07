@@ -9,7 +9,7 @@ import threading
 import time
 from pathlib import Path
 from queue import Queue
-from typing import Any, Dict
+from typing import Any
 
 
 class LocalOrchestrator:
@@ -57,9 +57,7 @@ class LocalOrchestrator:
                     {"id": "step-3", "type": "echo"},
                 ],
             }
-            response = self.send_command(
-                {"cmd": "prepare", "session_id": self.session_id, "manifest": manifest}
-            )
+            response = self.send_command({"cmd": "prepare", "session_id": self.session_id, "manifest": manifest})
             print(f"   Response: {response}\n")
 
             # Test exec_step commands
@@ -149,7 +147,7 @@ class LocalOrchestrator:
             if line:
                 print(f"[Worker Stderr]: {line.strip()}")
 
-    def send_command(self, command: Dict[str, Any]) -> Dict[str, Any]:
+    def send_command(self, command: dict[str, Any]) -> dict[str, Any]:
         """Send a command to the worker and wait for response."""
         # Send command
         cmd_json = json.dumps(command) + "\n"
@@ -170,7 +168,7 @@ class LocalOrchestrator:
 
         return {"status": "timeout", "error": "No response from worker"}
 
-    def handle_worker_message(self, msg: Dict[str, Any]):
+    def handle_worker_message(self, msg: dict[str, Any]):
         """Handle a message from the worker."""
         msg_type = msg.get("type")
 

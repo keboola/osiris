@@ -1,0 +1,7 @@
+skips:
+  - B404  # import subprocess (we need it)
+  - B603  # subprocess without shell=True (safe in our usage)
+  - B607  # partial path false positives
+  - B110  # try/except/pass (allowed in specific places)
+
+exclude: ["tests/", "docs/", "tools/mempack/gen/*"]

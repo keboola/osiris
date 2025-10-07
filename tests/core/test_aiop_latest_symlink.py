@@ -97,7 +97,7 @@ class TestLatestSymlink:
                     assert True
                 else:
                     # No file created at all (should not happen)
-                    assert False, "No latest file created"
+                    raise AssertionError("No latest file created")
 
             finally:
                 platform.system = original_platform
@@ -121,7 +121,7 @@ class TestLatestSymlink:
                 # Check that the symlink target is relative
                 target = os.readlink(str(latest_path))
                 assert not Path(target).is_absolute()
-                assert target == "run_test" or target == "./run_test"
+                assert target in {"run_test", "./run_test"}
 
     def test_symlink_handles_existing_file(self):
         """Test that existing file/symlink is properly replaced."""

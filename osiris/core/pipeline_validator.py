@@ -7,7 +7,7 @@ are valid before presentation to users.
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import jsonschema
 import yaml
@@ -27,9 +27,9 @@ class ValidationError:
     error_type: str  # missing_field, type_error, enum_error, constraint_error
     friendly_message: str
     technical_message: str
-    suggestion: Optional[str] = None
+    suggestion: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             "component_type": self.component_type,
@@ -46,11 +46,11 @@ class ValidationResult:
     """Result of pipeline validation."""
 
     valid: bool
-    errors: List[ValidationError] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
+    errors: list[ValidationError] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
     validated_components: int = 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             "valid": self.valid,
@@ -91,7 +91,7 @@ class ValidationResult:
 class PipelineValidator:
     """Validates OML pipelines against component specifications."""
 
-    def __init__(self, registry: Optional[ComponentRegistry] = None):
+    def __init__(self, registry: ComponentRegistry | None = None):
         """Initialize validator with component registry.
 
         Args:
@@ -169,9 +169,7 @@ class PipelineValidator:
                 all_errors.extend(step_errors)
                 validated_count += 1
 
-            return ValidationResult(
-                valid=len(all_errors) == 0, errors=all_errors, validated_components=validated_count
-            )
+            return ValidationResult(valid=len(all_errors) == 0, errors=all_errors, validated_components=validated_count)
 
         except yaml.YAMLError as e:
             return ValidationResult(
@@ -203,7 +201,7 @@ class PipelineValidator:
                 ],
             )
 
-    def _validate_step(self, step: Dict[str, Any], index: int) -> List[ValidationError]:
+    def _validate_step(self, step: dict[str, Any], index: int) -> list[ValidationError]:
         """Validate a single pipeline step.
 
         Args:
@@ -285,9 +283,7 @@ class PipelineValidator:
             for e in validation_errors:
                 try:
                     # Convert jsonschema error to our ValidationError
-                    field_path = (
-                        "/" + "/".join(str(p) for p in e.absolute_path) if e.absolute_path else ""
-                    )
+                    field_path = "/" + "/".join(str(p) for p in e.absolute_path) if e.absolute_path else ""
 
                     # Determine error type based on validation error
                     error_type = "validation_error"
@@ -339,7 +335,7 @@ class PipelineValidator:
 
         return errors
 
-    def validate_pipeline_dict(self, pipeline: Dict[str, Any]) -> ValidationResult:
+    def validate_pipeline_dict(self, pipeline: dict[str, Any]) -> ValidationResult:
         """Validate a pipeline dictionary.
 
         Args:
@@ -352,7 +348,7 @@ class PipelineValidator:
         pipeline_yaml = yaml.dump(pipeline, default_flow_style=False)
         return self.validate_pipeline(pipeline_yaml)
 
-    def get_retry_prompt_context(self, errors: List[ValidationError], limit: int = 5) -> str:
+    def get_retry_prompt_context(self, errors: list[ValidationError], limit: int = 5) -> str:
         """Generate context for LLM retry prompt.
 
         Args:
@@ -378,11 +374,7 @@ class PipelineValidator:
         for comp_type, comp_errors in by_component.items():
             lines.append(f"\n{comp_type}:")
             for error in comp_errors:
-                field = (
-                    error.field_path.split("/config/")[-1]
-                    if "/config/" in error.field_path
-                    else error.field_path
-                )
+                field = error.field_path.split("/config/")[-1] if "/config/" in error.field_path else error.field_path
                 lines.append(f"  - {field}: {error.friendly_message}")
                 if error.suggestion:
                     lines.append(f"    Fix: {error.suggestion}")

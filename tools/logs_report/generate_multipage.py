@@ -5,10 +5,10 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 
-def read_session_logs(logs_dir: str, session_id: str) -> Dict[str, Any]:
+def read_session_logs(logs_dir: str, session_id: str) -> dict[str, Any]:
     """Read full session logs including events and metrics."""
     session_path = Path(logs_dir) / session_id
     result = {"events": [], "metrics": [], "artifacts": []}
@@ -83,7 +83,7 @@ def format_timestamp(ts_str: str) -> str:
         return ts_str
 
 
-def generate_session_page(session: Dict[str, Any], logs: Dict[str, Any], output_dir: Path) -> None:
+def generate_session_page(session: dict[str, Any], logs: dict[str, Any], output_dir: Path) -> None:
     """Generate individual session detail page."""
     session_id = session["session_id"]
     session_type = classify_session(session_id)
@@ -320,7 +320,7 @@ def generate_session_page(session: Dict[str, Any], logs: Dict[str, Any], output_
     session_file.write_text(html)
 
 
-def generate_sessions_html(session_types: Dict[str, List[Dict[str, Any]]]) -> str:
+def generate_sessions_html(session_types: dict[str, list[dict[str, Any]]]) -> str:
     """Generate HTML for session tables grouped by type."""
     sections = []
     for session_type, type_sessions in sorted(session_types.items()):
@@ -367,7 +367,7 @@ def generate_sessions_html(session_types: Dict[str, List[Dict[str, Any]]]) -> st
     return "".join(sections)
 
 
-def generate_index_page(sessions: List[Dict[str, Any]], output_dir: Path) -> None:
+def generate_index_page(sessions: list[dict[str, Any]], output_dir: Path) -> None:
     """Generate the main index page with session list."""
 
     # Calculate statistics

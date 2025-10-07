@@ -16,7 +16,7 @@ import subprocess  # nosec B404
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
 
@@ -82,7 +82,7 @@ class LoggingConfigTester:
 
         return config_path
 
-    def run_osiris_command(self, args: list, env: Optional[Dict] = None) -> Dict[str, Any]:
+    def run_osiris_command(self, args: list, env: dict | None = None) -> dict[str, Any]:
         """Run an osiris command and capture output."""
         if env is None:
             env = os.environ.copy()
@@ -100,6 +100,7 @@ class LoggingConfigTester:
         try:
             result = subprocess.run(  # nosec B603
                 ["python", str(self.osiris_root / "osiris.py")] + args,
+                check=False,
                 capture_output=True,
                 text=True,
                 env=env,
@@ -117,7 +118,7 @@ class LoggingConfigTester:
         finally:
             os.chdir(original_cwd)
 
-    def find_session_dir(self, logs_dir: Path) -> Optional[Path]:
+    def find_session_dir(self, logs_dir: Path) -> Path | None:
         """Find the most recent session directory."""
         if not logs_dir.exists():
             return None
@@ -130,7 +131,7 @@ class LoggingConfigTester:
 
         return sessions[0] if sessions else None
 
-    def check_log_file(self, session_dir: Path, filename: str = "osiris.log") -> Dict[str, Any]:
+    def check_log_file(self, session_dir: Path, filename: str = "osiris.log") -> dict[str, Any]:
         """Check contents of a log file."""
         log_file = session_dir / filename
         if not log_file.exists():
@@ -200,9 +201,7 @@ class LoggingConfigTester:
 
         # Test 3: CLI override
         self.print_step("3", "CLI override (highest precedence)")
-        result = self.run_osiris_command(
-            ["validate", "--mode", "warn", "--logs-dir", "./cli_logs"], env=env
-        )
+        result = self.run_osiris_command(["validate", "--mode", "warn", "--logs-dir", "./cli_logs"], env=env)
 
         cli_logs = self.workspace / "cli_logs"
         session = self.find_session_dir(cli_logs)
@@ -285,16 +284,12 @@ class LoggingConfigTester:
             metrics_file = session / "metrics.jsonl"
 
             if events_file.exists():
-                self.print_result(
-                    True, f"events.jsonl created ({events_file.stat().st_size} bytes)"
-                )
+                self.print_result(True, f"events.jsonl created ({events_file.stat().st_size} bytes)")
             else:
                 self.print_result(False, "events.jsonl not created")
 
             if metrics_file.exists():
-                self.print_result(
-                    True, f"metrics.jsonl created ({metrics_file.stat().st_size} bytes)"
-                )
+                self.print_result(True, f"metrics.jsonl created ({metrics_file.stat().st_size} bytes)")
             else:
                 self.print_result(False, "metrics.jsonl not created")
 
@@ -361,9 +356,7 @@ class LoggingConfigTester:
 
         # Run with CRITICAL
         self.print_step("2", "Running with CRITICAL level")
-        self.run_osiris_command(
-            ["validate", "--log-level", "CRITICAL", "--logs-dir", "./critical_logs"]
-        )
+        self.run_osiris_command(["validate", "--log-level", "CRITICAL", "--logs-dir", "./critical_logs"])
 
         critical_dir = self.workspace / "critical_logs"
         critical_session = self.find_session_dir(critical_dir)
@@ -389,12 +382,8 @@ class LoggingConfigTester:
 
     def run_all_tests(self):
         """Run all manual tests."""
-        print(
-            f"\n{Colors.BOLD}{Colors.BLUE}M0-VALIDATION-4: MANUAL LOGGING CONFIGURATION TESTS{Colors.ENDC}"
-        )
-        print(
-            f"{Colors.BLUE}Testing Osiris logging configuration features interactively{Colors.ENDC}\n"
-        )
+        print(f"\n{Colors.BOLD}{Colors.BLUE}M0-VALIDATION-4: MANUAL LOGGING CONFIGURATION TESTS{Colors.ENDC}")
+        print(f"{Colors.BLUE}Testing Osiris logging configuration features interactively{Colors.ENDC}\n")
 
         try:
             # Run each test category

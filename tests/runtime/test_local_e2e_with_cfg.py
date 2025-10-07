@@ -17,17 +17,12 @@ from osiris.core.compiler_v0 import CompilerV0
 class TestLocalE2EWithCfg:
     """Test end-to-end local execution with cfg files."""
 
-    @pytest.mark.skipif(
-        not os.getenv("MYSQL_PASSWORD"), reason="MySQL password required for connection tests"
-    )
+    @pytest.mark.skipif(not os.getenv("MYSQL_PASSWORD"), reason="MySQL password required for connection tests")
     def test_local_run_with_cfg_materialization(self):
         """Test that local run properly materializes and uses cfg files."""
         # Use the existing example pipeline that has cfg files
         example_pipeline = (
-            Path(__file__).parent.parent.parent
-            / "docs"
-            / "examples"
-            / "mysql_to_local_csv_all_tables.yaml"
+            Path(__file__).parent.parent.parent / "docs" / "examples" / "mysql_to_local_csv_all_tables.yaml"
         )
 
         if not example_pipeline.exists():
@@ -89,9 +84,7 @@ class TestLocalE2EWithCfg:
                             with open(cfg_file) as f1, open(run_cfg) as f2:
                                 compile_content = json.load(f1)
                                 run_content = json.load(f2)
-                                assert (
-                                    compile_content == run_content
-                                ), f"Cfg content mismatch for {cfg_file.name}"
+                                assert compile_content == run_content, f"Cfg content mismatch for {cfg_file.name}"
 
                     # Check for expected error if no connections configured
                     if exit_code != 0:
@@ -100,8 +93,7 @@ class TestLocalE2EWithCfg:
                             log_content = osiris_log.read_text()
                             # We expect connection errors, not cfg errors
                             assert (
-                                "cfg" not in log_content.lower()
-                                or "Missing configuration files" not in log_content
+                                "cfg" not in log_content.lower() or "Missing configuration files" not in log_content
                             ), "Should not have cfg errors after materialization"
 
 

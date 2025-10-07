@@ -100,9 +100,7 @@ class TestOrphanSandboxDetection:
 
     def test_sandbox_tagging_for_tracking(self):
         """Test that sandboxes are properly tagged for tracking."""
-        adapter = E2BAdapter(
-            {"timeout": 300, "metadata": {"project": "osiris-test", "environment": "ci"}}
-        )
+        adapter = E2BAdapter({"timeout": 300, "metadata": {"project": "osiris-test", "environment": "ci"}})
 
         # Verify metadata is included in configuration
         assert "metadata" in adapter.e2b_config
@@ -161,11 +159,7 @@ class TestSandboxLifecycleTracking:
                     return list(self.active_sandboxes.keys())
 
                 cutoff = datetime.now() - timedelta(minutes=older_than_minutes)
-                return [
-                    sid
-                    for sid, info in self.active_sandboxes.items()
-                    if info["created_at"] < cutoff
-                ]
+                return [sid for sid, info in self.active_sandboxes.items() if info["created_at"] < cutoff]
 
         return SandboxTracker()
 
@@ -198,9 +192,7 @@ class TestSandboxLifecycleTracking:
         sandbox_tracker.register("sandbox-old", {"session": "old"})
 
         # Manually set created_at to be old
-        sandbox_tracker.active_sandboxes["sandbox-old"]["created_at"] = datetime.now() - timedelta(
-            hours=2
-        )
+        sandbox_tracker.active_sandboxes["sandbox-old"]["created_at"] = datetime.now() - timedelta(hours=2)
 
         # Register a recent sandbox
         sandbox_tracker.register("sandbox-new", {"session": "new"})

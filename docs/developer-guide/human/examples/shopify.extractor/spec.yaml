@@ -1,0 +1,174 @@
+# Shopify Extractor Component Specification
+# Purpose: Reference implementation showing best practices
+
+name: shopify.extractor
+version: 1.0.0
+title: Shopify Data Extractor
+description: Extract data from Shopify Admin API with support for discovery, pagination, and rate limiting
+
+modes:
+  - extract
+  - discover
+
+capabilities:
+  discover: true           # Supports resource discovery
+  adHocAnalytics: false    # No arbitrary query support
+  inMemoryMove: true       # Returns DataFrames
+  streaming: false         # No streaming in M1
+  bulkOperations: true     # Supports batch extraction
+  transactions: false      # Read-only, no transactions
+  partitioning: false      # No partitioning support
+  customTransforms: false  # No transforms
+
+configSchema:
+  type: object
+  properties:
+    # Connection reference
+    connection:
+      type: string
+      description: Connection alias (e.g., @shopify.default)
+      pattern: "^@[a-z0-9_.-]+\\.[a-z0-9_.-]+$"
+
+    # Resource to extract
+    resource:
+      type: string
+      description: Shopify resource type
+      enum:
+        - customers
+        - orders
+        - products
+        - inventory_items
+
+    # TODO: Add filtering/pagination options
+    since_id:
+      type: integer
+      description: Return results after this ID (pagination)
+      minimum: 0
+
+    limit:
+      type: integer
+      description: Maximum results per page
+      default: 250
+      minimum: 1
+      maximum: 250
+
+    # TODO: Add date range filtering
+    created_at_min:
+      type: string
+      description: Filter by creation date (ISO 8601)
+      format: date-time
+
+  required:
+    - connection
+    - resource
+
+  additionalProperties: false
+
+# Secret fields (masked in logs)
+secrets:
+  - /access_token
+
+# Additional redaction
+redaction:
+  strategy: mask
+  mask: "****"
+  extras:
+    - /shop_domain
+
+# Connection requirements
+connections:
+  required_fields:
+    - shop_domain    # e.g., "mystore.myshopify.com"
+    - access_token   # Admin API token
+  optional_fields:
+    - api_version    # e.g., "2024-01"
+    - rate_limit     # requests per second
+
+# Example configurations
+examples:
+  - title: Extract all customers
+    config:
+      connection: "@shopify.default"
+      resource: "customers"
+      limit: 250
+    notes: Extract customers with default pagination
+
+  - title: Extract orders since ID
+    config:
+      connection: "@shopify.main"
+      resource: "orders"
+      since_id: 1000000
+      limit: 100
+    notes: Resume extraction from specific order ID
+
+# LLM hints for AI-driven pipeline generation
+llmHints:
+  inputAliases:
+    resource:
+      - entity
+      - table
+      - endpoint
+    shop_domain:
+      - store
+      - domain
+      - shopify_domain
+  promptGuidance: |
+    Use shopify.extractor to read data from Shopify Admin API.
+    Requires shop_domain and access_token in connection.
+    Supports customers, orders, products, inventory_items.
+    Automatic pagination and rate limiting included.
+  yamlSnippets:
+    - "component: shopify.extractor"
+    - "resource: customers"
+    - "limit: 250"
+  commonPatterns:
+    - pattern: full_resource_extract
+      description: Extract all records from a resource with pagination
+    - pattern: incremental_sync
+      description: Use since_id for incremental updates
+
+# Logging policy
+loggingPolicy:
+  sensitivePaths:
+    - /access_token
+    - /shop_domain
+  eventDefaults:
+    - extraction.start
+    - extraction.progress
+    - extraction.complete
+    - discovery.resources
+  metricsToCapture:
+    - rows_read
+    - api_calls_made
+    - rate_limit_hits
+    - duration_ms
+
+# Resource limits
+limits:
+  maxRows: 1000000
+  maxSizeMB: 1024
+  maxDurationSeconds: 3600
+  maxConcurrency: 1  # Respect Shopify rate limits
+
+# Runtime configuration
+x-runtime:
+  driver: osiris.drivers.shopify_extractor_driver.ShopifyExtractorDriver
+  requirements:
+    imports:
+      - pandas
+      - requests
+      - time
+    packages:
+      - pandas
+      - requests
+
+# Compatibility
+compatibility:
+  requires:
+    - python>=3.10
+    - requests>=2.31.0
+  platforms:
+    - linux
+    - darwin
+    - windows
+    - docker

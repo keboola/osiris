@@ -186,9 +186,7 @@ class TestSecretFiltering:
 
             # Check that no secret values appear
             assert "super_secret_password_123" not in context_str
-            assert (
-                "eyjhbgcioijiuzi1niisinr5cci6ikpxvcj9" not in context_str
-            )  # JWT token (lowercased)
+            assert "eyjhbgcioijiuzi1niisinr5cci6ikpxvcj9" not in context_str  # JWT token (lowercased)
             assert "bearer abc123def456ghi789jkl" not in context_str
             assert "test_password_123" not in context_str
             assert "apikey=abc123def456" not in context_str
@@ -265,12 +263,14 @@ class TestSecretFiltering:
 
             # Define patterns that should NOT appear (except in component names/modes)
             # We need to be careful to allow these in component names like "supabase"
+            # Per ADR-0035: detect real secrets, not keywords
             forbidden_patterns = [
                 r"\bpassword\b",
                 r"\bsecret\b",
                 r"\bapi[_-]?key\b",
                 r"\btoken\b",
-                r"\bBearer\b",
+                # Only flag "Bearer" when followed by actual token-like strings (16+ chars)
+                r"\bBearer\s+[A-Za-z0-9_\-\.]{16,}\b",
             ]
 
             # Remove component names, modes, and fingerprint from the string for checking
@@ -281,9 +281,7 @@ class TestSecretFiltering:
             if '"fingerprint"' in test_str:
                 import re as regex
 
-                test_str = regex.sub(
-                    r'"fingerprint"\s*:\s*"[a-f0-9]{64}"', '"fingerprint":"REMOVED"', test_str
-                )
+                test_str = regex.sub(r'"fingerprint"\s*:\s*"[a-f0-9]{64}"', '"fingerprint":"REMOVED"', test_str)
 
             for component in context["components"]:
                 # Remove component name from test string
@@ -306,9 +304,7 @@ class TestSecretFiltering:
                         continue
                     filtered_matches.append(match)
 
-                assert (
-                    not filtered_matches
-                ), f"Found forbidden pattern {pattern}: {filtered_matches}"
+                assert not filtered_matches, f"Found forbidden pattern {pattern}: {filtered_matches}"
 
     def test_redaction_of_suspicious_values(self, tmp_path):
         """Test that suspicious values are properly redacted."""

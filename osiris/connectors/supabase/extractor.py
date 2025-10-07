@@ -15,7 +15,7 @@
 """Supabase data extractor for reading operations."""
 
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
 import pandas as pd
 
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 class SupabaseExtractor(IExtractor):
     """Supabase extractor for data discovery and extraction."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         """Initialize Supabase extractor.
 
         Args:
@@ -53,7 +53,7 @@ class SupabaseExtractor(IExtractor):
         self.client = None
         self._initialized = False
 
-    async def list_tables(self) -> List[str]:
+    async def list_tables(self) -> list[str]:
         """List all available tables.
 
         Note: Requires either:
@@ -108,12 +108,8 @@ class SupabaseExtractor(IExtractor):
             sample_data = response.data
 
             # Get total count (with proper count query)
-            count_response = (
-                self.client.table(table_name).select("*", count="exact", head=True).execute()
-            )
-            row_count = (
-                count_response.count if hasattr(count_response, "count") else len(sample_data)
-            )
+            count_response = self.client.table(table_name).select("*", count="exact", head=True).execute()
+            row_count = count_response.count if hasattr(count_response, "count") else len(sample_data)
 
             # Infer schema from sample data
             columns = []
@@ -165,8 +161,7 @@ class SupabaseExtractor(IExtractor):
         # For MVP, we don't support raw SQL
         # Users should use sample_table or get_table_info
         raise NotImplementedError(
-            "Raw SQL queries require RPC functions in Supabase. "
-            "Use sample_table() or get_table_info() instead."
+            "Raw SQL queries require RPC functions in Supabase. " "Use sample_table() or get_table_info() instead."
         )
 
     async def sample_table(self, table_name: str, size: int = 10) -> pd.DataFrame:
@@ -189,9 +184,7 @@ class SupabaseExtractor(IExtractor):
             logger.error(f"Failed to sample table {table_name}: {e}")
             raise
 
-    async def get_filtered_data(
-        self, table_name: str, filters: Dict[str, Any], limit: int = None
-    ) -> pd.DataFrame:
+    async def get_filtered_data(self, table_name: str, filters: dict[str, Any], limit: int = None) -> pd.DataFrame:
         """Get filtered data from a table.
 
         Args:

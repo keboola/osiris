@@ -9,7 +9,7 @@ import json
 import shutil
 import time
 from pathlib import Path
-from typing import Any, Dict, Set
+from typing import Any
 
 from ..core.error_taxonomy import ErrorContext
 from ..core.execution_adapter import (
@@ -42,7 +42,7 @@ class LocalAdapter(ExecutionAdapter):
         self.error_context = ErrorContext(source="local")
         self.verbose = verbose
 
-    def prepare(self, plan: Dict[str, Any], context: ExecutionContext) -> PreparedRun:
+    def prepare(self, plan: dict[str, Any], context: ExecutionContext) -> PreparedRun:
         """Prepare local execution package.
 
         Args:
@@ -59,7 +59,7 @@ class LocalAdapter(ExecutionAdapter):
 
             # Build cfg_index from steps and collect cfg paths
             cfg_index = {}
-            cfg_paths: Set[str] = set()
+            cfg_paths: set[str] = set()
             for step in steps:
                 cfg_path = step.get("cfg_path")
                 if cfg_path:
@@ -127,7 +127,7 @@ class LocalAdapter(ExecutionAdapter):
         except Exception as e:
             raise PrepareError(f"Failed to prepare local execution: {e}") from e
 
-    def execute(self, prepared: PreparedRun, context: ExecutionContext) -> ExecResult:
+    def execute(self, prepared: PreparedRun, context: ExecutionContext) -> ExecResult:  # noqa: PLR0915
         """Execute prepared pipeline locally.
 
         Args:
@@ -256,9 +256,7 @@ class LocalAdapter(ExecutionAdapter):
                 core.session_logging.log_metric = verbose_log_metric
 
             # Create runner with existing implementation
-            runner = RunnerV0(
-                manifest_path=str(manifest_path), output_dir=str(context.artifacts_dir)
-            )
+            runner = RunnerV0(manifest_path=str(manifest_path), output_dir=str(context.artifacts_dir))
 
             try:
                 # Execute pipeline
@@ -320,17 +318,9 @@ class LocalAdapter(ExecutionAdapter):
 
             for step_id, rows in step_rows.items():
                 driver_name = step_driver_names.get(step_id, "")
-                if (
-                    ".writer" in driver_name
-                    or "write" in step_id.lower()
-                    or "load" in step_id.lower()
-                ):
+                if ".writer" in driver_name or "write" in step_id.lower() or "load" in step_id.lower():
                     sum_rows_written += rows
-                elif (
-                    ".extractor" in driver_name
-                    or "extract" in step_id.lower()
-                    or "read" in step_id.lower()
-                ):
+                elif ".extractor" in driver_name or "extract" in step_id.lower() or "read" in step_id.lower():
                     sum_rows_read += rows
                 else:
                     # Ambiguous step - for now count as extractor
@@ -365,9 +355,7 @@ class LocalAdapter(ExecutionAdapter):
                 recent_events = getattr(runner, "events", [])
                 for event in reversed(recent_events):
                     if event.get("type") == "step_error":
-                        error_message = event.get("data", {}).get(
-                            "error", "Unknown execution error"
-                        )
+                        error_message = event.get("data", {}).get("error", "Unknown execution error")
                         break
                 if not error_message:
                     error_message = "Pipeline execution failed"
@@ -381,9 +369,7 @@ class LocalAdapter(ExecutionAdapter):
 
             # Generate status.json for parity with E2B execution
             steps_total = len(prepared.plan.get("steps", []))
-            steps_completed = len(
-                [e for e in getattr(runner, "events", []) if e.get("type") == "step_complete"]
-            )
+            steps_completed = len([e for e in getattr(runner, "events", []) if e.get("type") == "step_complete"])
 
             # Check if events.jsonl exists in session logs
             events_jsonl_exists = False
@@ -402,12 +388,7 @@ class LocalAdapter(ExecutionAdapter):
                 pass
 
             # Generate status.json with four-proof rule
-            status_ok = (
-                success
-                and exit_code == 0
-                and steps_completed == steps_total
-                and events_jsonl_exists
-            )
+            status_ok = success and exit_code == 0 and steps_completed == steps_total and events_jsonl_exists
 
             status_reason = ""
             if not status_ok:
@@ -470,9 +451,7 @@ class LocalAdapter(ExecutionAdapter):
 
             raise ExecuteError(error_msg) from e
 
-    def collect(
-        self, prepared: PreparedRun, context: ExecutionContext  # noqa: ARG002
-    ) -> CollectedArtifacts:
+    def collect(self, prepared: PreparedRun, context: ExecutionContext) -> CollectedArtifacts:  # noqa: ARG002
         """Collect execution artifacts after local run.
 
         Args:
@@ -507,9 +486,7 @@ class LocalAdapter(ExecutionAdapter):
                 "adapter": "local",
                 "session_id": context.session_id,
                 "collected_at": time.time(),
-                "artifacts_count": (
-                    len(list(artifacts_dir.iterdir())) if artifacts_dir.exists() else 0
-                ),
+                "artifacts_count": (len(list(artifacts_dir.iterdir())) if artifacts_dir.exists() else 0),
             }
 
             # Add file sizes if files exist
@@ -537,9 +514,7 @@ class LocalAdapter(ExecutionAdapter):
             log_event("collect_error", adapter="local", error=error_msg)
             raise CollectError(error_msg) from e
 
-    def _preflight_validate_cfg_files(
-        self, prepared: PreparedRun, context: ExecutionContext
-    ) -> None:
+    def _preflight_validate_cfg_files(self, prepared: PreparedRun, context: ExecutionContext) -> None:
         """Validate that all required cfg files exist before execution.
 
         Args:
@@ -556,6 +531,23 @@ class LocalAdapter(ExecutionAdapter):
         cfg_paths = getattr(self, "_cfg_paths_to_materialize", set())
         if not cfg_paths:
             return
+
+        run_cfg_dir = context.logs_dir / "cfg"
+
+        # If cfg files are already materialized alongside the prepared manifest,
+        # treat this as success. This enables self-contained runs where callers
+        # copy compiled assets directly into the session directory.
+        if run_cfg_dir.exists():
+            missing_in_run = [cfg_path for cfg_path in cfg_paths if not (run_cfg_dir / Path(cfg_path).name).exists()]
+            if not missing_in_run:
+                log_event(
+                    "preflight_validation_success",
+                    adapter="local",
+                    cfg_files_count=len(cfg_paths),
+                    source_base=str(run_cfg_dir),
+                    session_id=context.session_id,
+                )
+                return
 
         # Determine source location using same logic as _materialize_cfg_files
         source_base = None
@@ -614,9 +606,14 @@ class LocalAdapter(ExecutionAdapter):
 
             # Try same resolution order as _materialize_cfg_files
             if (
-                (source_base / cfg_path).exists()
-                or (source_base / "compiled" / cfg_path).exists()
-                or (source_base / "cfg" / Path(cfg_path).name).exists()
+                (
+                    (source_base / cfg_path).exists()
+                    or (source_base / "compiled" / cfg_path).exists()
+                    or (source_base / Path(cfg_path).name).exists()
+                    or (source_base / "cfg" / Path(cfg_path).name).exists()
+                )
+                or run_cfg_dir.exists()
+                and (run_cfg_dir / Path(cfg_path).name).exists()
             ):
                 source_cfg_found = True
 
@@ -653,9 +650,7 @@ class LocalAdapter(ExecutionAdapter):
             session_id=context.session_id,
         )
 
-    def _extract_connection_descriptors(
-        self, cfg_index: Dict[str, Dict[str, Any]]
-    ) -> Dict[str, Dict[str, Any]]:
+    def _extract_connection_descriptors(self, cfg_index: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
         """Extract connection descriptors from cfg files.
 
         Args:
@@ -712,9 +707,7 @@ class LocalAdapter(ExecutionAdapter):
                     continue
 
                 family, alias = parts
-                connection_config = (
-                    connections_config.get("connections", {}).get(family, {}).get(alias)
-                )
+                connection_config = connections_config.get("connections", {}).get(family, {}).get(alias)
 
                 if connection_config:
                     # Store with the full reference as key
@@ -726,9 +719,7 @@ class LocalAdapter(ExecutionAdapter):
             log_event("connection_resolution_error", adapter="local", error=str(e))
             return {}
 
-    def _materialize_cfg_files(
-        self, prepared: PreparedRun, context: ExecutionContext, manifest_path: Path
-    ) -> None:
+    def _materialize_cfg_files(self, prepared: PreparedRun, context: ExecutionContext, manifest_path: Path) -> None:
         """Materialize cfg files from source to run session.
 
         Args:
@@ -743,8 +734,28 @@ class LocalAdapter(ExecutionAdapter):
         if not cfg_paths:
             return
 
+        run_cfg_dir = manifest_path.parent / "cfg"
+
         # Determine source location with clean manifest-relative resolution
         source_base = None
+        pre_materialized_base = None
+
+        # Tests and some compilers may pre-materialize cfg files and pass the
+        # directory via PreparedRun metadata. Prefer that when present so we do
+        # not fail just because the compiled manifest tree is absent.
+        metadata_cfg_dir = (
+            prepared.metadata.get("materialized_cfg_dir") if isinstance(prepared.metadata, dict) else None
+        )
+        if not metadata_cfg_dir:
+            metadata_cfg_dir = (
+                prepared.plan.get("metadata", {}).get("materialized_cfg_dir")
+                if isinstance(prepared.plan, dict)
+                else None
+            )
+        if metadata_cfg_dir:
+            candidate = Path(metadata_cfg_dir).expanduser()
+            if candidate.exists():
+                pre_materialized_base = candidate
 
         # For --manifest execution: use cleaner resolution without legacy session hunting
         if prepared.compiled_root:
@@ -778,7 +789,38 @@ class LocalAdapter(ExecutionAdapter):
                 if compile_dirs:
                     source_base = compile_dirs[0] / "compiled"
 
+        # Option 4: pre-materialized cfg directory supplied in metadata
+        if not source_base and pre_materialized_base:
+            source_base = pre_materialized_base
+            log_event(
+                "cfg_pre_materialized_used",
+                adapter="local",
+                path=str(source_base),
+                session_id=context.session_id,
+            )
+
         if not source_base or not source_base.exists():
+            # Allow callers (tests, prepared manifests) to pre-provide cfg files directly
+            # in the run directory. If every required cfg already exists, skip copying.
+            existing_ok = True
+            if not run_cfg_dir.exists():
+                existing_ok = False
+            else:
+                for cfg_path in sorted(cfg_paths):
+                    if not (run_cfg_dir / Path(cfg_path).name).exists():
+                        existing_ok = False
+                        break
+
+            if existing_ok:
+                log_event(
+                    "cfg_pre_materialized_used",
+                    adapter="local",
+                    path=str(run_cfg_dir),
+                    session_id=context.session_id,
+                    source="run_dir",
+                )
+                return
+
             raise PrepareError(
                 "Cannot find source location for cfg files. "
                 "Expected compiled manifest directory but found none. "
@@ -786,7 +828,6 @@ class LocalAdapter(ExecutionAdapter):
             )
 
         # Create cfg directory in run session
-        run_cfg_dir = manifest_path.parent / "cfg"
         run_cfg_dir.mkdir(parents=True, exist_ok=True)
 
         # Copy each cfg file using clean resolution order
@@ -801,6 +842,9 @@ class LocalAdapter(ExecutionAdapter):
             # 2. Legacy fallback patterns for compatibility
             elif (source_base / "compiled" / cfg_path).exists():
                 source_cfg = source_base / "compiled" / cfg_path
+            # 2b. Direct file inside supplied directory (pre-materialized cfg dir)
+            elif (source_base / Path(cfg_path).name).exists():
+                source_cfg = source_base / Path(cfg_path).name
             # 3. Direct cfg directory (for some legacy structures)
             elif (source_base / "cfg" / Path(cfg_path).name).exists():
                 source_cfg = source_base / "cfg" / Path(cfg_path).name

@@ -162,8 +162,8 @@ class TestAIOPPrecedence:
         assert config["annex"]["enabled"] is True
         assert sources["annex.enabled"] == "YAML"
 
-        # Default value (now templated)
-        assert config["annex"]["dir"] == "logs/aiop/{session_id}/annex"
+        # Default value
+        assert config["annex"]["dir"] == "logs/aiop/annex"
         assert sources["annex.dir"] == "DEFAULT"
 
     def test_config_effective_in_metadata(self, tmp_path, monkeypatch):

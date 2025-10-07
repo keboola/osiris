@@ -9,11 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from osiris.cli.connections_cmd import (
-    check_duckdb_connection,
-    check_mysql_connection,
-    check_supabase_connection,
-)
+from osiris.cli.connections_cmd import check_duckdb_connection, check_mysql_connection, check_supabase_connection
 
 
 class TestConnectionsList:
@@ -59,6 +55,7 @@ connections:
         cmd = [sys.executable, "osiris.py"] + args
         result = subprocess.run(
             cmd,
+            check=False,
             cwd=cwd,
             capture_output=True,
             text=True,
@@ -201,9 +198,7 @@ connections:
             "message": "Connection successful",
         }
 
-        with patch(
-            "osiris.core.config.Path.cwd", return_value=sample_connections_file
-        ):  # noqa: SIM117
+        with patch("osiris.core.config.Path.cwd", return_value=sample_connections_file):  # noqa: SIM117
             with patch("osiris.cli.connections_cmd.check_supabase_connection") as mock_supabase:
                 with patch("osiris.cli.connections_cmd.check_duckdb_connection") as mock_duckdb:
                     mock_supabase.return_value = {
@@ -235,9 +230,7 @@ connections:
 
     def test_doctor_json_output(self, sample_connections_file):
         """Test doctor command with JSON output."""
-        with patch(
-            "osiris.core.config.Path.cwd", return_value=sample_connections_file
-        ):  # noqa: SIM117
+        with patch("osiris.core.config.Path.cwd", return_value=sample_connections_file):  # noqa: SIM117
             with patch("osiris.cli.connections_cmd.check_mysql_connection") as mock_mysql:
                 with patch("osiris.cli.connections_cmd.check_supabase_connection") as mock_supabase:
                     with patch("osiris.cli.connections_cmd.check_duckdb_connection") as mock_duckdb:
@@ -275,9 +268,7 @@ connections:
 
     def test_doctor_specific_family(self, sample_connections_file):
         """Test doctor command for specific family."""
-        with patch(
-            "osiris.core.config.Path.cwd", return_value=sample_connections_file
-        ):  # noqa: SIM117
+        with patch("osiris.core.config.Path.cwd", return_value=sample_connections_file):  # noqa: SIM117
             with patch("osiris.cli.connections_cmd.check_duckdb_connection") as mock_duckdb:
                 mock_duckdb.return_value = {"status": "success", "message": "OK"}
 
@@ -298,9 +289,7 @@ connections:
 
     def test_doctor_specific_alias(self, sample_connections_file):
         """Test doctor command for specific alias."""
-        with patch(
-            "osiris.core.config.Path.cwd", return_value=sample_connections_file
-        ):  # noqa: SIM117
+        with patch("osiris.core.config.Path.cwd", return_value=sample_connections_file):  # noqa: SIM117
             with patch("osiris.cli.connections_cmd.check_duckdb_connection") as mock_duckdb:
                 mock_duckdb.return_value = {"status": "success", "message": "OK"}
 
@@ -357,9 +346,7 @@ class TestConnectionTests:
             mock_conn = MagicMock()
             mock_cursor = MagicMock()
             mock_cursor.fetchone.return_value = (1,)
-            mock_conn.cursor.return_value.__enter__ = MagicMock(
-                return_value=mock_cursor
-            )  # pragma: allowlist secret
+            mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)  # pragma: allowlist secret
             mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=None)
             mock_connect.return_value = mock_conn
 

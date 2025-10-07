@@ -64,9 +64,7 @@ class TestCanonicalYAML:
         # Check order in output
         lines = output.strip().split("\n")
         # Skip --- marker
-        content_lines = [
-            line for line in lines if not line.startswith("---") and not line.startswith("...")
-        ]
+        content_lines = [line for line in lines if not line.startswith("---") and not line.startswith("...")]
         assert content_lines[0].startswith("a:")
         assert content_lines[1].startswith("z:")
 

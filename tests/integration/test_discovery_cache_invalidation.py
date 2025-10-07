@@ -327,9 +327,7 @@ class TestCacheInvalidationIntegration:
         assert mock_extractor.get_table_info_calls == 2
 
     @pytest.mark.asyncio
-    async def test_backward_compatibility_with_legacy_cache(
-        self, discovery, mock_extractor, temp_cache_dir
-    ):
+    async def test_backward_compatibility_with_legacy_cache(self, discovery, mock_extractor, temp_cache_dir):
         """Test that legacy cache format is handled gracefully."""
         # Create a legacy cache file (without fingerprint)
         legacy_cache_data = {
@@ -385,9 +383,7 @@ class TestCacheInvalidationIntegration:
 
         # Second request with same content and same array ordering - should use cache
         await discovery.get_table_info("users", options2)
-        assert (
-            mock_extractor.get_table_info_calls == 1
-        )  # Should use cache due to canonical ordering
+        assert mock_extractor.get_table_info_calls == 1  # Should use cache due to canonical ordering
 
         # Third request with different array ordering - should NOT use cache (different semantics)
         options3 = {
@@ -402,9 +398,7 @@ class TestCacheInvalidationIntegration:
         }
 
         await discovery.get_table_info("users", options3)
-        assert (
-            mock_extractor.get_table_info_calls == 2
-        )  # Cache miss due to different array ordering
+        assert mock_extractor.get_table_info_calls == 2  # Cache miss due to different array ordering
 
 
 class TestErrorHandling:

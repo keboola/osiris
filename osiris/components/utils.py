@@ -5,7 +5,7 @@ Helper functions for working with component specifications,
 including secret path collection and redaction policies.
 """
 
-from typing import Any, Dict, NamedTuple, Set
+from typing import Any, NamedTuple
 
 
 class RedactionPolicy(NamedTuple):
@@ -13,10 +13,10 @@ class RedactionPolicy(NamedTuple):
 
     strategy: str = "mask"  # mask, drop, or hash
     mask: str = "***"
-    paths: Set[str] = set()
+    paths: set[str] = set()
 
 
-def collect_secret_paths(spec: Dict[str, Any]) -> Set[str]:
+def collect_secret_paths(spec: dict[str, Any]) -> set[str]:
     """
     Collect all secret paths from a component specification.
 
@@ -39,7 +39,7 @@ def collect_secret_paths(spec: Dict[str, Any]) -> Set[str]:
     return paths
 
 
-def redaction_policy(spec: Dict[str, Any]) -> RedactionPolicy:
+def redaction_policy(spec: dict[str, Any]) -> RedactionPolicy:
     """
     Extract redaction policy from component specification.
 
@@ -74,7 +74,7 @@ def validate_json_pointer(pointer: str) -> bool:
     return not ("//" in pointer or pointer.endswith("/"))
 
 
-def resolve_json_pointer(data: Dict[str, Any], pointer: str) -> Any:
+def resolve_json_pointer(data: dict[str, Any], pointer: str) -> Any:
     """
     Resolve a JSON Pointer against data.
 
@@ -127,7 +127,7 @@ def mask_value(value: Any, mask: str = "***") -> Any:
     """
     if value is None:
         return None
-    elif isinstance(value, (str, int, float, bool)):
+    elif isinstance(value, str | int | float | bool):
         return mask
     elif isinstance(value, list):
         return [mask] * len(value)
@@ -137,7 +137,7 @@ def mask_value(value: Any, mask: str = "***") -> Any:
         return mask
 
 
-def apply_redaction(data: Dict[str, Any], policy: RedactionPolicy) -> Dict[str, Any]:
+def apply_redaction(data: dict[str, Any], policy: RedactionPolicy) -> dict[str, Any]:
     """
     Apply redaction policy to data.
 

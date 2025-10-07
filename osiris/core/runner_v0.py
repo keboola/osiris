@@ -1,12 +1,11 @@
 """Minimal local runner for compiled manifests."""
 
-import importlib
 import json
 import logging
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
 
@@ -48,42 +47,28 @@ class RunnerV0:
         """Build and populate the driver registry from component specs."""
         registry = DriverRegistry()
 
-        # Load component registry
+        # Load component registry fresh, bypassing any cached specs
         component_registry = ComponentRegistry()
-        specs = component_registry.load_specs()
 
-        # Register drivers from specs
-        for component_name, spec in specs.items():
-            # Check for x-runtime.driver
-            runtime_config = spec.get("x-runtime", {})
-            driver_path = runtime_config.get("driver")
+        # Clear any cached specs in the registry to prevent test pollution
+        registry._loaded_specs = None
 
-            if driver_path:
-                try:
-                    # Parse module and class name
-                    module_path, class_name = driver_path.rsplit(".", 1)
+        specs = registry.load_specs(component_registry)
 
-                    # Create factory function
-                    def create_driver(module_path=module_path, class_name=class_name):
-                        module = importlib.import_module(module_path)
-                        driver_class = getattr(module, class_name)
-                        return driver_class()
+        summary = registry.populate_from_component_specs(
+            specs,
+            on_success=lambda component, driver: logger.debug(f"Registered driver for {component}: {driver}"),
+        )
 
-                    # Register with component name
-                    registry.register(component_name, create_driver)
-                    logger.debug(f"Registered driver for {component_name}: {driver_path}")
+        for component_name, reason in summary.skipped.items():
+            logger.debug(f"Component {component_name} skipped during driver registration: {reason}")
 
-                except Exception as e:
-                    # Provide helpful error message
-                    error_msg = (
-                        f"Failed to register driver for component '{component_name}'. "
-                        f"x-runtime.driver value: '{driver_path}'. "
-                        f"Error: {str(e)}"
-                    )
-                    logger.error(error_msg)
-                    # Don't fail here - let compile-time check catch missing drivers
-            else:
-                logger.debug(f"Component {component_name} has no x-runtime.driver specified")
+        for component_name, error in summary.errors.items():
+            logger.error(
+                "Driver registration warning for %s: %s",
+                component_name,
+                error,
+            )
 
         return registry
 
@@ -112,9 +97,7 @@ class RunnerV0:
             # Execute steps in order
             for step in self.manifest["steps"]:
                 if not self._execute_step(step):
-                    self._log_event(
-                        "run_error", {"step_id": step["id"], "message": "Step execution failed"}
-                    )
+                    self._log_event("run_error", {"step_id": step["id"], "message": "Step execution failed"})
                     return False
 
             # Log run complete
@@ -136,7 +119,7 @@ class RunnerV0:
             self._log_event("run_error", {"error": str(e)})
             return False
 
-    def _log_event(self, event_type: str, data: Dict[str, Any]):
+    def _log_event(self, event_type: str, data: dict[str, Any]):
         """Log an event."""
         event = {"timestamp": datetime.utcnow().isoformat(), "type": event_type, "data": data}
         self.events.append(event)
@@ -144,6 +127,69 @@ class RunnerV0:
 
         # Also emit to session logging
         log_event(event_type, **data)
+
+    def _emit_inputs_resolved(
+        self,
+        *,
+        step_id: str,
+        from_step: str,
+        key: str,
+        rows: int,
+        from_memory: bool,
+    ) -> None:
+        """Emit inputs_resolved telemetry mirroring sandbox semantics."""
+
+        payload = {
+            "step_id": step_id,
+            "from_step": from_step,
+            "key": key,
+            "rows": rows,
+            "from_memory": from_memory,
+        }
+
+        self._log_event("inputs_resolved", payload)
+
+    def _count_rows(self, data: Any) -> int:
+        """Best-effort row counter for tabular inputs."""
+
+        if data is None:
+            return 0
+
+        try:
+            import pandas as pd  # type: ignore
+
+            if isinstance(data, pd.DataFrame):
+                return int(len(data.index))
+        except Exception:  # pragma: no cover - pandas optional in runtime
+            pass
+
+        try:
+            return int(len(data))  # type: ignore[arg-type]
+        except Exception:
+            return 0
+
+    def _write_cleaned_config_artifact(self, clean_config: dict[str, Any], cleaned_path: Path) -> bool:
+        """Persist cleaned config artifact with masked secrets.
+
+        Returns True if the artifact was created, False if it already existed.
+        """
+
+        cleaned_path.parent.mkdir(parents=True, exist_ok=True)
+
+        artifact_config = json.loads(json.dumps(clean_config)) if clean_config else {}
+        resolved = artifact_config.get("resolved_connection")
+        if isinstance(resolved, dict):
+            masked = resolved.copy()
+            for key in ["password", "key", "token", "secret", "service_role_key", "anon_key"]:
+                if key in masked:
+                    masked[key] = "***MASKED***"
+            artifact_config["resolved_connection"] = masked
+
+        created = not cleaned_path.exists()
+        with open(cleaned_path, "w") as f:
+            json.dump(artifact_config, f, indent=2)
+
+        return created
 
     def _family_from_component(self, component: str) -> str:
         """Extract family from component name.
@@ -155,9 +201,7 @@ class RunnerV0:
         """
         return component.split(".", 1)[0]
 
-    def _resolve_step_connection(
-        self, step: Dict[str, Any], config: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+    def _resolve_step_connection(self, step: dict[str, Any], config: dict[str, Any]) -> dict[str, Any] | None:
         """Resolve connection for a step.
 
         Returns None if no connection needed (e.g., duckdb local operations).
@@ -190,9 +234,7 @@ class RunnerV0:
         if isinstance(conn_ref, str) and conn_ref.startswith("@"):
             ref_family, alias = parse_connection_ref(conn_ref)
             if ref_family and ref_family != family:
-                raise ValueError(
-                    f"Connection family mismatch: step uses {family}, ref is {ref_family}"
-                )
+                raise ValueError(f"Connection family mismatch: step uses {family}, ref is {ref_family}")
 
         # Log connection resolution start
         log_event(
@@ -227,7 +269,7 @@ class RunnerV0:
             )
             raise
 
-    def _execute_step(self, step: Dict[str, Any]) -> bool:
+    def _execute_step(self, step: dict[str, Any]) -> bool:  # noqa: PLR0915
         """Execute a single step."""
         step_id = step["id"]
         driver = step.get("driver") or step.get("component", "unknown")
@@ -260,11 +302,6 @@ class RunnerV0:
             with open(cfg_full_path) as f:
                 config = json.load(f)
 
-            # Resolve connection if needed
-            connection = self._resolve_step_connection(step, config)
-            if connection:
-                config["resolved_connection"] = connection
-
             # Clean config for driver (strip meta keys)
             clean_config = config.copy()
             meta_keys_removed = []
@@ -279,35 +316,33 @@ class RunnerV0:
 
             # Log that meta keys were stripped
             if meta_keys_removed:
-                log_event(
+                self._log_event(
                     "config_meta_stripped",
-                    step_id=step_id,
-                    keys_removed=meta_keys_removed,
-                    config_meta_stripped=True,
+                    {
+                        "step_id": step_id,
+                        "keys_removed": meta_keys_removed,
+                        "config_meta_stripped": True,
+                    },
                 )
 
             # Save cleaned config as artifact (no secrets in resolved_connection)
             cleaned_config_path = step_output_dir / "cleaned_config.json"
-            with open(cleaned_config_path, "w") as f:
-                # Create a version without secrets for artifact
-                artifact_config = clean_config.copy()
-                if "resolved_connection" in artifact_config:
-                    # Mask sensitive fields in resolved connection
-                    conn = artifact_config["resolved_connection"].copy()
-                    for key in ["password", "key", "token", "secret"]:
-                        if key in conn:
-                            conn[key] = "***MASKED***"
-                    artifact_config["resolved_connection"] = conn
-                json.dump(artifact_config, f, indent=2)
+            artifact_created = self._write_cleaned_config_artifact(clean_config, cleaned_config_path)
+            if artifact_created:
+                logger.debug(f"Created artifact: {cleaned_config_path}")
+                log_event(
+                    "artifact_created",
+                    step_id=step_id,
+                    artifact_type="cleaned_config",
+                    path=str(cleaned_config_path),
+                )
 
-            # Log artifact creation
-            logger.debug(f"Created artifact: {cleaned_config_path}")
-            log_event(
-                "artifact_created",
-                step_id=step_id,
-                artifact_type="cleaned_config",
-                path=str(cleaned_config_path),
-            )
+            # Resolve connection after artifact creation so tests can observe
+            # cleaned configs even when resolution fails.
+            connection = self._resolve_step_connection(step, config)
+            if connection:
+                clean_config["resolved_connection"] = connection
+                self._write_cleaned_config_artifact(clean_config, cleaned_config_path)
 
             # Execute using driver registry with cleaned config
             success, error_message = self._run_with_driver(step, clean_config, step_output_dir)
@@ -347,9 +382,7 @@ class RunnerV0:
             self._log_event("step_error", {"step_id": step_id, "error": str(e)})
             return False
 
-    def _run_with_driver(
-        self, step: Dict[str, Any], config: Dict, output_dir: Path
-    ) -> tuple[bool, Optional[str]]:
+    def _run_with_driver(self, step: dict[str, Any], config: dict, output_dir: Path) -> tuple[bool, str | None]:
         """Run a step using the driver registry.
 
         Args:
@@ -377,7 +410,16 @@ class RunnerV0:
                         upstream_result = self.results[upstream_id]
                         if "df" in upstream_result:
                             # For now, assume single upstream for writers
-                            inputs["df"] = upstream_result["df"]
+                            df_value = upstream_result["df"]
+                            inputs["df"] = df_value
+                            rows = self._count_rows(df_value)
+                            self._emit_inputs_resolved(
+                                step_id=step_id,
+                                from_step=upstream_id,
+                                key="df",
+                                rows=rows,
+                                from_memory=True,
+                            )
 
             # Create context for metrics and output
             class RunnerContext:
@@ -409,9 +451,7 @@ class RunnerV0:
             logger.error(f"Step {step_id} execution failed: {error_msg}")
             return False, error_msg
 
-    def _run_component(
-        self, driver: str, config: Dict, output_dir: Path, connection: Optional[Dict] = None
-    ) -> bool:
+    def _run_component(self, driver: str, config: dict, output_dir: Path, connection: dict | None = None) -> bool:
         """Run a specific component.
 
         Args:
@@ -422,15 +462,15 @@ class RunnerV0:
         """
 
         # Map drivers to component handlers
-        if driver == "extractors.supabase@0.1" or driver == "supabase.extractor":
+        if driver in {"extractors.supabase@0.1", "supabase.extractor"}:
             return self._run_supabase_extractor(config, output_dir, connection)
-        elif driver == "transforms.duckdb@0.1" or driver == "duckdb.transform":
+        elif driver in {"transforms.duckdb@0.1", "duckdb.transform"}:
             return self._run_duckdb_transform(config, output_dir, connection)
-        elif driver == "writers.mysql@0.1" or driver == "mysql.writer":
+        elif driver in {"writers.mysql@0.1", "mysql.writer"}:
             return self._run_mysql_writer(config, output_dir, connection)
-        elif driver == "mysql.extractor" or driver == "extractors.mysql@0.1":
+        elif driver in {"mysql.extractor", "extractors.mysql@0.1"}:
             return self._run_mysql_extractor(config, output_dir, connection)
-        elif driver == "supabase.writer" or driver == "writers.supabase@0.1":
+        elif driver in {"supabase.writer", "writers.supabase@0.1"}:
             return self._run_supabase_writer(config, output_dir, connection)
         elif driver == "duckdb.writer":
             return self._run_duckdb_writer(config, output_dir, connection)
@@ -440,9 +480,7 @@ class RunnerV0:
             logger.error(f"Unknown driver: {driver}")
             return False
 
-    def _run_supabase_extractor(
-        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
-    ) -> bool:
+    def _run_supabase_extractor(self, config: dict, output_dir: Path, connection: dict | None = None) -> bool:
         """Run Supabase extractor."""
         try:
             # Use real connector if available
@@ -485,9 +523,7 @@ class RunnerV0:
             logger.error(f"Supabase extraction failed: {str(e)}")
             return False
 
-    def _run_duckdb_transform(
-        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
-    ) -> bool:
+    def _run_duckdb_transform(self, config: dict, output_dir: Path, connection: dict | None = None) -> bool:
         """Run DuckDB transform."""
         try:
             import duckdb
@@ -543,9 +579,7 @@ class RunnerV0:
             logger.error(f"DuckDB transform failed: {str(e)}")
             return False
 
-    def _run_mysql_extractor(
-        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
-    ) -> bool:
+    def _run_mysql_extractor(self, config: dict, output_dir: Path, connection: dict | None = None) -> bool:
         """Run MySQL extractor."""
         try:
             # Use real connector if available
@@ -602,9 +636,7 @@ class RunnerV0:
             logger.error(f"MySQL extraction failed: {str(e)}")
             return False
 
-    def _run_mysql_writer(
-        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
-    ) -> bool:
+    def _run_mysql_writer(self, config: dict, output_dir: Path, connection: dict | None = None) -> bool:
         """Run MySQL writer."""
         try:
             # Use real connector if available
@@ -665,9 +697,7 @@ class RunnerV0:
             logger.error(f"MySQL write failed: {str(e)}")
             return False
 
-    def _run_supabase_writer(
-        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
-    ) -> bool:
+    def _run_supabase_writer(self, config: dict, output_dir: Path, connection: dict | None = None) -> bool:
         """Run Supabase writer."""
         try:
             # Use real connector if available
@@ -703,9 +733,7 @@ class RunnerV0:
             logger.error(f"Supabase write failed: {str(e)}")
             return False
 
-    def _run_duckdb_writer(
-        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
-    ) -> bool:
+    def _run_duckdb_writer(self, config: dict, output_dir: Path, connection: dict | None = None) -> bool:
         """Run DuckDB writer."""
         try:
             import duckdb
@@ -734,9 +762,7 @@ class RunnerV0:
             logger.error(f"DuckDB write failed: {str(e)}")
             return False
 
-    def _run_filesystem_csv_writer(
-        self, config: Dict, output_dir: Path, connection: Optional[Dict] = None
-    ) -> bool:
+    def _run_filesystem_csv_writer(self, config: dict, output_dir: Path, connection: dict | None = None) -> bool:
         """Run filesystem CSV writer."""
         try:
             from osiris.connectors.filesystem.writer import FilesystemCSVWriter
@@ -764,8 +790,7 @@ class RunnerV0:
             # Check for empty input data
             if not input_data:
                 error_msg = (
-                    "Upstream produced 0 rows or no data artifact for step. "
-                    "Check the mode and upstream step output."
+                    "Upstream produced 0 rows or no data artifact for step. " "Check the mode and upstream step output."
                 )
                 logger.error(error_msg)
                 raise ValueError(error_msg)

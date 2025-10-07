@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **GraphQL Extractor Component** (`graphql.extractor`)
+  - New driver: `osiris/drivers/graphql_extractor_driver.py` for GraphQL API data extraction
+  - Component spec: `components/graphql.extractor/spec.yaml` with authentication support (Bearer, Basic, API Key)
+  - Support for complex GraphQL queries with variables and nested field extraction
+  - JSONPath-based data extraction from GraphQL responses
+  - Comprehensive test coverage with 16 passing tests
+  - Integration with existing component registry
+
+- **Connection-aware CLI Validation** (ADR-0020)
+  - `osiris validate` now reads from `osiris_connections.yaml` for connection validation
+  - Shows configured aliases and missing environment variables per connection
+  - Connection validation integrated into JSON output structure
+
+### Changed
+- **Validation Command Updates** (ADR-0020)
+  - `osiris validate` now uses connection-based validation from `osiris_connections.yaml`
+  - Removed legacy environment-only probing in favor of connection definitions
+  - Validation output includes connection aliases and per-connection status
+
+- **Test Infrastructure Improvements**
+  - Supabase tests isolated via `@pytest.mark.supabase` marker for clean separation
+  - Split-run test execution: `make test` orchestrates both non-Supabase and Supabase phases
+  - Test suite now at 1001+ passing tests with improved isolation
+
+### Fixed
+- **Secret Detection Improvements** (ADR-0035)
+  - Fixed false-positive secret detection for standalone "Bearer" keyword
+  - Pattern now only flags "Bearer" when followed by actual token-like strings (16+ chars)
+  - Aligns with ADR-0035 principle: detect real secrets, not keywords
+
+- **Test Warning Fixes**
+  - Fixed `PytestReturnNotNoneWarning` in `test_m0_validation_4_logging.py::test_scenario_log_level_comparison`
+  - Test now properly uses assertions instead of returning boolean values
+
+- **CLI Validation Test Updates**
+  - Fixed 5 CLI validation tests to work with ADR-0020 connection-based validation
+  - Tests now use `temp_connections_yaml` fixture for proper osiris_connections.yaml setup
+  - Updated assertions to check for connection aliases instead of legacy missing_vars
+
+### Documentation
+- **ADR Status Updates** reflecting actual implementation state:
+  - **ADR-0031** (OML Control Flow): Status changed to "Proposed (Deferred to M2+)" - 0% implemented
+  - **ADR-0032** (Runtime Parameters): Status changed to "Accepted" - 90% implemented, core features production-ready
+  - **ADR-0034** (E2B Runtime Parity): Status changed to "Accepted (Amended)" - 85% implemented via Transparent Proxy architecture
+  - **ADR-0035** (Compiler Secret Detection): Status changed to "Accepted (Phase 1)" - 80% implemented, x-secret parsing complete
+  - Each ADR now includes detailed implementation status sections with code references and test coverage
+
 ## [0.3.1] - 2025-09-29
 ### Fixed
 - `osiris validate`: removed spurious `additionalProperties` warnings for ADR-0020 compliant configs (schema whitelist; `additionalProperties: false` retained).
@@ -23,6 +71,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Previous Unreleased Content
 
 ### Added
+
+### Tests
+- **Quarantined slow IPv6 fallback test** - Moved `test_supabase_ipv6_fallback.py` to quarantine due to multi-minute stalls and flakiness
+  - Renamed to `_quarantined__test_supabase_ipv6_fallback.py` with module-level skip
+  - Added fast unit test replacement: `test_supabase_ipv4_fallback_unit.py` (< 1s, fully mocked)
+  - See ADR-0034 for context on driver behavior and E2B runtime parity
+  - TODO: Revisit when IPv6 fallback path is refactored
+
+#### DuckDB Processor Support
+- **DuckDB processor component** - SQL transformation processor for in-pipeline data manipulation
+  - New driver: `osiris/drivers/duckdb_processor_driver.py`
+  - Component spec: `components/duckdb.processor/spec.yaml`
+  - Support for SQL transformations via DuckDB's in-memory engine
+  - Automatic DataFrame registration and metric logging
+  - Integration with existing MySQL extractor and Supabase writer components
+
+- **DuckDB demo pipelines** - Example pipelines showcasing DuckDB transformations
+  - `mysql_duckdb_supabase_demo.yaml` - Main demo with director statistics aggregation
+  - `mysql_duckdb_supabase_append.yaml` - Append mode variant for incremental loads
+  - `mysql_duckdb_supabase_debug.yaml` - Debug variant with CSV tee outputs
+  - E2B-ready execution with full parity testing
+
+#### Developer Experience Improvements
+- **Developer-friendly pre-commit setup** - Fast local hooks, strict CI enforcement
+  - Line length standardized to 120 characters across all tools
+  - Pre-commit: Black, isort, Ruff with `--fix --exit-zero` (auto-fix, won't block)
+  - CI-only: Strict Ruff (no fix), Black --check, isort --check, Bandit security
+  - New GitHub workflow: `.github/workflows/lint-security.yml`
+  - VS Code integration with auto-format on save (`.vscode/settings.json`)
+
+- **Quick commit helpers** - Makefile targets for common scenarios
+  - `make fmt` - Auto-format everything with Black, isort, Ruff
+  - `make lint` - Run strict checks without auto-fix
+  - `make security` - Run Bandit security checks locally
+  - `make commit-wip` - Quick commits skipping slower checks
+  - `make commit-emergency` - Emergency commits skipping all checks
+
+- **CONTRIBUTING.md** - Development workflow documentation
+  - Clear guidance on pre-commit hooks and formatting
+  - Instructions for updating detect-secrets baseline
+  - Troubleshooting for common hook issues
 
 #### Test Coverage Research
 - **Test Coverage Research Package** - Comprehensive baseline analysis at 22.87% coverage
@@ -45,12 +134,108 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `coverage` - Full analysis (all formats)
   - `coverage-check` - Threshold validation (non-blocking)
 
+### Changed
+
+#### Code Formatting
+- **Standardized line length** to 120 characters (was 100)
+  - Applied across all Python files (166 files modified)
+  - Configured in Black, isort, and Ruff settings
+  - Better readability for complex code patterns
+  - Less line wrapping in method signatures and long strings
+
+#### Pre-commit Configuration
+- **Ruff configuration** moved from top-level to `[tool.ruff.lint]` section in pyproject.toml
+- **Ruff hook** changed to use `--exit-zero` to prevent blocking on unfixable issues
+- **Pragmatic ignores** added for complex code patterns (PLR0911, PLR0912, PLR0913, etc.)
+- **Per-file ignores** for tests and prototypes to reduce noise
+
+### Fixed
+
+#### Testing Infrastructure
+- **Supabase driver stateless testing** - Eliminated test isolation issues causing 9 test failures
+  - Added `_reset_test_state()` function to clear module-level state between tests
+  - Updated `_table_exists()` to respect offline mode and `FORCE_REAL_CLIENT` env variables
+  - All env reads now at call-time instead of module import time, ensuring stateless behavior
+  - Created unified `supabase_test_guard` autouse fixture in `tests/conftest.py`
+  - Added `@pytest.mark.supabase` marker to all Supabase test modules (9 files)
+  - Updated Makefile test target for split-run approach:
+    * Phase A: `pytest -m "not supabase"` → 917 tests pass
+    * Phase B: `pytest -m supabase` → 54 tests pass
+    * Total: **971 tests passing** ✅ (up from 962)
+  - Removed redundant per-file fixtures and centralized all setup logic
+  - Fast execution: Supabase test suite completes in <1 second (was 3+ minutes)
+  - No more test ordering dependencies or cross-contamination issues
+
+- **Validate command error handling** - Fixed UnboundLocalError crash when config file missing
+  - Added `_safe_log_event()` helper in `osiris/cli/main.py` to safely log when session may not exist
+  - Initialize `session=None` before try block to prevent UnboundLocalError on early failures
+  - Clean single-line error messages to stderr without Python tracebacks
+  - FileNotFoundError now shows: "Configuration file 'X' not found." instead of full traceback
+  - Tests now skip cleanly with user-friendly messages instead of scary UnboundLocalError dumps
+  - Improved user experience when running commands without `osiris.yaml`
+
+#### E2B and Telemetry
+- **Supabase writer E2B parity** - Fixed signature mismatch causing E2B execution failures
+  - Broadened secret filtering in compiler to catch more sensitive patterns
+  - Added offline DDL plan-only mode for tests without network access
+  - Enhanced DDL generation to work consistently across local and E2B environments
+  - Comprehensive research comparing Codex vs Claude solutions (3 documents, 2,000+ lines)
+
+- **E2B telemetry and artifact hardening** - Improved reliability and data quality
+  - Proxy worker DataFrame telemetry now matches local execution exactly
+  - Local inputs_resolved telemetry recorded once per step (was duplicated)
+  - Local preflight accepts self-contained cfg files for better test isolation
+  - Session-scoped AIOP paths toggle for flexible artifact organization
+
+- **test_parity_e2b_vs_local.py** - Fixed cfg file format issue
+  - Test was writing full step definition instead of just config to cfg files
+  - Runner expects cfg files to contain only configuration portion
+  - All tests now pass with correct config format
+
+#### Pre-commit Issues
+- **Hook infinite loops** - Ruff no longer causes re-formatting loops
+- **Deprecated warnings** - Fixed Ruff configuration deprecation warnings
+- **Detect-secrets** - Added pragma comments for documentation examples
+
+### Documentation
+- **CLAUDE.md updates** - Added comprehensive developer workflow guidance
+  - Pre-commit troubleshooting section
+  - Testing best practices and common issues
+  - Secret baseline update instructions
+  - Quick commit helper documentation
+- **README.md** - Added Contributing section linking to CONTRIBUTING.md
+- **E2B doctor script** - Added diagnostic tool for E2B sandbox debugging
+- **Developer documentation restructure** - Reorganized into human/AI-focused trees
+  - Created `docs/COMPONENT_AI_CHECKLIST.md` for LLM-assisted component development
+  - Added `docs/COMPONENT_DEVELOPER_AUDIT.md` for systematic component reviews
+  - Archived legacy documentation to `docs/archive/` for reference
+  - Preserved all LLM contracts (llms.txt, llms-drivers.txt, etc.) in archive
+- **ADR documentation** - Added two new Architecture Decision Records
+  - ADR-0034: E2B Runtime Unification with Local Runner (proposed)
+  - ADR-0035: Compiler Secret Detection via Specs and Connections (proposed)
+- **Research documentation** - Comprehensive E2B Supabase writer investigation
+  - Codex vs Claude-Opus vs Claude-Sonnet comparison (3 documents, 2,000+ lines)
+  - Detailed validation of driver signatures and E2B parity
+  - Test planning documents for Supabase driver refactoring
+
 ### CI/CD
 - **Non-blocking Research workflow** (.github/workflows/research.yml)
   - Runs on all PRs without blocking merge
   - Uploads coverage artifacts (HTML, JSON, markdown)
   - Optional PR comment with coverage summary
   - Continuous visibility without disrupting development
+- **Lint & Security workflow** (.github/workflows/lint-security.yml)
+  - Strict linting in CI (Ruff, Black --check, isort --check)
+  - Bandit security scanning for Python vulnerabilities
+  - Runs on all Python file changes in PRs
+  - Enforces code quality without blocking local development
+
+### Security
+- **Bandit integration** - Security linting for Python code
+  - CI-only enforcement (not in pre-commit to avoid friction)
+  - Configuration in `bandit.yaml` with pragmatic skips
+  - Excludes test directories and documentation
+  - Medium+ severity findings reported
 
 ### Tooling
 - **Coverage summary tool** (tools/validation/coverage_summary.py)
@@ -64,6 +249,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Includes research docs (excluding HTML reports to manage size)
   - Added coverage_summary.py and pytest.ini for assistant context
   - Tuned includes/excludes for optimal LLM consumption
+- **DuckDB E2B readiness research** - Assessment of DuckDB processor for cloud execution
+  - Full compatibility with E2B transparent proxy
+  - No additional dependencies required in sandbox
+  - Performance parity between local and E2B execution
 
 ## [0.3.0] - 2025-09-27
 

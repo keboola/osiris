@@ -1,0 +1,166 @@
+# E2B Runtime Guide for LLMs
+
+## CRITICAL: DataFrame Caching Rules
+
+### NEVER Remove DataFrames from Cache
+```python
+# ❌ WRONG - This breaks downstream steps!
+cached_output = {k: v for k, v in result.items() if k != "df"}
+
+# ✅ CORRECT - Keep full result including DataFrames
+cached_output = result.copy() if result else {}
+```
+
+### DataFrame Storage Pattern
+1. Keep DataFrame in memory by default
+2. Optionally spill to parquet if E2B_FORCE_SPILL=1 or size exceeds threshold
+3. After spilling, remove from memory but keep df_path reference
+
+## Reading Events for Debugging
+
+### Key Event: inputs_resolved
+Indicates how a step got its input DataFrame:
+
+```json
+{
+  "event": "inputs_resolved",
+  "step_id": "compute-stats",
+  "from_step": "extract-movies",
+  "rows": 14,
+  "from_memory": true  // or "from_spill": true
+}
+```
+
+### Key Event: rows_out
+Indicates DataFrame production:
+
+```json
+{
+  "event": "rows_out",
+  "step_id": "extract-movies",
+  "value": 14
+}
+```
+
+## Common E2B Errors and Solutions
+
+### Error: "input_df of type NoneType"
+**Cause**: DuckDB processor didn't receive DataFrame
+**Check**:
+1. ProxyWorker cached_output includes "df" key
+2. E2B proxy generates inputs mapping from needs
+3. Input resolver finds DataFrame in cache or spill
+
+### Error: "Input 'df' not found"
+**Cause**: Input resolver couldn't find upstream output
+**Solution**: Ensure upstream step stores DataFrame in self.step_outputs
+
+### Error: "SupabaseWriterDriver requires 'df' input"
+**Cause**: Writer didn't receive DataFrame from upstream
+**Check**: Same as above - caching and resolution chain
+
+## ProxyWorker Implementation Checklist
+
+### handle_exec_step() Must:
+1. Execute driver: `result = driver.run(...)`
+2. Cache full result: `cached_output = result.copy()`
+3. Check spill conditions
+4. If spilling: write parquet, save schema, remove df from memory
+5. Store in cache: `self.step_outputs[step_id] = cached_output`
+6. Emit metrics: rows_out for DataFrame producers
+
+### _resolve_inputs() Must:
+1. Check inputs spec from command
+2. For each input with from_step:
+   - First check memory: self.step_outputs[from_step]["df"]
+   - Fallback to spill: self._load_df_from_spill(from_step)
+   - Error if neither found with clear message
+3. Emit inputs_resolved event
+
+### _spill_df() Helper:
+1. Write DataFrame to artifacts/<step_id>/output.parquet
+2. Save schema.json with row_count, columns, dtypes
+3. Emit artifact_created events
+4. Return (parquet_path, schema_path, row_count)
+
+### _load_df_from_spill() Helper:
+1. Check self.step_outputs[step_id] for df_path
+2. Read parquet file if exists
+3. Return DataFrame or None
+
+## Run Card Structure
+
+Include per-step DataFrame status:
+
+```json
+{
+  "steps": [{
+    "step_id": "extract-movies",
+    "has_df_in_memory": true,
+    "spill_used": false,
+    "spill_paths": null  // or {"parquet": "...", "schema": "..."}
+  }]
+}
+```
+
+## E2B vs Local Parity
+
+| Component | Local | E2B |
+|-----------|-------|-----|
+| DataFrame cache | self.results[step_id] | self.step_outputs[step_id] |
+| Input mapping | Implicit from needs | Explicit inputs in command |
+| Memory management | Always in memory | Optional spill to disk |
+| Error messages | Basic | Enhanced with resolution details |
+
+## Testing E2B Dataflow
+
+### Test In-Memory Path
+1. Run without E2B_FORCE_SPILL
+2. Check has_df_in_memory=true in run_card
+3. Verify inputs_resolved shows from_memory=true
+
+### Test Spill Path
+1. Set E2B_FORCE_SPILL=1
+2. Check spill_used=true in run_card
+3. Verify parquet/schema files created
+4. Verify inputs_resolved shows from_spill=true
+
+### Test Error Path
+1. Remove upstream step output
+2. Verify clear error message
+3. Check error mentions both memory and spill checks
+
+## Manifest Structure
+
+Compiler generates:
+```yaml
+steps:
+- id: compute-stats
+  driver: duckdb.processor
+  needs: [extract-movies]  # Dependency only
+```
+
+E2B proxy adds:
+```json
+{
+  "cmd": "exec_step",
+  "step_id": "compute-stats",
+  "inputs": {"df": {"from_step": "extract-movies", "key": "df"}}
+}
+```
+
+## Debug Commands
+
+```bash
+# Check DataFrame was produced
+grep "rows_out" logs/run_*/events.jsonl
+
+# Check input resolution
+grep "inputs_resolved" logs/run_*/events.jsonl
+
+# Check spill artifacts
+ls -la logs/run_*/artifacts/*/output.parquet
+
+# View run card
+cat logs/run_*/artifacts/_system/run_card.json | jq '.steps'
+```

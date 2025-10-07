@@ -2,7 +2,7 @@
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 
 @dataclass
@@ -13,8 +13,8 @@ class FriendlyError:
     field_label: str  # Human-readable field name
     problem: str  # Clear description of what's wrong
     fix_hint: str  # How to fix it
-    example: Optional[str] = None  # Example of valid value
-    technical_details: Optional[Dict[str, Any]] = None  # Original error info for --verbose
+    example: str | None = None  # Example of valid value
+    technical_details: dict[str, Any] | None = None  # Original error info for --verbose
 
 
 class FriendlyErrorMapper:
@@ -91,7 +91,7 @@ class FriendlyErrorMapper:
         "enum": "Value must be one of: {enum}",
     }
 
-    def map_error(self, error: Union[Dict[str, Any], Exception]) -> FriendlyError:
+    def map_error(self, error: dict[str, Any] | Exception) -> FriendlyError:
         """Transform a raw validation error into a friendly error.
 
         Args:
@@ -114,7 +114,7 @@ class FriendlyErrorMapper:
                 technical_details={"raw_error": str(error)},
             )
 
-    def _map_validation_error(self, error: Dict[str, Any]) -> FriendlyError:
+    def _map_validation_error(self, error: dict[str, Any]) -> FriendlyError:
         """Map a jsonschema validation error to friendly format."""
         # Extract error details
         message = error.get("message", "Validation failed")
@@ -126,9 +126,7 @@ class FriendlyErrorMapper:
         field_label = self._get_field_label(path, schema_path)
 
         # Determine category and generate fix hint
-        category, fix_hint, example = self._categorize_and_suggest(
-            validator, message, field_label, error
-        )
+        category, fix_hint, example = self._categorize_and_suggest(validator, message, field_label, error)
 
         # Create friendly problem description
         problem = self._create_friendly_problem(validator, message, field_label, error)
@@ -172,7 +170,7 @@ class FriendlyErrorMapper:
             technical_details={"error_type": error_type, "message": error_msg},
         )
 
-    def _get_field_label(self, path: str, schema_path: List[str]) -> str:
+    def _get_field_label(self, path: str, schema_path: list[str]) -> str:
         """Convert JSON pointer path to human-readable label."""
         # Try direct path lookup
         if path in self.PATH_LABELS:
@@ -216,8 +214,8 @@ class FriendlyErrorMapper:
         return field_name.capitalize()
 
     def _categorize_and_suggest(
-        self, validator: str, message: str, field_label: str, error: Dict[str, Any]
-    ) -> tuple[str, str, Optional[str]]:
+        self, validator: str, message: str, field_label: str, error: dict[str, Any]
+    ) -> tuple[str, str, str | None]:
         """Categorize error and generate fix suggestion with example."""
         field_name = self._extract_field_name(error)
 
@@ -241,9 +239,7 @@ class FriendlyErrorMapper:
         if validator == "type" or "type" in message.lower():
             category = "type_error"
             expected_type = error.get("schema", {}).get("type", "correct type")
-            fix_hint = self.TYPE_ERROR_SUGGESTIONS.get(
-                expected_type, f"Value must be of type {expected_type}"
-            )
+            fix_hint = self.TYPE_ERROR_SUGGESTIONS.get(expected_type, f"Value must be of type {expected_type}")
             example = self._get_example_for_type(expected_type, field_name)
             return category, fix_hint, example
 
@@ -277,9 +273,7 @@ class FriendlyErrorMapper:
         fix_hint = f"Check the component specification for valid {field_label} format"
         return category, fix_hint, None
 
-    def _create_friendly_problem(
-        self, validator: str, message: str, field_label: str, error: Dict[str, Any]
-    ) -> str:
+    def _create_friendly_problem(self, validator: str, message: str, field_label: str, error: dict[str, Any]) -> str:
         """Create a user-friendly problem description."""
         instance = error.get("instance")
 
@@ -318,7 +312,7 @@ class FriendlyErrorMapper:
         # Default: use original message but make it cleaner
         return message.replace("'", "").replace('"', "")
 
-    def _extract_field_name(self, error: Dict[str, Any]) -> str:
+    def _extract_field_name(self, error: dict[str, Any]) -> str:
         """Extract the actual field name from error details."""
         # Try to get from path
         path = error.get("path", "")
@@ -346,7 +340,7 @@ class FriendlyErrorMapper:
 
         return "field"
 
-    def _get_example_for_field(self, field_name: str) -> Optional[str]:
+    def _get_example_for_field(self, field_name: str) -> str | None:
         """Get example value for a specific field."""
         examples = {
             "host": "host: localhost",
@@ -365,7 +359,7 @@ class FriendlyErrorMapper:
         }
         return examples.get(field_name)
 
-    def _get_example_for_type(self, expected_type: str, field_name: str) -> Optional[str]:
+    def _get_example_for_type(self, expected_type: str, field_name: str) -> str | None:
         """Get example value for a specific type."""
         type_examples = {
             "integer": f"{field_name}: 42",
@@ -377,9 +371,7 @@ class FriendlyErrorMapper:
         }
         return type_examples.get(expected_type)
 
-    def _get_example_for_constraint(
-        self, validator: str, schema: Dict[str, Any], field_name: str
-    ) -> Optional[str]:
+    def _get_example_for_constraint(self, validator: str, schema: dict[str, Any], field_name: str) -> str | None:
         """Get example that satisfies a constraint."""
         if validator == "minimum":
             min_val = schema.get("minimum", 0)
@@ -396,7 +388,7 @@ class FriendlyErrorMapper:
             return f"{field_name}: [{', '.join(items)}]"
         return None
 
-    def _get_pattern_example(self, pattern: str, field_name: str) -> Optional[str]:
+    def _get_pattern_example(self, pattern: str, field_name: str) -> str | None:
         """Get example that matches a regex pattern."""
         # Common patterns
         if "https://" in pattern:
@@ -407,9 +399,7 @@ class FriendlyErrorMapper:
             return f"{field_name}: example_value"
         return None
 
-    def format_friendly_errors(
-        self, errors: List[FriendlyError], verbose: bool = False
-    ) -> List[str]:
+    def format_friendly_errors(self, errors: list[FriendlyError], verbose: bool = False) -> list[str]:
         """Format friendly errors for display.
 
         Args:

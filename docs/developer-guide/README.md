@@ -1,270 +1,199 @@
 # Osiris Developer Guide
 
-## Overview
-
-This guide is for developers extending, maintaining, or contributing to the Osiris Pipeline system. For user documentation, see the [User Guide](../user-guide/user-guide.md).
-
-## Module Documentation
-
-Osiris v0.2.0 is organized into distinct modules, each with specific responsibilities:
-
-### Core Modules
-- **[CLI Module](module-cli.md)** - Command-line interface using Rich framework
-- **[Core Module](module-core.md)** - Business logic, LLM integration, and orchestration
-- **[Components Module](module-components.md)** - Component registry and validation system
-
-### Execution Modules
-- **[Runtime Module](module-runtime.md)** - Local pipeline execution
-- **[Remote Module (E2B)](module-remote.md)** - Cloud sandbox execution via E2B
-- **[Drivers Module](module-drivers.md)** - Concrete data operation implementations
-
-### Infrastructure Modules
-- **[Connectors Module](module-connectors.md)** - Database connection management
-
-## Using AI Assistants for Development
-
-### The LLM Contract System
-
-Osiris uses a **contract-based approach** for AI-assisted development. We provide machine-readable instructions that ensure AI assistants generate code that follows our architecture patterns.
-
-### Contract Files
-
-#### Main Contract
-**[`llms.txt`](llms.txt)** - The primary contract file that **MUST be loaded first** for any development work. Contains:
-- Repository structure and file organization
-- Component contracts (OML, Driver, Adapter interfaces)
-- Registration patterns and rules
-- Critical coding instructions
-
-#### Specialized Contracts
-Load these IN ADDITION to the main contract for specific tasks:
-
-- **[`llms-drivers.txt`](llms-drivers.txt)** - Driver development
-  - Driver protocol implementation
-  - Extractor/Writer/Transformer rules
-  - Error handling patterns
-  - SQL validation requirements
-
-- **[`llms-cli.txt`](llms-cli.txt)** - CLI development
-  - Rich console patterns
-  - Command structure
-  - Table formatting
-  - Error messages and exit codes
-
-- **[`llms-testing.txt`](llms-testing.txt)** - Test development
-  - Test structure and fixtures
-  - Mock patterns
-  - Temporary directory usage
-  - Secret handling with pragma comments
-
-### How to Use
-
-1. **Start a new development session**:
-   ```bash
-   # Load the contract into your AI assistant
-   cat docs/developer-guide/llms.txt
-   # Copy and paste into ChatGPT, Claude, or other AI assistant
-   ```
-
-2. **Tell the AI what you're building**:
-   ```
-   "Following the Osiris LLM contract I just shared, help me create a new
-   PostgreSQL extractor driver that follows the same patterns as the MySQL extractor"
-   ```
-
-3. **The AI will generate code that**:
-   - Follows the Driver protocol exactly
-   - Uses proper registration patterns
-   - Emits required metrics
-   - Handles errors correctly
-   - Matches existing code style
-
-### Module-Specific Contracts (Future)
-
-We're considering adding specialized LLM contracts for different modules:
-
-```
-developer-guide/
-├── llms.txt                    # Main contract (current)
-├── llms-drivers.txt            # Driver development contract (planned)
-├── llms-adapters.txt           # Adapter development contract (planned)
-├── llms-components.txt         # Component spec contract (planned)
-└── llms-testing.txt            # Testing patterns contract (planned)
-```
-
-## Development Workflows
-
-### Creating a New Driver
-
-1. Load the LLM contract into your AI assistant
-2. Review existing drivers in `osiris/drivers/` as examples
-3. Follow the Driver protocol from `osiris/core/driver.py`
-4. Register your driver in the appropriate module
-5. Add tests following existing patterns
-
-Example AI prompt:
-```
-"Create a new S3 writer driver that follows the Osiris driver protocol.
-It should write DataFrames to S3 as Parquet files. Follow the same patterns
-as filesystem_csv_writer_driver.py"
-```
-
-### Creating a New Adapter
-
-1. Load the LLM contract
-2. Implement the ExecutionAdapter ABC from `osiris/core/execution_adapter.py`
-3. Follow the three-phase pattern: prepare() → execute() → collect()
-4. Register in `osiris/core/adapter_factory.py`
-
-Example AI prompt:
-```
-"Create a new Kubernetes adapter that runs pipeline steps as Jobs.
-Follow the same interface as LocalAdapter and E2BTransparentProxy"
-```
-
-### Adding Component Specs
-
-1. Create a `spec.yaml` following the format in `docs/reference/components-spec.md`
-2. Include JSON Schema for configuration validation
-3. Declare capabilities and modes
-4. Add examples for LLM context generation
-
-## Architecture Principles
-
-When developing Osiris components, follow these principles:
-
-1. **Contract-First**: Define clear interfaces before implementation
-2. **LLM-Friendly**: Make code obvious with clear patterns
-3. **Deterministic**: Same inputs must produce same outputs
-4. **Observable**: Emit structured events and metrics
-5. **Testable**: Pure functions where possible, clear side effects
-
-## Key Interfaces
-
-### Driver Protocol
-```python
-def run(self, step_id: str, config: dict, inputs: dict | None, ctx: Any) -> dict:
-    """Execute a pipeline step"""
-    # Validate configuration
-    # Process inputs
-    # Perform operation
-    # Emit metrics via ctx
-    # Return outputs
-```
-
-### Adapter Protocol
-```python
-class ExecutionAdapter(ABC):
-    def prepare(self, manifest: dict, context: ExecutionContext) -> PreparedRun:
-        """Prepare execution package"""
-
-    def execute(self, prepared: PreparedRun, context: ExecutionContext) -> None:
-        """Execute the pipeline"""
-
-    def collect(self, prepared: PreparedRun, context: ExecutionContext) -> dict:
-        """Collect results and artifacts"""
-```
-
-## Testing Guidelines
-
-### Test Structure
-```python
-def test_component():
-    # Arrange - Set up test data
-    driver = ComponentDriver()
-    config = {"required": "value"}
-    ctx = MockContext()
-
-    # Act - Execute operation
-    result = driver.run("test_1", config, {}, ctx)
-
-    # Assert - Verify behavior
-    assert "df" in result
-    assert ctx.metrics["rows_read"] > 0
-```
-
-### Test Coverage Requirements
-- Unit tests for all drivers
-- Integration tests for adapters
-- End-to-end tests for critical paths
-- Mock external dependencies
-- Test error conditions
-
-## Contributing
-
-### Before Submitting Code
-
-1. **Load the LLM contract** if using AI assistance
-2. **Follow existing patterns** in the codebase
-3. **Add tests** for new functionality
-4. **Update documentation** as needed
-5. **Run the test suite**: `make test`
-6. **Format code**: `make format`
-7. **Check types**: `make type-check`
-
-### PR Guidelines
-
-- Reference relevant ADRs
-- Include test coverage
-- Update CHANGELOG.md if applicable
-- Ensure CI passes
-
-## Common Development Tasks
-
-### Running Tests
-```bash
-# Run all tests
-make test
-
-# Run specific test file
-python -m pytest tests/test_driver.py
-
-# Run with coverage
-python -m pytest --cov=osiris tests/
-```
-
-### Local Development
-```bash
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate
-
-# Install development dependencies
-pip install -r requirements-dev.txt
-
-# Run in development mode
-cd testing_env
-python ../osiris.py compile pipeline.yaml
-python ../osiris.py run --last-compile --verbose
-```
-
-### Debugging
-```bash
-# Enable debug logging
-export OSIRIS_LOG_LEVEL=DEBUG
-
-# Run with verbose output
-osiris run --last-compile --verbose
-
-# Inspect session logs
-osiris logs show --session run_XXX
-```
-
-## Resources
-
-- [Architecture Documentation](../architecture.md)
-- [ADRs](../adr/) - Architecture decision records
-- [Component Specs](../reference/components-spec.md)
-- [OML Format](../reference/pipeline-format.md)
-- [Examples](../examples/) - Sample pipelines
-
-## Getting Help
-
-- Review existing code patterns in `osiris/`
-- Check ADRs for design decisions
-- Use the LLM contract for AI assistance
-- Follow the test examples in `tests/`
+> **For Users**: See [`docs/user-guide/user-guide.md`](../user-guide/user-guide.md)
+> **For Contributors**: You're in the right place!
 
 ---
 
-**Remember**: Always load `llms.txt` into your AI assistant before starting development work. This ensures generated code follows Osiris patterns and contracts.
+## Documentation Structure
+
+The developer documentation is organized into two main paths:
+
+### 📘 For Human Developers
+**Start here**: [`human/README.md`](human/README.md)
+
+Clear, narrative guides for building components and understanding the codebase:
+- **[human/BUILD_A_COMPONENT.md](human/BUILD_A_COMPONENT.md)** - Step-by-step practical guide
+- **[human/CONCEPTS.md](human/CONCEPTS.md)** - Core abstractions explained
+- **[human/modules/](human/modules/)** - Module-by-module documentation
+- **[human/examples/](human/examples/)** - Complete example scaffolds
+
+### 🤖 For AI Agents / LLMs
+**Start here**: [`ai/README.md`](ai/README.md)
+
+Machine-readable contracts and validation rules for code generation:
+- **[ai/llms/](ai/llms/)** - LLM contracts for each domain
+- **[ai/checklists/](ai/checklists/)** - Machine-verifiable rules (MUST/SHOULD/MAY)
+- **[ai/schemas/](ai/schemas/)** - JSON schemas for validation
+
+---
+
+## Quick Navigation
+
+### Building a New Component
+1. **Understand concepts**: [`human/CONCEPTS.md`](human/CONCEPTS.md)
+2. **Follow the guide**: [`human/BUILD_A_COMPONENT.md`](human/BUILD_A_COMPONENT.md)
+3. **Study examples**: [`human/examples/shopify.extractor/`](human/examples/shopify.extractor/)
+4. **Validate**: `osiris components validate <name> --level strict`
+
+### Using AI Assistants
+1. **Load router**: [`ai/README.md`](ai/README.md)
+2. **Pick contract**: Based on your task (components, drivers, connectors, CLI, testing)
+3. **Check rules**: [`ai/checklists/COMPONENT_AI_CHECKLIST.md`](ai/checklists/COMPONENT_AI_CHECKLIST.md)
+
+### Understanding Existing Code
+| Task | Start Here |
+|------|------------|
+| "How do components work?" | [`human/CONCEPTS.md`](human/CONCEPTS.md) |
+| "How do drivers execute?" | [`human/modules/drivers.md`](human/modules/drivers.md) |
+| "How do connections work?" | [`human/modules/connectors.md`](human/modules/connectors.md) |
+| "How does E2B work?" | [`human/modules/remote.md`](human/modules/remote.md) |
+| "How does the CLI work?" | [`human/modules/cli.md`](human/modules/cli.md) |
+| "What's the LLM agent?" | [`human/modules/core.md`](human/modules/core.md) |
+
+---
+
+## Reference Documentation
+
+### Specifications
+- **[../reference/components-spec.md](../reference/components-spec.md)** - Component spec format (full schema)
+- **[../reference/pipeline-format.md](../reference/pipeline-format.md)** - OML pipeline format (v0.1.0)
+- **[../reference/cli.md](../reference/cli.md)** - CLI command reference
+- **[../reference/events_and_metrics_schema.md](../reference/events_and_metrics_schema.md)** - Telemetry schemas
+- **[../reference/sql-safety.md](../reference/sql-safety.md)** - SQL validation rules
+
+### Architecture Decisions
+- **[../adr/](../adr/)** - Architecture Decision Records (ADRs 0001-0033)
+  - Key ADRs for component developers:
+    - ADR-0005, 0007, 0008: Component specs and registry
+    - ADR-0012: Extractors vs writers separation
+    - ADR-0020: Connection resolution and secrets
+    - ADR-0021: Healthcheck (doctor) capability
+    - ADR-0024: Component packaging (OCP model, future)
+    - ADR-0027: AIOP exports for LLM debugging
+    - ADR-0033: Resilience and retry policies (proposed)
+
+---
+
+## Migration Notice
+
+**Previous documentation locations have moved**:
+- `docs/COMPONENT_DEVELOPER_AUDIT.md` → [`human/BUILD_A_COMPONENT.md`](human/BUILD_A_COMPONENT.md)
+- `docs/COMPONENT_AI_CHECKLIST.md` → [`ai/checklists/COMPONENT_AI_CHECKLIST.md`](ai/checklists/COMPONENT_AI_CHECKLIST.md)
+- `docs/developer-guide/CONCEPTS.md` → [`human/CONCEPTS.md`](human/CONCEPTS.md)
+- `docs/developer-guide/module-*.md` → [`human/modules/*.md`](human/modules/)
+
+**Reason**: Separated human-readable narrative guides from AI-oriented machine-verifiable contracts for better usability.
+
+---
+
+## Development Workflow
+
+### Local Setup
+```bash
+# 1. Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Install pre-commit hooks
+make pre-commit-install
+
+# 4. Run tests
+make test
+```
+
+### Development Loop
+```bash
+# Auto-format code
+make fmt
+
+# Run linters
+make lint
+
+# Security checks
+make security
+
+# Run tests
+make test
+
+# Test specific module
+pytest tests/components/test_registry.py -v
+```
+
+### Testing with Real Pipelines
+```bash
+cd testing_env
+
+# Compile pipeline
+python ../osiris.py compile ../docs/examples/mysql_to_supabase.yaml
+
+# Run locally
+python ../osiris.py run --last-compile --verbose
+
+# Run in E2B (if E2B_API_KEY set)
+python ../osiris.py run --last-compile --e2b --verbose
+
+# View logs
+python ../osiris.py logs show --last
+```
+
+---
+
+## Key Principles
+
+1. **Contract-First**: Define interfaces before implementation
+2. **LLM-Friendly**: Clear patterns, self-describing metadata
+3. **Deterministic**: Same inputs → same outputs (for AIOP)
+4. **Observable**: Structured events, metrics, AIOP exports
+5. **Testable**: Pure functions, clear side effects
+6. **Modular**: Components independently versioned (future OCP)
+
+---
+
+## Getting Help
+
+### Common Questions
+
+**Q: Where do I start building a component?**
+A: Read [`human/CONCEPTS.md`](human/CONCEPTS.md) then [`human/BUILD_A_COMPONENT.md`](human/BUILD_A_COMPONENT.md)
+
+**Q: How do I validate my component spec?**
+A: `osiris components validate <name> --level strict --verbose`
+
+**Q: What metrics must my driver emit?**
+A: See [`ai/checklists/metrics_events_contract.md`](ai/checklists/metrics_events_contract.md)
+
+**Q: How do connections work?**
+A: Read [`human/modules/connectors.md`](human/modules/connectors.md) and [`ai/checklists/connections_doctor_contract.md`](ai/checklists/connections_doctor_contract.md)
+
+**Q: What's the difference between component, driver, and connector?**
+A: See the comparison tables in [`human/CONCEPTS.md`](human/CONCEPTS.md)
+
+**Q: How do I use AI to help write code?**
+A: Start with [`ai/README.md`](ai/README.md) router, then load relevant contracts
+
+**Q: Where are the compliance rules for CI?**
+A: [`ai/checklists/COMPONENT_AI_CHECKLIST.md`](ai/checklists/COMPONENT_AI_CHECKLIST.md) has 57 machine-verifiable rules
+
+---
+
+## Resources
+
+- **User Guide**: [`../user-guide/user-guide.md`](../user-guide/user-guide.md)
+- **Architecture**: [`../architecture.md`](../architecture.md)
+- **Examples**: [`../examples/`](../examples/)
+- **CHANGELOG**: [`../../CHANGELOG.md`](../../CHANGELOG.md)
+
+---
+
+**Remember**:
+- **Component** = What (declarative spec)
+- **Driver** = How (imperative code)
+- **Connector** = Where (connection management)
+- **Registry** = Catalog (validation, discovery)
+- **Runner** = Executor (orchestration)
+
+**Start building**: [`human/BUILD_A_COMPONENT.md`](human/BUILD_A_COMPONENT.md)

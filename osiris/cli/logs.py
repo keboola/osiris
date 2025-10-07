@@ -23,7 +23,7 @@ import time
 import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
@@ -74,18 +74,10 @@ def list_sessions(args: list) -> None:
         console.print("  Use --no-wrap to force single-line display (legacy behavior).")
         console.print()
         console.print("[bold blue]Examples[/bold blue]")
-        console.print(
-            "  [green]osiris logs list[/green]                         # Show recent 20 sessions"
-        )
-        console.print(
-            "  [green]osiris logs list --limit 50[/green]              # Show recent 50 sessions"
-        )
-        console.print(
-            "  [green]osiris logs list --json[/green]                  # JSON format output"
-        )
-        console.print(
-            "  [green]osiris logs list --logs-dir /path/to/logs[/green]  # Custom logs directory"
-        )
+        console.print("  [green]osiris logs list[/green]                         # Show recent 20 sessions")
+        console.print("  [green]osiris logs list --limit 50[/green]              # Show recent 50 sessions")
+        console.print("  [green]osiris logs list --json[/green]                  # JSON format output")
+        console.print("  [green]osiris logs list --logs-dir /path/to/logs[/green]  # Custom logs directory")
         console.print()
 
     if args and args[0] in ["--help", "-h"]:
@@ -159,21 +151,11 @@ def show_session(args: list) -> None:
         console.print("  [cyan]--logs-dir DIR[/cyan]        Base logs directory (default: logs)")
         console.print()
         console.print("[bold blue]Examples[/bold blue]")
-        console.print(
-            "  [green]osiris logs show --session ephemeral_validate_123[/green]  # Show session summary"
-        )
-        console.print(
-            "  [green]osiris logs show --session ephemeral_validate_123 --events[/green]  # Show events"
-        )
-        console.print(
-            "  [green]osiris logs show --session ephemeral_validate_123 --metrics[/green]  # Show metrics"
-        )
-        console.print(
-            "  [green]osiris logs show --session ephemeral_validate_123 --tail[/green]  # Follow log"
-        )
-        console.print(
-            "  [green]osiris logs show --session ephemeral_validate_123 --json[/green]  # JSON output"
-        )
+        console.print("  [green]osiris logs show --session ephemeral_validate_123[/green]  # Show session summary")
+        console.print("  [green]osiris logs show --session ephemeral_validate_123 --events[/green]  # Show events")
+        console.print("  [green]osiris logs show --session ephemeral_validate_123 --metrics[/green]  # Show metrics")
+        console.print("  [green]osiris logs show --session ephemeral_validate_123 --tail[/green]  # Follow log")
+        console.print("  [green]osiris logs show --session ephemeral_validate_123 --json[/green]  # JSON output")
         console.print()
 
     if not args or args[0] in ["--help", "-h"]:
@@ -214,11 +196,7 @@ def show_session(args: list) -> None:
     session_info = _get_session_info(session_dir)
     if not session_info:
         if parsed_args.json:
-            print(
-                json.dumps(
-                    {"error": "Invalid session directory", "session_id": parsed_args.session}
-                )
-            )
+            print(json.dumps({"error": "Invalid session directory", "session_id": parsed_args.session}))
         else:
             console.print(f"❌ Invalid session directory: {parsed_args.session}")
         return
@@ -258,15 +236,9 @@ def last_session(args: list) -> None:
         console.print("  [cyan]--logs-dir DIR[/cyan]        Base logs directory (default: logs)")
         console.print()
         console.print("[bold blue]Examples[/bold blue]")
-        console.print(
-            "  [green]osiris logs last[/green]                        # Show most recent session"
-        )
-        console.print(
-            "  [green]osiris logs last --json[/green]                 # JSON format output"
-        )
-        console.print(
-            "  [green]osiris logs last --logs-dir /path/to/logs[/green]  # Custom logs directory"
-        )
+        console.print("  [green]osiris logs last[/green]                        # Show most recent session")
+        console.print("  [green]osiris logs last --json[/green]                 # JSON format output")
+        console.print("  [green]osiris logs last --logs-dir /path/to/logs[/green]  # Custom logs directory")
         console.print()
 
     if args and args[0] in ["--help", "-h"]:
@@ -325,22 +297,16 @@ def bundle_session(args: list) -> None:
         console.print("  [cyan]--session SESSION_ID[/cyan]  Session ID to bundle")
         console.print()
         console.print("[bold blue]Optional Arguments[/bold blue]")
-        console.print(
-            "  [cyan]-o, --output FILE[/cyan]     Output zip file path (default: <session_id>.zip)"
-        )
+        console.print("  [cyan]-o, --output FILE[/cyan]     Output zip file path (default: <session_id>.zip)")
         console.print("  [cyan]--logs-dir DIR[/cyan]        Base logs directory (default: logs)")
         console.print("  [cyan]--json[/cyan]                Output result in JSON format")
         console.print()
         console.print("[bold blue]Examples[/bold blue]")
-        console.print(
-            "  [green]osiris logs bundle --session ephemeral_validate_123[/green]  # Create bundle.zip"
-        )
+        console.print("  [green]osiris logs bundle --session ephemeral_validate_123[/green]  # Create bundle.zip")
         console.print(
             "  [green]osiris logs bundle --session ephemeral_validate_123 -o debug.zip[/green]  # Custom name"
         )
-        console.print(
-            "  [green]osiris logs bundle --session ephemeral_validate_123 --json[/green]  # JSON output"
-        )
+        console.print("  [green]osiris logs bundle --session ephemeral_validate_123 --json[/green]  # JSON output")
         console.print()
 
     if not args or args[0] in ["--help", "-h"]:
@@ -363,9 +329,7 @@ def bundle_session(args: list) -> None:
     try:
         parsed_args = parser.parse_args(args)
     except SystemExit:
-        console.print(
-            "❌ Invalid arguments. Use 'osiris logs bundle --help' for usage information."
-        )
+        console.print("❌ Invalid arguments. Use 'osiris logs bundle --help' for usage information.")
         return
 
     logs_dir = Path(parsed_args.logs_dir)
@@ -426,34 +390,18 @@ def gc_sessions(args: list) -> None:
         console.print("[bold]Usage:[/bold] osiris logs gc [OPTIONS]")
         console.print()
         console.print("[bold blue]Optional Arguments[/bold blue]")
-        console.print(
-            "  [cyan]--days DAYS[/cyan]           Remove sessions older than N days (default: 7)"
-        )
-        console.print(
-            "  [cyan]--max-gb SIZE[/cyan]         Keep total size under N GB (default: 1.0)"
-        )
-        console.print(
-            "  [cyan]--dry-run[/cyan]             Show what would be deleted without deleting"
-        )
+        console.print("  [cyan]--days DAYS[/cyan]           Remove sessions older than N days (default: 7)")
+        console.print("  [cyan]--max-gb SIZE[/cyan]         Keep total size under N GB (default: 1.0)")
+        console.print("  [cyan]--dry-run[/cyan]             Show what would be deleted without deleting")
         console.print("  [cyan]--logs-dir DIR[/cyan]        Base logs directory (default: logs)")
         console.print("  [cyan]--json[/cyan]                Output result in JSON format")
         console.print()
         console.print("[bold blue]Examples[/bold blue]")
-        console.print(
-            "  [green]osiris logs gc[/green]                           # Clean sessions > 7 days, keep < 1GB"
-        )
-        console.print(
-            "  [green]osiris logs gc --days 14[/green]                 # Clean sessions > 14 days"
-        )
-        console.print(
-            "  [green]osiris logs gc --max-gb 0.5[/green]              # Keep total size < 0.5GB"
-        )
-        console.print(
-            "  [green]osiris logs gc --dry-run[/green]                 # Preview what would be deleted"
-        )
-        console.print(
-            "  [green]osiris logs gc --days 30 --max-gb 2.0 --json[/green]  # Custom limits with JSON"
-        )
+        console.print("  [green]osiris logs gc[/green]                           # Clean sessions > 7 days, keep < 1GB")
+        console.print("  [green]osiris logs gc --days 14[/green]                 # Clean sessions > 14 days")
+        console.print("  [green]osiris logs gc --max-gb 0.5[/green]              # Keep total size < 0.5GB")
+        console.print("  [green]osiris logs gc --dry-run[/green]                 # Preview what would be deleted")
+        console.print("  [green]osiris logs gc --days 30 --max-gb 2.0 --json[/green]  # Custom limits with JSON")
         console.print()
 
     if args and args[0] in ["--help", "-h"]:
@@ -466,9 +414,7 @@ def gc_sessions(args: list) -> None:
     parser = argparse.ArgumentParser(description="Garbage collect old sessions", add_help=False)
     parser.add_argument("--days", type=int, default=7, help="Remove sessions older than N days")
     parser.add_argument("--max-gb", type=float, default=1.0, help="Keep total size under N GB")
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Show what would be deleted without deleting"
-    )
+    parser.add_argument("--dry-run", action="store_true", help="Show what would be deleted without deleting")
     parser.add_argument(
         "--logs-dir",
         default=default_logs_dir,
@@ -567,19 +513,14 @@ def gc_sessions(args: list) -> None:
                 ],
             }
             print(json.dumps(result, indent=2))
+        elif to_delete:
+            console.print(f"🗑️  Would delete {len(to_delete)} sessions:")
+            for item in to_delete:
+                session = item["session"]
+                console.print(f"   {session['id']} ({_format_size(session['size'])}) - {item['reason']}")
+            console.print(f"Total space to free: {_format_size(sum(item['session']['size'] for item in to_delete))}")
         else:
-            if to_delete:
-                console.print(f"🗑️  Would delete {len(to_delete)} sessions:")
-                for item in to_delete:
-                    session = item["session"]
-                    console.print(
-                        f"   {session['id']} ({_format_size(session['size'])}) - {item['reason']}"
-                    )
-                console.print(
-                    f"Total space to free: {_format_size(sum(item['session']['size'] for item in to_delete))}"
-                )
-            else:
-                console.print("✅ No sessions need cleanup")
+            console.print("✅ No sessions need cleanup")
     else:
         for item in to_delete:
             try:
@@ -594,9 +535,7 @@ def gc_sessions(args: list) -> None:
             print(json.dumps(result, indent=2))
         else:
             if deleted_count > 0:
-                console.print(
-                    f"✅ Deleted {deleted_count} sessions, freed {_format_size(deleted_size)}"
-                )
+                console.print(f"✅ Deleted {deleted_count} sessions, freed {_format_size(deleted_size)}")
             elif not to_delete:
                 console.print("✅ No sessions need cleanup")
             if errors:
@@ -605,7 +544,7 @@ def gc_sessions(args: list) -> None:
                     console.print(f"   {error}")
 
 
-def _get_session_info(session_dir: Path) -> Optional[Dict[str, Any]]:
+def _get_session_info(session_dir: Path) -> dict[str, Any] | None:
     """Extract session information from a session directory."""
     try:
         events_file = session_dir / "events.jsonl"
@@ -687,7 +626,7 @@ def _format_size(bytes_count: int) -> str:
     return f"{bytes_count:.1f}TB"
 
 
-def _format_duration(seconds: Optional[float]) -> str:
+def _format_duration(seconds: float | None) -> str:
     """Format duration in seconds as human-readable string."""
     if seconds is None:
         return "unknown"
@@ -702,7 +641,7 @@ def _format_duration(seconds: Optional[float]) -> str:
         return f"{hours:.1f}h"
 
 
-def _display_sessions_table_v2(sessions: List, no_wrap: bool = False) -> None:
+def _display_sessions_table_v2(sessions: list, no_wrap: bool = False) -> None:
     """Display SessionSummary objects in a Rich table.
 
     Args:
@@ -738,9 +677,7 @@ def _display_sessions_table_v2(sessions: List, no_wrap: bool = False) -> None:
         }.get(session.status, "dim")
 
         # Format duration
-        duration_str = (
-            _format_duration(session.duration_ms / 1000) if session.duration_ms else "unknown"
-        )
+        duration_str = _format_duration(session.duration_ms / 1000) if session.duration_ms else "unknown"
 
         # Format steps as "ok/total"
         steps_str = f"{session.steps_ok}/{session.steps_total}" if session.steps_total else "0/0"
@@ -773,9 +710,7 @@ def _display_session_summary_v2(session) -> None:
     )
 
     # Session stats
-    duration_str = (
-        _format_duration(session.duration_ms / 1000) if session.duration_ms else "unknown"
-    )
+    duration_str = _format_duration(session.duration_ms / 1000) if session.duration_ms else "unknown"
     success_rate_str = f"{session.success_rate:.1%}" if session.steps_total else "N/A"
 
     stats_text = f"""
@@ -799,7 +734,7 @@ def _display_session_summary_v2(session) -> None:
         console.print(Panel(", ".join(session.labels), title="Labels"))
 
 
-def _display_sessions_table(sessions: List[Dict[str, Any]], no_wrap: bool = False) -> None:
+def _display_sessions_table(sessions: list[dict[str, Any]], no_wrap: bool = False) -> None:
     """Display sessions in a Rich table.
 
     Args:
@@ -862,7 +797,7 @@ def _display_sessions_table(sessions: List[Dict[str, Any]], no_wrap: bool = Fals
     console.print(table)
 
 
-def _display_session_summary(session_info: Dict[str, Any], session_dir: Path) -> None:
+def _display_session_summary(session_info: dict[str, Any], session_dir: Path) -> None:
     """Display detailed session summary."""
     # Session header
     console.print(
@@ -1043,21 +978,13 @@ def html_report(args: list) -> None:
         console.print("  [cyan]--sessions N[/cyan]          Limit to N sessions")
         console.print("  [cyan]--since ISO[/cyan]           Sessions since ISO timestamp")
         console.print("  [cyan]--label NAME[/cyan]          Filter by label")
-        console.print(
-            "  [cyan]--status STATUS[/cyan]       Filter by status (success|failed|running)"
-        )
+        console.print("  [cyan]--status STATUS[/cyan]       Filter by status (success|failed|running)")
         console.print("  [cyan]--logs-dir DIR[/cyan]        Base logs directory (default: logs)")
         console.print()
         console.print("[bold blue]Examples[/bold blue]")
-        console.print(
-            "  [green]osiris logs html --sessions 5 --open[/green]     # Generate and open browser"
-        )
-        console.print(
-            "  [green]osiris logs html --since 2025-01-01T00:00:00Z[/green]  # Recent sessions"
-        )
-        console.print(
-            "  [green]osiris logs html --status failed[/green]         # Failed sessions only"
-        )
+        console.print("  [green]osiris logs html --sessions 5 --open[/green]     # Generate and open browser")
+        console.print("  [green]osiris logs html --since 2025-01-01T00:00:00Z[/green]  # Recent sessions")
+        console.print("  [green]osiris logs html --status failed[/green]         # Failed sessions only")
         console.print()
 
     if args and args[0] in ["--help", "-h"]:
@@ -1073,9 +1000,7 @@ def html_report(args: list) -> None:
     parser.add_argument("--sessions", type=int, help="Limit to N sessions")
     parser.add_argument("--since", help="Sessions since ISO timestamp")
     parser.add_argument("--label", help="Filter by label")
-    parser.add_argument(
-        "--status", choices=["success", "failed", "running"], help="Filter by status"
-    )
+    parser.add_argument("--status", choices=["success", "failed", "running"], help="Filter by status")
     parser.add_argument(
         "--logs-dir",
         default=default_logs_dir,
@@ -1139,15 +1064,9 @@ def open_session(args: list) -> None:
         console.print("  [cyan]--logs-dir DIR[/cyan]        Base logs directory (default: logs)")
         console.print()
         console.print("[bold blue]Examples[/bold blue]")
-        console.print(
-            "  [green]osiris logs open last[/green]                    # Open most recent session"
-        )
-        console.print(
-            "  [green]osiris logs open session_001[/green]             # Open specific session"
-        )
-        console.print(
-            "  [green]osiris logs open --label production[/green]      # Open session with label"
-        )
+        console.print("  [green]osiris logs open last[/green]                    # Open most recent session")
+        console.print("  [green]osiris logs open session_001[/green]             # Open specific session")
+        console.print("  [green]osiris logs open --label production[/green]      # Open session with label")
         console.print()
 
     if not args or args[0] in ["--help", "-h"]:
@@ -1267,9 +1186,7 @@ def aiop_export(args: list) -> None:
         console.print("[bold green]osiris logs aiop - Export AI Operation Package[/bold green]")
         console.print("🤖 Generate a structured JSON-LD package for LLM consumption")
         console.print()
-        console.print(
-            "[bold]Usage:[/bold] osiris logs aiop [--session SESSION_ID | --last] [OPTIONS]"
-        )
+        console.print("[bold]Usage:[/bold] osiris logs aiop [--session SESSION_ID | --last] [OPTIONS]")
         console.print()
         console.print("[bold blue]Required Arguments (one of)[/bold blue]")
         console.print("  [cyan]--session SESSION_ID[/cyan]  Session ID to export")
@@ -1277,41 +1194,19 @@ def aiop_export(args: list) -> None:
         console.print()
         console.print("[bold blue]Optional Arguments[/bold blue]")
         console.print("  [cyan]--output PATH[/cyan]         Output file path (default: stdout)")
-        console.print(
-            "  [cyan]--format FORMAT[/cyan]       Output format: json or md (default: json)"
-        )
-        console.print(
-            "  [cyan]--policy POLICY[/cyan]       Export policy: core or annex (default: core)"
-        )
-        console.print(
-            "  [cyan]--max-core-bytes N[/cyan]    Max bytes for core package (default: 300000)"
-        )
-        console.print(
-            "  [cyan]--annex-dir DIR[/cyan]       Directory for annex files (policy=annex)"
-        )
-        console.print(
-            "  [cyan]--timeline-density D[/cyan]  Timeline detail: low/medium/high (default: medium)"
-        )
-        console.print(
-            "  [cyan]--metrics-topk N[/cyan]      Top K metrics to include (default: 100)"
-        )
-        console.print(
-            "  [cyan]--schema-mode MODE[/cyan]    Schema detail: summary/detailed (default: summary)"
-        )
+        console.print("  [cyan]--format FORMAT[/cyan]       Output format: json or md (default: json)")
+        console.print("  [cyan]--policy POLICY[/cyan]       Export policy: core or annex (default: core)")
+        console.print("  [cyan]--max-core-bytes N[/cyan]    Max bytes for core package (default: 300000)")
+        console.print("  [cyan]--annex-dir DIR[/cyan]       Directory for annex files (policy=annex)")
+        console.print("  [cyan]--timeline-density D[/cyan]  Timeline detail: low/medium/high (default: medium)")
+        console.print("  [cyan]--metrics-topk N[/cyan]      Top K metrics to include (default: 100)")
+        console.print("  [cyan]--schema-mode MODE[/cyan]    Schema detail: summary/detailed (default: summary)")
         console.print()
         console.print("[bold blue]Examples[/bold blue]")
-        console.print(
-            "  [green]osiris logs aiop --last[/green]                          # Export latest session"
-        )
-        console.print(
-            "  [green]osiris logs aiop --session run_123[/green]               # Export specific session"
-        )
-        console.print(
-            "  [green]osiris logs aiop --last --output aiop.json[/green]       # Save to file"
-        )
-        console.print(
-            "  [green]osiris logs aiop --last --policy annex[/green]           # Generate with annex"
-        )
+        console.print("  [green]osiris logs aiop --last[/green]                          # Export latest session")
+        console.print("  [green]osiris logs aiop --session run_123[/green]               # Export specific session")
+        console.print("  [green]osiris logs aiop --last --output aiop.json[/green]       # Save to file")
+        console.print("  [green]osiris logs aiop --last --policy annex[/green]           # Generate with annex")
         console.print()
         console.print("[bold yellow]Note:[/bold yellow] This is a stub implementation in PR1.")
         console.print("      Actual AIOP export will be implemented in PR2+.")
@@ -1325,12 +1220,8 @@ def aiop_export(args: list) -> None:
     parser.add_argument("--session", help="Session ID to export")
     parser.add_argument("--last", action="store_true", help="Export most recent session")
     parser.add_argument("--output", help="Output file path (default: stdout)")
-    parser.add_argument(
-        "--format", choices=["json", "md"], default="json", help="Output format (default: json)"
-    )
-    parser.add_argument(
-        "--policy", choices=["core", "annex"], default="core", help="Export policy (default: core)"
-    )
+    parser.add_argument("--format", choices=["json", "md"], default="json", help="Output format (default: json)")
+    parser.add_argument("--policy", choices=["core", "annex"], default="core", help="Export policy (default: core)")
     parser.add_argument(
         "--max-core-bytes",
         type=int,
@@ -1344,9 +1235,7 @@ def aiop_export(args: list) -> None:
         default="medium",
         help="Timeline detail level (default: medium)",
     )
-    parser.add_argument(
-        "--metrics-topk", type=int, default=100, help="Top K metrics to include (default: 100)"
-    )
+    parser.add_argument("--metrics-topk", type=int, default=100, help="Top K metrics to include (default: 100)")
     parser.add_argument(
         "--schema-mode",
         choices=["summary", "detailed"],
@@ -1373,12 +1262,7 @@ def aiop_export(args: list) -> None:
 
     # Import here to avoid circular imports
 
-    from osiris.core.run_export_v2 import (
-        build_aiop,
-        canonicalize_json,
-        export_annex_shards,
-        generate_markdown_runcard,
-    )
+    from osiris.core.run_export_v2 import build_aiop, canonicalize_json, export_annex_shards, generate_markdown_runcard
 
     # Validate required arguments
     if not (parsed_args.last or parsed_args.session):
@@ -1538,8 +1422,7 @@ def aiop_export(args: list) -> None:
             clean_manifest = {
                 "compress": annex_manifest["compress"],
                 "files": [
-                    {"name": f["name"], "count": f["count"], "bytes": f["size_bytes"]}
-                    for f in annex_manifest["files"]
+                    {"name": f["name"], "count": f["count"], "bytes": f["size_bytes"]} for f in annex_manifest["files"]
                 ],
             }
             aiop["metadata"]["annex"] = clean_manifest

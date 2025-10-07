@@ -178,9 +178,7 @@ class TestCollectedArtifacts:
 class MockAdapter(ExecutionAdapter):
     """Mock adapter for testing contract compliance."""
 
-    def __init__(
-        self, should_fail_prepare=False, should_fail_execute=False, should_fail_collect=False
-    ):
+    def __init__(self, should_fail_prepare=False, should_fail_execute=False, should_fail_collect=False):
         self.should_fail_prepare = should_fail_prepare
         self.should_fail_execute = should_fail_execute
         self.should_fail_collect = should_fail_collect

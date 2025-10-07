@@ -98,6 +98,10 @@ configSchema:
 secrets:
   - /password
 
+x-secret:
+  - /password
+  - /resolved_connection/password
+
 redaction:
   strategy: mask
   mask: "****"
@@ -208,3 +212,12 @@ limits:
 
 x-runtime:
   driver: osiris.drivers.mysql_extractor_driver.MySQLExtractorDriver
+  requirements:
+    imports:
+      - pandas
+      - sqlalchemy
+      - pymysql
+    packages:
+      - pandas
+      - sqlalchemy
+      - pymysql

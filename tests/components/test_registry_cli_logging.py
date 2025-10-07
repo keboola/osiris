@@ -118,9 +118,7 @@ class TestComponentValidationLogging:
         assert start_event["command"] == "components.validate"
 
         # Check complete event
-        complete_events = [
-            e for e in validation_events if e["event"] == "component_validation_complete"
-        ]
+        complete_events = [e for e in validation_events if e["event"] == "component_validation_complete"]
         assert len(complete_events) == 1
         complete_event = complete_events[0]
         assert complete_event["component"] == "test.valid"
@@ -190,10 +188,7 @@ class TestComponentValidationLogging:
 
         # Should have both start and complete events
         assert any(e["event"] == "component_validation_start" for e in events)
-        assert any(
-            e["event"] == "component_validation_complete" and e["status"] == "failed"
-            for e in events
-        )
+        assert any(e["event"] == "component_validation_complete" and e["status"] == "failed" for e in events)
 
     def test_secrets_masking_in_logs(self, temp_logs_dir):
         """Test that sensitive paths are masked in logs."""

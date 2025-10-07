@@ -5,18 +5,22 @@ and orchestrates execution via JSON-RPC protocol.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 try:
     from e2b_code_interpreter import AsyncSandbox
 except ImportError:
     # For testing without E2B SDK
     AsyncSandbox = None
+
+import contextlib
+from datetime import UTC
 
 from osiris.core.execution_adapter import (
     CollectedArtifacts,
@@ -28,10 +32,7 @@ from osiris.core.execution_adapter import (
     PreparedRun,
     PrepareError,
 )
-from osiris.remote.rpc_protocol import (
-    EventMessage,
-    MetricMessage,
-)
+from osiris.remote.rpc_protocol import EventMessage, MetricMessage
 
 # Get the ProxyWorker code path
 PROXY_WORKER_PATH = Path(__file__).parent / "proxy_worker.py"
@@ -47,7 +48,7 @@ class E2BTransparentProxy(ExecutionAdapter):
     4. Ensures identical session structure to local execution
     """
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         """Initialize the E2B transparent proxy.
 
         Args:
@@ -75,7 +76,10 @@ class E2BTransparentProxy(ExecutionAdapter):
         self.batch_responses = []
         self.execution_complete = False
 
-    def prepare(self, plan: Dict[str, Any], context: ExecutionContext) -> PreparedRun:
+        for logger_name in ("httpx", "httpcore", "httpcore.http11", "httpcore.h11", "httpcore.h2", "httpcore.hpack"):
+            logging.getLogger(logger_name).setLevel(logging.INFO)
+
+    def prepare(self, plan: dict[str, Any], context: ExecutionContext) -> PreparedRun:
         """Prepare execution package from compiled manifest.
 
         Args:
@@ -203,7 +207,7 @@ class E2BTransparentProxy(ExecutionAdapter):
         try:
             # Check if we're already in an event loop
             try:
-                loop = asyncio.get_running_loop()
+                asyncio.get_running_loop()
                 # We're in an async context, can't use asyncio.run
                 # This is a limitation - E2B requires async
                 raise ExecuteError(
@@ -233,9 +237,7 @@ class E2BTransparentProxy(ExecutionAdapter):
                 error_message=str(e),
             )
 
-    async def _execute_async(
-        self, prepared: PreparedRun, context: ExecutionContext
-    ) -> Dict[str, Any]:
+    async def _execute_async(self, prepared: PreparedRun, context: ExecutionContext) -> dict[str, Any]:  # noqa: PLR0915
         """Async execution implementation using batch file communication."""
         sandbox_start_time = time.time()
         self.session_id = context.session_id
@@ -302,9 +304,8 @@ class E2BTransparentProxy(ExecutionAdapter):
                 results["status"] = "failed"
                 if verbose:
                     print("❌ E2B execution completed with errors")
-            else:
-                if verbose:
-                    print("✅ E2B execution completed successfully")
+            elif verbose:
+                print("✅ E2B execution completed successfully")
 
             return results
 
@@ -318,12 +319,7 @@ class E2BTransparentProxy(ExecutionAdapter):
 
         finally:
             # Download artifacts from sandbox to host before closing
-            if (
-                hasattr(self, "sandbox")
-                and self.sandbox
-                and hasattr(self, "context")
-                and self.context
-            ):
+            if hasattr(self, "sandbox") and self.sandbox and hasattr(self, "context") and self.context:
                 try:
                     await self._download_artifacts(self.context)
                 except Exception as e:
@@ -398,7 +394,7 @@ class E2BTransparentProxy(ExecutionAdapter):
 
     # === Async implementation methods ===
 
-    def _prepare_env_vars(self) -> Dict[str, str]:
+    def _prepare_env_vars(self) -> dict[str, str]:
         """Prepare environment variables to pass to the sandbox.
 
         Passes through OSIRIS_* and AWS_* variables, plus common secrets.
@@ -451,9 +447,7 @@ class E2BTransparentProxy(ExecutionAdapter):
         env_vars = self._prepare_env_vars()
 
         # Create sandbox with async API
-        self.sandbox = await AsyncSandbox.create(
-            api_key=self.api_key, timeout=self.timeout, envs=env_vars
-        )
+        self.sandbox = await AsyncSandbox.create(api_key=self.api_key, timeout=self.timeout, envs=env_vars)
 
         # Extract sandbox ID from the sandbox object
         self.sandbox_id = getattr(self.sandbox, "sandbox_id", "unknown")
@@ -466,7 +460,7 @@ class E2BTransparentProxy(ExecutionAdapter):
 
         logging.info(f"Sandbox created: {self.sandbox_id}")
 
-    async def _upload_worker(self):
+    async def _upload_worker(self):  # noqa: PLR0915
         """Upload ProxyWorker script and dependencies to sandbox."""
         logging.info("Uploading ProxyWorker to sandbox...")
 
@@ -501,6 +495,10 @@ class E2BTransparentProxy(ExecutionAdapter):
             "core/execution_adapter.py",
             "core/session_logging.py",
             "core/redaction.py",
+            "components/__init__.py",
+            "components/registry.py",
+            "components/error_mapper.py",
+            "components/utils.py",
         ]
 
         # Also upload connector modules that drivers might need
@@ -536,12 +534,9 @@ class E2BTransparentProxy(ExecutionAdapter):
         await self.sandbox.files.write("/home/user/osiris/remote/__init__.py", init_content)
         await self.sandbox.files.write("/home/user/osiris/drivers/__init__.py", init_content)
         await self.sandbox.files.write("/home/user/osiris/connectors/__init__.py", init_content)
-        await self.sandbox.files.write(
-            "/home/user/osiris/connectors/mysql/__init__.py", init_content
-        )
-        await self.sandbox.files.write(
-            "/home/user/osiris/connectors/supabase/__init__.py", init_content
-        )
+        await self.sandbox.files.write("/home/user/osiris/connectors/mysql/__init__.py", init_content)
+        await self.sandbox.files.write("/home/user/osiris/connectors/supabase/__init__.py", init_content)
+        await self.sandbox.files.write("/home/user/osiris/components/__init__.py", init_content)
 
         # Upload all driver modules
         drivers_dir = osiris_root / "drivers"
@@ -549,18 +544,55 @@ class E2BTransparentProxy(ExecutionAdapter):
             for driver_file in drivers_dir.glob("*.py"):
                 if driver_file.name != "__init__.py":
                     with open(driver_file) as f:
-                        await self.sandbox.files.write(
-                            f"/home/user/osiris/drivers/{driver_file.name}", f.read()
-                        )
+                        await self.sandbox.files.write(f"/home/user/osiris/drivers/{driver_file.name}", f.read())
 
         # Patch worker script to use local imports for RPC protocol only
         # Driver registration is now handled properly in the source
-        patched_worker_code = worker_code.replace(
-            "from osiris.remote.rpc_protocol import", "from rpc_protocol import"
-        )
+        patched_worker_code = worker_code.replace("from osiris.remote.rpc_protocol import", "from rpc_protocol import")
 
         # Upload worker script
         await self.sandbox.files.write("/home/user/proxy_worker.py", patched_worker_code)
+
+        # Upload component specs
+        components_dir = osiris_root.parent / "components"
+        if components_dir.exists():
+            # Create components directory structure
+            await self.sandbox.commands.run("mkdir -p /home/user/components")
+
+            # Upload each component spec
+            for comp_dir in components_dir.iterdir():
+                if comp_dir.is_dir() and not comp_dir.name.startswith("."):
+                    comp_name = comp_dir.name
+                    spec_file = comp_dir / "spec.yaml"
+                    if spec_file.exists():
+                        await self.sandbox.commands.run(f"mkdir -p /home/user/components/{comp_name}")
+                        with open(spec_file) as f:
+                            await self.sandbox.files.write(f"/home/user/components/{comp_name}/spec.yaml", f.read())
+                        logging.debug(f"Uploaded component spec: {comp_name}")
+
+            # Upload spec.schema.json if it exists
+            schema_file = components_dir / "spec.schema.json"
+            if schema_file.exists():
+                with open(schema_file) as f:
+                    await self.sandbox.files.write("/home/user/components/spec.schema.json", f.read())
+                logging.debug("Uploaded component spec schema")
+
+            logging.info("Component specs uploaded successfully")
+
+        # Upload requirements.txt if auto-install is enabled
+        if self.config.get("install_deps", False):
+            requirements_path = Path(__file__).parent.parent.parent / "requirements.txt"
+            if requirements_path.exists():
+                with open(requirements_path) as f:
+                    requirements_content = f.read()
+                # Upload as requirements_e2b.txt to the session directory
+                await self.sandbox.files.write(
+                    f"/home/user/session/{self.session_id}/requirements_e2b.txt",
+                    requirements_content,
+                )
+                logging.info("Requirements.txt uploaded for dependency installation")
+            else:
+                logging.warning(f"Requirements.txt not found at {requirements_path}")
 
         logging.info("ProxyWorker uploaded successfully")
 
@@ -606,10 +638,8 @@ class E2BTransparentProxy(ExecutionAdapter):
                 if size_result.stdout:
                     parts = size_result.stdout.strip().split()
                     if parts:
-                        try:
+                        with contextlib.suppress(ValueError, IndexError):
                             artifacts_size = float(parts[0])
-                        except (ValueError, IndexError):
-                            pass
 
                 print(
                     f"[E2B] heartbeat: events={events_lines}, metrics={metrics_lines}, artifacts_size_mb={artifacts_size:.1f}"
@@ -618,7 +648,7 @@ class E2BTransparentProxy(ExecutionAdapter):
         except Exception as e:
             logging.debug(f"Error showing heartbeat: {e}")
 
-    async def _download_artifacts(self, context: ExecutionContext):
+    async def _download_artifacts(self, context: ExecutionContext):  # noqa: PLR0915
         """Download artifacts from sandbox to host.
 
         Args:
@@ -631,6 +661,14 @@ class E2BTransparentProxy(ExecutionAdapter):
         artifacts_start_time = time.time()
         sandbox_artifacts_dir = f"/home/user/session/{context.session_id}/artifacts"
         host_artifacts_dir = context.logs_dir / "artifacts"
+
+        download_data = os.environ.get("E2B_DOWNLOAD_DATA_ARTIFACTS", "0") == "1"
+        max_mb_default = 5
+        try:
+            max_mb = float(os.environ.get("E2B_ARTIFACT_MAX_MB", max_mb_default))
+        except (TypeError, ValueError):
+            max_mb = max_mb_default
+        max_bytes = max_mb * 1024 * 1024
 
         try:
             # Check if artifacts directory exists in sandbox
@@ -662,33 +700,70 @@ class E2BTransparentProxy(ExecutionAdapter):
             downloaded_count = 0
             total_bytes = 0
 
+            def should_download(rel_path: str, size: int) -> bool:
+                if rel_path.startswith("_system/"):
+                    return True
+                if rel_path.endswith("run_card.json"):
+                    return True
+                if rel_path.endswith("cleaned_config.json"):
+                    return True
+
+                if size > max_bytes and not download_data:
+                    logging.debug(
+                        "Skipping artifact %s due to size %.2f MB > limit %.2f MB",
+                        rel_path,
+                        size / (1024 * 1024),
+                        max_mb,
+                    )
+                    return False
+
+                lower_path = rel_path.lower()
+                if not download_data and (
+                    lower_path.endswith("output.pkl")
+                    or lower_path.endswith("output.parquet")
+                    or lower_path.endswith(".feather")
+                ):
+                    logging.debug("Skipping data artifact %s (data downloads disabled)", rel_path)
+                    return False
+
+                if lower_path.endswith((".txt", ".json", ".sql")):
+                    return True
+
+                return download_data
+
             for relative_path in files:
                 sandbox_file_path = f"{sandbox_artifacts_dir}/{relative_path}"
                 host_file_path = host_artifacts_dir / relative_path
 
                 try:
-                    # Create parent directory
+                    stat_result = await self.sandbox.commands.run(f"stat -c %s {sandbox_file_path}")
+                    file_size = 0
+                    if stat_result.stdout:
+                        try:
+                            file_size = int(stat_result.stdout.strip())
+                        except ValueError:
+                            file_size = 0
+
+                    if not should_download(relative_path, file_size):
+                        logging.debug("Skipping artifact: %s", relative_path)
+                        continue
+
                     host_file_path.parent.mkdir(parents=True, exist_ok=True)
 
-                    # Read file content from sandbox
                     content = await self.sandbox.files.read(sandbox_file_path)
 
-                    # Write to host (handle both text and binary)
                     if isinstance(content, str):
-                        # Text file
                         host_file_path.write_text(content, encoding="utf-8")
-                        file_size = len(content.encode("utf-8"))
+                        written_bytes = len(content.encode("utf-8"))
                     elif isinstance(content, bytes):
-                        # Binary file
                         host_file_path.write_bytes(content)
-                        file_size = len(content)
+                        written_bytes = len(content)
                     else:
-                        # Try to convert to string as fallback
                         content_str = str(content)
                         host_file_path.write_text(content_str, encoding="utf-8")
-                        file_size = len(content_str.encode("utf-8"))
+                        written_bytes = len(content_str.encode("utf-8"))
 
-                    total_bytes += file_size
+                    total_bytes += written_bytes
                     downloaded_count += 1
 
                     logging.debug(f"Downloaded artifact: {relative_path} ({file_size} bytes)")
@@ -699,9 +774,7 @@ class E2BTransparentProxy(ExecutionAdapter):
 
             # Log summary
             total_mb = total_bytes / (1024 * 1024)
-            logging.info(
-                f"Artifacts copied: {downloaded_count} files, {total_bytes} bytes ({total_mb:.2f} MB)"
-            )
+            logging.info(f"Artifacts copied: {downloaded_count} files, {total_bytes} bytes ({total_mb:.2f} MB)")
 
             # Emit metrics
             from osiris.core.session_logging import log_metric
@@ -726,16 +799,14 @@ class E2BTransparentProxy(ExecutionAdapter):
             except Exception as e:
                 logging.warning(f"Error closing sandbox: {e}")
 
-    def _prepare_env_vars(self) -> Dict[str, str]:
+    def _prepare_env_vars(self) -> dict[str, str]:
         """Prepare environment variables for sandbox."""
         env_vars = {}
 
         # Pass through important environment variables
         for key, value in os.environ.items():
             # Pass secrets and config vars
-            if any(
-                pattern in key for pattern in ["_KEY", "_PASSWORD", "_TOKEN", "MYSQL_", "SUPABASE_"]
-            ):
+            if any(pattern in key for pattern in ["_KEY", "_PASSWORD", "_TOKEN", "MYSQL_", "SUPABASE_"]):
                 env_vars[key] = value
                 # Log masked for security
                 masked = "***" if value else "(empty)"
@@ -756,9 +827,7 @@ class E2BTransparentProxy(ExecutionAdapter):
         cfg_dir.mkdir(exist_ok=True)
 
         # 2. Write each config from cfg_index with CONNECTION RESOLUTION (matching LocalAdapter)
-        logging.info(
-            f"Writing {len(prepared.cfg_index)} configs to {cfg_dir} with connection resolution"
-        )
+        logging.info(f"Writing {len(prepared.cfg_index)} configs to {cfg_dir} with connection resolution")
 
         for cfg_path, step_config in prepared.cfg_index.items():
             # Extract step_id from cfg path (e.g., "cfg/extract-actors.json" -> "extract-actors")
@@ -789,9 +858,7 @@ class E2BTransparentProxy(ExecutionAdapter):
                         # Remove the reference string
                         del resolved_config["connection"]
 
-                        logging.debug(
-                            f"Resolved connection for {step_id}: {family}.{alias or '(default)'}"
-                        )
+                        logging.debug(f"Resolved connection for {step_id}: {family}.{alias or '(default)'}")
                     except Exception as e:
                         logging.error(f"Failed to resolve connection for {step_id}: {e}")
                         raise
@@ -825,9 +892,7 @@ class E2BTransparentProxy(ExecutionAdapter):
             )
 
             # Log upload confirmation to debug.log
-            logging.debug(
-                f"Uploaded cfg/{step_id}.json - size: {cfg_file.stat().st_size} bytes, sha256: {sha256}"
-            )
+            logging.debug(f"Uploaded cfg/{step_id}.json - size: {cfg_file.stat().st_size} bytes, sha256: {sha256}")
 
         # 3. Write manifest.yaml
         manifest_path = context.logs_dir / "manifest.yaml"
@@ -850,17 +915,11 @@ class E2BTransparentProxy(ExecutionAdapter):
             )
 
         # Upload manifest to sandbox
-        await self.sandbox.files.write(
-            f"/home/user/session/{self.session_id}/manifest.yaml", manifest_path.read_text()
-        )
+        await self.sandbox.files.write(f"/home/user/session/{self.session_id}/manifest.yaml", manifest_path.read_text())
 
-        logging.info(
-            f"Materialized {len(prepared.plan.get('steps', []))} configs with host-side connection resolution"
-        )
+        logging.info(f"Materialized {len(prepared.plan.get('steps', []))} configs with host-side connection resolution")
 
-    async def _generate_commands_file(
-        self, manifest_data: Dict[str, Any], context: ExecutionContext
-    ):
+    async def _generate_commands_file(self, manifest_data: dict[str, Any], context: ExecutionContext):
         """Generate commands.jsonl file with file-only contract."""
         commands = []
 
@@ -879,14 +938,22 @@ class E2BTransparentProxy(ExecutionAdapter):
         )
 
         # 3. Build step dependency graph for inputs
-        step_outputs = {}  # Track what each step produces
         for i, step in enumerate(manifest_data.get("steps", [])):
             step_id = step["id"]
             driver = step.get("driver", step.get("type"))  # Handle both formats
 
-            # Determine inputs based on driver type and position
+            # Determine inputs based on needs dependencies
             inputs = {}
-            if "writer" in driver or "csv_writer" in driver:
+            needs = step.get("needs", [])
+
+            if needs:
+                # This step needs inputs from upstream steps
+                # For simplicity, take the first dependency and assume it provides a DataFrame
+                from_step = needs[0]
+                inputs = {"df": {"from_step": from_step, "key": "df"}}
+
+            # Legacy fallback for writer pattern (kept for backward compatibility)
+            elif "writer" in driver or "csv_writer" in driver:
                 # Writers need DataFrame from previous extractor
                 for prev_step in reversed(manifest_data.get("steps", [])[:i]):
                     if "extractor" in prev_step.get("driver", ""):
@@ -923,11 +990,9 @@ class E2BTransparentProxy(ExecutionAdapter):
         # Also keep legacy location for compatibility
         await self.sandbox.files.write("/home/user/commands.jsonl", commands_content)
 
-        logging.info(
-            f"Generated commands.jsonl with {len(commands)} commands using file-only contract"
-        )
+        logging.info(f"Generated commands.jsonl with {len(commands)} commands using file-only contract")
 
-    async def _execute_batch_commands(self, verbose: bool = False) -> Dict[str, Any]:
+    async def _execute_batch_commands(self, verbose: bool = False) -> dict[str, Any]:
         """Execute batch commands with unbuffered output and progress watchdog."""
 
         # Generate commands.jsonl in session directory
@@ -939,7 +1004,7 @@ class E2BTransparentProxy(ExecutionAdapter):
 
         # Execute the unbuffered runner with PYTHONUNBUFFERED=1
         # Pass session ID as argument so runner knows where to find commands
-        process = await self.sandbox.commands.run(
+        await self.sandbox.commands.run(
             f"cd /home/user && PYTHONUNBUFFERED=1 python -u proxy_worker_runner.py {self.session_id}",
             background=True,
             on_stdout=self._handle_batch_output,
@@ -994,7 +1059,7 @@ class E2BTransparentProxy(ExecutionAdapter):
         # Parse final results from responses
         return self._parse_batch_results()
 
-    async def _handle_batch_output(self, data: str):
+    async def _handle_batch_output(self, data: str):  # noqa: PLR0915
         """Handle stdout from batch runner with verbose passthrough."""
         # Update watchdog timer
         self._last_output_time = time.time()
@@ -1022,9 +1087,7 @@ class E2BTransparentProxy(ExecutionAdapter):
                     msg_type = response_data.get("type")
 
                     if msg_type == "worker_started":
-                        logging.info(
-                            f"ProxyWorker started in session {response_data.get('session')}"
-                        )
+                        logging.info(f"ProxyWorker started in session {response_data.get('session')}")
                     elif msg_type == "worker_init":
                         logging.info("ProxyWorker initializing...")
                     elif msg_type == "commands_start":
@@ -1046,10 +1109,7 @@ class E2BTransparentProxy(ExecutionAdapter):
 
                         # Check for exec_step errors to track failures
                         if response_data.get("cmd") == "exec_step":
-                            if (
-                                response_data.get("error")
-                                or response_data.get("status") == "failed"
-                            ):
+                            if response_data.get("error") or response_data.get("status") == "failed":
                                 self.had_errors = True
                                 logging.error(
                                     f"Step {response_data.get('step_id')} failed: {response_data.get('error')}"
@@ -1061,18 +1121,14 @@ class E2BTransparentProxy(ExecutionAdapter):
                             if response_data.get("status") == "complete":
                                 duration = response_data.get("duration_ms", 0)
                                 rows = response_data.get("rows_processed", 0)
-                                print(
-                                    f"  ✓ {step_id}: Complete (duration_ms={duration}, rows={rows})"
-                                )
+                                print(f"  ✓ {step_id}: Complete (duration_ms={duration}, rows={rows})")
                             elif response_data.get("error"):
                                 print(f"  ✗ {step_id}: Failed - {response_data.get('error')}")
 
                     elif msg_type == "worker_complete":
-                        logging.info(
-                            f"Worker completed: {response_data.get('commands_processed')} commands"
-                        )
+                        logging.info(f"Worker completed: {response_data.get('commands_processed')} commands")
                         self.execution_complete = True
-                    elif msg_type == "error" or msg_type == "fatal":
+                    elif msg_type in {"error", "fatal"}:
                         logging.error(
                             f"Worker error ({msg_type}): {response_data.get('reason')} - {response_data.get('error')}"
                         )
@@ -1105,9 +1161,7 @@ class E2BTransparentProxy(ExecutionAdapter):
                             step_id = response_data.get("data", {}).get("step_id")
                             duration = response_data.get("data", {}).get("duration", 0)
                             rows = response_data.get("data", {}).get("rows_processed", 0)
-                            print(
-                                f"  ✓ {step_id}: Complete (duration={duration:.2f}s, rows={rows})"
-                            )
+                            print(f"  ✓ {step_id}: Complete (duration={duration:.2f}s, rows={rows})")
                         elif event_name == "step_failed" and self.verbose:
                             step_id = response_data.get("data", {}).get("step_id")
                             error = response_data.get("data", {}).get("error", "Unknown error")
@@ -1135,7 +1189,7 @@ class E2BTransparentProxy(ExecutionAdapter):
             if line.strip():
                 logging.debug(f"[Batch Runner] {line}")
 
-    def _parse_batch_results(self) -> Dict[str, Any]:
+    def _parse_batch_results(self) -> dict[str, Any]:
         """Parse batch responses into final execution results."""
         step_results = []
         total_rows = 0
@@ -1168,22 +1222,28 @@ class E2BTransparentProxy(ExecutionAdapter):
             "step_results": step_results,
         }
 
-    def _forward_event_to_host(self, event_data: Dict[str, Any]):
+    def _forward_event_to_host(self, event_data: dict[str, Any]):
         """Forward ProxyWorker event with 1:1 parity to local schema."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         # Normalize timestamp to ISO format (same as local)
         if "timestamp" in event_data and event_data["timestamp"]:
-            ts = datetime.fromtimestamp(event_data["timestamp"], tz=timezone.utc).isoformat()
+            ts = datetime.fromtimestamp(event_data["timestamp"], tz=UTC).isoformat()
         else:
-            ts = datetime.now(timezone.utc).isoformat()
+            ts = datetime.now(UTC).isoformat()
 
         # Build event matching LocalAdapter schema exactly
+        event_name = event_data.get("name", event_data.get("event"))
+        event_payload = dict(event_data.get("data") or {})
+
+        if event_name == "driver_file_verified":
+            event_payload = self._augment_driver_file_event(event_payload)
+
         event_dict = {
             "ts": ts,
             "session": self.session_id,
-            "event": event_data.get("name", event_data.get("event")),
-            **event_data.get("data", {}),  # All event data preserved
+            "event": event_name,
+            **event_payload,
         }
 
         # Write to host events.jsonl
@@ -1195,7 +1255,76 @@ class E2BTransparentProxy(ExecutionAdapter):
             except Exception as e:
                 logging.warning(f"Failed to forward event to host: {e}")
 
-    def _forward_metric_to_host(self, metric_data: Dict[str, Any]):
+    def _augment_driver_file_event(self, event_data: dict[str, Any]) -> dict[str, Any]:
+        """Enrich driver_file_verified events with host-side verification results."""
+
+        remote_path = event_data.get("path")
+        if not remote_path:
+            return {**event_data, "host_error": "missing_path", "match": False, "sha256_match": False}
+
+        repo_root = Path(__file__).resolve().parents[2]
+        relative_path = remote_path
+        sandbox_prefix = "/home/user/"
+        if remote_path.startswith(sandbox_prefix):
+            relative_path = remote_path[len(sandbox_prefix) :]
+        else:
+            relative_path = remote_path.lstrip("/")
+
+        local_path = repo_root / relative_path
+
+        with contextlib.suppress(FileNotFoundError):
+            local_path = local_path.resolve()
+
+        if not local_path.exists():
+            logging.warning(f"Host driver file missing for verification: {local_path}")
+            return {
+                **event_data,
+                "host_error": "missing",
+                "host_path": str(local_path),
+                "match": False,
+                "sha256_match": False,
+            }
+
+        try:
+            size_bytes = local_path.stat().st_size
+            sha256 = hashlib.sha256()
+            with open(local_path, "rb") as fh:
+                for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                    if not chunk:
+                        break
+                    sha256.update(chunk)
+
+            host_sha = sha256.hexdigest()
+        except OSError as exc:
+            logging.warning(f"Failed to hash host driver file {local_path}: {exc}")
+            return {
+                **event_data,
+                "host_error": str(exc),
+                "host_path": str(local_path),
+                "match": False,
+                "sha256_match": False,
+            }
+
+        remote_sha = event_data.get("sha256")
+        match = bool(remote_sha) and remote_sha == host_sha
+        if not match:
+            logging.error(
+                "Driver file SHA mismatch for %s: sandbox=%s host=%s",
+                remote_path,
+                remote_sha,
+                host_sha,
+            )
+
+        return {
+            **event_data,
+            "host_path": str(local_path),
+            "host_sha256": host_sha,
+            "host_size_bytes": size_bytes,
+            "match": match,
+            "sha256_match": match,
+        }
+
+    def _forward_metric_to_host(self, metric_data: dict[str, Any]):
         """Forward ProxyWorker metric to host metrics.jsonl."""
         from osiris.core.session_logging import log_metric
 
@@ -1249,18 +1378,12 @@ class E2BTransparentProxy(ExecutionAdapter):
             "sandbox_id": self.sandbox_id if hasattr(self, "sandbox_id") else "unknown",
             "exit_code": 1 if had_errors else 0,
             "steps_completed": 0,
-            "steps_total": (
-                len(self.prepared_plan.get("steps", [])) if hasattr(self, "prepared_plan") else 0
-            ),
+            "steps_total": (len(self.prepared_plan.get("steps", [])) if hasattr(self, "prepared_plan") else 0),
             "ok": not had_errors,
             "session_path": f"/home/user/session/{self.session_id}",
             "session_copied": False,
             "events_jsonl_exists": (context.logs_dir / "events.jsonl").exists(),
-            "reason": (
-                "Worker failed to write status.json"
-                if had_errors
-                else "Completed but status not written"
-            ),
+            "reason": ("Worker failed to write status.json" if had_errors else "Completed but status not written"),
             "last_stderr": last_stderr,
         }
 

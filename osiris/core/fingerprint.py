@@ -1,10 +1,10 @@
 """SHA-256 fingerprinting utilities."""
 
 import hashlib
-from typing import Any, Dict, List, Union
+from typing import Any
 
 
-def compute_fingerprint(data: Union[str, bytes]) -> str:
+def compute_fingerprint(data: str | bytes) -> str:
     """
     Compute SHA-256 fingerprint of data.
 
@@ -22,7 +22,7 @@ def compute_fingerprint(data: Union[str, bytes]) -> str:
     return f"sha256:{hasher.hexdigest()}"
 
 
-def combine_fingerprints(fingerprints: List[str]) -> str:
+def combine_fingerprints(fingerprints: list[str]) -> str:
     """
     Combine multiple fingerprints into a single one.
 
@@ -38,7 +38,7 @@ def combine_fingerprints(fingerprints: List[str]) -> str:
     return compute_fingerprint(combined)
 
 
-def fingerprint_dict(data: Dict[str, Any]) -> Dict[str, str]:
+def fingerprint_dict(data: dict[str, Any]) -> dict[str, str]:
     """
     Compute fingerprints for a dictionary's values.
 
@@ -58,7 +58,7 @@ def fingerprint_dict(data: Dict[str, Any]) -> Dict[str, str]:
     return result
 
 
-def verify_fingerprint(data: Union[str, bytes], expected_fp: str) -> bool:
+def verify_fingerprint(data: str | bytes, expected_fp: str) -> bool:
     """
     Verify that data matches expected fingerprint.
 

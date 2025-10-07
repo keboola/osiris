@@ -30,7 +30,6 @@ import logging
 import sys
 import tempfile
 from pathlib import Path
-from typing import Optional
 
 # Add parent directory to Python path to import osiris modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -77,7 +76,7 @@ class MockExtractor:
 class CacheTestResult:
     """Container for test scenario results."""
 
-    def __init__(self, scenario: str, expected: str, actual: str, reason: Optional[str] = None):
+    def __init__(self, scenario: str, expected: str, actual: str, reason: str | None = None):
         self.scenario = scenario
         self.expected = expected
         self.actual = actual
@@ -164,9 +163,7 @@ async def run_scenarios() -> list[CacheTestResult]:
         calls_after_changed = extractor.call_count
 
         if calls_after_changed > calls_after_base:
-            results.append(
-                CacheTestResult("options_change", "cache_miss", "cache_miss", "options_changed")
-            )
+            results.append(CacheTestResult("options_change", "cache_miss", "cache_miss", "options_changed"))
             print("✅ PASS: Cache miss on options change")
         else:
             results.append(CacheTestResult("options_change", "cache_miss", "cache_hit"))
@@ -198,9 +195,7 @@ async def run_scenarios() -> list[CacheTestResult]:
         calls_after_spec_change = extractor.call_count
 
         if calls_after_spec_change > calls_after_first:
-            results.append(
-                CacheTestResult("spec_change", "cache_miss", "cache_miss", "spec_changed")
-            )
+            results.append(CacheTestResult("spec_change", "cache_miss", "cache_miss", "spec_changed"))
             print("✅ PASS: Cache miss on spec change")
         else:
             results.append(CacheTestResult("spec_change", "cache_miss", "cache_hit"))

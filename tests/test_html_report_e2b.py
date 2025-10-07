@@ -23,9 +23,7 @@ def test_is_e2b_session_detection(tmp_path):
     e2b_session.mkdir(parents=True)
 
     # Local session - no E2B indicators
-    (local_session / "events.jsonl").write_text(
-        json.dumps({"event": "run_start", "pipeline_id": "test"}) + "\n"
-    )
+    (local_session / "events.jsonl").write_text(json.dumps({"event": "run_start", "pipeline_id": "test"}) + "\n")
 
     # E2B session - has commands.jsonl with RPC commands
     (e2b_session / "commands.jsonl").write_text(
@@ -48,8 +46,7 @@ def test_is_e2b_session_by_event_path(tmp_path):
 
     # Session with E2B path in events
     (session_dir / "events.jsonl").write_text(
-        json.dumps({"event": "artifact_created", "path": "/home/user/session/run_123/file.txt"})
-        + "\n"
+        json.dumps({"event": "artifact_created", "path": "/home/user/session/run_123/file.txt"}) + "\n"
     )
 
     assert is_e2b_session(str(tmp_path / "logs"), "run_path_test")
@@ -68,9 +65,7 @@ def test_pipeline_name_extraction_from_manifest(tmp_path):
     (session_dir / "manifest.yaml").write_text(yaml.dump(manifest))
 
     # Events without pipeline_id in run_start
-    (session_dir / "events.jsonl").write_text(
-        json.dumps({"event": "run_start", "ts": "2025-01-01T00:00:00Z"}) + "\n"
-    )
+    (session_dir / "events.jsonl").write_text(json.dumps({"event": "run_start", "ts": "2025-01-01T00:00:00Z"}) + "\n")
 
     # Get metadata - should extract pipeline from manifest
     metadata = get_session_metadata(str(tmp_path / "logs"), "test_session")
@@ -186,14 +181,9 @@ def test_e2b_badge_display(tmp_path):
     session_dir.mkdir(parents=True)
 
     # Create E2B session indicators
-    (session_dir / "commands.jsonl").write_text(
-        json.dumps({"cmd": "prepare", "session_id": "run_e2b_badge"}) + "\n"
-    )
+    (session_dir / "commands.jsonl").write_text(json.dumps({"cmd": "prepare", "session_id": "run_e2b_badge"}) + "\n")
     (session_dir / "events.jsonl").write_text(
-        json.dumps(
-            {"event": "run_start", "pipeline_id": "test-pipeline", "ts": "2025-01-01T00:00:00Z"}
-        )
-        + "\n"
+        json.dumps({"event": "run_start", "pipeline_id": "test-pipeline", "ts": "2025-01-01T00:00:00Z"}) + "\n"
     )
 
     # Create output directory

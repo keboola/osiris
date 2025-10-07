@@ -1,5 +1,6 @@
 """Tests for driver auto-registration from component specs."""
 
+import importlib
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -38,6 +39,11 @@ def test_driver_registry_registers_from_specs(tmp_path):
     with open(manifest_path, "w") as f:
         yaml.dump(manifest, f)
 
+    # Reload runner module to ensure patch targets current instance
+    import osiris.core.runner_v0 as runner_module
+
+    importlib.reload(runner_module)
+
     # Mock the component registry to return our test spec
     with patch("osiris.core.runner_v0.ComponentRegistry") as MockRegistry:
         mock_registry = MagicMock()
@@ -45,7 +51,7 @@ def test_driver_registry_registers_from_specs(tmp_path):
         MockRegistry.return_value = mock_registry
 
         # Create runner which should auto-register drivers
-        runner = RunnerV0(str(manifest_path), str(tmp_path / "output"))
+        runner = runner_module.RunnerV0(str(manifest_path), str(tmp_path / "output"))
 
         # Verify registry was called
         mock_registry.load_specs.assert_called_once()
@@ -85,6 +91,11 @@ def test_driver_registration_handles_import_errors(tmp_path, caplog):
     with open(manifest_path, "w") as f:
         yaml.dump(manifest, f)
 
+    # Reload runner module to ensure patch targets current instance
+    import osiris.core.runner_v0 as runner_module
+
+    importlib.reload(runner_module)
+
     # Mock the component registry to return our bad spec
     with patch("osiris.core.runner_v0.ComponentRegistry") as MockRegistry:
         mock_registry = MagicMock()
@@ -93,7 +104,7 @@ def test_driver_registration_handles_import_errors(tmp_path, caplog):
 
         # Create runner - should log error but not crash
         with caplog.at_level(logging.DEBUG):
-            runner = RunnerV0(str(manifest_path), str(tmp_path / "output"))
+            runner = runner_module.RunnerV0(str(manifest_path), str(tmp_path / "output"))
 
         # Driver should be registered (factory function created)
         drivers = runner.driver_registry.list_drivers()

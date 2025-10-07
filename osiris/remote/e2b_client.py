@@ -10,7 +10,7 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Protocol
 
 
 class SandboxStatus(Enum):
@@ -30,7 +30,7 @@ class SandboxHandle:
 
     sandbox_id: str
     status: SandboxStatus
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 @dataclass
@@ -38,18 +38,16 @@ class FinalStatus:
     """Final status of sandbox execution."""
 
     status: SandboxStatus
-    exit_code: Optional[int]
+    exit_code: int | None
     duration_seconds: float
-    stdout: Optional[str]
-    stderr: Optional[str]
+    stdout: str | None
+    stderr: str | None
 
 
 class E2BTransport(Protocol):
     """Transport interface for E2B operations (mockable for testing)."""
 
-    def create_sandbox(
-        self, cpu: int, mem_gb: int, env: Dict[str, str], timeout: int
-    ) -> SandboxHandle:
+    def create_sandbox(self, cpu: int, mem_gb: int, env: dict[str, str], timeout: int) -> SandboxHandle:
         """Create a new sandbox instance."""
         ...
 
@@ -57,7 +55,7 @@ class E2BTransport(Protocol):
         """Upload a file to the sandbox."""
         ...
 
-    def execute_command(self, handle: SandboxHandle, command: List[str]) -> str:
+    def execute_command(self, handle: SandboxHandle, command: list[str]) -> str:
         """Execute a command in the sandbox and return process ID."""
         ...
 
@@ -65,19 +63,15 @@ class E2BTransport(Protocol):
         """Check status of a running process."""
         ...
 
-    def get_process_output(
-        self, handle: SandboxHandle, process_id: str
-    ) -> tuple[Optional[str], Optional[str], Optional[int]]:
+    def get_process_output(self, handle: SandboxHandle, process_id: str) -> tuple[str | None, str | None, int | None]:
         """Get stdout, stderr, and exit code of a process."""
         ...
 
-    def download_file(
-        self, handle: SandboxHandle, remote_path: str, local_path: Optional[Path] = None
-    ) -> Optional[bytes]:
+    def download_file(self, handle: SandboxHandle, remote_path: str, local_path: Path | None = None) -> bytes | None:
         """Download a file from the sandbox."""
         ...
 
-    def list_files(self, handle: SandboxHandle, path: str) -> List[str]:
+    def list_files(self, handle: SandboxHandle, path: str) -> list[str]:
         """List files in a directory."""
         ...
 
@@ -104,13 +98,9 @@ class E2BLiveTransport:
 
                 self._e2b = Sandbox
             except ImportError as e:
-                raise ImportError(
-                    "E2B SDK not installed. Run: pip install e2b-code-interpreter"
-                ) from e
+                raise ImportError("E2B SDK not installed. Run: pip install e2b-code-interpreter") from e
 
-    def create_sandbox(
-        self, cpu: int, mem_gb: int, env: Dict[str, str], timeout: int  # noqa: ARG002
-    ) -> SandboxHandle:
+    def create_sandbox(self, cpu: int, mem_gb: int, env: dict[str, str], timeout: int) -> SandboxHandle:  # noqa: ARG002
         """Create a new E2B sandbox."""
         self._ensure_e2b()
 
@@ -135,8 +125,7 @@ class E2BLiveTransport:
             from osiris.core.execution_adapter import ExecuteError
 
             raise ExecuteError(
-                "Failed to retrieve sandbox ID from E2B SDK. "
-                "Checked attributes: id, session_id, sandbox_id"
+                "Failed to retrieve sandbox ID from E2B SDK. " "Checked attributes: id, session_id, sandbox_id"
             )
 
         return SandboxHandle(
@@ -153,7 +142,7 @@ class E2BLiveTransport:
         # Use files.write method in new API
         sandbox.files.write(remote_path, content)
 
-    def execute_command(self, handle: SandboxHandle, command: List[str]) -> str:
+    def execute_command(self, handle: SandboxHandle, command: list[str]) -> str:
         """Execute a command in the sandbox.
 
         For E2B, we execute everything as Python code using run_code().
@@ -226,9 +215,7 @@ with open('{script_name}', 'r') as f:
                 import json as json_module
 
                 for key, value in env_vars.items():
-                    env_setup += (
-                        f"os.environ[{json_module.dumps(key)}] = {json_module.dumps(value)}\n"
-                    )
+                    env_setup += f"os.environ[{json_module.dumps(key)}] = {json_module.dumps(value)}\n"
 
             code = f"""
 # Execute shell command via subprocess
@@ -286,18 +273,12 @@ if _exit_code != 0:
         if hasattr(execution, "results") and execution.results:
             # Check if the last result contains _exit_code variable
             for result in execution.results:
-                if (
-                    hasattr(result, "data")
-                    and isinstance(result.data, dict)
-                    and result.data.get("_exit_code", 0) != 0
-                ):
+                if hasattr(result, "data") and isinstance(result.data, dict) and result.data.get("_exit_code", 0) != 0:
                     return SandboxStatus.FAILED
 
         return SandboxStatus.SUCCESS
 
-    def get_process_output(
-        self, handle: SandboxHandle, process_id: str
-    ) -> tuple[Optional[str], Optional[str], Optional[int]]:
+    def get_process_output(self, handle: SandboxHandle, process_id: str) -> tuple[str | None, str | None, int | None]:
         """Get stdout, stderr, and exit code of a process.
 
         Maps E2B Execution object properties to our expected output format.
@@ -351,9 +332,7 @@ if _exit_code != 0:
 
         return stdout or None, stderr or None, exit_code
 
-    def download_file(
-        self, handle: SandboxHandle, remote_path: str, local_path: Optional[Path] = None
-    ) -> Optional[bytes]:
+    def download_file(self, handle: SandboxHandle, remote_path: str, local_path: Path | None = None) -> bytes | None:
         """Download a file from the sandbox.
 
         Args:
@@ -380,17 +359,16 @@ if _exit_code != 0:
                     with open(local_path, "wb") as f:
                         f.write(content)
                 return None
+            # Return content as bytes
+            elif isinstance(content, str):
+                return content.encode("utf-8")
             else:
-                # Return content as bytes
-                if isinstance(content, str):
-                    return content.encode("utf-8")
-                else:
-                    return content
+                return content
         except Exception:  # nosec B110
             # File might not exist, which is OK for artifact downloads
             return None
 
-    def list_files(self, handle: SandboxHandle, path: str) -> List[str]:
+    def list_files(self, handle: SandboxHandle, path: str) -> list[str]:
         """List files in a directory."""
         sandbox = handle.metadata["sandbox"]
         # Use files.list method in new API
@@ -416,7 +394,7 @@ if _exit_code != 0:
 class E2BClient:
     """High-level E2B client for pipeline execution."""
 
-    def __init__(self, transport: Optional[E2BTransport] = None):
+    def __init__(self, transport: E2BTransport | None = None):
         """Initialize E2B client.
 
         Args:
@@ -437,7 +415,7 @@ class E2BClient:
         self,
         cpu: int = 2,
         mem_gb: int = 4,
-        env: Optional[Dict[str, str]] = None,
+        env: dict[str, str] | None = None,
         timeout: int = 900,
     ) -> SandboxHandle:
         """Create a new sandbox with specified resources.
@@ -493,7 +471,7 @@ if result.returncode != 0:
             stdout, stderr, exit_code = self.transport.get_process_output(handle, process_id)
             raise RuntimeError(f"Failed to extract payload: {stderr or 'Unknown error'}")
 
-    def start(self, handle: SandboxHandle, command: List[str]) -> str:
+    def start(self, handle: SandboxHandle, command: list[str]) -> str:
         """Start pipeline execution in sandbox.
 
         Args:
@@ -550,7 +528,7 @@ if result.returncode != 0:
             stderr=stderr,
         )
 
-    def download_file(self, handle: SandboxHandle, remote_path: str) -> Optional[bytes]:
+    def download_file(self, handle: SandboxHandle, remote_path: str) -> bytes | None:
         """Download a single file from sandbox.
 
         Args:
@@ -595,9 +573,7 @@ if result.returncode != 0:
             artifacts_dir.mkdir(exist_ok=True)
 
             for file_name in artifact_files:
-                self.transport.download_file(
-                    handle, f"/home/user/artifacts/{file_name}", artifacts_dir / file_name
-                )
+                self.transport.download_file(handle, f"/home/user/artifacts/{file_name}", artifacts_dir / file_name)
 
     def close(self, handle: SandboxHandle) -> None:
         """Close sandbox and cleanup resources (best effort).

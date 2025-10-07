@@ -128,10 +128,7 @@ class TestRunExportV2:
         # Create large data structure - use AIOP structure with evidence layer
         data = {
             "evidence": {
-                "timeline": [
-                    {"@id": f"ev.event.test.run.{i}", "type": "DEBUG", "data": "x" * 100}
-                    for i in range(300)
-                ],
+                "timeline": [{"@id": f"ev.event.test.run.{i}", "type": "DEBUG", "data": "x" * 100} for i in range(300)],
                 "metrics": {
                     "total_rows": 1000,
                     "total_duration_ms": 5000,
@@ -228,9 +225,7 @@ class TestRunExportV2:
         # Low density - only major events
         timeline_low = build_timeline(events, "low")
         assert len(timeline_low) == 4  # START, STEP_COMPLETE, ERROR, COMPLETE
-        assert all(
-            e["type"] in ["START", "STEP_COMPLETE", "ERROR", "COMPLETE"] for e in timeline_low
-        )
+        assert all(e["type"] in ["START", "STEP_COMPLETE", "ERROR", "COMPLETE"] for e in timeline_low)
 
         # Medium density - filter verbose
         timeline_medium = build_timeline(events, "medium")
@@ -342,10 +337,7 @@ class TestRunExportV2:
         # Exact input from reviewer - wrap in evidence layer
         big = {
             "evidence": {
-                "timeline": [
-                    {"ts": f"2024-01-01T00:00:{i:02d}Z", "type": "DEBUG", "i": i}
-                    for i in range(50000)
-                ],
+                "timeline": [{"ts": f"2024-01-01T00:00:{i:02d}Z", "type": "DEBUG", "i": i} for i in range(50000)],
                 "metrics": {
                     "total_rows": 50000,
                     "total_duration_ms": 100000,

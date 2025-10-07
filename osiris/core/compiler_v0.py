@@ -2,33 +2,41 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from ..components.registry import ComponentRegistry
 from .canonical import canonical_json, canonical_yaml
+from .config import ConfigError
 from .fingerprint import combine_fingerprints, compute_fingerprint
 from .mode_mapper import ModeMapper
 from .params_resolver import ParamsResolver
 from .session_logging import log_event
 
+COMMON_SECRET_NAMES = {
+    "password",
+    "passwd",
+    "pwd",
+    "token",
+    "secret",
+    "secret_key",
+    "service_key",
+    "service_role_key",
+    "api_key",
+    "access_token",
+    "refresh_token",
+    "auth_token",
+    "bearer_token",
+    "client_secret",
+    "client_key",
+    "key",
+    "dsn",
+    "connection_string",
+    "anon_key",
+}
+
 
 class CompilerV0:
     """Minimal compiler for linear pipelines only."""
-
-    # Hardcoded secret fields for MVP (normally from Registry)
-    SECRET_FIELDS = {
-        "key",
-        "password",
-        "secret",
-        "token",
-        "api_key",
-        "anon_key",
-        "service_key",
-        "dsn",
-        "connection_string",
-    }
-
-    # No longer using COMPONENT_MAP - use Component Registry as single source of truth
 
     def __init__(self, output_dir: str = "compiled"):
         self.output_dir = Path(output_dir)
@@ -36,14 +44,15 @@ class CompilerV0:
         self.fingerprints = {}
         self.errors = []
         self.registry = ComponentRegistry()
+        self.secret_field_names = self._collect_all_secret_keys()
 
     def compile(
         self,
         oml_path: str,
-        profile: Optional[str] = None,
-        cli_params: Dict[str, Any] = None,
+        profile: str | None = None,
+        cli_params: dict[str, Any] = None,
         compile_mode: str = "auto",
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """
         Compile OML to manifest.
 
@@ -125,7 +134,7 @@ class CompilerV0:
         except Exception as e:
             return False, f"Compilation failed: {str(e)}"
 
-    def _extract_defaults(self, oml: Dict) -> Dict[str, Any]:
+    def _extract_defaults(self, oml: dict) -> dict[str, Any]:
         """Extract default values from OML params."""
         defaults = {}
         if "params" in oml:
@@ -142,28 +151,18 @@ class CompilerV0:
             for key, value in data.items():
                 current_path = f"{path}.{key}" if path else key
 
-                # Check if this is a secret field by exact match or contains
-                is_secret_field = False
                 key_lower = key.lower()
-                for secret_term in self.SECRET_FIELDS:
-                    # Exact match or ends with the secret term
-                    if key_lower == secret_term or key_lower.endswith("_" + secret_term):
-                        is_secret_field = True
-                        break
-
                 if (
-                    is_secret_field
+                    key_lower in self.secret_field_names
+                    and key_lower not in {"primary_key", "url"}
                     and isinstance(value, str)
                     and value
                     and not value.startswith("${")
-                    and not value.startswith("http")
-                    and len(value) > 8
+                    and len(value) > 4
                 ):
-                    # Inline secret detected
                     self.errors.append(f"Inline secret at {current_path}")
                     return False
 
-                # Recurse
                 if not self._validate_no_secrets(value, current_path):
                     return False
 
@@ -174,7 +173,7 @@ class CompilerV0:
 
         return True
 
-    def _compute_fingerprints(self, oml: Dict, profile: Optional[str]):
+    def _compute_fingerprints(self, oml: dict, profile: str | None):
         """Compute all fingerprints."""
         # OML fingerprint (canonical JSON)
         oml_bytes = canonical_json(oml).encode("utf-8")
@@ -210,7 +209,7 @@ class CompilerV0:
         # TODO: Implement actual cache lookup
         return False
 
-    def _generate_manifest(self, oml: Dict) -> Dict:
+    def _generate_manifest(self, oml: dict) -> dict:
         """Generate manifest from resolved OML."""
         steps = []
 
@@ -302,7 +301,7 @@ class CompilerV0:
 
         return manifest
 
-    def _generate_configs(self, oml: Dict) -> Dict[str, Dict]:
+    def _generate_configs(self, oml: dict) -> dict[str, dict]:
         """Generate per-step configurations."""
         configs = {}
 
@@ -321,20 +320,78 @@ class CompilerV0:
                 "mode": component_mode,  # Use mapped mode for runtime
             }
 
+            component_name = step.get("component", "")
+            component_spec = self.registry.get_component(component_name) if component_name else None
+            allowed_fields = set()
+            if component_spec:
+                schema = component_spec.get("configSchema", {}) or {}
+                allowed_fields = set((schema.get("properties", {}) or {}).keys())
+
+            secret_keys = {key.lower() for key in self._secret_keys_for_component(component_spec)}
+            reserved_keys = {"connection"}
+
             # Filter out secrets (they'll be resolved at runtime)
             for key, value in config.items():
-                if not any(secret in key.lower() for secret in self.SECRET_FIELDS):
-                    step_config[key] = value
-                else:
-                    # Keep placeholder for secrets
-                    if isinstance(value, str) and value.startswith("${"):
-                        step_config[key] = value
+                if allowed_fields and key not in allowed_fields and key not in reserved_keys:
+                    raise ConfigError(f"Unknown configuration key '{key}' for component '{component_name}'")
+
+                key_lower = key.lower()
+                if key_lower in secret_keys or (
+                    key_lower in self.secret_field_names and key_lower not in {"primary_key", "url"}
+                ):
+                    continue
+
+                step_config[key] = value
+
+            write_mode_value = config.get("write_mode", config.get("mode"))
+            if write_mode_value in {"replace", "upsert"}:
+                if "primary_key" not in config:
+                    raise ConfigError(
+                        f"Step '{step_id}' requires 'primary_key' when write_mode is '{write_mode_value}'"
+                    )
 
             configs[step_id] = step_config
 
         return configs
 
-    def _write_outputs(self, manifest: Dict, configs: Dict, oml: Dict, profile: Optional[str]):
+    def _collect_all_secret_keys(self) -> set[str]:
+        keys: set[str] = set()
+        specs = self.registry.load_specs()
+        for spec in specs.values():
+            for key in self._secret_keys_for_component(spec):
+                keys.add(key.lower())
+        keys.update(name.lower() for name in COMMON_SECRET_NAMES)
+        keys.discard("primary_key")
+        return keys
+
+    def _secret_keys_for_component(self, spec: dict[str, Any] | None) -> set[str]:
+        base_keys = {name.lower() for name in COMMON_SECRET_NAMES}
+        if not spec:
+            return base_keys
+
+        secret_keys: set[str] = set(base_keys)
+        for field in ("secrets", "x-secret"):
+            for pointer in spec.get(field, []) or []:
+                segments = self._pointer_to_segments(pointer)
+                if segments:
+                    secret_keys.add(segments[0].lower())
+        return secret_keys
+
+    @staticmethod
+    def _pointer_to_segments(pointer: str) -> list[str]:
+        if not pointer:
+            return []
+        trimmed = pointer[1:] if pointer.startswith("/") else pointer
+        if not trimmed:
+            return []
+        parts: list[str] = []
+        for segment in trimmed.split("/"):
+            segment = segment.replace("~1", "/").replace("~0", "~")
+            if segment:
+                parts.append(segment)
+        return parts
+
+    def _write_outputs(self, manifest: dict, configs: dict, oml: dict, profile: str | None):
         """Write all compilation outputs."""
         # Create output directory
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -369,9 +426,7 @@ class CompilerV0:
         # Write effective_config.json
         config_path = self.output_dir / "effective_config.json"
         with open(config_path, "w") as f:
-            f.write(
-                canonical_json({"params": self.resolver.get_effective_params(), "profile": profile})
-            )
+            f.write(canonical_json({"params": self.resolver.get_effective_params(), "profile": profile}))
 
     def _has_driver(self, component_name: str) -> bool:
         """Check if a component has a runtime driver.
@@ -406,7 +461,7 @@ class CompilerV0:
         except Exception:
             return False
 
-    def _validate_drivers(self, manifest: Dict) -> bool:
+    def _validate_drivers(self, manifest: dict) -> bool:
         """Validate all steps have runtime drivers.
 
         Args:

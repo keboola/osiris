@@ -5,7 +5,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from osiris.core.session_reader import SessionReader
 
@@ -86,7 +86,7 @@ def is_e2b_session(logs_dir: str, session_id: str) -> bool:
     return False
 
 
-def get_pipeline_name(logs_dir: str, session_id: str) -> Optional[str]:
+def get_pipeline_name(logs_dir: str, session_id: str) -> str | None:
     """Extract pipeline name from session manifest or OML."""
     session_path = Path(logs_dir) / session_id
 
@@ -122,7 +122,7 @@ def get_pipeline_name(logs_dir: str, session_id: str) -> Optional[str]:
     return None
 
 
-def get_session_metadata(logs_dir: str, session_id: str) -> Dict[str, Any]:
+def get_session_metadata(logs_dir: str, session_id: str) -> dict[str, Any]:
     """Get session metadata including remote execution details."""
     session_path = Path(logs_dir) / session_id
     metadata_file = session_path / "metadata.json"
@@ -156,9 +156,7 @@ def get_session_metadata(logs_dir: str, session_id: str) -> Dict[str, Any]:
                             metadata["pipeline"]["manifest_path"] = event.get("manifest_path", "")
 
                         # Try to extract from exec_step or config_opened events
-                        elif event_name == "exec_step" and "pipeline_id" not in metadata.get(
-                            "pipeline", {}
-                        ):
+                        elif event_name == "exec_step" and "pipeline_id" not in metadata.get("pipeline", {}):
                             # This is likely an E2B session, try to find pipeline_id from manifest
                             pass  # We'll handle this below
 
@@ -176,9 +174,7 @@ def get_session_metadata(logs_dir: str, session_id: str) -> Dict[str, Any]:
                             if event_name == "e2b.prepare.finish":
                                 if "payload" not in metadata["remote"]:
                                     metadata["remote"]["payload"] = {}
-                                metadata["remote"]["payload"]["total_size_bytes"] = event.get(
-                                    "size_bytes", 0
-                                )
+                                metadata["remote"]["payload"]["total_size_bytes"] = event.get("size_bytes", 0)
                                 metadata["remote"]["payload"]["sha256"] = event.get("sha256", "")
 
                         # Extract connections used
@@ -193,9 +189,7 @@ def get_session_metadata(logs_dir: str, session_id: str) -> Dict[str, Any]:
                                 step_id = event.get("step_id")
                                 if step_id:
                                     # Look for cleaned_config.json in artifacts
-                                    config_path = (
-                                        session_path / "artifacts" / step_id / "cleaned_config.json"
-                                    )
+                                    config_path = session_path / "artifacts" / step_id / "cleaned_config.json"
                                     if config_path.exists():
                                         try:
                                             with open(config_path) as f:
@@ -343,7 +337,7 @@ def get_pipeline_steps(logs_dir: str, session_id: str) -> list:
     return step_list if step_list else []
 
 
-def read_session_logs(logs_dir: str, session_id: str) -> Dict[str, Any]:
+def read_session_logs(logs_dir: str, session_id: str) -> dict[str, Any]:
     """Read full session logs including events and metrics."""
     session_path = Path(logs_dir) / session_id
     result = {"events": [], "metrics": [], "artifacts": []}
@@ -424,9 +418,7 @@ def read_session_logs(logs_dir: str, session_id: str) -> Dict[str, Any]:
                     file_path = root_path / file
                     size = file_path.stat().st_size
                     rel_path = file_path.relative_to(session_path)
-                    dir_artifacts.append(
-                        {"name": str(rel_path), "type": "file", "size": size, "path": str(rel_path)}
-                    )
+                    dir_artifacts.append({"name": str(rel_path), "type": "file", "size": size, "path": str(rel_path)})
             artifacts.append(
                 {
                     "name": item.name,
@@ -466,10 +458,10 @@ def read_session_logs(logs_dir: str, session_id: str) -> Dict[str, Any]:
 def generate_html_report(
     logs_dir: str = "./logs",
     output_dir: str = "dist/logs",
-    status_filter: Optional[str] = None,
-    label_filter: Optional[str] = None,
-    since_filter: Optional[str] = None,
-    limit: Optional[int] = None,
+    status_filter: str | None = None,
+    label_filter: str | None = None,
+    since_filter: str | None = None,
+    limit: int | None = None,
 ) -> None:
     """Generate static HTML report with overview page and individual session pages."""
     # Create output directory
@@ -830,10 +822,9 @@ def generate_overview_page(sessions, logs_dir: str) -> str:  # noqa: ARG001
             badge = ""
             if hasattr(session, "adapter_type") and session.adapter_type == "E2B":
                 badge = '<span class="e2b-badge">E2B</span>'
-            else:
-                # For run sessions that are not E2B, show Local badge
-                if session_type == "run":
-                    badge = '<span class="local-badge">Local</span>'
+            # For run sessions that are not E2B, show Local badge
+            elif session_type == "run":
+                badge = '<span class="local-badge">Local</span>'
 
             # Get pipeline name from SessionReader (already extracted)
             pipeline_name = session.pipeline_name or ""
@@ -1083,7 +1074,7 @@ def generate_session_detail_page(session, session_logs) -> str:
         event_details = []
         for key, value in event.items():
             if key not in ["ts", "timestamp", "event", "session", "session_id"]:
-                if isinstance(value, (int, float)) and key.endswith(("_ms", "duration")):
+                if isinstance(value, int | float) and key.endswith(("_ms", "duration")):
                     # Format durations nicely
                     if value < 1:
                         event_details.append(f"{key}={value*1000:.1f}ms")
@@ -1135,7 +1126,7 @@ def generate_session_detail_page(session, session_logs) -> str:
 
         # Format value with unit
         formatted_value = str(value)
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             if unit == "bytes":
                 # Format bytes nicely
                 if value >= 1024 * 1024:
@@ -1383,9 +1374,7 @@ def generate_session_detail_page(session, session_logs) -> str:
 
         # Add any other metadata sections
         for key, value in metadata.items():
-            if key not in ["remote", "pipeline", "environment", "connections"] and isinstance(
-                value, dict
-            ):
+            if key not in ["remote", "pipeline", "environment", "connections"] and isinstance(value, dict):
                 metadata_html += f"""<div class='metadata-section'>
                     <h3>{key.replace('_', ' ').title()}</h3>
                     <div class='metadata-entries'>"""
@@ -1460,9 +1449,7 @@ def generate_session_detail_page(session, session_logs) -> str:
 
         pipeline_steps_html += """</div></div>"""
     else:
-        pipeline_steps_html = (
-            '<div class="empty-state">No pipeline steps information available</div>'
-        )
+        pipeline_steps_html = '<div class="empty-state">No pipeline steps information available</div>'
 
     # Generate Performance Dashboard HTML
     performance_html = "<div class='performance-dashboard'>"
@@ -1523,11 +1510,7 @@ def generate_session_detail_page(session, session_logs) -> str:
         adapter_start = next((e for e in events if e.get("event") == "adapter_execute_start"), None)
         # Look for first worker event that indicates sandbox is ready
         first_worker = next(
-            (
-                e
-                for e in events
-                if e.get("event") in ["cfg_materialized", "worker_started", "step_start"]
-            ),
+            (e for e in events if e.get("event") in ["cfg_materialized", "worker_started", "step_start"]),
             None,
         )
 
@@ -1657,7 +1640,7 @@ def generate_session_detail_page(session, session_logs) -> str:
         if step_duration_metrics:
             for metric in step_duration_metrics:
                 duration_ms = metric.get("value", 0)
-                if isinstance(duration_ms, (int, float)):
+                if isinstance(duration_ms, int | float):
                     total_step_time += duration_ms / 1000.0
 
         # If no metrics, fall back to pipeline_steps durations
@@ -1668,9 +1651,7 @@ def generate_session_detail_page(session, session_logs) -> str:
                     dur_str = str(step["duration"])
                     try:
                         if "ms" in dur_str:
-                            total_step_time += (
-                                float(dur_str.replace("ms", "").replace("s", "")) / 1000
-                            )
+                            total_step_time += float(dur_str.replace("ms", "").replace("s", "")) / 1000
                         elif "s" in dur_str:
                             total_step_time += float(dur_str.replace("s", ""))
                         else:
@@ -1719,28 +1700,20 @@ def generate_session_detail_page(session, session_logs) -> str:
         total_rows = 0
 
         # Priority 1: Use cleanup_complete.total_rows if available
-        cleanup_event = next(
-            (e for e in events if e.get("event") == "cleanup_complete" and "total_rows" in e), None
-        )
+        cleanup_event = next((e for e in events if e.get("event") == "cleanup_complete" and "total_rows" in e), None)
         if cleanup_event:
             total_rows = cleanup_event.get("total_rows", 0)
         else:
             # Priority 2: Sum only rows_written from metrics (writers only)
             writer_metrics = [m for m in metrics if m.get("metric") == "rows_written"]
             if writer_metrics:
-                total_rows = sum(
-                    m.get("value", 0)
-                    for m in writer_metrics
-                    if isinstance(m.get("value"), (int, float))
-                )
+                total_rows = sum(m.get("value", 0) for m in writer_metrics if isinstance(m.get("value"), int | float))
             else:
                 # Priority 3: Use rows_read only if no writers exist
                 reader_metrics = [m for m in metrics if m.get("metric") == "rows_read"]
                 if reader_metrics:
                     total_rows = sum(
-                        m.get("value", 0)
-                        for m in reader_metrics
-                        if isinstance(m.get("value"), (int, float))
+                        m.get("value", 0) for m in reader_metrics if isinstance(m.get("value"), int | float)
                     )
 
         overview_html += f"""<div class='metric-card'>
@@ -1778,7 +1751,9 @@ def generate_session_detail_page(session, session_logs) -> str:
         if sources:
             overview_html += f"<div class='flow-source'>Source: {', '.join(sources)}</div>"
         overview_html += "<div class='flow-arrow'>↓</div>"
-        overview_html += f"<div class='flow-pipeline'>Pipeline: {metadata.get('pipeline', {}).get('id', 'Processing')}</div>"
+        overview_html += (
+            f"<div class='flow-pipeline'>Pipeline: {metadata.get('pipeline', {}).get('id', 'Processing')}</div>"
+        )
         overview_html += "<div class='flow-arrow'>↓</div>"
         if targets:
             overview_html += f"<div class='flow-target'>Target: {', '.join(targets)}</div>"

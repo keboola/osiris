@@ -6,7 +6,7 @@ This shows what needs to be implemented in the actual registry.
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import yaml
 from jsonschema import Draft202012Validator, ValidationError
@@ -25,7 +25,7 @@ class ComponentSpecValidator:
             self.schema = json.load(f)
         self.validator = Draft202012Validator(self.schema)
 
-    def validate_spec(self, spec: Dict[str, Any]) -> List[str]:
+    def validate_spec(self, spec: dict[str, Any]) -> list[str]:
         """
         Validate a component spec with all levels of validation.
 
@@ -118,11 +118,11 @@ class ComponentRegistry:
         print(f"✅ Loaded component: {component_name} v{spec['version']}")
         return True
 
-    def get_component(self, name: str) -> Dict[str, Any]:
+    def get_component(self, name: str) -> dict[str, Any]:
         """Get a validated component spec by name"""
         return self.components.get(name)
 
-    def validate_config(self, component_name: str, config: Dict[str, Any]) -> List[str]:
+    def validate_config(self, component_name: str, config: dict[str, Any]) -> list[str]:
         """
         Validate a configuration against a component's configSchema.
 

@@ -77,16 +77,12 @@ steps:
       delimiter: ","
       header: true"""
 
-    regen_response = LLMResponse(
-        message=f"```yaml\n{correct_oml}\n```", action=None, params=None, confidence=0.9
-    )
+    regen_response = LLMResponse(message=f"```yaml\n{correct_oml}\n```", action=None, params=None, confidence=0.9)
 
     with patch("osiris.core.conversational_agent.LLMAdapter") as mock_llm:
         # Setup mock
         mock_llm_instance = MagicMock()
-        mock_llm_instance.chat = AsyncMock(
-            side_effect=[discovery_response, wrong_response, regen_response]
-        )
+        mock_llm_instance.chat = AsyncMock(side_effect=[discovery_response, wrong_response, regen_response])
         mock_llm.return_value = mock_llm_instance
 
         # Create agent
@@ -106,9 +102,11 @@ steps:
         async def mock_discovery(_params, _context):
             return "Discovered tables: actors, directors, movies"
 
-        with patch.object(agent, "_run_discovery", new=mock_discovery), patch(
-            "osiris.core.conversational_agent.StateStore"
-        ), patch("osiris.core.session_logging.get_session_context") as mock_session:
+        with (
+            patch.object(agent, "_run_discovery", new=mock_discovery),
+            patch("osiris.core.conversational_agent.StateStore"),
+            patch("osiris.core.session_logging.get_session_context") as mock_session,
+        ):
             mock_session.return_value = MagicMock()
             mock_session.return_value.log_event = MagicMock()
 

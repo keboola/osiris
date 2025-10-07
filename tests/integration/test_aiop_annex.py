@@ -63,7 +63,7 @@ class TestAIOPAnnex:
             # Use build_aiop instead
             session_data = {"session_id": "test_annex_session"}
 
-            aiop = build_aiop(
+            build_aiop(
                 session_data=session_data,
                 manifest=manifest,
                 events=events,
@@ -108,22 +108,16 @@ class TestAIOPAnnex:
                 core_aiop = json.load(f)
 
             assert "metadata" in core_aiop
-            assert core_aiop["metadata"].get("truncated") is True or "annex_dir" in str(
-                core_aiop.get("evidence", {})
-            )
+            assert core_aiop["metadata"].get("truncated") is True or "annex_dir" in str(core_aiop.get("evidence", {}))
 
     @pytest.mark.skip(reason="Annex export functionality needs to be integrated with build_aiop")
     def test_annex_without_compression(self):
         """Test annex policy with uncompressed NDJSON files."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            events = [
-                {"timestamp": f"2024-01-01T10:00:{i:02d}Z", "event_type": "TEST", "value": i}
-                for i in range(20)
-            ]
+            events = [{"timestamp": f"2024-01-01T10:00:{i:02d}Z", "event_type": "TEST", "value": i} for i in range(20)]
 
             metrics = [
-                {"timestamp": f"2024-01-01T10:01:{i:02d}Z", "metric": "test", "value": i * 100}
-                for i in range(10)
+                {"timestamp": f"2024-01-01T10:01:{i:02d}Z", "metric": "test", "value": i * 100} for i in range(10)
             ]
 
             manifest = {"pipeline": "test", "steps": []}
@@ -138,7 +132,7 @@ class TestAIOPAnnex:
                 "output_dir": str(output_dir),
             }
 
-            result = export_aiop(
+            export_aiop(
                 session_id="test_no_compress",
                 events=events,
                 metrics=metrics,
@@ -183,7 +177,7 @@ class TestAIOPAnnex:
                 "output_dir": str(output_dir),
             }
 
-            result = export_aiop(
+            export_aiop(
                 session_id="test_empty",
                 events=events,
                 metrics=metrics,

@@ -7,7 +7,7 @@ import shutil
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import yaml
 from rich.console import Console
@@ -53,9 +53,7 @@ def show_run_help(json_output: bool = False):
             "command": "run",
             "description": "Execute pipeline (OML or compiled manifest)",
             "usage": "osiris run [OPTIONS] [PIPELINE_FILE]",
-            "arguments": {
-                "PIPELINE_FILE": "Path to OML or manifest.yaml file (optional with --last-compile)"
-            },
+            "arguments": {"PIPELINE_FILE": "Path to OML or manifest.yaml file (optional with --last-compile)"},
             "options": {
                 "--out": "Output directory for artifacts (default: session directory)",
                 "--profile": "Active profile for OML compilation (dev, staging, prod)",
@@ -108,14 +106,10 @@ def show_run_help(json_output: bool = False):
     console.print()
 
     console.print("[bold blue]⚙️  Options[/bold blue]")
-    console.print(
-        "  [cyan]--out[/cyan]             Output directory for artifacts (copies after run)"
-    )
+    console.print("  [cyan]--out[/cyan]             Output directory for artifacts (copies after run)")
     console.print("  [cyan]--profile, -p[/cyan]     Active profile for OML (dev, staging, prod)")
     console.print("  [cyan]--param[/cyan]           Set parameters for OML (format: key=value)")
-    console.print(
-        "  [cyan]--last-compile[/cyan]    Use manifest from most recent successful compile"
-    )
+    console.print("  [cyan]--last-compile[/cyan]    Use manifest from most recent successful compile")
     console.print("  [cyan]--last-compile-in[/cyan] Find latest compile in specified directory")
     console.print("  [cyan]--verbose[/cyan]         Show single-line event summaries on stdout")
     console.print("  [cyan]--json[/cyan]            Output in JSON format")
@@ -154,7 +148,7 @@ def show_run_help(json_output: bool = False):
     console.print()
 
 
-def find_last_compile_manifest(logs_dir: Optional[str] = None) -> Optional[str]:
+def find_last_compile_manifest(logs_dir: str | None = None) -> str | None:
     """Find the manifest from the last successful compile.
 
     Args:
@@ -223,14 +217,14 @@ def detect_file_type(file_path: str) -> str:
 
 
 def execute_with_adapter(
-    manifest_data: Dict[str, Any],
+    manifest_data: dict[str, Any],
     target: str,
-    adapter_config: Dict[str, Any],
+    adapter_config: dict[str, Any],
     context: ExecutionContext,
     use_json: bool = False,  # noqa: ARG001
-    source_manifest_path: Optional[str] = None,
+    source_manifest_path: str | None = None,
     verbose: bool = False,
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """Execute pipeline using execution adapters.
 
     Args:
@@ -287,7 +281,7 @@ def execute_with_adapter(
         return False, error_msg
 
 
-def run_command(args: List[str]):
+def run_command(args: list[str]):
     """Execute the run command."""
     # Load environment variables (redundant but safe)
     loaded_envs = load_env()
@@ -387,17 +381,16 @@ def run_command(args: List[str]):
                     console.print(f"[red]❌ {error_msg}[/red]")
                     console.print("[dim]💡 Run 'osiris run --help' to see available options[/dim]")
                 sys.exit(2)
+        elif pipeline_file is None:
+            pipeline_file = arg
         else:
-            if pipeline_file is None:
-                pipeline_file = arg
+            error_msg = "Multiple pipeline files specified"
+            if use_json:
+                print(json.dumps({"error": error_msg}))
             else:
-                error_msg = "Multiple pipeline files specified"
-                if use_json:
-                    print(json.dumps({"error": error_msg}))
-                else:
-                    console.print(f"[red]❌ {error_msg}[/red]")
-                    console.print("[dim]💡 Only one pipeline file can be processed at a time[/dim]")
-                sys.exit(2)
+                console.print(f"[red]❌ {error_msg}[/red]")
+                console.print("[dim]💡 Only one pipeline file can be processed at a time[/dim]")
+            sys.exit(2)
 
         i += 1
 
@@ -440,11 +433,7 @@ def run_command(args: List[str]):
         if not pipeline_file:
             error_msg = "No pipeline file specified"
             if use_json:
-                print(
-                    json.dumps(
-                        {"error": error_msg, "usage": "osiris run [PIPELINE_FILE | --last-compile]"}
-                    )
-                )
+                print(json.dumps({"error": error_msg, "usage": "osiris run [PIPELINE_FILE | --last-compile]"}))
             else:
                 console.print(f"[red]❌ {error_msg}[/red]")
                 console.print("[dim]💡 Run 'osiris run --help' to see usage examples[/dim]")
@@ -694,9 +683,7 @@ def run_command(args: List[str]):
             manifest_hash = None
             if "manifest_data" in locals() and isinstance(manifest_data, dict):
                 # Manifest hash is at pipeline.fingerprints.manifest_fp
-                manifest_hash = (
-                    manifest_data.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp")
-                )
+                manifest_hash = manifest_data.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp")
 
             # Export AIOP
             export_success, export_error = export_aiop_auto(

@@ -13,9 +13,7 @@ async def test_empty_llm_response_gets_fallback():
     """Test that empty LLM responses are replaced with fallback text."""
 
     # Mock empty response
-    empty_response = LLMResponse(
-        message="", action="ask_clarification", params=None, confidence=0.5  # Empty!
-    )
+    empty_response = LLMResponse(message="", action="ask_clarification", params=None, confidence=0.5)  # Empty!
 
     with patch("osiris.core.conversational_agent.LLMAdapter") as mock_llm:
         mock_llm_instance = MagicMock()
@@ -33,11 +31,7 @@ async def test_empty_llm_response_gets_fallback():
             assert result.strip() != ""
 
             # Should contain helpful fallback text
-            assert (
-                "information" in result.lower()
-                or "details" in result.lower()
-                or "help" in result.lower()
-            )
+            assert "information" in result.lower() or "details" in result.lower() or "help" in result.lower()
 
 
 @pytest.mark.asyncio
@@ -54,9 +48,7 @@ async def test_empty_response_after_discovery():
 
     with patch("osiris.core.conversational_agent.LLMAdapter") as mock_llm:
         mock_llm_instance = MagicMock()
-        mock_llm_instance.process_conversation = AsyncMock(
-            side_effect=[discovery_response, empty_after_discovery]
-        )
+        mock_llm_instance.process_conversation = AsyncMock(side_effect=[discovery_response, empty_after_discovery])
         mock_llm_instance.chat = AsyncMock(return_value=empty_after_discovery)
         mock_llm.return_value = mock_llm_instance
 
@@ -87,9 +79,7 @@ async def test_empty_response_after_discovery():
 async def test_blank_spaces_treated_as_empty():
     """Test that whitespace-only messages are treated as empty."""
 
-    whitespace_response = LLMResponse(
-        message="   \n\t  ", action=None, params=None, confidence=0.3  # Only whitespace
-    )
+    whitespace_response = LLMResponse(message="   \n\t  ", action=None, params=None, confidence=0.3)  # Only whitespace
 
     with patch("osiris.core.conversational_agent.LLMAdapter") as mock_llm:
         mock_llm_instance = MagicMock()

@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import yaml
 
@@ -28,11 +28,11 @@ class RetryAttempt:
     attempt_number: int
     pipeline_yaml: str
     validation_result: ValidationResult
-    token_usage: Dict[str, int] = field(default_factory=dict)
+    token_usage: dict[str, int] = field(default_factory=dict)
     duration_ms: int = 0
     timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         # Get error categories
         error_categories = []
@@ -42,9 +42,7 @@ class RetryAttempt:
         return {
             "attempt_number": self.attempt_number,
             "valid": self.validation_result.valid,
-            "error_count": (
-                len(self.validation_result.errors) if not self.validation_result.valid else 0
-            ),
+            "error_count": (len(self.validation_result.errors) if not self.validation_result.valid else 0),
             "error_categories": error_categories,
             "duration_ms": self.duration_ms,
             "tokens": {
@@ -87,7 +85,7 @@ class RetryAttempt:
 class RetryTrail:
     """Complete retry history for HITL escalation."""
 
-    attempts: List[RetryAttempt] = field(default_factory=list)
+    attempts: list[RetryAttempt] = field(default_factory=list)
     total_tokens: int = 0
     total_duration_ms: int = 0
     final_status: str = "pending"
@@ -101,7 +99,7 @@ class RetryTrail:
         if attempt.validation_result.valid:
             self.final_status = "success"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             "attempts": [a.to_dict() for a in self.attempts],
@@ -160,7 +158,7 @@ class RetryTrail:
         summary_path = summary_dir / "retry_trail.json"
         summary_path.write_text(json.dumps(self.to_dict(), indent=2))
 
-    def _generate_patch(self, old_yaml: str, new_yaml: str) -> Dict[str, Any]:
+    def _generate_patch(self, old_yaml: str, new_yaml: str) -> dict[str, Any]:
         """Generate a patch showing differences between attempts."""
         try:
             old_dict = yaml.safe_load(old_yaml) or {}
@@ -173,7 +171,7 @@ class RetryTrail:
             old_steps = old_dict.get("steps", [])
             new_steps = new_dict.get("steps", [])
 
-            for i, (old_step, new_step) in enumerate(zip(old_steps, new_steps)):
+            for i, (old_step, new_step) in enumerate(zip(old_steps, new_steps, strict=False)):
                 if old_step != new_step:
                     patch["changes"].append(
                         {
@@ -202,7 +200,7 @@ class ValidationRetryManager:
 
     def __init__(
         self,
-        validator: Optional[PipelineValidator] = None,
+        validator: PipelineValidator | None = None,
         max_attempts: int = 2,
         include_history_in_hitl: bool = True,
         history_limit: int = 3,
@@ -227,9 +225,9 @@ class ValidationRetryManager:
     def validate_with_retry(
         self,
         pipeline_yaml: str,
-        retry_callback: Optional[Any] = None,
-        session_ctx: Optional[SessionContext] = None,
-    ) -> Tuple[bool, ValidationResult, RetryTrail]:
+        retry_callback: Any | None = None,
+        session_ctx: SessionContext | None = None,
+    ) -> tuple[bool, ValidationResult, RetryTrail]:
         """Validate pipeline with automatic retry on failure.
 
         Args:
@@ -302,20 +300,14 @@ class ValidationRetryManager:
                     if inspect.iscoroutinefunction(retry_callback):
                         # Async callback - run with asyncio
                         try:
-                            new_yaml, token_usage = asyncio.run(
-                                retry_callback(current_yaml, retry_prompt, attempt_num)
-                            )
+                            new_yaml, token_usage = asyncio.run(retry_callback(current_yaml, retry_prompt, attempt_num))
                         except RuntimeError:
                             # Already running in an event loop - this shouldn't happen in normal usage
-                            logger.error(
-                                "Cannot run async callback from within an existing event loop"
-                            )
+                            logger.error("Cannot run async callback from within an existing event loop")
                             break
                     else:
                         # Synchronous callback
-                        new_yaml, token_usage = retry_callback(
-                            current_yaml, retry_prompt, attempt_num
-                        )
+                        new_yaml, token_usage = retry_callback(current_yaml, retry_prompt, attempt_num)
 
                     current_yaml = new_yaml
 
@@ -336,7 +328,7 @@ class ValidationRetryManager:
         # All retries exhausted
         return False, result, self.retry_trail
 
-    def get_hitl_prompt(self, retry_trail: Optional[RetryTrail] = None) -> str:
+    def get_hitl_prompt(self, retry_trail: RetryTrail | None = None) -> str:
         """Generate HITL prompt with retry history.
 
         Args:
@@ -361,14 +353,12 @@ class ValidationRetryManager:
             lines.append("")
 
         lines.append("Please provide additional information to fix these errors:")
-        lines.append(
-            "(You can specify correct values, clarify requirements, or adjust the pipeline)"
-        )
+        lines.append("(You can specify correct values, clarify requirements, or adjust the pipeline)")
 
         return "\n".join(lines)
 
     @classmethod
-    def from_config(cls, config: Dict[str, Any]) -> "ValidationRetryManager":
+    def from_config(cls, config: dict[str, Any]) -> "ValidationRetryManager":
         """Create retry manager from configuration dictionary.
 
         Args:

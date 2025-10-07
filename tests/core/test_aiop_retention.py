@@ -264,9 +264,7 @@ class TestAIOPRetention:
             # Check that retention was applied
             remaining = [d for d in aiop_dir.iterdir() if d.is_dir() and d.name != "index"]
             # Should have at most 3 dirs (2 kept + 1 new)
-            assert (
-                len(remaining) <= 3
-            ), f"Expected <=3 dirs, found {len(remaining)}: {[d.name for d in remaining]}"
+            assert len(remaining) <= 3, f"Expected <=3 dirs, found {len(remaining)}: {[d.name for d in remaining]}"
 
             # Oldest runs should be deleted
             assert not (aiop_dir / "old_run_000").exists()

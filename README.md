@@ -141,6 +141,10 @@ For comprehensive documentation, visit the **[Documentation Hub](docs/README.md)
 
 See [docs/roadmap/](docs/roadmap/) for details.
 
+## 🛠️ Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow, code quality standards, and commit guidelines.
+
 ## License
 
 Apache-2.0

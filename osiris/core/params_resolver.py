@@ -2,24 +2,24 @@
 
 import os
 import re
-from typing import Any, Dict, Optional, Set
+from typing import Any
 
 
 class ParamsResolver:
     """Resolve parameters with proper precedence."""
 
     def __init__(self):
-        self.params: Dict[str, Any] = {}
-        self.unresolved: Set[str] = set()
+        self.params: dict[str, Any] = {}
+        self.unresolved: set[str] = set()
 
     def load_params(
         self,
-        defaults: Dict[str, Any] = None,
+        defaults: dict[str, Any] = None,
         env_prefix: str = "OSIRIS_PARAM_",
-        cli_params: Dict[str, Any] = None,
-        profile: Optional[str] = None,
-        profiles: Dict[str, Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        cli_params: dict[str, Any] = None,
+        profile: str | None = None,
+        profiles: dict[str, dict[str, Any]] = None,
+    ) -> dict[str, Any]:
         """
         Load parameters with precedence: defaults < ENV < profile < CLI.
 
@@ -105,7 +105,7 @@ class ParamsResolver:
         else:
             return value
 
-    def resolve_oml(self, oml: Dict[str, Any]) -> Dict[str, Any]:
+    def resolve_oml(self, oml: dict[str, Any]) -> dict[str, Any]:
         """
         Resolve all parameters in an OML document.
 
@@ -144,6 +144,6 @@ class ParamsResolver:
 
         return resolved
 
-    def get_effective_params(self) -> Dict[str, Any]:
+    def get_effective_params(self) -> dict[str, Any]:
         """Get the final resolved parameters."""
         return self.params.copy()

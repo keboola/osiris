@@ -7,7 +7,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from rich.console import Console
 from rich.table import Table
@@ -33,8 +33,8 @@ class ValidationTestHarness:
 
     def __init__(
         self,
-        scenarios_dir: Optional[Path] = None,
-        max_attempts: Optional[int] = None,
+        scenarios_dir: Path | None = None,
+        max_attempts: int | None = None,
     ):
         """Initialize test harness.
 
@@ -81,9 +81,7 @@ class ValidationTestHarness:
             },
         }
 
-    def run_scenario(
-        self, scenario_name: str, output_dir: Optional[Path] = None
-    ) -> Tuple[bool, Dict[str, Any]]:
+    def run_scenario(self, scenario_name: str, output_dir: Path | None = None) -> tuple[bool, dict[str, Any]]:
         """Run a validation test scenario.
 
         Args:
@@ -258,19 +256,13 @@ class ValidationTestHarness:
         if status_match and attempts_match:
             self.console.print("\n[bold green]✓ Scenario passed expectations[/bold green]")
             self.console.print(f"  Status: {result_data['status']} (expected: {expected_status})")
-            self.console.print(
-                f"  Attempts: {result_data['attempts']} (expected: {expected_attempts})"
-            )
+            self.console.print(f"  Attempts: {result_data['attempts']} (expected: {expected_attempts})")
         else:
             self.console.print("\n[bold red]✗ Scenario failed expectations[/bold red]")
             if not status_match:
-                self.console.print(
-                    f"  [red]Status mismatch:[/red] {result_data['status']} != {expected_status}"
-                )
+                self.console.print(f"  [red]Status mismatch:[/red] {result_data['status']} != {expected_status}")
             if not attempts_match:
-                self.console.print(
-                    f"  [red]Attempts mismatch:[/red] {result_data['attempts']} != {expected_attempts}"
-                )
+                self.console.print(f"  [red]Attempts mismatch:[/red] {result_data['attempts']} != {expected_attempts}")
 
         self.console.print(f"\nArtifacts saved to: [cyan]{output_dir}[/cyan]")
 
@@ -329,7 +321,7 @@ class ValidationTestHarness:
 
         self.console.print(table)
 
-    def run_all_scenarios(self, output_dir: Optional[Path] = None) -> Dict[str, Tuple[bool, Dict]]:
+    def run_all_scenarios(self, output_dir: Path | None = None) -> dict[str, tuple[bool, dict]]:
         """Run all validation scenarios.
 
         Args:

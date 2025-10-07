@@ -117,9 +117,7 @@ class TestMySQLToCSVRun:
             }
 
             # Set environment for password
-            with patch.dict(
-                "os.environ", {"MYSQL_PASSWORD": "test_pass"}  # pragma: allowlist secret
-            ):
+            with patch.dict("os.environ", {"MYSQL_PASSWORD": "test_pass"}):  # pragma: allowlist secret
                 success, message = compiler.compile(oml_path=str(oml_path), cli_params={})
 
         assert success, f"Compilation failed: {message}"
@@ -163,9 +161,7 @@ class TestMySQLToCSVRun:
             }
 
             # Also set environment for password
-            with patch.dict(
-                "os.environ", {"MYSQL_PASSWORD": "test_pass"}  # pragma: allowlist secret
-            ):
+            with patch.dict("os.environ", {"MYSQL_PASSWORD": "test_pass"}):  # pragma: allowlist secret
                 # Change to temp dir for relative paths
                 import os
 

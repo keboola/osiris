@@ -6,7 +6,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
 import yaml
+
+pytestmark = pytest.mark.supabase
 
 
 def test_mysql_to_supabase_e2e_flow():
@@ -194,8 +197,11 @@ def test_mysql_to_supabase_e2e_flow():
                     assert cleaned["resolved_connection"]["key"] == "***MASKED***"
 
 
-def test_supabase_writer_ddl_plan_generation():
+def test_supabase_writer_ddl_plan_generation(monkeypatch):
     """Test that Supabase writer generates DDL plan when table is missing."""
+    # Force use of real client (MagicMock) instead of offline stub
+    monkeypatch.setenv("OSIRIS_TEST_SUPABASE_FORCE_REAL_CLIENT", "1")
+
     from osiris.drivers.supabase_writer_driver import SupabaseWriterDriver
 
     driver = SupabaseWriterDriver()
@@ -218,9 +224,10 @@ def test_supabase_writer_ddl_plan_generation():
         mock_ctx.output_dir = output_dir
 
         # Mock Supabase client - table doesn't exist
-        with patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient, patch(
-            "osiris.drivers.supabase_writer_driver.log_event"
-        ) as mock_log_event:
+        with (
+            patch("osiris.drivers.supabase_writer_driver.SupabaseClient") as MockClient,
+            patch("osiris.drivers.supabase_writer_driver.log_event") as mock_log_event,
+        ):
             mock_client = MagicMock()
             mock_table = MagicMock()
 
@@ -275,9 +282,7 @@ def test_supabase_writer_ddl_plan_generation():
             assert "is_active BOOLEAN" in ddl
 
             # Check event was logged
-            ddl_events = [
-                call for call in mock_log_event.call_args_list if call[0][0] == "table.ddl_planned"
-            ]
+            ddl_events = [call for call in mock_log_event.call_args_list if call[0][0] == "table.ddl_planned"]
             assert len(ddl_events) == 1
             event_data = ddl_events[0][1]
             assert event_data["table"] == "users"

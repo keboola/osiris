@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -10,9 +10,7 @@ logger = logging.getLogger(__name__)
 class FilesystemCsvWriterDriver:
     """Driver for writing DataFrames to CSV files."""
 
-    def run(
-        self, *, step_id: str, config: dict, inputs: Optional[dict] = None, ctx: Any = None
-    ) -> dict:
+    def run(self, *, step_id: str, config: dict, inputs: dict | None = None, ctx: Any = None) -> dict:
         """Write DataFrame to CSV file.
 
         Args:

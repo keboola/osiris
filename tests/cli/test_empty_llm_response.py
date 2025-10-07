@@ -81,8 +81,4 @@ async def test_empty_response_with_null_action():
 
                 # Should provide error/fallback message
                 assert result != ""
-                assert (
-                    "information" in result.lower()
-                    or "rephrase" in result.lower()
-                    or "details" in result.lower()
-                )
+                assert "information" in result.lower() or "rephrase" in result.lower() or "details" in result.lower()

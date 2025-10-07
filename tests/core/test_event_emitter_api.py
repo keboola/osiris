@@ -21,9 +21,7 @@ class TestEventEmitterAPI:
         params = list(sig.parameters.keys())
 
         # First parameter should be event_name, not event
-        assert (
-            params[0] == "event_name"
-        ), "First parameter should be 'event_name' to avoid conflicts"
+        assert params[0] == "event_name", "First parameter should be 'event_name' to avoid conflicts"
         assert params[1] == "kwargs", "Second parameter should be kwargs"
 
     def test_no_event_parameter_collision(self):

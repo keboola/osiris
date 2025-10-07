@@ -240,7 +240,7 @@ def test_parity_with_different_timestamps():
         assert len(events_norm1) == len(events_norm2)
 
         # Same event types and data (timestamps normalized)
-        for e1, e2 in zip(events_norm1, events_norm2):
+        for e1, e2 in zip(events_norm1, events_norm2, strict=False):
             assert e1.get("event") == e2.get("event")
             assert e1.get("data") == e2.get("data")
             assert e1.get("timestamp") == "NORMALIZED"

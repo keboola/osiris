@@ -96,9 +96,7 @@ class TestParamsResolver:
                 "default_param": {"default": "default_value"},
                 "override": {"default": "should_be_overridden"},
             },
-            "steps": [
-                {"config": {"value1": "${params.default_param}", "value2": "${params.override}"}}
-            ],
+            "steps": [{"config": {"value1": "${params.default_param}", "value2": "${params.override}"}}],
         }
 
         resolved = resolver.resolve_oml(oml)

@@ -1,0 +1,115 @@
+# MySQL → DuckDB → Supabase Debug Pipeline with CSV Tee Outputs
+#
+# This is a debug version of the demo pipeline that writes CSV files
+# at critical boundaries to help diagnose data flow issues.
+#
+# To run locally:
+#   cd testing_env
+#   python ../osiris.py compile ../docs/examples/mysql_duckdb_supabase_debug.yaml
+#   python ../osiris.py run --last-compile
+#
+# CSV outputs will be in testing_env/debug_out/
+#
+# Or use make target:
+#   make debug-mysql-duckdb-supabase
+
+oml_version: "0.1.0"
+name: mysql-duckdb-supabase-debug
+
+steps:
+# Step 1: Extract movies data from MySQL
+- id: extract-movies
+  component: mysql.extractor
+  mode: read
+  config:
+    connection: "@mysql.db_movies"
+    query: |
+      SELECT
+        m.movie_id,
+        m.title,
+        m.release_year,
+        m.director_id,
+        m.genre,
+        m.runtime_minutes,
+        m.budget_usd,
+        m.box_office_usd,
+        d.name as director_name,
+        d.nationality as director_nationality
+      FROM movies m
+      JOIN directors d ON m.director_id = d.director_id
+      WHERE m.director_id IS NOT NULL
+
+# Step 1a: DEBUG - Write MySQL extract to CSV
+- id: debug-mysql-extract
+  component: filesystem.csv_writer
+  mode: write
+  needs: [ "extract-movies" ]
+  config:
+    path: "./debug_out/mysql_extract.csv"
+    encoding: "utf-8"
+    newline: "lf"
+    delimiter: ","
+    quotechar: '"'
+
+# Step 2: Compute director statistics using DuckDB
+- id: compute-director-stats
+  component: duckdb.processor
+  mode: transform
+  needs: [ "extract-movies" ]
+  config:
+    query: |
+      SELECT
+        director_id,
+        director_name,
+        director_nationality,
+        COUNT(*) as movie_count,
+        COUNT(DISTINCT genre) as unique_genres,
+        ROUND(AVG(runtime_minutes), 1) as avg_runtime_minutes,
+        MIN(release_year) as first_movie_year,
+        MAX(release_year) as latest_movie_year,
+        ROUND(AVG(budget_usd), 0) as avg_budget_usd,
+        ROUND(AVG(box_office_usd), 0) as avg_box_office_usd,
+        ROUND(SUM(box_office_usd), 0) as total_box_office_usd,
+        ROUND(AVG(box_office_usd / NULLIF(budget_usd, 0)), 2) as avg_roi_ratio
+      FROM input_df
+      WHERE budget_usd IS NOT NULL
+        AND box_office_usd IS NOT NULL
+      GROUP BY director_id, director_name, director_nationality
+      HAVING COUNT(*) >= 1
+      ORDER BY total_box_office_usd DESC
+
+# Step 2a: DEBUG - Write DuckDB output to CSV
+- id: debug-duckdb-output
+  component: filesystem.csv_writer
+  mode: write
+  needs: [ "compute-director-stats" ]
+  config:
+    path: "./debug_out/duckdb_output.csv"
+    encoding: "utf-8"
+    newline: "lf"
+    delimiter: ","
+    quotechar: '"'
+
+# Step 3: Write results to Supabase
+- id: write-director-stats
+  component: supabase.writer
+  mode: write
+  needs: [ "compute-director-stats" ]
+  config:
+    connection: "@supabase.main"
+    table: "director_stats_replace" # Different table name for debug
+    create_if_missing: true
+    write_mode: "replace" # Replace entire table for demo
+    primary_key: [ "director_id" ]
+
+# Step 3a: DEBUG - Also write final output to CSV for comparison
+- id: debug-final-output
+  component: filesystem.csv_writer
+  mode: write
+  needs: [ "compute-director-stats" ]
+  config:
+    path: "./debug_out/final_output_to_supabase.csv"
+    encoding: "utf-8"
+    newline: "lf"
+    delimiter: ","
+    quotechar: '"'

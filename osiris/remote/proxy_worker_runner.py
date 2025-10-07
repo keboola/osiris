@@ -133,11 +133,7 @@ def main():
                             "reason": "command_failed",
                             "line": line_num,
                             "error": str(e),
-                            "cmd": (
-                                cmd_data.get("cmd", "unknown")
-                                if "cmd_data" in locals()
-                                else "parse_error"
-                            ),
+                            "cmd": (cmd_data.get("cmd", "unknown") if "cmd_data" in locals() else "parse_error"),
                         }
                     ),
                     flush=True,
@@ -146,9 +142,7 @@ def main():
 
     # Signal completion
     print(
-        json.dumps(
-            {"type": "worker_complete", "commands_processed": command_count, "session": session_dir}
-        ),
+        json.dumps({"type": "worker_complete", "commands_processed": command_count, "session": session_dir}),
         flush=True,
     )
 

@@ -83,6 +83,14 @@ configSchema:
       default: 3
       minimum: 0
       maximum: 10
+    ddl_channel:
+      type: string
+      description: Preferred channel for DDL execution (auto tries HTTP SQL, then psycopg2)
+      enum:
+        - auto
+        - http_sql
+        - psycopg2
+      default: auto
     prefer:
       type: string
       description: PostgREST Prefer header value
@@ -99,6 +107,15 @@ configSchema:
 
 secrets:
   - /key
+
+x-secret:
+  - /key
+  - /service_role_key
+  - /anon_key
+  - /resolved_connection/key
+  - /resolved_connection/service_role_key
+  - /resolved_connection/pg_dsn
+  - /resolved_connection/password
 
 redaction:
   strategy: mask
@@ -216,3 +233,16 @@ limits:
 
 x-runtime:
   driver: osiris.drivers.supabase_writer_driver.SupabaseWriterDriver
+  requirements:
+    imports:
+      - pandas
+      - numpy
+      - supabase
+      - psycopg2
+      - requests
+    packages:
+      - pandas
+      - numpy
+      - supabase
+      - psycopg2-binary
+      - requests
