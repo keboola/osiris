@@ -84,6 +84,11 @@ filesystem:
     aiop_keep_runs_per_pipeline: 200  # keep last N runs per pipeline in aiop/
     annex_keep_days: 14  # delete NDJSON annex shards older than N days
 
+  # Output configuration for pipeline data exports
+  outputs:
+    directory: "output"  # where pipeline data exports land
+    format: "csv"        # default writer format if not overridden
+
 ids:
   # Run identifier format (choose one OR compose multiple; examples):
   # - "ulid"        -> 01J9Z8KQ8R1WQH6K9Z7Q2R1X7F

@@ -246,7 +246,7 @@ def test_config_loads_via_fs_config(tmp_path):
 
 
 def test_yaml_has_rich_comments_and_no_legacy_paths(tmp_path):
-    """Test that generated YAML includes rich comments and no legacy logs_dir."""
+    """Test that generated YAML includes rich comments and no legacy logs_dir or sessions."""
     from osiris.cli.init import init_command
 
     init_command([str(tmp_path)], json_output=False)
@@ -259,9 +259,26 @@ def test_yaml_has_rich_comments_and_no_legacy_paths(tmp_path):
         f.seek(0)
         config = yaml.safe_load(f)
 
+    # Check that no .osiris_sessions/ string in generated YAML
+    assert ".osiris_sessions" not in content
+
+    # Check filesystem.sessions_dir uses .osiris/sessions
+    assert config["filesystem"]["sessions_dir"] == ".osiris/sessions"
+
+    # Check filesystem.outputs exists
+    assert "outputs" in config["filesystem"]
+    assert config["filesystem"]["outputs"]["directory"] == "output"
+    assert config["filesystem"]["outputs"]["format"] == "csv"
+
     # Check that logs_dir is NOT present in logging section
     assert "logging" in config
     assert "logs_dir" not in config.get("logging", {})
+
+    # Check that top-level output: section does not exist
+    assert "output" not in config
+
+    # Check that top-level sessions: section does not exist
+    assert "sessions" not in config
 
     # Check comment density (should have rich comments)
     comment_lines = [line for line in content.split("\n") if line.strip().startswith("#")]
@@ -270,8 +287,6 @@ def test_yaml_has_rich_comments_and_no_legacy_paths(tmp_path):
     # Check that all major sections are present with comments
     assert "FILESYSTEM CONTRACT v1" in content
     assert "LOGGING CONFIGURATION" in content
-    assert "OUTPUT CONFIGURATION" in content
-    assert "SESSION MANAGEMENT" in content
     assert "DATABASE DISCOVERY SETTINGS" in content
     assert "LLM (AI) CONFIGURATION" in content
     assert "PIPELINE SAFETY & VALIDATION" in content

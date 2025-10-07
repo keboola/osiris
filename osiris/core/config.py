@@ -151,6 +151,11 @@ filesystem:
     aiop_keep_runs_per_pipeline: 200  # keep last N runs per pipeline in aiop/
     annex_keep_days: 14  # delete NDJSON annex shards older than N days
 
+  # Output configuration for pipeline data exports
+  outputs:
+    directory: "output"  # where pipeline data exports land
+    format: "csv"        # default writer format if not overridden
+
 ids:
   # Run identifier format (choose one OR compose multiple; examples):
   # - "ulid"        -> 01J9Z8KQ8R1WQH6K9Z7Q2R1X7F
@@ -236,24 +241,6 @@ logging:
     OSIRIS_LOG_LEVEL: level
   cli_flags:            # CLI flags that can override these settings (highest precedence)
     --log-level: level
-
-# ============================================================================
-# OUTPUT CONFIGURATION
-# Where generated pipeline results are saved
-# ============================================================================
-output:
-  format: csv           # Output format: csv, parquet, json
-  directory: output/    # Directory for pipeline outputs
-  filename_template: pipeline_{session_id}_{timestamp}
-
-# ============================================================================
-# SESSION MANAGEMENT
-# Osiris automatically manages conversation sessions and discovery cache
-# ============================================================================
-sessions:
-  directory: .osiris_sessions/  # Where session data is stored
-  cleanup_days: 30              # Auto-delete sessions older than N days (background cleanup)
-  cache_ttl: 3600               # Cache database discovery for N seconds (avoids re-scanning)
 
 # ============================================================================
 # DATABASE DISCOVERY SETTINGS

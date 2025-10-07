@@ -113,6 +113,25 @@ class RetentionConfig:
 
 
 @dataclass
+class OutputsConfig:
+    """Output configuration for pipeline data exports."""
+
+    directory: str = "output"
+    format: str = "csv"
+
+    def validate(self) -> None:
+        """Validate outputs configuration.
+
+        Raises:
+            ConfigError: If configuration is invalid
+        """
+        if not self.directory:
+            raise ConfigError("outputs.directory cannot be empty")
+        if not self.format:
+            raise ConfigError("outputs.format cannot be empty")
+
+
+@dataclass
 class IdsConfig:
     """ID generation configuration."""
 
@@ -158,6 +177,7 @@ class FilesystemConfig:
     naming: NamingConfig = field(default_factory=NamingConfig)
     artifacts: ArtifactsConfig = field(default_factory=ArtifactsConfig)
     retention: RetentionConfig = field(default_factory=RetentionConfig)
+    outputs: OutputsConfig = field(default_factory=OutputsConfig)
 
     def __post_init__(self) -> None:
         """Normalize paths after initialization."""
@@ -170,6 +190,8 @@ class FilesystemConfig:
             self.artifacts = ArtifactsConfig(**self.artifacts)
         if isinstance(self.retention, dict):
             self.retention = RetentionConfig(**self.retention)
+        if isinstance(self.outputs, dict):
+            self.outputs = OutputsConfig(**self.outputs)
 
         # Normalize base_path
         if self.base_path:
@@ -186,6 +208,7 @@ class FilesystemConfig:
         self.naming.validate()
         self.artifacts.validate()
         self.retention.validate()
+        self.outputs.validate()
 
     def resolve_path(self, relative_path: str) -> Path:
         """Resolve a relative path against base_path.
@@ -215,6 +238,10 @@ def load_osiris_config(config_path: str = "osiris.yaml") -> tuple[FilesystemConf
     Raises:
         ConfigError: If configuration is invalid
     """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     # Load raw YAML
     raw_config = _load_raw_yaml(config_path)
 
@@ -223,6 +250,25 @@ def load_osiris_config(config_path: str = "osiris.yaml") -> tuple[FilesystemConf
 
     # Extract filesystem config
     fs_dict = raw_config.get("filesystem", {})
+
+    # Legacy compatibility: migrate output.* to filesystem.outputs.*
+    outputs_dict = {}
+    if "outputs" in fs_dict:
+        outputs_dict = fs_dict["outputs"]
+    elif "output" in raw_config:
+        # Legacy top-level output.* detected
+        legacy_output = raw_config["output"]
+        if isinstance(legacy_output, dict):
+            if "directory" in legacy_output or "format" in legacy_output:
+                logger.warning(
+                    "Legacy output.* configuration detected. Please migrate to filesystem.outputs.* "
+                    "(see docs/samples/osiris.filesystem.yaml). Legacy format will be removed in future versions."
+                )
+                outputs_dict = {
+                    "directory": legacy_output.get("directory", "output"),
+                    "format": legacy_output.get("format", "csv"),
+                }
+
     fs_config = FilesystemConfig(
         base_path=fs_dict.get("base_path", ""),
         pipelines_dir=fs_dict.get("pipelines_dir", "pipelines"),
@@ -236,6 +282,7 @@ def load_osiris_config(config_path: str = "osiris.yaml") -> tuple[FilesystemConf
         naming=NamingConfig(**fs_dict.get("naming", {})) if "naming" in fs_dict else NamingConfig(),
         artifacts=ArtifactsConfig(**fs_dict.get("artifacts", {})) if "artifacts" in fs_dict else ArtifactsConfig(),
         retention=RetentionConfig(**fs_dict.get("retention", {})) if "retention" in fs_dict else RetentionConfig(),
+        outputs=OutputsConfig(**outputs_dict) if outputs_dict else OutputsConfig(),
     )
 
     # Extract IDs config

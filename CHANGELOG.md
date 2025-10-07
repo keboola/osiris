@@ -49,6 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Scaffolder**: Removed legacy `.osiris_sessions/`; moved `output.*` to `filesystem.outputs.*`
+
 - **Compiler** (`osiris/core/compiler_v0.py`)
   - Now requires FilesystemContract and pipeline_slug parameters
   - Writes to `build/pipelines/[profile/]slug/hash/` exclusively
