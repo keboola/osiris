@@ -2,14 +2,14 @@
 
 import json
 import os
-from pathlib import Path
 import shutil
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
-from rich.console import Console
 import yaml
+from rich.console import Console
 
 from ..core.adapter_factory import get_execution_adapter
 from ..core.aiop_export import export_aiop_auto
@@ -731,11 +731,18 @@ def run_command(args: list[str]):
             else:
                 final_status = "failed"
 
-            # Get manifest hash if available
+            # Get manifest hash and pipeline info if available
             manifest_hash = None
+            pipeline_slug_aiop = None
+            manifest_short_aiop = None
+            run_id_aiop = None
             if "manifest_data" in locals() and isinstance(manifest_data, dict):
                 # Manifest hash is at pipeline.fingerprints.manifest_fp
                 manifest_hash = manifest_data.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp")
+                pipeline_slug_aiop = manifest_data.get("pipeline", {}).get("id")
+                manifest_short_aiop = manifest_hash[:7] if manifest_hash else None
+                if "run_id_final" in locals():
+                    run_id_aiop = run_id_final
 
             # Export AIOP
             export_success, export_error = export_aiop_auto(
@@ -743,6 +750,12 @@ def run_command(args: list[str]):
                 manifest_hash=manifest_hash,
                 status=final_status,
                 end_time=datetime.datetime.utcnow(),
+                fs_contract=contract if "contract" in locals() else None,
+                pipeline_slug=pipeline_slug_aiop,
+                profile=profile,
+                run_id=run_id_aiop,
+                manifest_short=manifest_short_aiop,
+                session_dir=session.session_dir,
             )
 
             if not export_success:

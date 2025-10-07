@@ -3,8 +3,8 @@
 import datetime
 import gzip
 import json
-from pathlib import Path
 import shutil
+from pathlib import Path
 from typing import Any
 
 from .config import render_path, resolve_aiop_config
@@ -20,6 +20,7 @@ def export_aiop_auto(
     profile: str | None = None,
     run_id: str | None = None,
     manifest_short: str | None = None,
+    session_dir: Path | None = None,
 ) -> tuple[bool, str | None]:
     """Automatically export AIOP at the end of a run.
 
@@ -33,6 +34,7 @@ def export_aiop_auto(
         profile: Profile name
         run_id: Run identifier
         manifest_short: Short manifest hash
+        session_dir: Path to session directory (overrides session_id lookup)
 
     Returns:
         Tuple of (success, error_message)
@@ -86,11 +88,17 @@ def export_aiop_auto(
 
         from ..core.session_reader import SessionReader
 
-        logs_dir = Path("logs")
-        session_path = logs_dir / session_id
+        # Use provided session_dir or fallback to legacy logs/ lookup
+        if session_dir:
+            session_path = session_dir
+            logs_dir = session_path.parent
+        else:
+            # Legacy fallback - DEPRECATED
+            logs_dir = Path("run_logs")
+            session_path = logs_dir / session_id
 
         if not session_path.exists():
-            return False, f"Session not found: {session_id}"
+            return False, f"Session not found: {session_path}"
 
         # Read session summary
         reader = SessionReader(str(logs_dir))
