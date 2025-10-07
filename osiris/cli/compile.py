@@ -283,7 +283,7 @@ def compile_command(args: list[str]):
             index_paths = fs_contract.index_paths()
             index_writer = RunIndexWriter(index_paths["base"])
 
-            # Write latest manifest pointer
+            # Write latest manifest pointer (per-pipeline)
             index_writer.write_latest_manifest(
                 pipeline_slug=pipeline_slug,
                 profile=profile,
@@ -297,6 +297,21 @@ def compile_command(args: list[str]):
                     )["manifest"]
                 ),
             )
+
+            # Write global last_compile.txt pointer for --last-compile flag
+            global_pointer = index_paths["base"] / "last_compile.txt"
+            manifest_path_str = str(
+                fs_contract.manifest_paths(
+                    pipeline_slug=pipeline_slug,
+                    manifest_hash=compiler.manifest_hash,
+                    manifest_short=compiler.manifest_short,
+                    profile=profile,
+                )["manifest"]
+            )
+            with open(global_pointer, "w") as f:
+                f.write(f"{manifest_path_str}\n")
+                f.write(f"{compiler.manifest_hash}\n")
+                f.write(f"{profile}\n")
 
             manifest_path = fs_contract.manifest_paths(
                 pipeline_slug=pipeline_slug,
@@ -352,7 +367,16 @@ def compile_command(args: list[str]):
         import traceback
 
         if use_json:
-            print(json.dumps({"status": "error", "message": str(e), "pipeline": pipeline_file, "traceback": traceback.format_exc()}))
+            print(
+                json.dumps(
+                    {
+                        "status": "error",
+                        "message": str(e),
+                        "pipeline": pipeline_file,
+                        "traceback": traceback.format_exc(),
+                    }
+                )
+            )
         else:
             console.print(f"[red]❌ Unexpected error: {str(e)}[/red]")
             console.print(f"[dim]{traceback.format_exc()}[/dim]")

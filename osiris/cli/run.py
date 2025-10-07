@@ -461,9 +461,14 @@ def run_command(args: list[str]):
     contract = FilesystemContract(fs_config, ids_config)
 
     # Generate run ID (will be updated with pipeline_slug after we know it)
+    from ..core.run_ids import CounterStore
+
+    counter_store = CounterStore(contract.index_paths()["counters"])
     run_id_gen = RunIdGenerator(
-        formats=ids_config.run_id_format if isinstance(ids_config.run_id_format, list) else [ids_config.run_id_format],
-        counter_db=contract.index_paths()["counters"],
+        run_id_format=(
+            ids_config.run_id_format if isinstance(ids_config.run_id_format, list) else [ids_config.run_id_format]
+        ),
+        counter_store=counter_store,
     )
 
     # Temporary session (we'll create proper one after knowing pipeline_slug)
@@ -572,8 +577,29 @@ def run_command(args: list[str]):
         with open(manifest_path) as f:
             manifest_data = yaml.safe_load(f)
 
+        # Extract pipeline info from manifest for proper session creation
+        pipeline_slug_final = manifest_data.get("pipeline", {}).get("id", "unknown")
+        manifest_short = manifest_data.get("meta", {}).get("manifest_short", "")
+        manifest_profile = manifest_data.get("meta", {}).get("profile", profile)
+
+        # Generate run_id now that we know the pipeline
+        run_id_final, run_ts = run_id_gen.generate(pipeline_slug_final)
+
+        # Create proper session with FilesystemContract
+        proper_session = SessionContext(
+            fs_contract=contract,
+            pipeline_slug=pipeline_slug_final,
+            profile=manifest_profile,
+            run_id=run_id_final,
+            manifest_short=manifest_short,
+        )
+
+        # Update the global current session
+        set_current_session(proper_session)
+        session = proper_session
+
         # Create execution context with session directory as base
-        exec_context = ExecutionContext(session_id=session_id, base_path=session.session_dir)
+        exec_context = ExecutionContext(session_id=run_id_final, base_path=session.session_dir)
 
         # Prepare E2B config for adapter
         adapter_e2b_config = {}
@@ -614,25 +640,21 @@ def run_command(args: list[str]):
         if execute_success:
             log_event("run_complete", total_duration=total_duration, adapter_execution=True)
 
-            # Extract pipeline info for index
-            pipeline_slug_final = manifest_data.get("pipeline", {}).get("id", "unknown")
+            # Extract full manifest hash for index (already have short version)
             manifest_hash = manifest_data.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp", "")
-            manifest_short = manifest_hash[:7] if manifest_hash else ""
 
             # Write to run index
             try:
                 from datetime import datetime
 
-                run_id_final = run_id_gen.generate(pipeline_slug_final)
-
                 index_writer = RunIndexWriter(contract.index_paths()["base"])
                 index_writer.append(
                     run_id=run_id_final,
                     pipeline_slug=pipeline_slug_final,
-                    profile=profile or fs_config.profiles.default if fs_config.profiles.enabled else None,
+                    profile=manifest_profile or fs_config.profiles.default if fs_config.profiles.enabled else None,
                     manifest_hash=manifest_hash,
                     manifest_short=manifest_short,
-                    run_ts=datetime.utcnow(),
+                    run_ts=run_ts or datetime.utcnow(),
                     status="success",
                     duration_ms=int(total_duration * 1000),
                     run_logs_path=str(session.session_dir),
