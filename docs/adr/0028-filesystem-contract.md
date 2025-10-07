@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed (replaces the previous "Git Integration & Autopilot Mode" scope)
+Accepted
 
 ## Context
 
@@ -40,13 +40,20 @@ The `osiris init` command will scaffold new repositories using the installed pac
 
 ## Decision
 
+**Breaking Notice:** This ADR replaces the legacy `./logs/**` layout without dual-write or backward compatibility. Migration is required.
+
 Adopt a **Filesystem Contract v1** that:
 
 1. Defines a **clear directory layout** separating deterministic (versionable) artifacts, per-run observability, visible run logs, and hidden internal state.
 2. Makes **all paths and naming rules configurable** in `osiris.yaml`.
-3. Leaves **Git remotes** to the user/CI (no push/PR automation in v1). Osiris provides only **minimal helpers**:
+3. Provide a unified scaffolding command `osiris init` for creating new Osiris projects.
+   It initializes the canonical project structure and optionally sets up Git (`--git` flag).
+   This replaces older ideas of `osiris repo init`.
+4. Leaves **Git remotes** to the user/CI (no push/PR automation in v1). Osiris provides only **minimal helpers**:
    - `osiris repo ensureignore` – merge recommended ignore patterns
    - (optional) `osiris repo commit -m "..."` – local `git add/commit` convenience (no push)
+
+Minimal Git helpers are retained (`osiris repo ensureignore`, `osiris repo commit -m "..."`) for convenience, but `osiris init` is the canonical entrypoint for new projects.
 
 > Autopilot (PRs, shadow branches, CI-gated merges) is **out of scope** for this ADR and will be proposed separately (new ADR-XXXX).
 
@@ -221,7 +228,7 @@ ids:
 
 ## Migration
 
-This ADR is a **breaking change** from legacy `./logs/` layouts. No dual-write.
+This ADR is a **breaking change** from legacy `./logs/` layouts and intentionally ships without dual-write.
 Projects must move to the new directories. CLI and readers use only the new paths.
 
 Recommended steps:

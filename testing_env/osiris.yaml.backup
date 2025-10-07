@@ -1,0 +1,216 @@
+version: '2.0'
+
+# ============================================================================
+# LOGGING CONFIGURATION
+# Enhanced session logging with structured events and metrics (M0-Validation-4)
+# ============================================================================
+logging:
+  logs_dir: ./logs      # Session logs directory (per-session directories created here)
+  level: INFO           # Log verbosity for .log files: DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+  # IMPORTANT: Events and log levels are INDEPENDENT systems:
+  # - 'level' controls what goes into osiris.log (Python logging messages)
+  # - 'events' controls what goes into events.jsonl (structured events)
+  # Events are ALWAYS logged regardless of level setting - they use separate filtering below.
+
+  events:               # Event types to log (structured JSONL format)
+    # Use "*" to log ALL events (recommended), or specify individual events below:
+    #
+    # Session Lifecycle:
+    #   run_start         - Session begins (command starts)
+    #   run_end           - Session completes successfully
+    #   run_error         - Session fails with error
+    #
+    # Chat & Conversation:
+    #   chat_start        - Chat session begins
+    #   chat_end          - Chat session ends
+    #   user_message      - User sends a message
+    #   assistant_response - AI responds to user
+    #   chat_interrupted  - Chat stopped by Ctrl+C
+    #
+    # Chat Modes:
+    #   sql_mode_start           - Direct SQL mode begins
+    #   single_message_start     - One-shot message mode
+    #   interactive_mode_start   - Interactive conversation mode
+    #
+    # Database Discovery:
+    #   discovery_start   - Schema discovery begins
+    #   discovery_end     - Schema discovery completes
+    #   cache_hit         - Found cached discovery data
+    #   cache_miss        - No cached data, discovering fresh
+    #   cache_lookup      - Checking cache for discovery data
+    #   cache_error       - Cache access failed
+    #
+    # Validation & Config:
+    #   validate_start    - Configuration validation begins
+    #   validate_complete - Configuration validation done
+    #   validate_error    - Configuration validation failed
+    #
+    # Response Quality:
+    #   sql_response             - SQL mode generated response
+    #   single_message_response  - Single message got response
+    #   single_message_empty_response - Single message got no response
+    #   sql_error               - SQL mode encountered error
+    #   single_message_error    - Single message mode failed
+    #   chat_error              - General chat error occurred
+    #
+    # Examples:
+    #   - "*"                          # Log ALL events (recommended)
+    #   - ["run_start", "run_end"]     # Only session lifecycle
+    #   - ["user_message", "assistant_response"]  # Only conversation
+    #
+    # NOTE: Events are filtered HERE, not by 'level' above. Even with level: ERROR,
+    # validate_start events will still be logged if included in this list.
+    - "*"
+  metrics:
+    enabled: true       # Enable performance metrics collection
+    retention_hours: 168   # Keep metrics for 7 days (168 hours)
+  retention: 7d         # Session retention policy (7d = 7 days, supports: 1d, 30d, 6m, 1y)
+  env_overrides:        # Environment variables that can override these settings
+    OSIRIS_LOG_LEVEL: level
+    OSIRIS_LOGS_DIR: logs_dir
+  cli_flags:            # CLI flags that can override these settings (highest precedence)
+    --log-level: level
+    --logs-dir: logs_dir
+
+# ============================================================================
+# OUTPUT CONFIGURATION
+# Where generated pipeline results are saved
+# ============================================================================
+output:
+  format: csv           # Output format: csv, parquet, json
+  directory: output/    # Directory for pipeline outputs
+  filename_template: pipeline_{session_id}_{timestamp}
+
+# ============================================================================
+# SESSION MANAGEMENT
+# Osiris automatically manages conversation sessions and discovery cache
+# ============================================================================
+sessions:
+  directory: .osiris_sessions/  # Where session data is stored
+  cleanup_days: 30              # Auto-delete sessions older than N days (background cleanup)
+  cache_ttl: 3600               # Cache database discovery for N seconds (avoids re-scanning)
+
+# ============================================================================
+# DATABASE DISCOVERY SETTINGS
+# Controls how Osiris explores your database schema and samples data
+# ============================================================================
+discovery:
+  sample_size: 10       # Number of sample rows to fetch per table for AI context
+  parallel_tables: 5    # Max tables to discover simultaneously (performance tuning)
+  timeout_seconds: 30   # Discovery timeout per table (prevents hanging)
+
+# ============================================================================
+# LLM (AI) CONFIGURATION
+# Controls the AI behavior - API keys go in .env file, not here
+# ============================================================================
+llm:
+  provider: openai      # Primary LLM: openai, claude, gemini
+
+  # OpenAI models (active by default)
+  model: gpt-5-mini           # Primary OpenAI model
+  fallback_model: gpt-5       # Fallback OpenAI model
+
+  # For Claude (uncomment below and comment OpenAI models above):
+  # provider: claude
+  # model: claude-sonnet-4-20250514       # Primary Claude model
+  # fallback_model: claude-opus-4-1-20250805  # Fallback Claude model
+
+  # For Gemini (uncomment below and comment other models above):
+  # provider: gemini
+  # model: gemini-2.5-flash               # Primary Gemini model
+  # fallback_model: gemini-2.5-pro        # Fallback Gemini model
+
+  temperature: 0.1      # Low temperature = deterministic SQL generation
+  max_tokens: 2000      # Maximum response length from AI
+  timeout_seconds: 30   # API request timeout
+  fallback_enabled: true   # Use backup models if primary fails
+
+# ============================================================================
+# PIPELINE SAFETY & VALIDATION
+# Security settings to prevent dangerous operations
+# ============================================================================
+pipeline:
+  validation_required: true   # Always require human approval before execution
+  auto_execute: false         # Never auto-execute without user confirmation
+  max_sql_length: 10000       # Reject extremely long SQL queries
+  dangerous_keywords:         # Block destructive operations
+  - DROP
+  - DELETE
+  - TRUNCATE
+  - ALTER
+
+# ============================================================================
+# VALIDATION CONFIGURATION
+# Configuration validation modes and output formats (M0-Validation-4)
+# ============================================================================
+validate:
+  mode: warn            # Validation mode: strict, warn, off
+  json: false           # Output validation results in JSON format
+  show_effective: true  # Show effective configuration values and their sources
+
+# ============================================================================
+# VALIDATION RETRY CONFIGURATION
+# Pipeline validation retry settings (M1b.3 per ADR-0013)
+# ============================================================================
+validation:
+  retry:
+    max_attempts: 2           # Maximum retry attempts (0-5, 0 = strict mode)
+    include_history_in_hitl: true  # Show retry history in HITL prompts
+    history_limit: 3          # Max attempts to show in HITL history
+    diff_format: patch        # Diff format: "patch" or "summary"
+
+# ============================================================================
+# AIOP (AI Operation Package) CONFIGURATION
+# Precedence: CLI > Environment ($OSIRIS_AIOP_*) > Osiris.yaml > built-in defaults
+# AIOP: Structured export for LLMs (Narrative, Semantic, Evidence; Control in future)
+# ============================================================================
+aiop:
+  enabled: true            # Auto-generate AIOP after each run (even on failure)
+  policy: core             # core = Core only (LLM-friendly); annex = Core + NDJSON Annex; custom = Core + fine-tuning knobs
+  max_core_bytes: 300000   # Hard cap for Core size; deterministic truncation with markers when exceeded
+
+  # How many timeline events go into Core (Annex can still contain all)
+  timeline_density: medium # low = key events only; medium = + aggregated per-step metrics (default); high = all incl. debug
+  metrics_topk: 100        # Keep top-K metrics/steps in Core (errors/checks prioritized)
+  schema_mode: summary     # summary = names/relations/fingerprints; detailed = adds small schema/config excerpts (no secrets)
+  delta: previous          # previous = compare to last run of same pipeline@manifest_hash (first_run:true if none); none = disable
+  run_card: true           # Also write Markdown run-card for PR/Slack
+
+  output:
+    core_path: "logs/aiop/{session_id}/aiop.json"         # Where to write Core JSON
+    run_card_path: "logs/aiop/{session_id}/run-card.md"   # Where to write Markdown run-card
+
+  annex:
+    enabled: false         # Enable NDJSON Annex (timeline/metrics/errors shards)
+    dir: logs/aiop/annex   # Directory for Annex shards
+    compress: none         # none|gzip|zstd (applies to Annex only; Core is always uncompressed for readability)
+
+  # Path variable templating (for output paths)
+  path_vars:
+    ts_format: "%Y%m%d_%H%M%S"  # Timestamp format for {ts} variable
+    # Available variables in paths:
+    # {session_id} - Full session ID
+    # {ts} - Timestamp formatted with ts_format
+    # {manifest_hash} - Pipeline manifest hash
+    # {status} - Run status (success/failure)
+
+  # Index configuration (tracks all runs for delta analysis)
+  index:
+    enabled: true          # Enable index updates after each run
+    runs_jsonl: "logs/aiop/index/runs.jsonl"        # All runs chronologically
+    by_pipeline_dir: "logs/aiop/index/by_pipeline"  # Per-pipeline run history
+    latest_symlink: "logs/aiop/latest"              # Symlink to latest run
+
+  retention:
+    keep_runs: 50          # Keep last N Core files (optional)
+    annex_keep_days: 14    # Delete Annex shards older than N days (optional)
+
+  # Narrative layer configuration
+  narrative:
+    sources: [manifest, repo_readme, commit_message, discovery]  # default source list
+    session_chat:
+      enabled: false       # opt-in for chat logs (default: false)
+      mode: masked         # masked|quotes|off
+      max_chars: 2000      # truncation limit for chat logs
+      redact_pii: true     # PII removal before Annex inclusion

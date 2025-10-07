@@ -59,7 +59,8 @@ __pycache__/
 .pytest_cache/
 
 # Python packaging
-build/
+# NOTE: Contract v1 uses build/ for compiled artifacts (see below)
+# Python packaging build dir conflicts; use dist/ for packaging
 dist/
 *.egg-info/
 *.egg
@@ -103,9 +104,22 @@ Thumbs.db
 .env.local
 .env.*.local
 
-# Logs
-#*.log
+# Old Logs
 logs/
+
+# Filesystem Contract v1 (ADR-0028) - new directories
+run_logs/            # Per-run execution logs (ephemeral)
+aiop/**/annex/       # AIOP annex shards (optional to commit)
+.osiris/cache/       # Discovery/profiling cache
+.osiris/index/counters.sqlite  # Incremental run ID counters
+.osiris/index/counters.sqlite-wal
+.osiris/index/counters.sqlite-shm
+
+# build/ - Deterministic compiled artifacts (versionable, team decides to track or ignore)
+# Recommended: Track in Git for reproducibility, or add to .gitignore if too large
+# build/pipelines/  # Uncomment to ignore compiled manifests
+
+# Legacy logs/ directory removed per ADR-0028
 
 # Coverage reports
 htmlcov/

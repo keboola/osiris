@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- **Filesystem Contract v1** (ADR-0028) - **BREAKING: Legacy `./logs/**` layout removed**
+  - New directory structure separates concerns:
+    - `build/` - Deterministic compiled artifacts (versionable)
+    - `run_logs/` - User-facing per-run logs and temp artifacts (ephemeral)
+    - `aiop/` - Per-run AI Observability Packs (append-only)
+    - `.osiris/{sessions,cache,index}` - Internal state (hidden)
+  - Profile support: Enable `filesystem.profiles` in `osiris.yaml` to organize multi-environment workflows
+  - Configurable naming templates for manifest dirs, run dirs, and AIOP paths
+  - Run ID generation supports: incremental, ULID, ISO+ULID, UUIDv4, Snowflake (composable)
+  - Append-only run index in `.osiris/index/runs.jsonl` for fast querying
+  - Retention policies for `run_logs/` and AIOP annex cleanup via `osiris maintenance clean`
+
+### Added
+
+- **Core Modules** (ADR-0028)
+  - `osiris/core/fs_config.py` - Typed configuration models for filesystem contract
+  - `osiris/core/fs_paths.py` - FilesystemContract and TokenRenderer for path resolution
+  - `osiris/core/run_ids.py` - RunIdGenerator with SQLite-backed counter store
+  - `osiris/core/run_index.py` - RunIndexWriter/Reader for append-only run tracking
+  - `osiris/core/retention.py` - RetentionPlan for policy-based cleanup
+
+- **Tests** (ADR-0028)
+  - `tests/core/test_fs_config.py` - Configuration model validation
+  - `tests/core/test_fs_paths.py` - Token rendering and path resolution
+  - `tests/core/test_run_ids.py` - ID generation and counter concurrency
+  - `tests/regression/test_no_legacy_logs.py` - Guard against legacy `logs/` writes
+
+### Changed
+
+- **`.gitignore`** - Updated for Filesystem Contract v1:
+  - Added `run_logs/`, `aiop/**/annex/`, `.osiris/cache/`, `.osiris/index/counters.sqlite*`
+  - Removed legacy `logs/` pattern
+  - Note: `build/` for contract artifacts (team decides to track or ignore)
+
+### Migration Notes
+
+**Required Migration Steps:**
+1. Upgrade to Osiris version supporting Filesystem Contract v1
+2. Update `osiris.yaml` with filesystem configuration (see ADR-0028 for schema)
+3. Re-compile pipelines to populate `build/` directory
+4. Verify artifacts appear in correct directories (build/, run_logs/, aiop/)
+5. Optional: Commit `build/` artifacts per team policy
+
+**No Backward Compatibility:**
+- Legacy `./logs/**` paths are no longer written or read
+- CLI commands use new contract paths exclusively
+- Sessions from previous versions are not automatically migrated
+
+**References:**
+- ADR-0028: Filesystem Contract v1 & Minimal Git Helpers
+- Milestone: `docs/milestones/filesystem-contract.md`
+
 ## [0.3.5] - 2025-10-07
 
 ### Added
