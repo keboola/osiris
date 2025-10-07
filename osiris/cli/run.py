@@ -1,16 +1,15 @@
 """CLI command for running pipelines (OML or compiled manifests) with Rich formatting."""
 
-import datetime
 import json
 import os
+from pathlib import Path
 import shutil
 import sys
 import time
-from pathlib import Path
 from typing import Any
 
-import yaml
 from rich.console import Console
+import yaml
 
 from ..core.adapter_factory import get_execution_adapter
 from ..core.aiop_export import export_aiop_auto
@@ -74,10 +73,10 @@ def show_run_help(json_output: bool = False):
             },
             "examples": [
                 "osiris run pipeline.yaml",
-                "osiris run compiled/manifest.yaml",
+                "osiris run build/pipelines/dev/orders/manifest.yaml",
                 "osiris run pipeline.yaml --profile prod",
                 "osiris run --last-compile",
-                "osiris run --last-compile-in logs/",
+                "osiris run --last-compile-in orders_etl",
                 "osiris run pipeline.yaml --param db=mydb --out /tmp/results",
             ],
         }
@@ -128,7 +127,7 @@ def show_run_help(json_output: bool = False):
     console.print("  [green]osiris run pipeline.yaml[/green]")
     console.print()
     console.print("  [dim]# Run pre-compiled manifest[/dim]")
-    console.print("  [green]osiris run logs/compile_123/compiled/manifest.yaml[/green]")
+    console.print("  [green]osiris run build/pipelines/dev/orders/manifest.yaml[/green]")
     console.print()
     console.print("  [dim]# Run last compiled manifest[/dim]")
     console.print("  [green]osiris compile pipeline.yaml[/green]")
@@ -138,55 +137,55 @@ def show_run_help(json_output: bool = False):
     console.print("  [green]osiris run pipeline.yaml --profile prod --param db=prod_db[/green]")
     console.print()
 
-    console.print("[bold blue]📂 Session Structure[/bold blue]")
-    console.print("  [cyan]logs/run_<timestamp>/[/cyan]")
+    console.print("[bold blue]📂 Run Logs Structure[/bold blue]")
+    console.print("  [cyan]run_logs/[{profile}/]{pipeline}/{ts}_{run_id}-{hash}/[/cyan]")
     console.print("  ├── osiris.log         # Full execution logs")
     console.print("  ├── events.jsonl       # Structured events")
-    console.print("  ├── compiled/          # If OML input")
-    console.print("  │   └── manifest.yaml")
+    console.print("  ├── metrics.jsonl      # Performance metrics")
     console.print("  └── artifacts/         # Execution outputs")
     console.print()
 
 
-def find_last_compile_manifest(logs_dir: str | None = None) -> str | None:
-    """Find the manifest from the last successful compile.
+def find_last_compile_manifest(pipeline_slug: str | None = None, profile: str | None = None) -> str | None:
+    """Find the manifest from the last successful compile using FilesystemContract.
 
     Args:
-        logs_dir: Directory to search for compile sessions. If None, uses logs/.last_compile.json
+        pipeline_slug: Specific pipeline slug to find. If None, uses global latest.
+        profile: Profile name for filtering
 
     Returns:
         Path to manifest.yaml or None if not found
     """
-    if logs_dir:
-        # Find latest compile_* session in specified directory
-        logs_path = Path(logs_dir)
-        if not logs_path.exists():
+    from ..core.fs_config import load_osiris_config
+    from ..core.fs_paths import FilesystemContract
+
+    try:
+        # Load filesystem contract
+        fs_config, ids_config, _ = load_osiris_config()
+        contract = FilesystemContract(fs_config, ids_config)
+        index_paths = contract.index_paths()
+
+        # Determine which latest pointer to use
+        if pipeline_slug:
+            # Per-pipeline latest pointer
+            latest_file = index_paths["latest"] / f"{pipeline_slug}.txt"
+        else:
+            # Global latest compile pointer
+            latest_file = index_paths["base"] / "last_compile.txt"
+
+        if not latest_file.exists():
             return None
 
-        compile_sessions = []
-        for session_dir in logs_path.iterdir():
-            if session_dir.is_dir() and session_dir.name.startswith("compile_"):
-                # Check if it has a compiled manifest
-                manifest_path = session_dir / "compiled" / "manifest.yaml"
-                if manifest_path.exists():
-                    compile_sessions.append((session_dir.stat().st_mtime, str(manifest_path)))
+        # Read pointer (format: manifest_path on first line)
+        with open(latest_file) as f:
+            manifest_path_str = f.readline().strip()
 
-        if compile_sessions:
-            # Return the most recent one
-            compile_sessions.sort(reverse=True)
-            return compile_sessions[0][1]
-    else:
-        # Use the pointer file
-        pointer_file = Path("logs") / ".last_compile.json"
-        if pointer_file.exists():
-            try:
-                with open(pointer_file) as f:
-                    pointer_data = json.load(f)
-                manifest_path = pointer_data.get("manifest_path")
-                if manifest_path and Path(manifest_path).exists():
-                    return manifest_path
-            except (json.JSONDecodeError, KeyError):
-                pass
+        if manifest_path_str and Path(manifest_path_str).exists():
+            return manifest_path_str
+
+    except Exception:
+        # Fallback: try to find any manifest in build/
+        pass
 
     return None
 
@@ -404,8 +403,9 @@ def run_command(args: list[str]):
                 console.print(f"[red]❌ {error_msg}[/red]")
             sys.exit(2)
 
-        # Find the last compile manifest
-        pipeline_file = find_last_compile_manifest(last_compile_in)
+        # Find the last compile manifest using FilesystemContract pointers
+        # last_compile_in is treated as pipeline_slug if provided
+        pipeline_file = find_last_compile_manifest(pipeline_slug=last_compile_in, profile=profile)
 
         if not pipeline_file:
             # Try environment variable as fallback
@@ -415,15 +415,15 @@ def run_command(args: list[str]):
             if not pipeline_file:
                 error_msg = "No recent compile found"
                 if last_compile_in:
-                    error_msg += f" in {last_compile_in}"
+                    error_msg += f" for pipeline '{last_compile_in}'"
                 else:
-                    error_msg += " (no logs/.last_compile.json found)"
+                    error_msg += " (check .osiris/index/latest/ or run 'osiris compile' first)"
 
                 if use_json:
                     print(json.dumps({"error": error_msg}))
                 else:
                     console.print(f"[red]❌ {error_msg}[/red]")
-                    console.print("[dim]💡 Run 'osiris compile' first to create a manifest[/dim]")
+                    console.print("[dim]💡 Run 'osiris compile <pipeline>' first to create a manifest[/dim]")
                 sys.exit(2)
 
         # Force this to be treated as a manifest
@@ -451,9 +451,24 @@ def run_command(args: list[str]):
         # Detect file type
         file_type = detect_file_type(pipeline_file)
 
-    # Create a run session
+    # Load FilesystemContract for session creation
+    from ..core.fs_config import load_osiris_config
+    from ..core.fs_paths import FilesystemContract
+    from ..core.run_ids import RunIdGenerator
+    from ..core.run_index import RunIndexWriter
+
+    fs_config, ids_config, _ = load_osiris_config()
+    contract = FilesystemContract(fs_config, ids_config)
+
+    # Generate run ID (will be updated with pipeline_slug after we know it)
+    run_id_gen = RunIdGenerator(
+        formats=ids_config.run_id_format if isinstance(ids_config.run_id_format, list) else [ids_config.run_id_format],
+        counter_db=contract.index_paths()["counters"],
+    )
+
+    # Temporary session (we'll create proper one after knowing pipeline_slug)
     session_id = f"run_{int(time.time() * 1000)}"
-    session = SessionContext(session_id=session_id, base_logs_dir=Path("logs"))
+    session = SessionContext(session_id=session_id, base_logs_dir=Path("run_logs"))
     set_current_session(session)
 
     # Log loaded env files (masked paths)
@@ -502,8 +517,14 @@ def run_command(args: list[str]):
             log_event("compile_start", pipeline=pipeline_file)
             compile_start = time.time()
 
+            # Extract pipeline slug from OML
+            with open(pipeline_file) as f:
+                oml_data = yaml.safe_load(f)
+            pipeline_slug = oml_data.get("pipeline", {}).get("id", Path(pipeline_file).stem)
+
+            # Use FilesystemContract for compilation
             session_compiled_dir.mkdir(parents=True, exist_ok=True)
-            compiler = CompilerV0(output_dir=str(session_compiled_dir))
+            compiler = CompilerV0(fs_contract=contract, pipeline_slug=pipeline_slug)
             compile_success, compile_message = compiler.compile(
                 oml_path=pipeline_file, profile=profile, cli_params=params
             )
@@ -525,13 +546,13 @@ def run_command(args: list[str]):
                                 "phase": "compile",
                                 "message": compile_message,
                                 "session_id": session_id,
-                                "session_dir": f"logs/{session_id}",
+                                "session_dir": str(session.session_dir),
                             }
                         )
                     )
                 else:
                     console.print(f"[red]❌ Compilation failed: {compile_message}[/red]")
-                    console.print(f"[dim]Session: logs/{session_id}/[/dim]")
+                    console.print(f"[dim]Session: {session.session_dir}/[/dim]")
                 sys.exit(2)
 
             log_event("compile_complete", message=compile_message, duration=compile_duration)
@@ -593,6 +614,37 @@ def run_command(args: list[str]):
         if execute_success:
             log_event("run_complete", total_duration=total_duration, adapter_execution=True)
 
+            # Extract pipeline info for index
+            pipeline_slug_final = manifest_data.get("pipeline", {}).get("id", "unknown")
+            manifest_hash = manifest_data.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp", "")
+            manifest_short = manifest_hash[:7] if manifest_hash else ""
+
+            # Write to run index
+            try:
+                from datetime import datetime
+
+                run_id_final = run_id_gen.generate(pipeline_slug_final)
+
+                index_writer = RunIndexWriter(contract)
+                index_writer.append(
+                    run_id=run_id_final,
+                    pipeline_slug=pipeline_slug_final,
+                    profile=profile or fs_config.profiles.default if fs_config.profiles.enabled else None,
+                    manifest_hash=manifest_hash,
+                    manifest_short=manifest_short,
+                    run_ts=datetime.utcnow(),
+                    status="success",
+                    duration_ms=int(total_duration * 1000),
+                    run_logs_path=str(session.session_dir),
+                    aiop_path="",  # Will be populated by AIOP export
+                    build_manifest_path=str(manifest_path),
+                    tags=[],
+                )
+                log_event("run_index_updated", run_id=run_id_final)
+            except Exception as e:
+                # Best-effort, don't fail the run
+                log_event("run_index_error", error=str(e))
+
             if not use_json:
                 console.print("[green]✓[/green]")
 
@@ -603,18 +655,18 @@ def run_command(args: list[str]):
                     "status": "success",
                     "message": f"Pipeline executed successfully ({execution_type})",
                     "session_id": session_id,
-                    "session_dir": f"logs/{session_id}",
-                    "artifacts_dir": output_dir if output_dir else f"logs/{session_id}/artifacts",
+                    "session_dir": str(session.session_dir),
+                    "artifacts_dir": output_dir if output_dir else str(session.session_dir / "artifacts"),
                     "execution_type": execution_type,
                     "duration": {"total": round(total_duration, 2)},
                 }
                 if file_type == "oml":
                     result["duration"]["compile"] = round(compile_duration, 2)
-                    result["compiled_dir"] = f"logs/{session_id}/compiled"
+                    result["compiled_dir"] = str(session.session_dir / "compiled")
                 print(json.dumps(result))
             else:
                 console.print(f"[green]✓ Pipeline completed ({execution_type})[/green]")
-                console.print(f"Session: logs/{session_id}/")
+                console.print(f"Session: {session.session_dir}/")
                 if output_dir:
                     console.print(f"Artifacts copied to: {output_dir}/")
 
@@ -633,13 +685,13 @@ def run_command(args: list[str]):
                             "phase": "execute",
                             "message": error_message or "Pipeline execution failed",
                             "session_id": session_id,
-                            "session_dir": f"logs/{session_id}",
+                            "session_dir": str(session.session_dir),
                         }
                     )
                 )
             else:
                 console.print(f"[red]❌ {error_message or 'Pipeline execution failed'}[/red]")
-                console.print(f"Session: logs/{session_id}/")
+                console.print(f"Session: {session.session_dir}/")
 
             sys.exit(1)
 
@@ -658,13 +710,13 @@ def run_command(args: list[str]):
                         "status": "error",
                         "message": error_msg,
                         "session_id": session_id,
-                        "session_dir": f"logs/{session_id}",
+                        "session_dir": str(session.session_dir),
                     }
                 )
             )
         else:
             console.print(f"[red]❌ {error_msg}[/red]")
-            console.print(f"Session: logs/{session_id}/")
+            console.print(f"Session: {session.session_dir}/")
 
         sys.exit(1)
 
