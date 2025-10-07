@@ -1,7 +1,7 @@
 """Tests for OML metadata propagation through compilation to AIOP."""
 
-import tempfile
 from pathlib import Path
+import tempfile
 from unittest.mock import patch
 
 import yaml
@@ -38,14 +38,32 @@ class TestCompilerMetadataPropagation:
             with open(oml_path, "w") as f:
                 yaml.dump(oml_content, f)
 
+            # Create a filesystem contract for testing
+            from osiris.core.fs_config import FilesystemConfig, IdsConfig
+            from osiris.core.fs_paths import FilesystemContract
+
+            fs_config = FilesystemConfig(
+                base_path=str(tmpdir),
+                build_dir="build",
+                profiles={"enabled": False},  # Disable profiles for simpler test
+            )
+            ids_config = IdsConfig()
+            fs_contract = FilesystemContract(fs_config, ids_config)
+
             # Compile OML
-            compiler = CompilerV0(output_dir=str(Path(tmpdir) / "compiled"))
+            compiler = CompilerV0(fs_contract=fs_contract, pipeline_slug="test_pipeline")
             success, message = compiler.compile(str(oml_path))
 
             assert success, f"Compilation failed: {message}"
 
-            # Load compiled manifest
-            manifest_path = Path(tmpdir) / "compiled" / "manifest.yaml"
+            # Load compiled manifest - get path from filesystem contract
+            manifest_paths = fs_contract.manifest_paths(
+                pipeline_slug="test_pipeline",
+                manifest_hash=compiler.manifest_hash,
+                manifest_short=compiler.manifest_short,
+                profile=None,
+            )
+            manifest_path = manifest_paths["manifest"]
             assert manifest_path.exists()
 
             with open(manifest_path) as f:
