@@ -3,8 +3,8 @@
 import datetime
 import gzip
 import json
-import shutil
 from pathlib import Path
+import shutil
 from typing import Any
 
 from .config import render_path, resolve_aiop_config
@@ -15,6 +15,11 @@ def export_aiop_auto(
     manifest_hash: str | None = None,
     status: str = "completed",
     end_time: datetime.datetime | None = None,
+    fs_contract=None,
+    pipeline_slug: str | None = None,
+    profile: str | None = None,
+    run_id: str | None = None,
+    manifest_short: str | None = None,
 ) -> tuple[bool, str | None]:
     """Automatically export AIOP at the end of a run.
 
@@ -23,6 +28,11 @@ def export_aiop_auto(
         manifest_hash: Hash of the manifest (if available)
         status: Run status (completed, failed, partial)
         end_time: End time of the run
+        fs_contract: Optional FilesystemContract for path resolution
+        pipeline_slug: Pipeline identifier
+        profile: Profile name
+        run_id: Run identifier
+        manifest_short: Short manifest hash
 
     Returns:
         Tuple of (success, error_message)
@@ -36,23 +46,33 @@ def export_aiop_auto(
         if not config.get("enabled", True):
             return True, None
 
-        # Build context for path templating
-        ts = end_time or datetime.datetime.utcnow()
-        ctx = {
-            "session_id": session_id,
-            "ts": ts,
-            "manifest_hash": manifest_hash or "unknown",
-            "status": status,
-        }
-
-        # Get ts_format from config
-        ts_format = config.get("path_vars", {}).get("ts_format", "%Y%m%d-%H%M%S")
-
-        # Render output paths
-        core_path = render_path(config["output"]["core_path"], ctx, ts_format)
-        run_card_path = None
-        if config.get("run_card", True):
-            run_card_path = render_path(config["output"]["run_card_path"], ctx, ts_format)
+        # Get output paths from filesystem contract if available
+        if fs_contract and pipeline_slug and run_id and manifest_hash and manifest_short:
+            paths = fs_contract.aiop_paths(
+                pipeline_slug=pipeline_slug,
+                manifest_hash=manifest_hash,
+                manifest_short=manifest_short,
+                run_id=run_id,
+                profile=profile,
+            )
+            core_path = str(paths["summary"])
+            run_card_path = str(paths["run_card"]) if config.get("run_card", True) else None
+            annex_dir = paths["annex"] if config.get("annex", {}).get("enabled", False) else None
+        else:
+            # Legacy path mode - DEPRECATED
+            ts = end_time or datetime.datetime.utcnow()
+            ctx = {
+                "session_id": session_id,
+                "ts": ts,
+                "manifest_hash": manifest_hash or "unknown",
+                "status": status,
+            }
+            ts_format = config.get("path_vars", {}).get("ts_format", "%Y%m%d-%H%M%S")
+            core_path = render_path(config["output"]["core_path"], ctx, ts_format)
+            run_card_path = None
+            if config.get("run_card", True):
+                run_card_path = render_path(config["output"]["run_card_path"], ctx, ts_format)
+            annex_dir = None
 
         # Create parent directories
         Path(core_path).parent.mkdir(parents=True, exist_ok=True)

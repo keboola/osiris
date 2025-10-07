@@ -1,11 +1,11 @@
 """CLI command for compiling OML to manifest with Rich formatting."""
 
+from datetime import datetime
 import json
+from pathlib import Path
 import shutil
 import sys
 import time
-from datetime import datetime
-from pathlib import Path
 
 from rich.console import Console
 
@@ -267,12 +267,18 @@ def compile_command(args: list[str]):
             console.print(f"[cyan]🔧 Compiling {pipeline_file}...[/cyan]")
             console.print(f"[dim]📁 Session: logs/{session_id}/[/dim]")
 
-        # Determine session output directory
-        session_output_dir = session.session_dir / "compiled"
-        session_output_dir.mkdir(parents=True, exist_ok=True)
+        # Load filesystem contract
+        from ..core.fs_config import load_osiris_config
+        from ..core.fs_paths import FilesystemContract
 
-        # Use session directory for compilation
-        compiler = CompilerV0(output_dir=str(session_output_dir))
+        fs_config, ids_config, _ = load_osiris_config()
+        fs_contract = FilesystemContract(fs_config, ids_config)
+
+        # Extract pipeline slug from filename
+        pipeline_slug = Path(pipeline_file).stem
+
+        # Use filesystem contract for compilation
+        compiler = CompilerV0(fs_contract=fs_contract, pipeline_slug=pipeline_slug)
         success, message = compiler.compile(
             oml_path=pipeline_file, profile=profile, cli_params=params, compile_mode=compile_mode
         )
@@ -285,34 +291,33 @@ def compile_command(args: list[str]):
             # Log successful compilation
             log_event("compile_complete", message=message, duration=duration)
 
-            # Write pointer files for successful compilation
-            pointer_data = {
-                "session_id": session_id,
-                "manifest_path": f"logs/{session_id}/compiled/manifest.yaml",
-                "compiled_dir": f"logs/{session_id}/compiled",
-                "generated_at": datetime.utcnow().isoformat() + "Z",
-            }
+            # Write to index
+            from ..core.run_index import RunIndexWriter
 
-            # Write session-specific pointer
-            session_pointer_file = session.session_dir / ".last.json"
-            with open(session_pointer_file, "w") as f:
-                json.dump(pointer_data, f, indent=2)
+            index_paths = fs_contract.index_paths()
+            index_writer = RunIndexWriter(index_paths["base"])
 
-            # Write global pointer
-            global_pointer_file = Path("logs") / ".last_compile.json"
-            with open(global_pointer_file, "w") as f:
-                json.dump(pointer_data, f, indent=2)
+            # Write latest manifest pointer
+            index_writer.write_latest_manifest(
+                pipeline_slug=pipeline_slug,
+                profile=profile,
+                manifest_hash=compiler.manifest_hash,
+                manifest_path=str(
+                    fs_contract.manifest_paths(
+                        pipeline_slug=pipeline_slug,
+                        manifest_hash=compiler.manifest_hash,
+                        manifest_short=compiler.manifest_short,
+                        profile=profile,
+                    )["manifest"]
+                ),
+            )
 
-            # If user specified --out, copy artifacts there too
-            if output_dir != "compiled":
-                user_output_dir = Path(output_dir)
-                user_output_dir.mkdir(parents=True, exist_ok=True)
-                # Copy compiled artifacts to user-specified location
-                for item in session_output_dir.iterdir():
-                    if item.is_file():
-                        shutil.copy2(item, user_output_dir / item.name)
-                    elif item.is_dir():
-                        shutil.copytree(item, user_output_dir / item.name, dirs_exist_ok=True)
+            manifest_path = fs_contract.manifest_paths(
+                pipeline_slug=pipeline_slug,
+                manifest_hash=compiler.manifest_hash,
+                manifest_short=compiler.manifest_short,
+                profile=profile,
+            )["manifest"]
 
             if use_json:
                 print(
@@ -321,22 +326,19 @@ def compile_command(args: list[str]):
                             "status": "success",
                             "message": message,
                             "session_id": session_id,
-                            "session_dir": f"logs/{session_id}",
-                            "output_dir": (output_dir if output_dir != "compiled" else f"logs/{session_id}/compiled"),
-                            "manifest": (
-                                f"{output_dir}/manifest.yaml"
-                                if output_dir != "compiled"
-                                else f"logs/{session_id}/compiled/manifest.yaml"
-                            ),
+                            "manifest_path": str(manifest_path),
+                            "manifest_hash": compiler.manifest_hash,
+                            "manifest_short": compiler.manifest_short,
+                            "pipeline_slug": pipeline_slug,
+                            "profile": profile,
                         }
                     )
                 )
             else:
-                console.print(f"[green]✅ {message}[/green]")
-                console.print(f"[dim]📁 Session: logs/{session_id}/[/dim]")
-                if output_dir != "compiled":
-                    console.print(f"[dim]📁 Output: {output_dir}/[/dim]")
-                console.print(f"[dim]📄 Manifest: logs/{session_id}/compiled/manifest.yaml[/dim]")
+                console.print(f"[green]✅ Compilation successful[/green]")
+                console.print(f"[dim]📁 Build path: {manifest_path.parent}/[/dim]")
+                console.print(f"[dim]📄 Manifest: {manifest_path}[/dim]")
+                console.print(f"[dim]🔐 Hash: {compiler.manifest_short}[/dim]")
             sys.exit(0)
         else:
             # Log compilation error

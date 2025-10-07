@@ -257,6 +257,69 @@ class RunIndexReader:
 
         return None
 
+    def query_runs(
+        self,
+        pipeline_slug: str | None = None,
+        profile: str | None = None,
+        tag: str | None = None,
+        since: datetime | None = None,
+        limit: int = 100,
+    ) -> list[RunRecord]:
+        """Query runs with multiple filters.
+
+        Args:
+            pipeline_slug: Filter by pipeline slug
+            profile: Filter by profile
+            tag: Filter by tag
+            since: Filter by start time (runs started after this time)
+            limit: Maximum number of runs to return
+
+        Returns:
+            List of matching run records (newest first)
+        """
+        records = []
+
+        # Choose index file
+        if pipeline_slug:
+            index_file = self.by_pipeline_dir / f"{pipeline_slug}.jsonl"
+        else:
+            index_file = self.runs_jsonl
+
+        if not index_file.exists():
+            return []
+
+        # Read records
+        with open(index_file) as f:
+            for line in f:
+                if line.strip():
+                    record_dict = json.loads(line)
+
+                    # Apply filters
+                    if profile and record_dict.get("profile") != profile:
+                        continue
+
+                    if tag:
+                        tags = record_dict.get("tags", [])
+                        if tag not in tags:
+                            continue
+
+                    if since:
+                        run_ts = record_dict.get("run_ts", "")
+                        if run_ts:
+                            try:
+                                run_time = datetime.fromisoformat(run_ts.replace("Z", "+00:00"))
+                                if run_time < since:
+                                    continue
+                            except ValueError:
+                                continue
+
+                    record = RunRecord(**record_dict)
+                    records.append(record)
+
+        # Sort newest first and limit
+        records.reverse()
+        return records[:limit]
+
 
 def latest_manifest_path(index_dir: Path, pipeline_slug: str) -> Path | None:
     """Get path to latest compiled manifest for a pipeline.

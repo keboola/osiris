@@ -38,15 +38,13 @@ COMMON_SECRET_NAMES = {
 class CompilerV0:
     """Minimal compiler for linear pipelines only."""
 
-    def __init__(self, output_dir: str = "compiled", fs_contract=None, pipeline_slug: str | None = None):
+    def __init__(self, fs_contract, pipeline_slug: str):
         """Initialize compiler.
 
         Args:
-            output_dir: Legacy output directory (used if fs_contract not provided)
-            fs_contract: FilesystemContract instance for path resolution
-            pipeline_slug: Pipeline slug for building paths
+            fs_contract: FilesystemContract instance for path resolution (required)
+            pipeline_slug: Pipeline slug for building paths (required)
         """
-        self.output_dir = Path(output_dir)
         self.fs_contract = fs_contract
         self.pipeline_slug = pipeline_slug
         self.manifest_hash = None
@@ -140,7 +138,7 @@ class CompilerV0:
             # Write outputs
             self._write_outputs(manifest, configs, resolved_oml, profile)
 
-            return True, f"Compilation successful: {self.output_dir}"
+            return True, f"Compilation successful: {manifest['meta'].get('manifest_hash', 'unknown')[:7]}"
 
         except Exception as e:
             return False, f"Compilation failed: {str(e)}"
@@ -404,44 +402,35 @@ class CompilerV0:
 
     def _write_outputs(self, manifest: dict, configs: dict, oml: dict, profile: str | None):
         """Write all compilation outputs."""
-        # Compute manifest hash if using filesystem contract
-        if self.fs_contract:
-            from .fs_paths import compute_manifest_hash
+        from .fs_paths import compute_manifest_hash
 
-            self.manifest_hash = compute_manifest_hash(
-                manifest, self.fs_contract.ids_config.manifest_hash_algo, profile
-            )
-            self.manifest_short = self.manifest_hash[: self.fs_contract.fs_config.naming.manifest_short_len]
+        # Compute manifest hash
+        self.manifest_hash = compute_manifest_hash(manifest, self.fs_contract.ids_config.manifest_hash_algo, profile)
+        self.manifest_short = self.manifest_hash[: self.fs_contract.fs_config.naming.manifest_short_len]
 
-            # Get paths from filesystem contract
-            paths = self.fs_contract.manifest_paths(
-                pipeline_slug=self.pipeline_slug or "unknown",
-                manifest_hash=self.manifest_hash,
-                manifest_short=self.manifest_short,
-                profile=profile,
-            )
+        # Get paths from filesystem contract
+        paths = self.fs_contract.manifest_paths(
+            pipeline_slug=self.pipeline_slug,
+            manifest_hash=self.manifest_hash,
+            manifest_short=self.manifest_short,
+            profile=profile,
+        )
 
-            # Use contract paths
-            output_dir = paths["base"]
-            manifest_path = paths["manifest"]
-            cfg_dir = paths["cfg_dir"]
-
-            # Also write plan.json and fingerprints.json per contract
-            plan_path = paths["plan"]
-            fingerprints_path = paths["fingerprints"]
-            run_summary_path = paths["run_summary"]
-        else:
-            # Legacy output_dir mode
-            output_dir = self.output_dir
-            manifest_path = output_dir / "manifest.yaml"
-            cfg_dir = output_dir / "cfg"
-            plan_path = None
-            fingerprints_path = None
-            run_summary_path = None
+        # Use contract paths
+        output_dir = paths["base"]
+        manifest_path = paths["manifest"]
+        cfg_dir = paths["cfg_dir"]
+        plan_path = paths["plan"]
+        fingerprints_path = paths["fingerprints"]
+        run_summary_path = paths["run_summary"]
 
         # Create output directory
         output_dir.mkdir(parents=True, exist_ok=True)
         cfg_dir.mkdir(exist_ok=True)
+
+        # Add manifest metadata
+        manifest["meta"]["manifest_hash"] = self.manifest_hash
+        manifest["meta"]["manifest_short"] = self.manifest_short
 
         # Write manifest.yaml
         with open(manifest_path, "w") as f:
@@ -453,53 +442,37 @@ class CompilerV0:
             with open(config_path, "w") as f:
                 f.write(canonical_json(config))
 
-        # Write additional artifacts based on contract
-        if self.fs_contract and self.fs_contract.fs_config.artifacts:
-            # Write plan.json
-            if self.fs_contract.fs_config.artifacts.plan and plan_path:
-                with open(plan_path, "w") as f:
-                    # Simple plan: list of steps
-                    plan = {"steps": [{"id": step["id"], "driver": step["driver"]} for step in manifest["steps"]]}
-                    f.write(canonical_json(plan))
+        # Write additional artifacts based on contract configuration
+        if self.fs_contract.fs_config.artifacts.plan:
+            with open(plan_path, "w") as f:
+                # Simple plan: list of steps
+                plan = {"steps": [{"id": step["id"], "driver": step["driver"]} for step in manifest["steps"]]}
+                f.write(canonical_json(plan))
 
-            # Write fingerprints.json
-            if self.fs_contract.fs_config.artifacts.fingerprints and fingerprints_path:
-                with open(fingerprints_path, "w") as f:
-                    f.write(canonical_json({"fingerprints": self.fingerprints}))
+        if self.fs_contract.fs_config.artifacts.fingerprints:
+            with open(fingerprints_path, "w") as f:
+                f.write(canonical_json({"fingerprints": self.fingerprints}))
 
-            # Write run_summary.json
-            if self.fs_contract.fs_config.artifacts.run_summary and run_summary_path:
-                with open(run_summary_path, "w") as f:
-                    f.write(
-                        canonical_json(
-                            {
-                                "profile": profile,
-                                "oml_version": oml.get("oml_version", "0.1.0"),
-                                "compiled_at": datetime.utcnow().isoformat() + "Z",
-                                "manifest_hash": self.manifest_hash,
-                                "manifest_short": self.manifest_short,
-                                "pipeline_slug": self.pipeline_slug,
-                            }
-                        )
-                    )
-        else:
-            # Legacy mode: write meta.json and effective_config.json
-            meta_path = output_dir / "meta.json"
-            with open(meta_path, "w") as f:
+        if self.fs_contract.fs_config.artifacts.run_summary:
+            with open(run_summary_path, "w") as f:
                 f.write(
                     canonical_json(
                         {
-                            "fingerprints": self.fingerprints,
                             "profile": profile,
                             "oml_version": oml.get("oml_version", "0.1.0"),
                             "compiled_at": datetime.utcnow().isoformat() + "Z",
+                            "manifest_hash": self.manifest_hash,
+                            "manifest_short": self.manifest_short,
+                            "pipeline_slug": self.pipeline_slug,
                         }
                     )
                 )
 
-            config_path = output_dir / "effective_config.json"
-            with open(config_path, "w") as f:
-                f.write(canonical_json({"params": self.resolver.get_effective_params(), "profile": profile}))
+        # Write LATEST symlink
+        latest_path = output_dir.parent / "LATEST"
+        if latest_path.is_symlink() or latest_path.exists():
+            latest_path.unlink()
+        latest_path.symlink_to(output_dir.name)
 
     def _has_driver(self, component_name: str) -> bool:
         """Check if a component has a runtime driver.

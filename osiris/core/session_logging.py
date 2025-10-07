@@ -19,16 +19,16 @@ This module implements per-session logging directories with structured events,
 metrics, and artifact collection for better debugging and audit capabilities.
 """
 
+from contextlib import suppress
+from datetime import UTC, datetime
 import json
 import logging
+from pathlib import Path
 import sys
 import tempfile
 import time
-import uuid
-from contextlib import suppress
-from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
+import uuid
 
 from .redaction import create_redactor
 
@@ -42,33 +42,70 @@ class SessionContext:
         base_logs_dir: Path | None = None,
         allowed_events: list[str] | None = None,
         privacy_level: str | None = None,
+        fs_contract=None,
+        pipeline_slug: str | None = None,
+        profile: str | None = None,
+        run_id: str | None = None,
+        run_ts: datetime | None = None,
+        manifest_short: str | None = None,
     ):
         """Initialize session context.
 
         Args:
             session_id: Unique session identifier. Generated if None.
-            base_logs_dir: Base directory for logs. Defaults to ./logs/
+            base_logs_dir: Base directory for logs (only used if fs_contract not provided).
             allowed_events: List of event types to log. Use ["*"] or None for all events.
             privacy_level: Privacy level for redaction (standard or strict). Uses env var if None.
+            fs_contract: Optional FilesystemContract for path resolution.
+            pipeline_slug: Pipeline identifier (used with fs_contract).
+            profile: Profile name (used with fs_contract).
+            run_id: Run identifier (used with fs_contract).
+            run_ts: Run timestamp (used with fs_contract).
+            manifest_short: Short manifest hash (used with fs_contract).
         """
         self.session_id = session_id or self._generate_session_id()
-        self.base_logs_dir = base_logs_dir or Path("logs")
-        self.session_dir = self.base_logs_dir / self.session_id
         self.start_time = datetime.now(UTC)
         self.redactor = create_redactor(privacy_level)
+        self.fs_contract = fs_contract
 
         # Event filtering: None or ["*"] means log all events
         self.allowed_events = allowed_events or ["*"]
 
-        # File paths
-        self.osiris_log = self.session_dir / "osiris.log"
-        self.debug_log = self.session_dir / "debug.log"
-        self.events_log = self.session_dir / "events.jsonl"
-        self.metrics_log = self.session_dir / "metrics.jsonl"
-        self.manifest_file = self.session_dir / "manifest.json"
-        self.config_file = self.session_dir / "cfg.json"
-        self.fingerprints_file = self.session_dir / "fingerprints.json"
-        self.artifacts_dir = self.session_dir / "artifacts"
+        # Set up paths based on whether we have a filesystem contract
+        if fs_contract and pipeline_slug and run_id and manifest_short:
+            # Use filesystem contract paths
+            paths = fs_contract.run_log_paths(
+                pipeline_slug=pipeline_slug,
+                run_id=run_id,
+                run_ts=run_ts or self.start_time,
+                manifest_short=manifest_short,
+                profile=profile,
+            )
+            self.session_dir = paths["base"]
+            self.osiris_log = paths["osiris_log"]
+            self.debug_log = paths["debug_log"]
+            self.events_log = paths["events"]
+            self.metrics_log = paths["metrics"]
+            self.artifacts_dir = paths["artifacts"]
+
+            # These don't have specific paths in contract, put in session dir
+            self.manifest_file = self.session_dir / "manifest.json"
+            self.config_file = self.session_dir / "cfg.json"
+            self.fingerprints_file = self.session_dir / "fingerprints.json"
+        else:
+            # Legacy path mode - DEPRECATED, will be removed
+            self.base_logs_dir = base_logs_dir or Path("run_logs")  # Changed default from logs to run_logs
+            self.session_dir = self.base_logs_dir / self.session_id
+
+            # File paths
+            self.osiris_log = self.session_dir / "osiris.log"
+            self.debug_log = self.session_dir / "debug.log"
+            self.events_log = self.session_dir / "events.jsonl"
+            self.metrics_log = self.session_dir / "metrics.jsonl"
+            self.manifest_file = self.session_dir / "manifest.json"
+            self.config_file = self.session_dir / "cfg.json"
+            self.fingerprints_file = self.session_dir / "fingerprints.json"
+            self.artifacts_dir = self.session_dir / "artifacts"
 
         # Logging handlers
         self._handlers: list[logging.Handler] = []

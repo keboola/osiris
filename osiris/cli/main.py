@@ -198,7 +198,9 @@ def main():
     elif args.command == "run":
         run_command(command_args)
     elif args.command == "runs":
-        runs_command(command_args)  # deprecated
+        from .runs import runs_command
+
+        runs_command(command_args)
     elif args.command == "logs":
         logs_command(command_args)
     elif args.command == "test":

@@ -1,10 +1,10 @@
 """Minimal local runner for compiled manifests."""
 
+from datetime import datetime
 import json
 import logging
-import time
-from datetime import datetime
 from pathlib import Path
+import time
 from typing import Any
 
 import yaml
@@ -20,15 +20,17 @@ logger = logging.getLogger(__name__)
 class RunnerV0:
     """Minimal sequential runner for linear pipelines."""
 
-    def __init__(self, manifest_path: str, output_dir: str):
-        """Initialize runner with required session-scoped output directory.
+    def __init__(self, manifest_path: str, output_dir: str | Path, fs_contract=None):
+        """Initialize runner with output directory.
 
         Args:
             manifest_path: Path to the manifest file
-            output_dir: Required session-scoped artifacts directory (e.g., logs/run_<id>/artifacts)
+            output_dir: Artifacts directory (only used if fs_contract not provided)
+            fs_contract: Optional FilesystemContract for path resolution
         """
         self.manifest_path = Path(manifest_path)
         self.output_dir = Path(output_dir)
+        self.fs_contract = fs_contract
 
         # Ensure output_dir is absolute to avoid CWD issues
         if not self.output_dir.is_absolute():
