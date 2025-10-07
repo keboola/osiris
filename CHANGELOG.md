@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.5] - 2025-10-07
+
 ### Added
 - **GraphQL Extractor Component** (`graphql.extractor`)
   - New driver: `osiris/drivers/graphql_extractor_driver.py` for GraphQL API data extraction
