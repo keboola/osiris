@@ -595,7 +595,7 @@ def generate_html_report(
 
         # Read session logs and generate detail page
         session_logs = read_session_logs(logs_dir, session.session_id)
-        session_html = generate_session_detail_page(session, session_logs)
+        session_html = generate_session_detail_page(session, session_logs, logs_dir)
 
         # Write session HTML file
         (session_dir / "index.html").write_text(session_html)
@@ -1069,46 +1069,20 @@ def generate_overview_page(sessions, logs_dir: str) -> str:  # noqa: ARG001
     return html
 
 
-def generate_session_detail_page(session, session_logs) -> str:
-    """Generate detailed session page with events, metrics, and artifacts."""
+def generate_session_detail_page(session, session_logs, logs_dir: str) -> str:
+    """Generate detailed session page with events, metrics, and artifacts.
+
+    Args:
+        session: SessionSummary object
+        session_logs: Dict with events, metrics, artifacts, logs
+        logs_dir: Base logs directory path
+    """
     events = session_logs.get("events", [])
     metrics = session_logs.get("metrics", [])
     artifacts = session_logs.get("artifacts", [])
     logs = session_logs.get("logs", {})
 
     # Get additional data from session directory
-    from pathlib import Path
-
-    # The logs_dir should be where the session directories actually are
-    # Since we're in generate_session_detail_page, we know the session exists
-    # Let's use the absolute path to the logs directory
-    # We can check a few common locations
-    possible_paths = [
-        Path("/Users/padak/github/osiris_pipeline/testing_env/logs"),
-        Path("./testing_env/logs"),
-        Path("./logs"),
-        Path("logs"),
-    ]
-
-    logs_dir = None
-    for path in possible_paths:
-        if path.exists() and (path / session.session_id).exists():
-            logs_dir = str(path.absolute())
-            break
-
-    if not logs_dir:
-        # Fallback - try to extract from artifact paths if available
-        if artifacts and len(artifacts) > 0:
-            first_artifact = artifacts[0]
-            artifact_path = Path(first_artifact.get("path", ""))
-            if artifact_path.parts and "artifacts" in artifact_path.parts:
-                idx = artifact_path.parts.index("artifacts")
-                if idx >= 2:
-                    logs_dir = str(Path(*artifact_path.parts[: idx - 1]))
-
-        if not logs_dir:
-            logs_dir = "./testing_env/logs"
-
     metadata = get_session_metadata(logs_dir, session.session_id)
     pipeline_steps = get_pipeline_steps(logs_dir, session.session_id)
 
@@ -2588,7 +2562,7 @@ if __name__ == "__main__":
         session_logs = read_session_logs(logs_dir, session.session_id)
 
         # Generate detail page
-        detail_html = generate_session_detail_page(session, session_logs)
+        detail_html = generate_session_detail_page(session, session_logs, logs_dir)
 
         # Create session directory
         session_dir = Path(output_dir) / session.session_id
