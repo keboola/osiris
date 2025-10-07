@@ -20,6 +20,24 @@ Pain points observed:
 - AIOP (observability packs) could overwrite previous results.
 - Hidden utility folders (`.osiris_*`) were scattered and unclear in purpose.
 
+### Purpose of the Filesystem Contract
+
+The Filesystem Contract provides a stable interface between local and remote storage backends (such as S3, GCS, etc.), ensuring a consistent layout across different repositories. This consistency facilitates reproducibility of pipeline runs and serves as a backward-compatible automation boundary, allowing tools and services to reliably interact with Osiris project files regardless of environment or deployment.
+
+### Prerequisites & Package Model
+
+Osiris will be distributed as an installable Python package. The preferred modern installation method will use [uv](https://github.com/astral-sh/uv):
+
+```bash
+uv tool install osiris
+```
+
+This approach provides an isolated, fast, and reproducible CLI environment (similar to `pipx`).
+For now, Osiris can also be run from source or via Docker.
+
+The packaging work (PyPI release and versioned tool distribution) will be completed in a later phase.
+The `osiris init` command will scaffold new repositories using the installed package version, ensuring alignment between the Osiris toolchain and the filesystem contract.
+
 ## Decision
 
 Adopt a **Filesystem Contract v1** that:
@@ -27,7 +45,6 @@ Adopt a **Filesystem Contract v1** that:
 1. Defines a **clear directory layout** separating deterministic (versionable) artifacts, per-run observability, visible run logs, and hidden internal state.
 2. Makes **all paths and naming rules configurable** in `osiris.yaml`.
 3. Leaves **Git remotes** to the user/CI (no push/PR automation in v1). Osiris provides only **minimal helpers**:
-   - `osiris repo init` – scaffold `.gitignore`, `.env.example`, `osiris_connections.example.yaml`
    - `osiris repo ensureignore` – merge recommended ignore patterns
    - (optional) `osiris repo commit -m "..."` – local `git add/commit` convenience (no push)
 
@@ -198,10 +215,9 @@ ids:
 - `osiris run --pipeline <slug> [-p/--profile <name>]` → logs into `run_logs[/profile]/<slug>/<ts>_<runId>-<short>/…` and writes AIOP per-run.
 - `osiris runs list [--pipeline <slug>] [--profile <name>]` → reads from `.osiris/index/…`.
 - `osiris logs list [--pipeline <slug>] [--run <id>]` → reads from `run_logs/…`.
-- **Minimal Git helpers** (no remote ops in v1):
-  - `osiris repo init` – scaffold `.gitignore`, `.env.example`, `osiris_connections.example.yaml`
+- Minimal Git helpers have been reduced to:
   - `osiris repo ensureignore` – merge recommended ignore patterns
-  - `osiris repo commit -m "..."` – local add+commit only (optional)
+  - (optional) `osiris repo commit -m "..."` – local add+commit only (no push)
 
 ## Migration
 
@@ -211,7 +227,7 @@ Projects must move to the new directories. CLI and readers use only the new path
 Recommended steps:
 
 1. Upgrade Osiris to a version supporting Filesystem Contract v1.
-2. Run `osiris repo init` to get updated `.gitignore` and examples.
+2. Run `osiris repo ensureignore` to merge updated `.gitignore` patterns.
 3. Adjust `osiris.yaml` to your desired paths and profiles.
 4. Re-compile pipelines and run; verify artifacts appear in `build/`, logs in `run_logs/`, AIOP in `aiop/`.
 5. (Optional) Commit `build/`/`aiop/` per your team policy.
