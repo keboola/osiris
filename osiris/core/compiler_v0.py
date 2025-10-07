@@ -303,8 +303,15 @@ class CompilerV0:
         if "metadata" in oml:
             manifest["metadata"] = oml["metadata"]
 
-        # Compute manifest fingerprint
-        manifest_bytes = canonical_json(manifest).encode("utf-8")
+        # Compute manifest fingerprint (exclude ephemeral fields for determinism)
+        import copy
+
+        manifest_for_fp = copy.deepcopy(manifest)
+        if "meta" in manifest_for_fp:
+            # Remove timestamp to ensure deterministic fingerprints
+            manifest_for_fp["meta"].pop("generated_at", None)
+
+        manifest_bytes = canonical_json(manifest_for_fp).encode("utf-8")
         manifest["pipeline"]["fingerprints"]["manifest_fp"] = compute_fingerprint(manifest_bytes)
         self.fingerprints["manifest_fp"] = manifest["pipeline"]["fingerprints"]["manifest_fp"]
 

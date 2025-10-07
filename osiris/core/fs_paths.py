@@ -355,6 +355,9 @@ def slugify_token(value: str) -> str:
 def compute_manifest_hash(manifest: dict[str, Any], algo: str = "sha256_slug", profile: str | None = None) -> str:
     """Compute deterministic manifest hash.
 
+    Excludes ephemeral metadata fields (generated_at, manifest_hash, manifest_short)
+    to ensure the same OML inputs always produce the same hash.
+
     Args:
         manifest: Manifest dictionary
         algo: Hash algorithm (currently only "sha256_slug" supported)
@@ -369,10 +372,28 @@ def compute_manifest_hash(manifest: dict[str, Any], algo: str = "sha256_slug", p
     if algo != "sha256_slug":
         raise ValueError(f"Unsupported manifest_hash_algo: {algo}")
 
+    # Create a copy of manifest excluding ephemeral fields
+    import copy
+
+    manifest_for_hash = copy.deepcopy(manifest)
+
+    # Remove ephemeral metadata fields that would break determinism
+    if "meta" in manifest_for_hash:
+        meta = manifest_for_hash["meta"]
+        # Exclude timestamp (changes every compilation)
+        meta.pop("generated_at", None)
+        # Exclude circular references (added after hash computation)
+        meta.pop("manifest_hash", None)
+        meta.pop("manifest_short", None)
+
+    # Remove manifest_fp from fingerprints (it's added before hash computation)
+    if "pipeline" in manifest_for_hash and "fingerprints" in manifest_for_hash["pipeline"]:
+        manifest_for_hash["pipeline"]["fingerprints"].pop("manifest_fp", None)
+
     # Create deterministic JSON representation
     # Include profile in hash to ensure different profiles have different hashes
     hash_data = {
-        "manifest": manifest,
+        "manifest": manifest_for_hash,
         "profile": profile or "",
     }
 
