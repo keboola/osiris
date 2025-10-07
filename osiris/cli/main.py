@@ -103,6 +103,7 @@ def parse_main_args():
             "aiop",
             "compile",
             "logs",
+            "maintenance",
             "test",
             "components",
             "connections",
