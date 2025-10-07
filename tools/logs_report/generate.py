@@ -90,7 +90,24 @@ def get_pipeline_name(logs_dir: str, session_id: str) -> str | None:
     """Extract pipeline name from session manifest or OML."""
     session_path = Path(logs_dir) / session_id
 
-    # Try manifest.json in build/e2b or build directories
+    # FilesystemContract v1: Try manifest.yaml in session root
+    manifest_yaml = session_path / "manifest.yaml"
+    if manifest_yaml.exists():
+        try:
+            import yaml
+
+            with open(manifest_yaml) as f:
+                manifest = yaml.safe_load(f)
+                # Try pipeline.id first
+                if manifest and "pipeline" in manifest and "id" in manifest["pipeline"]:
+                    return manifest["pipeline"]["id"]
+                # Fallback to top-level name
+                if manifest and "name" in manifest:
+                    return manifest["name"]
+        except Exception:  # nosec B110
+            pass
+
+    # Legacy: Try manifest.json in build/e2b or build directories
     for manifest_path in [
         session_path / "build" / "e2b" / "manifest.json",
         session_path / "build" / "manifest.json",
@@ -125,9 +142,42 @@ def get_pipeline_name(logs_dir: str, session_id: str) -> str | None:
 def get_session_metadata(logs_dir: str, session_id: str) -> dict[str, Any]:
     """Get session metadata including remote execution details."""
     session_path = Path(logs_dir) / session_id
-    metadata_file = session_path / "metadata.json"
 
-    # First try metadata.json
+    # FilesystemContract v1: Try status.json and manifest.yaml
+    status_file = session_path / "status.json"
+    manifest_yaml = session_path / "manifest.yaml"
+
+    if status_file.exists() or manifest_yaml.exists():
+        metadata = {}
+
+        # Read status.json
+        if status_file.exists():
+            try:
+                with open(status_file) as f:
+                    status_data = json.load(f)
+                    metadata["status"] = status_data
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        # Read manifest.yaml
+        if manifest_yaml.exists():
+            try:
+                import yaml
+
+                with open(manifest_yaml) as f:
+                    manifest_data = yaml.safe_load(f)
+                    if manifest_data:
+                        metadata["pipeline"] = manifest_data.get("pipeline", {})
+                        metadata["pipeline"]["name"] = manifest_data.get("name", "")
+                        metadata["meta"] = manifest_data.get("meta", {})
+            except Exception:  # nosec B110
+                pass
+
+        if metadata:
+            return metadata
+
+    # Legacy: Try metadata.json
+    metadata_file = session_path / "metadata.json"
     if metadata_file.exists():
         try:
             with open(metadata_file) as f:
@@ -254,7 +304,20 @@ def get_pipeline_steps(logs_dir: str, session_id: str) -> list:
     """Extract pipeline steps from manifest for visualization."""
     session_path = Path(logs_dir) / session_id
 
-    # Try manifest.json in build/e2b or build directories
+    # FilesystemContract v1: Try manifest.yaml in session root
+    manifest_yaml = session_path / "manifest.yaml"
+    if manifest_yaml.exists():
+        try:
+            import yaml
+
+            with open(manifest_yaml) as f:
+                manifest = yaml.safe_load(f)
+                if manifest and "steps" in manifest:
+                    return manifest["steps"]
+        except Exception:  # nosec B110
+            pass
+
+    # Legacy: Try manifest.json in build/e2b or build directories
     for manifest_path in [
         session_path / "build" / "e2b" / "manifest.json",
         session_path / "build" / "manifest.json",
@@ -433,7 +496,7 @@ def read_session_logs(logs_dir: str, session_id: str) -> dict[str, Any]:
     # Read log files for Technical Logs tab
     logs = {}
 
-    # Read osiris.log if it exists
+    # Read osiris.log if it exists (legacy structure)
     osiris_log = session_path / "osiris.log"
     if osiris_log.exists():
         try:
@@ -442,7 +505,7 @@ def read_session_logs(logs_dir: str, session_id: str) -> dict[str, Any]:
         except Exception:
             logs["osiris.log"] = "Error reading osiris.log"
 
-    # Read debug.log if it exists
+    # Read debug.log if it exists (legacy structure)
     debug_log = session_path / "debug.log"
     if debug_log.exists():
         try:
@@ -450,6 +513,25 @@ def read_session_logs(logs_dir: str, session_id: str) -> dict[str, Any]:
                 logs["debug.log"] = f.read()
         except Exception:
             logs["debug.log"] = "Error reading debug.log"
+
+    # For FilesystemContract v1: Read manifest.yaml
+    manifest_yaml = session_path / "manifest.yaml"
+    if manifest_yaml.exists():
+        try:
+            with open(manifest_yaml) as f:
+                logs["manifest.yaml"] = f.read()
+        except Exception:
+            logs["manifest.yaml"] = "Error reading manifest.yaml"
+
+    # For FilesystemContract v1: Read status.json
+    status_json = session_path / "status.json"
+    if status_json.exists():
+        try:
+            with open(status_json) as f:
+                status_data = json.load(f)
+                logs["status.json"] = json.dumps(status_data, indent=2)
+        except Exception:
+            logs["status.json"] = "Error reading status.json"
 
     result["logs"] = logs
     return result
