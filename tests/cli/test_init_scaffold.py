@@ -243,3 +243,56 @@ def test_config_loads_via_fs_config(tmp_path):
         assert ids_config.run_id_format == ["incremental", "ulid"]
     finally:
         os.chdir(old_cwd)
+
+
+def test_yaml_has_rich_comments_and_no_legacy_paths(tmp_path):
+    """Test that generated YAML includes rich comments and no legacy logs_dir."""
+    from osiris.cli.init import init_command
+
+    init_command([str(tmp_path)], json_output=False)
+
+    yaml_file = tmp_path / "osiris.yaml"
+    assert yaml_file.exists()
+
+    with open(yaml_file) as f:
+        content = f.read()
+        f.seek(0)
+        config = yaml.safe_load(f)
+
+    # Check that logs_dir is NOT present in logging section
+    assert "logging" in config
+    assert "logs_dir" not in config.get("logging", {})
+
+    # Check comment density (should have rich comments)
+    comment_lines = [line for line in content.split("\n") if line.strip().startswith("#")]
+    assert len(comment_lines) >= 40, f"Expected at least 40 comment lines, got {len(comment_lines)}"
+
+    # Check that all major sections are present with comments
+    assert "FILESYSTEM CONTRACT v1" in content
+    assert "LOGGING CONFIGURATION" in content
+    assert "OUTPUT CONFIGURATION" in content
+    assert "SESSION MANAGEMENT" in content
+    assert "DATABASE DISCOVERY SETTINGS" in content
+    assert "LLM (AI) CONFIGURATION" in content
+    assert "PIPELINE SAFETY & VALIDATION" in content
+    assert "VALIDATION CONFIGURATION" in content
+    assert "AIOP (AI Operation Package) CONFIGURATION" in content
+
+    # Check filesystem and ids sections are at the top (after version)
+    lines = content.split("\n")
+    filesystem_index = None
+    logging_index = None
+    for i, line in enumerate(lines):
+        if "filesystem:" in line and filesystem_index is None:
+            filesystem_index = i
+        if "logging:" in line and logging_index is None:
+            logging_index = i
+
+    assert filesystem_index is not None, "filesystem section not found"
+    assert logging_index is not None, "logging section not found"
+    assert filesystem_index < logging_index, "filesystem should come before logging"
+
+    # Verify AIOP paths don't reference logs/ directory
+    assert config["aiop"]["output"]["core_path"] == "aiop/{session_id}/aiop.json"
+    assert config["aiop"]["output"]["run_card_path"] == "aiop/{session_id}/run-card.md"
+    assert config["aiop"]["annex"]["dir"] == "aiop/annex"

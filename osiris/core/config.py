@@ -65,7 +65,7 @@ def create_sample_config(config_path: str = "osiris.yaml", no_comments: bool = F
     Returns:
         Generated config content if to_stdout is True, else empty string
     """
-    config_content = """version: "2.0"
+    config_content = """version: '2.0'
 
 # ============================================================================
 # OSIRIS FILESYSTEM CONTRACT v1 (ADR-0028)
@@ -168,63 +168,137 @@ ids:
   manifest_hash_algo: "sha256_slug"
 
 # ============================================================================
-# LOGGING CONFIGURATION (legacy, kept for backward compatibility)
+# LOGGING CONFIGURATION
+# Enhanced session logging with structured events and metrics (M0-Validation-4)
 # ============================================================================
 logging:
-  logs_dir: ./logs
-  level: INFO
+  level: INFO           # Log verbosity for .log files: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
-  events:
+  # IMPORTANT: Events and log levels are INDEPENDENT systems:
+  # - 'level' controls what goes into osiris.log (Python logging messages)
+  # - 'events' controls what goes into events.jsonl (structured events)
+  # Events are ALWAYS logged regardless of level setting - they use separate filtering below.
+
+  events:               # Event types to log (structured JSONL format)
+    # Use "*" to log ALL events (recommended), or specify individual events below:
+    #
+    # Session Lifecycle:
+    #   run_start         - Session begins (command starts)
+    #   run_end           - Session completes successfully
+    #   run_error         - Session fails with error
+    #
+    # Chat & Conversation:
+    #   chat_start        - Chat session begins
+    #   chat_end          - Chat session ends
+    #   user_message      - User sends a message
+    #   assistant_response - AI responds to user
+    #   chat_interrupted  - Chat stopped by Ctrl+C
+    #
+    # Chat Modes:
+    #   sql_mode_start           - Direct SQL mode begins
+    #   single_message_start     - One-shot message mode
+    #   interactive_mode_start   - Interactive conversation mode
+    #
+    # Database Discovery:
+    #   discovery_start   - Schema discovery begins
+    #   discovery_end     - Schema discovery completes
+    #   cache_hit         - Found cached discovery data
+    #   cache_miss        - No cached data, discovering fresh
+    #   cache_lookup      - Checking cache for discovery data
+    #   cache_error       - Cache access failed
+    #
+    # Validation & Config:
+    #   validate_start    - Configuration validation begins
+    #   validate_complete - Configuration validation done
+    #   validate_error    - Configuration validation failed
+    #
+    # Response Quality:
+    #   sql_response             - SQL mode generated response
+    #   single_message_response  - Single message got response
+    #   single_message_empty_response - Single message got no response
+    #   sql_error               - SQL mode encountered error
+    #   single_message_error    - Single message mode failed
+    #   chat_error              - General chat error occurred
+    #
+    # Examples:
+    #   - "*"                          # Log ALL events (recommended)
+    #   - ["run_start", "run_end"]     # Only session lifecycle
+    #   - ["user_message", "assistant_response"]  # Only conversation
+    #
+    # NOTE: Events are filtered HERE, not by 'level' above. Even with level: ERROR,
+    # validate_start events will still be logged if included in this list.
     - "*"
   metrics:
-    enabled: true
-    retention_hours: 168
-  retention: 7d
+    enabled: true       # Enable performance metrics collection
+    retention_hours: 168   # Keep metrics for 7 days (168 hours)
+  retention: 7d         # Session retention policy (7d = 7 days, supports: 1d, 30d, 6m, 1y)
+  env_overrides:        # Environment variables that can override these settings
+    OSIRIS_LOG_LEVEL: level
+  cli_flags:            # CLI flags that can override these settings (highest precedence)
+    --log-level: level
 
 # ============================================================================
 # OUTPUT CONFIGURATION
+# Where generated pipeline results are saved
 # ============================================================================
 output:
-  format: csv
-  directory: output/
+  format: csv           # Output format: csv, parquet, json
+  directory: output/    # Directory for pipeline outputs
   filename_template: pipeline_{session_id}_{timestamp}
 
 # ============================================================================
 # SESSION MANAGEMENT
+# Osiris automatically manages conversation sessions and discovery cache
 # ============================================================================
 sessions:
-  directory: .osiris_sessions/
-  cleanup_days: 30
-  cache_ttl: 3600
+  directory: .osiris_sessions/  # Where session data is stored
+  cleanup_days: 30              # Auto-delete sessions older than N days (background cleanup)
+  cache_ttl: 3600               # Cache database discovery for N seconds (avoids re-scanning)
 
 # ============================================================================
 # DATABASE DISCOVERY SETTINGS
+# Controls how Osiris explores your database schema and samples data
 # ============================================================================
 discovery:
-  sample_size: 10
-  parallel_tables: 5
-  timeout_seconds: 30
+  sample_size: 10       # Number of sample rows to fetch per table for AI context
+  parallel_tables: 5    # Max tables to discover simultaneously (performance tuning)
+  timeout_seconds: 30   # Discovery timeout per table (prevents hanging)
 
 # ============================================================================
 # LLM (AI) CONFIGURATION
+# Controls the AI behavior - API keys go in .env file, not here
 # ============================================================================
 llm:
-  provider: openai
-  model: gpt-5-mini
-  fallback_model: gpt-5
-  temperature: 0.1
-  max_tokens: 2000
-  timeout_seconds: 30
-  fallback_enabled: true
+  provider: openai      # Primary LLM: openai, claude, gemini
+
+  # OpenAI models (active by default)
+  model: gpt-5-mini           # Primary OpenAI model
+  fallback_model: gpt-5       # Fallback OpenAI model
+
+  # For Claude (uncomment below and comment OpenAI models above):
+  # provider: claude
+  # model: claude-sonnet-4-20250514       # Primary Claude model
+  # fallback_model: claude-opus-4-1-20250805  # Fallback Claude model
+
+  # For Gemini (uncomment below and comment other models above):
+  # provider: gemini
+  # model: gemini-2.5-flash               # Primary Gemini model
+  # fallback_model: gemini-2.5-pro        # Fallback Gemini model
+
+  temperature: 0.1      # Low temperature = deterministic SQL generation
+  max_tokens: 2000      # Maximum response length from AI
+  timeout_seconds: 30   # API request timeout
+  fallback_enabled: true   # Use backup models if primary fails
 
 # ============================================================================
 # PIPELINE SAFETY & VALIDATION
+# Security settings to prevent dangerous operations
 # ============================================================================
 pipeline:
-  validation_required: true
-  auto_execute: false
-  max_sql_length: 10000
-  dangerous_keywords:
+  validation_required: true   # Always require human approval before execution
+  auto_execute: false         # Never auto-execute without user confirmation
+  max_sql_length: 10000       # Reject extremely long SQL queries
+  dangerous_keywords:         # Block destructive operations
   - DROP
   - DELETE
   - TRUNCATE
@@ -232,61 +306,78 @@ pipeline:
 
 # ============================================================================
 # VALIDATION CONFIGURATION
+# Configuration validation modes and output formats (M0-Validation-4)
 # ============================================================================
 validate:
-  mode: warn
-  json: false
-  show_effective: true
+  mode: warn            # Validation mode: strict, warn, off
+  json: false           # Output validation results in JSON format
+  show_effective: true  # Show effective configuration values and their sources
 
+# ============================================================================
+# VALIDATION RETRY CONFIGURATION
+# Pipeline validation retry settings (M1b.3 per ADR-0013)
+# ============================================================================
 validation:
   retry:
-    max_attempts: 2
-    include_history_in_hitl: true
-    history_limit: 3
-    diff_format: patch
+    max_attempts: 2           # Maximum retry attempts (0-5, 0 = strict mode)
+    include_history_in_hitl: true  # Show retry history in HITL prompts
+    history_limit: 3          # Max attempts to show in HITL history
+    diff_format: patch        # Diff format: "patch" or "summary"
 
 # ============================================================================
 # AIOP (AI Operation Package) CONFIGURATION
+# Precedence: CLI > Environment ($OSIRIS_AIOP_*) > Osiris.yaml > built-in defaults
+# AIOP: Structured export for LLMs (Narrative, Semantic, Evidence; Control in future)
 # ============================================================================
 aiop:
-  enabled: true
-  policy: core
-  max_core_bytes: 300000
-  timeline_density: medium
-  metrics_topk: 100
-  schema_mode: summary
-  delta: previous
-  run_card: true
+  enabled: true            # Auto-generate AIOP after each run (even on failure)
+  policy: core             # core = Core only (LLM-friendly); annex = Core + NDJSON Annex; custom = Core + fine-tuning knobs
+  max_core_bytes: 300000   # Hard cap for Core size; deterministic truncation with markers when exceeded
+
+  # How many timeline events go into Core (Annex can still contain all)
+  timeline_density: medium # low = key events only; medium = + aggregated per-step metrics (default); high = all incl. debug
+  metrics_topk: 100        # Keep top-K metrics/steps in Core (errors/checks prioritized)
+  schema_mode: summary     # summary = names/relations/fingerprints; detailed = adds small schema/config excerpts (no secrets)
+  delta: previous          # previous = compare to last run of same pipeline@manifest_hash (first_run:true if none); none = disable
+  run_card: true           # Also write Markdown run-card for PR/Slack
 
   output:
-    core_path: "logs/aiop/aiop.json"
-    run_card_path: "logs/aiop/run-card.md"
+    core_path: "aiop/{session_id}/aiop.json"         # Where to write Core JSON
+    run_card_path: "aiop/{session_id}/run-card.md"   # Where to write Markdown run-card
 
   annex:
-    enabled: false
-    dir: logs/aiop/annex
-    compress: none
+    enabled: false         # Enable NDJSON Annex (timeline/metrics/errors shards)
+    dir: aiop/annex        # Directory for Annex shards
+    compress: none         # none|gzip|zstd (applies to Annex only; Core is always uncompressed for readability)
 
+  # Path variable templating (for output paths)
   path_vars:
-    ts_format: "%Y%m%d_%H%M%S"
+    ts_format: "%Y%m%d_%H%M%S"  # Timestamp format for {ts} variable
+    # Available variables in paths:
+    # {session_id} - Full session ID
+    # {ts} - Timestamp formatted with ts_format
+    # {manifest_hash} - Pipeline manifest hash
+    # {status} - Run status (success/failure)
 
+  # Index configuration (tracks all runs for delta analysis)
   index:
-    enabled: true
-    runs_jsonl: "logs/aiop/index/runs.jsonl"
-    by_pipeline_dir: "logs/aiop/index/by_pipeline"
-    latest_symlink: "logs/aiop/latest"
+    enabled: true          # Enable index updates after each run
+    runs_jsonl: "aiop/index/runs.jsonl"        # All runs chronologically
+    by_pipeline_dir: "aiop/index/by_pipeline"  # Per-pipeline run history
+    latest_symlink: "aiop/latest"              # Symlink to latest run
 
   retention:
-    keep_runs: 50
-    annex_keep_days: 14
+    keep_runs: 50          # Keep last N Core files (optional)
+    annex_keep_days: 14    # Delete Annex shards older than N days (optional)
 
+  # Narrative layer configuration
   narrative:
-    sources: [manifest, repo_readme, commit_message, discovery]
+    sources: [manifest, repo_readme, commit_message, discovery]  # default source list
     session_chat:
-      enabled: false
-      mode: masked
-      max_chars: 2000
-      redact_pii: true
+      enabled: false       # opt-in for chat logs (default: false)
+      mode: masked         # masked|quotes|off
+      max_chars: 2000      # truncation limit for chat logs
+      redact_pii: true     # PII removal before Annex inclusion
 """
 
     # Process content based on flags
@@ -659,19 +750,19 @@ AIOP_DEFAULTS = {
         "ts_format": "%Y%m%d-%H%M%S",
     },
     "output": {
-        "core_path": "logs/aiop/aiop.json",
-        "run_card_path": "logs/aiop/run-card.md",
+        "core_path": "aiop/aiop.json",
+        "run_card_path": "aiop/run-card.md",
     },
     "annex": {
         "enabled": False,
-        "dir": "logs/aiop/annex",
+        "dir": "aiop/annex",
         "compress": "none",
     },
     "index": {
         "enabled": True,
-        "runs_jsonl": "logs/aiop/index/runs.jsonl",
-        "by_pipeline_dir": "logs/aiop/index/by_pipeline",
-        "latest_symlink": "logs/aiop/latest",
+        "runs_jsonl": "aiop/index/runs.jsonl",
+        "by_pipeline_dir": "aiop/index/by_pipeline",
+        "latest_symlink": "aiop/latest",
     },
     "retention": {
         "keep_runs": 50,
@@ -902,13 +993,13 @@ def _apply_aiop_session_dir(config: dict[str, Any], sources: dict[str, str]) -> 
     defaults stable while opt-in builds can still segregate outputs per run.
     """
 
-    default_core = "logs/aiop/aiop.json"
-    default_run_card = "logs/aiop/run-card.md"
-    default_annex = "logs/aiop/annex"
+    default_core = "aiop/aiop.json"
+    default_run_card = "aiop/run-card.md"
+    default_annex = "aiop/annex"
 
-    session_core = "logs/aiop/{session_id}/aiop.json"
-    session_run_card = "logs/aiop/{session_id}/run-card.md"
-    session_annex = "logs/aiop/{session_id}/annex"
+    session_core = "aiop/{session_id}/aiop.json"
+    session_run_card = "aiop/{session_id}/run-card.md"
+    session_annex = "aiop/{session_id}/annex"
 
     use_session_dir = bool(config.get("use_session_dir"))
 

@@ -1,0 +1,45 @@
+# Osiris Filesystem Contract v1 - Auto-generated ignore patterns
+
+# Runtime artifacts (ephemeral, do not commit)
+run_logs/
+aiop/**/annex/
+
+# Internal state (do not commit)
+.osiris/cache/
+.osiris/sessions/
+.osiris/index/counters.sqlite
+.osiris/index/counters.sqlite-shm
+.osiris/index/counters.sqlite-wal
+
+# Secrets and credentials (NEVER commit)
+.env
+osiris_connections.yaml
+
+# Build artifacts (team policy - some teams commit these)
+# Uncomment next line if you don't want to version build artifacts:
+# build/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Legacy logs (migration period)
+logs/
