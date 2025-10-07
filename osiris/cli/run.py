@@ -594,6 +594,16 @@ def run_command(args: list[str]):
             manifest_short=manifest_short,
         )
 
+        # Clean up temporary session directory (only if it was created)
+        temp_session_dir = session.session_dir
+        if temp_session_dir.exists() and temp_session_dir != proper_session.session_dir:
+            import shutil
+
+            try:
+                shutil.rmtree(temp_session_dir)
+            except Exception:
+                pass  # Best effort cleanup
+
         # Update the global current session
         set_current_session(proper_session)
         session = proper_session

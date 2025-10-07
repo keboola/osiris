@@ -95,7 +95,14 @@ class ExecutionContext:
     def logs_dir(self) -> Path:
         """Directory for execution logs."""
         # If base_path is already a session directory, use it directly
-        if self.base_path.name.startswith("run_") or self.base_path.name.startswith("compile_"):
+        # Patterns: "run_*", "compile_*" (legacy), or "*_run-*" (FilesystemContract)
+        base_name = self.base_path.name
+        if (
+            base_name.startswith("run_")
+            or base_name.startswith("compile_")
+            or "_run-" in base_name  # FilesystemContract pattern
+            or "run_logs" in str(self.base_path)  # Inside run_logs/ hierarchy
+        ):
             return self.base_path
         # Otherwise, create session subdirectory (legacy compatibility)
         return self.base_path / "logs" / self.session_id
