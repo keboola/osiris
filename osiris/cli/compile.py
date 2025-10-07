@@ -11,7 +11,6 @@ from rich.console import Console
 
 from ..core.compiler_v0 import CompilerV0
 from ..core.env_loader import load_env
-from ..core.session_logging import SessionContext, log_event, log_metric, set_current_session
 
 console = Console()
 
@@ -242,40 +241,33 @@ def compile_command(args: list[str]):
             console.print(f"[red]❌ {error_msg}[/red]")
         sys.exit(2)
 
-    # Create a session for this compilation
+    # Load filesystem contract first
+    from ..core.fs_config import load_osiris_config
+    from ..core.fs_paths import FilesystemContract
+    from ..core.run_ids import RunIdGenerator
+    from ..core.run_index import RunIndexWriter
+
+    fs_config, ids_config, _ = load_osiris_config()
+    fs_contract = FilesystemContract(fs_config, ids_config)
+
+    # Extract pipeline slug from filename
+    pipeline_slug = Path(pipeline_file).stem
+
+    # Compile doesn't need run IDs - only runtime execution does
+
+    # Create a session for this compilation (no session logging for compile)
     session_id = f"compile_{int(time.time() * 1000)}"
-    session = SessionContext(session_id=session_id, base_logs_dir=Path("logs"))
-    set_current_session(session)
 
     # Log loaded env files (masked paths)
     if loaded_envs:
-        log_event("env_loaded", files=[str(p) for p in loaded_envs])
+        pass  # No session logging for compile
 
     try:
-        # Log compilation start
-        log_event(
-            "compile_start",
-            pipeline=pipeline_file,
-            profile=profile,
-            params=params,
-            output_dir=output_dir,
-        )
         start_time = time.time()
 
         # Compile the pipeline
         if not use_json:
             console.print(f"[cyan]🔧 Compiling {pipeline_file}...[/cyan]")
-            console.print(f"[dim]📁 Session: logs/{session_id}/[/dim]")
-
-        # Load filesystem contract
-        from ..core.fs_config import load_osiris_config
-        from ..core.fs_paths import FilesystemContract
-
-        fs_config, ids_config, _ = load_osiris_config()
-        fs_contract = FilesystemContract(fs_config, ids_config)
-
-        # Extract pipeline slug from filename
-        pipeline_slug = Path(pipeline_file).stem
 
         # Use filesystem contract for compilation
         compiler = CompilerV0(fs_contract=fs_contract, pipeline_slug=pipeline_slug)
@@ -285,17 +277,11 @@ def compile_command(args: list[str]):
 
         # Calculate duration
         duration = time.time() - start_time
-        log_metric("compilation_duration", duration, unit="seconds")
 
         if success:
-            # Log successful compilation
-            log_event("compile_complete", message=message, duration=duration)
-
             # Write to index
-            from ..core.run_index import RunIndexWriter
-
             index_paths = fs_contract.index_paths()
-            index_writer = RunIndexWriter(index_paths["base"])
+            index_writer = RunIndexWriter(fs_contract)
 
             # Write latest manifest pointer
             index_writer.write_latest_manifest(
@@ -341,9 +327,6 @@ def compile_command(args: list[str]):
                 console.print(f"[dim]🔐 Hash: {compiler.manifest_short}[/dim]")
             sys.exit(0)
         else:
-            # Log compilation error
-            log_event("compile_error", error=message, duration=duration)
-
             if use_json:
                 error_type = "validation_error" if "secret" in message.lower() else "compilation_error"
                 print(
@@ -352,21 +335,22 @@ def compile_command(args: list[str]):
                             "status": "error",
                             "error_type": error_type,
                             "message": message,
-                            "session_id": session_id,
-                            "session_dir": f"logs/{session_id}",
+                            "pipeline": pipeline_file,
                         }
                     )
                 )
             else:
                 console.print(f"[red]❌ {message}[/red]")
-                console.print(f"[dim]📁 Session logs: logs/{session_id}/[/dim]")
 
             # Exit code 2 for validation/secret errors, 1 for internal errors
             if "secret" in message.lower() or "validation" in message.lower():
                 sys.exit(2)
             else:
                 sys.exit(1)
-    finally:
-        # Clean up session
-        session.close()
-        set_current_session(None)
+    except Exception as e:
+        # Unexpected errors
+        if use_json:
+            print(json.dumps({"status": "error", "message": str(e), "pipeline": pipeline_file}))
+        else:
+            console.print(f"[red]❌ Unexpected error: {str(e)}[/red]")
+        sys.exit(1)
