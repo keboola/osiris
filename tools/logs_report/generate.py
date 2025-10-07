@@ -1676,6 +1676,32 @@ def generate_session_detail_page(session, session_logs, logs_dir: str) -> str:
 
     overview_html += """</div></div>"""
 
+    # Enrich pipeline steps with execution data from events
+    if pipeline_steps and events:
+        # Create a map of step execution data from events
+        step_execution = {}
+        for event in events:
+            event_name = event.get("event", "")
+            step_id = event.get("step_id", "")
+
+            if event_name == "step_start":
+                if step_id not in step_execution:
+                    step_execution[step_id] = {"status": "started"}
+            elif event_name == "step_complete":
+                if step_id not in step_execution:
+                    step_execution[step_id] = {}
+                step_execution[step_id]["status"] = "completed"
+                step_execution[step_id]["duration"] = event.get("duration", 0)
+
+        # Merge execution data into pipeline_steps
+        for step in pipeline_steps:
+            step_id = step.get("id", "")
+            if step_id in step_execution:
+                step["status"] = step_execution[step_id].get("status", "unknown")
+                duration = step_execution[step_id].get("duration", 0)
+                if duration:
+                    step["duration"] = f"{duration:.2f}s"
+
     # Step execution summary
     if pipeline_steps:
         overview_html += """<div class='overview-section'>
