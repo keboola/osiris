@@ -104,14 +104,15 @@ steps:
         assert success
 
         # Mock local run to create structure
-        from osiris.core.run_ids import RunIdGenerator
+        from osiris.core.run_ids import CounterStore, RunIdGenerator
         from osiris.core.session_logging import SessionContext
 
+        counter_store = CounterStore(fs_contract.index_paths()["counters"])
         run_id_gen = RunIdGenerator(
-            formats=["incremental", "ulid"],
-            counter_db=fs_contract.index_paths()["counters"],
+            run_id_format=["incremental", "ulid"],
+            counter_store=counter_store,
         )
-        run_id_local = run_id_gen.generate("test_pipeline")
+        run_id_local, _ = run_id_gen.generate("test_pipeline")
 
         session_local = SessionContext(
             fs_contract=fs_contract,
@@ -129,7 +130,7 @@ steps:
         local_tree = normalize_tree_structure(tmp_path, tmp_path)
 
         # Mock E2B run with different run ID
-        run_id_e2b = run_id_gen.generate("test_pipeline")
+        run_id_e2b, _ = run_id_gen.generate("test_pipeline")
 
         session_e2b = SessionContext(
             fs_contract=fs_contract,
@@ -233,7 +234,7 @@ def test_e2b_and_local_index_compatibility(tmp_path):
 
         from osiris.core.run_index import RunIndexWriter, RunRecord
 
-        index_writer = RunIndexWriter(fs_contract.index_paths()["base"])
+        index_writer = RunIndexWriter(fs_contract)
 
         # Simulate local run
         local_record = RunRecord(
