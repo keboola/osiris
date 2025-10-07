@@ -101,13 +101,13 @@ class E2BTransparentProxy(ExecutionAdapter):
             import json
 
             # Try to determine the compiled directory
-            # Check if we have a source manifest path (for --last-compile)
+            # Check if we have a source manifest path
             source_manifest = plan.get("metadata", {}).get("source_manifest_path")
             if source_manifest:
-                # Source manifest is at logs/compile_xxx/compiled/manifest.yaml
-                # So configs are at logs/compile_xxx/compiled/cfg/
+                # Source manifest is at build/pipelines/[{profile}/]{slug}/{hash}/manifest.yaml
+                # So configs are at build/pipelines/[{profile}/]{slug}/{hash}/cfg/
                 manifest_path = Path(source_manifest)
-                compiled_root = manifest_path.parent  # This is the compiled/ directory
+                compiled_root = manifest_path.parent  # This is the build artifact directory
             else:
                 # Fallback: assume configs are in base_path/cfg
                 compiled_root = context.base_path
