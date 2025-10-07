@@ -221,6 +221,10 @@ def main():
         prompts_command(command_args)
     elif args.command == "aiop":
         aiop_command(command_args)
+    elif args.command == "maintenance":
+        from .maintenance import maintenance_command
+
+        maintenance_command(command_args)
     elif args.command == "chat":
         # This case is now handled early in main() to preserve argument order
         pass

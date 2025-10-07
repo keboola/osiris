@@ -31,6 +31,12 @@ class RetentionAction:
     path: Path
     reason: str
     size_bytes: int = 0
+    age_days: int | None = None
+
+    @property
+    def action(self) -> str:
+        """Alias for action_type."""
+        return self.action_type
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -39,7 +45,15 @@ class RetentionAction:
             "path": str(self.path),
             "reason": self.reason,
             "size_bytes": self.size_bytes,
+            "age_days": self.age_days,
         }
+
+    def execute(self) -> None:
+        """Execute the retention action."""
+        if self.path.is_dir():
+            shutil.rmtree(self.path, ignore_errors=True)
+        elif self.path.is_file():
+            self.path.unlink(missing_ok=True)
 
 
 class RetentionPlan:
@@ -154,12 +168,14 @@ class RetentionPlan:
 
                 if mtime < cutoff:
                     size = self._get_dir_size(run_dir)
+                    age_days = (datetime.now(timezone.utc) - mtime).days
                     actions.append(
                         RetentionAction(
                             action_type="delete_run_logs",
                             path=run_dir,
-                            reason=f"Older than {(datetime.now(timezone.utc) - cutoff).days} days",
+                            reason=f"Older than retention policy ({age_days} days old)",
                             size_bytes=size,
+                            age_days=age_days,
                         )
                     )
             except Exception:

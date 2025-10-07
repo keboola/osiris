@@ -30,13 +30,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `osiris/core/run_index.py` - RunIndexWriter/Reader for append-only run tracking
   - `osiris/core/retention.py` - RetentionPlan for policy-based cleanup
 
+- **CLI Commands**
+  - `osiris init [PATH] [--git] [--force]` - Enhanced scaffolder creates complete Filesystem Contract structure
+  - `osiris runs list [--pipeline] [--profile] [--tag] [--since]` - Query pipeline runs with filters
+  - `osiris maintenance clean [--dry-run]` - Apply retention policies to clean old files
+
 - **Tests** (ADR-0028)
   - `tests/core/test_fs_config.py` - Configuration model validation
   - `tests/core/test_fs_paths.py` - Token rendering and path resolution
   - `tests/core/test_run_ids.py` - ID generation and counter concurrency
-  - `tests/regression/test_no_legacy_logs.py` - Guard against legacy `logs/` writes
+  - `tests/cli/test_init_scaffold.py` - Init scaffolder tests
+  - `tests/cli/test_maintenance_clean.py` - Retention policy tests
+  - `tests/integration/test_filesystem_contract.py` - Full flow integration tests
+  - `tests/integration/test_e2b_parity.py` - E2B/local execution parity tests
+
+- **Documentation**
+  - `docs/samples/osiris.filesystem.yaml` - Complete reference configuration for Filesystem Contract v1
 
 ### Changed
+
+- **Compiler** (`osiris/core/compiler_v0.py`)
+  - Now requires FilesystemContract and pipeline_slug parameters
+  - Writes to `build/pipelines/[profile/]slug/hash/` exclusively
+  - Removed ALL legacy `output_dir` support
+  - Generates plan.json, fingerprints.json, run_summary.json per ADR-0028
+
+- **Runner** (`osiris/core/runner_v0.py`)
+  - Accepts optional FilesystemContract for path resolution
+  - Integrates with new session logging paths
+
+- **Session Logging** (`osiris/core/session_logging.py`)
+  - Uses FilesystemContract for all path resolution
+  - Writes to `run_logs/[profile/]slug/ts_runid/` structure
+  - Removed legacy `./logs/` fallbacks
+
+- **AIOP Export** (`osiris/core/aiop_export.py`)
+  - Uses FilesystemContract for AIOP paths
+  - Writes to `aiop/[profile/]slug/hash/runid/` structure
+
+- **CLI Commands**
+  - `osiris compile` - Uses FilesystemContract exclusively
+  - `osiris run` - Integrates with new path structure
+  - All commands removed legacy path references
 
 - **`.gitignore`** - Updated for Filesystem Contract v1:
   - Added `run_logs/`, `aiop/**/annex/`, `.osiris/cache/`, `.osiris/index/counters.sqlite*`

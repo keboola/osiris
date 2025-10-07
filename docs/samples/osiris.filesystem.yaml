@@ -1,0 +1,101 @@
+version: "2.0"
+
+# ============================================================================
+# OSIRIS FILESYSTEM CONTRACT v1 (ADR-0028)
+# All paths resolve relative to `base_path`. If omitted, the project root is used.
+# ============================================================================
+
+filesystem:
+  # Absolute root for all Osiris project files (useful for servers/CI).
+  # Example: "/srv/osiris/acme" or leave empty to use the repo root.
+  base_path: ""
+
+  # Profiles: explicitly list allowed profile names and the default.
+  # When enabled, Osiris injects a "{profile}/" path segment in build/aiop/run_logs.
+  profiles:
+    enabled: true
+    values: ["dev", "staging", "prod", "ml", "finance", "incident_debug"]
+    default: "dev"
+
+  # Where AI/human-authored OML lives (pipeline sources).
+  # With profiles enabled, you may mirror pipelines/<profile>/..., or keep a flat pipelines/.
+  pipelines_dir: "pipelines"
+
+  # Deterministic, versionable build artifacts:
+  # build/pipelines/[{profile}/]<slug>/<manifest_short>-<manifest_hash>/{manifest.yaml, plan.json, fingerprints.json, run_summary.json, cfg/...}
+  build_dir: "build"
+
+  # Per-run AI Observability Packs (NEVER overwritten):
+  # aiop/[{profile}/]<slug>/<manifest_short>-<manifest_hash>/<run_id>/{summary.json, run-card.md, annex/...}
+  aiop_dir: "aiop"
+
+  # User-facing full runtime logs by run (cleaned by retention):
+  # run_logs/[{profile}/]<slug>/{run_ts}_{run_id}-{manifest_short}/{events.jsonl, metrics.jsonl, debug.log, osiris.log, artifacts/...}
+  run_logs_dir: "run_logs"
+
+  # Internal hidden state (advanced users rarely need to touch this):
+  # sessions: conversational/chat session state for Osiris chat/agents
+  # cache:    discovery/profiling cache (table schemas, sampled stats)
+  # index:    append-only run indexes and counters for fast listing/queries
+  sessions_dir: ".osiris/sessions"
+  cache_dir: ".osiris/cache"
+  index_dir: ".osiris/index"
+
+  # Naming templates (human-friendly yet machine-stable).
+  # Available tokens:
+  #   {pipeline_slug} {profile} {manifest_hash} {manifest_short} {run_id} {run_ts} {status} {branch} {user} {tags}
+  naming:
+    # Build folder for a compiled manifest (relative to build_dir/pipelines[/profile]):
+    manifest_dir: "{pipeline_slug}/{manifest_short}-{manifest_hash}"
+
+    # Run folder under run_logs_dir[/profile]:
+    run_dir: "{pipeline_slug}/{run_ts}_{run_id}-{manifest_short}"
+
+    # Per-run folder name under aiop/.../<manifest>/:
+    aiop_run_dir: "{run_id}"
+
+    # Timestamp format for {run_ts} (no colons). Options: "iso_basic_z" -> YYYY-mm-ddTHH-MM-SSZ, or "none".
+    run_ts_format: "iso_basic_z"
+
+    # Number of characters used in {manifest_short}:
+    manifest_short_len: 7
+
+  # What to write into build/ (deterministic artifacts):
+  artifacts:
+    # Save compiled manifest (deterministic plan of execution).
+    manifest: true
+    # Save normalized DAG/execution plan (JSON).
+    plan: true
+    # Save SHA-256 fingerprints of inputs (for caching/consistency checks).
+    fingerprints: true
+    # Save compile-time metadata (compiler version, inputs, timestamps, profile, tags).
+    run_summary: true
+    # Save per-step effective configs (useful for diffs and debuggability).
+    cfg: true
+    # Optionally copy last N events to build/ for quick inspection (0 = disabled).
+    save_events_tail: 0
+
+  # Retention applies ONLY to run_logs_dir and aiop annex shards (build/ is permanent).
+  # Execute retention via:
+  #   - "osiris maintenance clean" (manual or scheduled), or
+  #   - a library call from your own cron/systemd timer.
+  retention:
+    run_logs_days: 7  # delete run_logs older than N days
+    aiop_keep_runs_per_pipeline: 200  # keep last N runs per pipeline in aiop/
+    annex_keep_days: 14  # delete NDJSON annex shards older than N days
+
+ids:
+  # Run identifier format (choose one OR compose multiple; examples):
+  # - "ulid"        -> 01J9Z8KQ8R1WQH6K9Z7Q2R1X7F
+  # - "iso_ulid"    -> 2025-10-07T14-22-19Z_01J9Z8KQ8R1WQH6K9Z7Q2R1X7F
+  # - "uuidv4"      -> 550e8400-e29b-41d4-a716-446655440000
+  # - "snowflake"   -> 193514046488576000 (time-ordered 64-bit)
+  # - "incremental" -> run-000123  (requires the indexer to maintain counters)
+  #
+  # You may also define a composite format, e.g. ["incremental", "ulid"]
+  # which renders as "run-000124_01J9Z8KQ8R1..." (order matters).
+  run_id_format: ["incremental", "ulid"]
+
+  # Manifest fingerprint algorithm (used for build folder naming):
+  # - "sha256_slug": hex sha256; {manifest_short} length controlled above
+  manifest_hash_algo: "sha256_slug"
