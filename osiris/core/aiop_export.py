@@ -141,16 +141,16 @@ def export_aiop_auto(
                     completed_at = event.get("timestamp")
 
         # Build session data (convert datetime to ISO string for JSON serialization)
+        def _to_iso(val):
+            if isinstance(val, datetime.datetime):
+                return val.isoformat()
+            return val or None
         session_data = {
             "session_id": session_id,
-            "started_at": (started_at.isoformat() if hasattr(started_at, "isoformat") else started_at),
-            "completed_at": (
-                (completed_at or end_time).isoformat()
-                if hasattr(completed_at or end_time, "isoformat")
-                else (completed_at or end_time)
-            ),
+            "started_at": _to_iso(started_at),
+            "completed_at": _to_iso(completed_at or end_time),
             "status": status,  # Use provided status
-            "environment": ("e2b" if session_summary and session_summary.adapter_type == "E2B" else "local"),
+            "environment": ("e2b" if session_summary and getattr(session_summary, "adapter_type", None) == "E2B" else "local"),
         }
 
         # Build AIOP using existing builder
