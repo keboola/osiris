@@ -91,6 +91,8 @@ class MySQLClient:
             )
 
             # Test connection
+            if not self.engine:
+                raise RuntimeError("Engine not initialized")
             with self.engine.connect() as conn:
                 result = conn.execute(text("SELECT 1"))
                 result.fetchone()
@@ -125,6 +127,9 @@ class MySQLClient:
             if not self._initialized:
                 await self.connect()
 
+            if not self.engine:
+                return False
+
             with self.engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
                 return True
@@ -156,11 +161,11 @@ class MySQLClient:
             # Try to connect and execute a simple query
             conn = pymysql.connect(
                 host=connection.get("host", "localhost"),
-                port=connection.get("port", 3306),
-                user=connection.get("user"),
-                password=connection.get("password"),
-                database=connection.get("database"),
-                connect_timeout=timeout,
+                port=int(connection.get("port", 3306)),
+                user=connection.get("user") or "",
+                password=connection.get("password") or "",
+                database=connection.get("database") or "",
+                connect_timeout=int(timeout),
             )
 
             with conn.cursor() as cursor:
