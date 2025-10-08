@@ -1,13 +1,10 @@
 """Tests for deterministic compilation behavior."""
 
-import json
 from pathlib import Path
-import tempfile
 
 import pytest
 import yaml
 
-from osiris.cli.init import init_command
 from osiris.core.compiler_v0 import CompilerV0
 from osiris.core.fs_config import load_osiris_config
 from osiris.core.fs_paths import FilesystemContract
@@ -83,8 +80,8 @@ def test_compile_produces_deterministic_hash():
 
         # Verify only one build directory exists
         manifest_dirs = list(build_path.iterdir())
-        # Filter out symlinks like LATEST
-        manifest_dirs = [d for d in manifest_dirs if not d.is_symlink()]
+        # Filter out LATEST pointer file (FilesystemContract v1 uses text file, not symlink)
+        manifest_dirs = [d for d in manifest_dirs if d.is_dir() and d.name != "LATEST"]
         assert len(manifest_dirs) == 1, f"Expected 1 build dir, found {len(manifest_dirs)}: {manifest_dirs}"
 
         # Verify manifest fingerprints are identical
@@ -100,5 +97,3 @@ def test_compile_produces_deterministic_hash():
 
     finally:
         os.chdir(old_cwd)
-
-
