@@ -101,6 +101,8 @@ class SupabaseExtractor(IExtractor):
         """
         if not self._initialized:
             await self.connect()
+        if self.client is None:
+            raise RuntimeError("Supabase client is not connected")
 
         try:
             # Get sample data
@@ -176,6 +178,8 @@ class SupabaseExtractor(IExtractor):
         """
         if not self._initialized:
             await self.connect()
+        if self.client is None:
+            raise RuntimeError("Supabase client is not connected")
 
         try:
             response = self.client.table(table_name).select("*").limit(size).execute()
@@ -197,6 +201,8 @@ class SupabaseExtractor(IExtractor):
         """
         if not self._initialized:
             await self.connect()
+        if self.client is None:
+            raise RuntimeError("Supabase client is not connected")
 
         try:
             query = self.client.table(table_name).select("*")

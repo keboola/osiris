@@ -69,7 +69,7 @@ class SupabaseWriter(ILoader):
                 # Handle pandas Timestamp and numpy datetime64
                 if pd.isna(value):
                     serialized_record[key] = None
-                elif isinstance(value, pd.Timestamp | np.datetime64):
+                elif isinstance(value, (pd.Timestamp, np.datetime64)):
                     # Convert to ISO format string
                     if pd.isna(value):
                         serialized_record[key] = None
@@ -77,9 +77,9 @@ class SupabaseWriter(ILoader):
                         serialized_record[key] = pd.Timestamp(value).isoformat()
                 elif isinstance(value, datetime):
                     serialized_record[key] = value.isoformat()
-                elif isinstance(value, np.integer | np.int64 | np.int32):
+                elif isinstance(value, (np.integer, np.int64, np.int32)):
                     serialized_record[key] = int(value)
-                elif isinstance(value, np.floating | np.float64 | np.float32 | Decimal):
+                elif isinstance(value, (np.floating, np.float64, np.float32, Decimal)):
                     serialized_record[key] = float(value)
                 elif isinstance(value, np.bool_):
                     serialized_record[key] = bool(value)
@@ -233,6 +233,8 @@ class SupabaseWriter(ILoader):
         Returns:
             True if table exists
         """
+        if not self._initialized:
+            await self.connect()
         try:
             # Try to query the table with limit 0 to check existence
             self.client.table(table_name).select("*").limit(0).execute()
