@@ -1,7 +1,6 @@
 """Minimal deterministic compiler for OML to manifest."""
 
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 from ..components.registry import ComponentRegistry
@@ -198,8 +197,11 @@ class CompilerV0:
         params_bytes = canonical_json(self.resolver.get_effective_params()).encode("utf-8")
         self.fingerprints["params_fp"] = compute_fingerprint(params_bytes)
 
-        # Profile
-        self.fingerprints["profile"] = profile or "default"
+        # Profile - use fs_config default if not provided
+        default_profile = (
+            self.fs_contract.fs_config.profiles.default if self.fs_contract.fs_config.profiles.enabled else None
+        )
+        self.fingerprints["profile"] = profile or default_profile
 
     def _get_cache_key(self) -> str:
         """Generate cache key from fingerprints."""

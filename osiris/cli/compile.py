@@ -1,11 +1,9 @@
 """CLI command for compiling OML to manifest with Rich formatting."""
 
-from datetime import datetime
 import json
-from pathlib import Path
-import shutil
 import sys
 import time
+from pathlib import Path
 
 from rich.console import Console
 
@@ -124,7 +122,7 @@ def compile_command(args: list[str]):
 
     # Parse arguments manually (like run_command does)
     pipeline_file = None
-    output_dir = "compiled"
+    _output_dir = "compiled"  # Default, not yet used
     profile = None
     params = {}
     compile_mode = "auto"
@@ -137,7 +135,7 @@ def compile_command(args: list[str]):
         if arg.startswith("--"):
             if arg == "--out":
                 if i + 1 < len(args) and not args[i + 1].startswith("--"):
-                    output_dir = args[i + 1]
+                    _output_dir = args[i + 1]  # Parsed but not yet used
                     i += 1
                 else:
                     error_msg = "Option --out requires a value"
@@ -244,11 +242,14 @@ def compile_command(args: list[str]):
     # Load filesystem contract first
     from ..core.fs_config import load_osiris_config
     from ..core.fs_paths import FilesystemContract
-    from ..core.run_ids import RunIdGenerator
     from ..core.run_index import RunIndexWriter
 
     fs_config, ids_config, _ = load_osiris_config()
     fs_contract = FilesystemContract(fs_config, ids_config)
+
+    # Resolve profile to default if None
+    if profile is None and fs_config.profiles.enabled:
+        profile = fs_config.profiles.default
 
     # Extract pipeline slug from filename
     pipeline_slug = Path(pipeline_file).stem
@@ -275,8 +276,8 @@ def compile_command(args: list[str]):
             oml_path=pipeline_file, profile=profile, cli_params=params, compile_mode=compile_mode
         )
 
-        # Calculate duration
-        duration = time.time() - start_time
+        # Calculate duration (not yet used in output)
+        _duration = time.time() - start_time
 
         if success:
             # Write to index
@@ -336,7 +337,7 @@ def compile_command(args: list[str]):
                     )
                 )
             else:
-                console.print(f"[green]✅ Compilation successful[/green]")
+                console.print("[green]✅ Compilation successful[/green]")
                 console.print(f"[dim]📁 Build path: {manifest_path.parent}/[/dim]")
                 console.print(f"[dim]📄 Manifest: {manifest_path}[/dim]")
                 console.print(f"[dim]🔐 Hash: {compiler.manifest_short}[/dim]")

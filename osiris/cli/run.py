@@ -459,6 +459,10 @@ def run_command(args: list[str]):
     fs_config, ids_config, _ = load_osiris_config()
     contract = FilesystemContract(fs_config, ids_config)
 
+    # Resolve profile to default if None
+    if profile is None and fs_config.profiles.enabled:
+        profile = fs_config.profiles.default
+
     # Generate run ID (will be updated with pipeline_slug after we know it)
     from ..core.run_ids import CounterStore
 
