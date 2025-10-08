@@ -1,415 +1,641 @@
-# Filesystem Contract v1 — Implementation Audit Report
+# Filesystem Contract v1 Implementation Audit
 
-**Branch**: `feature/filesystem-contract`
-**Audit Date**: 2025-10-07
-**Auditor**: Claude Sonnet 4.5
-**Base Commit**: `a5f507f` (latest on branch)
-**Reference Documents**:
-- ADR-0028: `docs/adr/0028-filesystem-contract.md` (Status: Accepted)
-- Milestone Plan: `docs/milestones/filesystem-contract.md`
-- Previous Gap Analysis: `docs/milestones/IMPLEMENTATION_GAP_ANALYSIS.md` (Oct 7, 22:19 - OUTDATED)
+**Branch:** `feature/filesystem-contract` (HEAD: e36e284)
+**Ground Truth:** ADR-0028 (Accepted), docs/milestones/filesystem-contract.md
+**Audit Date:** 2025-10-08
+**Auditor:** Automated deep-dive analysis
 
 ---
 
-## Executive Summary
+## 1. Executive Summary
 
-**Overall Status**: ⚠️ **SUBSTANTIAL PROGRESS BUT CRITICAL GAPS REMAIN** (~70% Complete)
+**Verdict:** ❌ **CONDITIONAL PASS** — Core structure present, but **5 critical gaps block merge**
 
-### Confidence Level: HIGH
-**Pass/Fail**: ❌ **NOT READY FOR MERGE** — Critical integration gaps in E2B remote execution and run command.
+### Top 5 Risks Blocking Merge
 
-### Key Findings
+1. **AIOP export broken** (P0): `datetime.datetime.utcnow()` bug at `osiris/cli/run.py:787` prevents all AIOP generation
+2. **Run index never written** (P0): `runs.jsonl` not populated; `osiris runs list` returns empty array
+3. **Profile inconsistency** (P1): Build uses `dev/`, run_logs uses `default/`, manifest metadata says `default`
+4. **Legacy code residue** (P1): 80+ lines with disallowed literals (`logs/`, `output_dir`, `session_dir`, `.osiris_sessions`)
+5. **LATEST pointer wrong format** (P2): Implemented as directory instead of 3-line text file per spec
 
-✅ **Strengths**:
-- Compiler successfully migrated to FilesystemContract
-- Init scaffolder fully functional with comprehensive tests (11/11 passing)
-- Core infrastructure complete (fs_config, fs_paths, run_ids, run_index, retention)
-- SessionContext updated to support contract-based paths
-- Maintenance CLI command implemented with retention integration
-- E2B parity test structure created
+### User-Facing Impact
 
-❌ **Critical Blockers**:
-1. **E2B Remote Execution**: Entire `osiris/remote/` module still uses legacy `logs_dir` paths (~40+ references)
-2. **Run CLI Command**: Does not use FilesystemContract; relies on legacy `logs/.last_compile.json`
-3. **Conversational Agent**: Still uses `.osiris_sessions` instead of `.osiris/sessions`
-4. **AIOP Export**: References legacy `logs_dir` (line 89)
-5. **Missing CLI Modules**: No separate `aiop.py` or `pipelines.py` CLI modules as specified
-
-### Progress Since Previous Gap Analysis
-
-The previous gap analysis (Oct 7, 22:19) reported **25% completion**. Since then:
-- ✅ Steps 3-9 completed (commit `2a73b78`)
-- ✅ Breaking change commit merged (`82f4689`)
-- ✅ Init scaffolder added (`20aade8`)
-- ✅ Compiler integration completed (`63e9144`)
-- ✅ Config scaffolding fixed (`0e52ced`, `a5f507f`)
-
-**Current completion: ~70%** (up from 25%)
+Users running pipelines see correct FilesystemContract v1 directory structures (`build/`, `run_logs/`) but **AIOP is silently broken** (all exports fail with datetime error), **run history is invisible** (`osiris runs list` shows nothing), and **`osiris logs aiop --last` always fails** with "No sessions found." The profile system is inconsistent (compile writes to `dev/`, runs write to `default/`), causing confusion when searching for artifacts. Legacy code paths pose maintenance risk and prevent clean E2B parity validation.
 
 ---
 
-## Detailed Gap Analysis
+## 2. Gap Matrix
 
-### 1. Compiler Flow
-
-| Component | Expected | Implemented | Status | Notes |
-|-----------|----------|-------------|--------|-------|
-| CompilerV0 accepts fs_contract | ✅ | ✅ | PASS | `osiris/core/compiler_v0.py:41-49` |
-| Manifest hash computation | ✅ | ✅ | PASS | `fs_paths.py:355` |
-| Build artifact writing | ✅ | ✅ | PASS | Uses `FilesystemContract.manifest_paths()` |
-| Plan.json, fingerprints.json | ✅ | ✅ | PASS | Per ADR-0028 spec |
-| Legacy output_dir removed | ✅ | ❌ | FAIL | `compile.py:128` still has `output_dir = "compiled"` as fallback |
-
-**Files**:
-- ✅ `osiris/core/compiler_v0.py` — Updated
-- ⚠️ `osiris/cli/compile.py` — Partially updated (has contract but retains legacy fallback)
-
----
-
-### 2. Runner & Session Logging
-
-| Component | Expected | Implemented | Status | Notes |
-|-----------|----------|-------------|--------|-------|
-| SessionContext accepts fs_contract | ✅ | ✅ | PASS | `session_logging.py:45` |
-| run_logs/ directory structure | ✅ | ✅ | PASS | Via `run_log_paths()` |
-| Events/metrics in contract paths | ✅ | ✅ | PASS | When fs_contract provided |
-| Backward compat (base_logs_dir) | ✅ | ✅ | PASS | Falls back to legacy if no contract |
-| RunIndexWriter integration | ✅ | ❌ | FAIL | Not called from runner_v0.py |
-
-**Files**:
-- ✅ `osiris/core/session_logging.py` — Updated with contract support
-- ⚠️ `osiris/core/runner_v0.py` — Minimal changes, no index writing
-
----
-
-### 3. AIOP Export
-
-| Component | Expected | Implemented | Status | Notes |
-|-----------|----------|-------------|--------|-------|
-| Contract-based path resolution | ✅ | ❌ | FAIL | Still uses hardcoded `logs_dir` |
-| aiop/{profile}/{slug}/{hash}/{run_id}/ | ✅ | ❌ | FAIL | Not implemented |
-| summary.json, run-card.md at contract path | ✅ | ❌ | FAIL | Legacy path in use |
-
-**Critical Finding**: `osiris/core/aiop_export.py:89` contains `logs_dir = Path("logs")`
-
-**Files**:
-- ❌ `osiris/core/aiop_export.py` — NOT UPDATED
+| Area | Expected (ADR-0028) | Implemented | Divergence/Missing | Evidence Block | Fix Suggestion |
+|------|-------------------|-------------|-------------------|----------------|----------------|
+| **Compiler → build/** | | | | | |
+| Build path structure | `build/pipelines/{profile}/{slug}/{short}-{hash}/` | ✅ Correct | Profile is `dev` but manifest says `default` | §3.1 | Ensure profile passed to compiler matches manifest metadata |
+| Build artifacts | `manifest.yaml`, `plan.json`, `fingerprints.json`, `run_summary.json`, `cfg/*` | ✅ All present | None | §3.1 | N/A |
+| Deterministic hash | Same compile → same hash | ✅ Verified | Two compiles produced `1b7f319` (same hash) | §3.1, §3.8 | N/A |
+| LATEST pointer | 3-line text file: manifest_path, hash, profile | ❌ Directory with artifacts | Wrong type — it's a directory, not a file | §3.2 | Change compiler to write text file at `{slug}/LATEST` with 3 lines |
+| **Pointers → .osiris/index/** | | | | | |
+| `last_compile.txt` | 3 lines: manifest_path, hash, profile | ✅ Exists | Profile line says `None` instead of `dev` or `default` | §3.2 | Fix line 3 to write actual profile |
+| `latest/{slug}.txt` | 3 lines: manifest_path, hash, profile | ✅ Exists | Profile line says `None` instead of profile | §3.2 | Fix line 3 to write actual profile |
+| **Runner → run_logs/** | | | | | |
+| Run path structure | `run_logs/{profile}/{slug}/{ts}_{run_id}-{short}/` | ✅ Correct | Profile is `default`, not `dev` (mismatch with build) | §3.3 | Unify profile resolution across compile and run |
+| Run artifacts | `events.jsonl`, `metrics.jsonl`, `osiris.log`, `manifest.yaml`, `status.json`, `artifacts/`, `cfg/` | ✅ All present | None | §3.3 | N/A |
+| Session logging setup | `setup_logging()` called on FilesystemContract-backed session | ✅ Correct | Temporary session cleaned up, proper session used (line 612) | §3.3 | N/A (already correct) |
+| **AIOP → aiop/** | | | | | |
+| AIOP path structure | `aiop/{profile}/{slug}/{short}-{hash}/{run_id}/` | ❌ Never created | `aiop/` directory is empty | §3.4 | Fix datetime bug blocking exports |
+| Auto-export after run | Enabled by default in osiris.yaml | ❌ Broken | All exports fail with `datetime.datetime` error | §3.4 | Change `osiris/cli/run.py:787` from `datetime.datetime.utcnow()` to `datetime.utcnow()` |
+| Manual export CLI | `osiris logs aiop --last` | ❌ Broken | Returns "No sessions found" | §3.5 | Fix session lookup to use FilesystemContract paths |
+| AIOP config paths | Contract-based paths in osiris.yaml | ❌ Legacy paths | Still uses `{session_id}` templating | §3.9 | Update default config to use contract paths or remove (deprecated by fs_contract) |
+| **Indexes → .osiris/index/** | | | | | |
+| `runs.jsonl` | Append-only NDJSON with run metadata | ❌ Missing | File doesn't exist | §3.6 | Wire `RunIndexWriter.append()` into run.py completion handler |
+| `by_pipeline/{slug}.jsonl` | Per-pipeline index | ❌ Missing | Not created | §3.6 | Implement in RunIndexWriter |
+| `counters.sqlite` | SQLite counter store | ✅ Exists | Working correctly | §3.6 | N/A |
+| **CLI: runs** | | | | | |
+| `osiris runs list` | Query indexed runs with filters | ⚠️ Command exists | Returns empty `[]` (index not populated) | §3.6 | Populate index during runs |
+| `osiris runs show <id>` | Show run metadata | ⚠️ Command exists | Untested (no runs in index) | §3.6 | Test after index population |
+| **CLI: maintenance** | | | | | |
+| `osiris maintenance clean` | Apply retention policies | ✅ Works | Dry-run returns "0 items" correctly | §3.7 | N/A |
+| **Profiles & Tags** | | | | | |
+| Profile path segments | `{profile}/` inserted in build/run_logs/aiop | ⚠️ Partial | Build=`dev/`, run_logs=`default/` | §3.8 | Unify profile selection |
+| Profile in pointers | Correct profile value in LATEST/last_compile | ❌ Wrong | Says `None` instead of profile | §3.2, §3.8 | Write actual profile value |
+| **E2B Parity** | | | | | |
+| Local vs E2B structure | Identical tree structures | ⚠️ Not exercised | Cannot verify until AIOP is fixed | §3.10 | Test after P0 fixes |
+| **Scaffolder & Config** | | | | | |
+| `osiris init --force` | Generates Contract v1 osiris.yaml | ✅ Works | Config matches spec | §3.9 | N/A |
+| `.gitignore` | Matches Appendix C | ✅ Correct | All patterns present | §3.9 | N/A |
+| No legacy paths in config | No `logs_dir`, `.osiris_sessions`, legacy aiop paths | ⚠️ Partial | AIOP config still uses `{session_id}` paths | §3.9 | Remove or update AIOP path templates |
+| **Docs** | | | | | |
+| `docs/samples/osiris.filesystem.yaml` | Matches Appendix A | ✅ Exists | Not verified line-by-line | §3.11 | Manual verification |
+| User guide updated | References Contract v1 paths/CLI | ⚠️ Not checked | Out of audit scope | §3.11 | Manual documentation review |
+| **Legacy Residue** | | | | | |
+| No disallowed literals | Code must not contain `logs/`, `compiled/`, `.last_compile.json`, `.osiris_sessions`, `output_dir`, `session_dir` | ❌ **FAIL** | 80+ occurrences across 8 files | §3.12 | Refactor or allowlist with comments |
 
 ---
 
-### 4. Index Writing & CLI Integration
+## 3. Evidence
 
-| Component | Expected | Implemented | Status | Notes |
-|-----------|----------|-------------|--------|-------|
-| RunIndexWriter append() | ✅ | ✅ | PASS | `run_index.py` |
-| .osiris/index/runs.jsonl | ✅ | ✅ | PASS | Schema correct |
-| by_pipeline/ indexes | ✅ | ✅ | PASS | Per-pipeline NDJSON |
-| latest/ pointers | ✅ | ✅ | PASS | `latest/{slug}.txt` |
-| Compile → index update | ✅ | ✅ | PASS | `compile.py:297-314` |
-| Run → index append | ✅ | ❌ | FAIL | run.py not integrated |
-| osiris runs list | ✅ | ✅ | PASS | `osiris/cli/runs.py` exists |
-| osiris runs show | ✅ | ❓ | UNKNOWN | Need to verify implementation |
-| osiris maintenance clean | ✅ | ✅ | PASS | `osiris/cli/maintenance.py:228` tested |
+### 3.1. Compiler → build/ Structure
 
-**Files**:
-- ✅ `osiris/core/run_index.py` — Complete
-- ✅ `osiris/cli/runs.py` — Created
-- ✅ `osiris/cli/maintenance.py` — Created
-- ❌ `osiris/cli/aiop.py` — MISSING (functionality may be in logs.py)
-- ❌ `osiris/cli/pipelines.py` — MISSING
+**Commands:**
+```bash
+cd testing_env
+python ../osiris.py compile ../docs/examples/mysql_duckdb_supabase_demo.yaml
+find build -maxdepth 4 -type d | sort
+```
 
----
+**Output:**
+```
+🔧 Compiling ../docs/examples/mysql_duckdb_supabase_demo.yaml...
+✅ Compilation successful
+📁 Build path:
+/Users/padak/github/osiris_pipeline/testing_env/build/pipelines/dev/mysql-duckdb-supabase-demo/1b7f319-1b7f319eada0564cc035f9b96a425c2f4f0779d75906160a0ed029d479886bfa/
+📄 Manifest:
+/Users/padak/github/osiris_pipeline/testing_env/build/pipelines/dev/mysql-duckdb-supabase-demo/1b7f319-1b7f319eada0564cc035f9b96a425c2f4f0779d75906160a0ed029d479886bfa/manifest.yaml
+🔐 Hash: 1b7f319
 
-### 5. Legacy Path Residue
+build
+build/pipelines
+build/pipelines/dev
+build/pipelines/dev/mysql-duckdb-supabase-demo
+build/pipelines/dev/mysql-duckdb-supabase-demo/1b7f319-1b7f319eada0564cc035f9b96a425c2f4f0779d75906160a0ed029d479886bfa
+build/pipelines/dev/mysql-duckdb-supabase-demo/66125bd-66125bd81a408f297aa8ba824fa43a2a91432903d6c72af5973a221cb03315c5
+```
 
-#### ❌ CRITICAL: E2B Remote Module (40+ legacy references)
+**Files in build artifact:**
+```bash
+ls -la build/pipelines/dev/mysql-duckdb-supabase-demo/1b7f319-1b7f319eada0564cc035f9b96a425c2f4f0779d75906160a0ed029d479886bfa/
+```
 
-**File**: `osiris/remote/e2b_transparent_proxy.py`
-- Line 107-110: `compiled/` directory references
-- Line 285: `context.logs_dir / "commands.jsonl"`
-- Lines 358-364: Events, metrics, execution logs via `logs_dir`
-- Line 663: `host_artifacts_dir = context.logs_dir / "artifacts"`
-- Line 826: `cfg_dir = context.logs_dir / "cfg"`
-- Line 898: `manifest_path = context.logs_dir / "manifest.yaml"`
-- Lines 1251, 1363, 1385, 1390, 1397: Multiple `logs_dir` usages
+```
+drwxr-xr-x@ 7 padak  staff   224 Oct  8 01:17 .
+drwxr-xr-x@ 5 padak  staff   160 Oct  8 02:02 ..
+drwxr-xr-x@ 5 padak  staff   160 Oct  8 01:17 cfg
+-rw-r--r--@ 1 padak  staff   471 Oct  8 02:02 fingerprints.json
+-rw-r--r--@ 1 padak  staff  1238 Oct  8 02:02 manifest.yaml
+-rw-r--r--@ 1 padak  staff   179 Oct  8 02:02 plan.json
+-rw-r--r--@ 1 padak  staff   237 Oct  8 02:02 run_summary.json
+```
 
-**File**: `osiris/remote/e2b_adapter.py`
-- Lines 104-106: `remote_logs_dir = context.logs_dir / "remote"`
-- Lines 191, 408, 513, 553, 661, 688, 704, 711, 792: Extensive `logs_dir` usage
-- Line 1008-1010: Hardcoded `logs_dir = Path("logs")`
-
-**File**: `osiris/remote/e2b_full_pack.py`
-- Line 135: `"./compiled/manifest.yaml"`
-- Line 311: `python -m osiris.cli.main run ./compiled/manifest.yaml`
-- Line 417: `with open('compiled/manifest.yaml', 'r')`
-
-#### ❌ CRITICAL: Conversational Agent
-
-**File**: `osiris/core/conversational_agent.py`
-- Line 100: `self.sessions_dir = Path(os.environ.get("SESSIONS_DIR", ".osiris_sessions"))`
-- Should use: `.osiris/sessions` per ADR-0028
-
-#### ⚠️ Run CLI Command
-
-**File**: `osiris/cli/run.py`
-- Line 277 (approx): `logs_dir: Directory to search for compile sessions. If None, uses logs/.last_compile.json`
-- Line 280 (approx): `pointer_file = Path("logs") / ".last_compile.json"`
-- Line 283 (approx): `error_msg += " (no logs/.last_compile.json found)"`
-
-**Impact**: `osiris run --last-compile` will fail to find manifests compiled via new contract
-
-#### ⚠️ Legacy Path References in Other Modules
-
-**File**: `osiris/core/logs_serialize.py`
-- Line 52: `to_session_json(session: SessionSummary, logs_dir: str = "./logs")`
-- Line 62: `session_path = Path(logs_dir) / session.session_id`
-- Line 77: `artifacts["manifest"] = "artifacts/compiled/manifest.yaml"`
-
-**Recommendation**: Rename to `run_logs_serializer.py` as per milestone plan
+**Analysis:**
+- ✅ Path structure matches spec: `build/pipelines/{profile}/{slug}/{short}-{hash}/`
+- ✅ All required artifacts present: manifest.yaml, plan.json, fingerprints.json, run_summary.json, cfg/
+- ⚠️ Profile is `dev` in path, but manifest metadata shows `default` (see §3.8)
 
 ---
 
-### 6. Test Coverage
+### 3.2. LATEST Pointers
 
-#### ✅ Unit Tests (Excellent Coverage)
+**Commands:**
+```bash
+ls -la build/pipelines/dev/mysql-duckdb-supabase-demo/LATEST/
+cat .osiris/index/last_compile.txt
+cat .osiris/index/latest/mysql_duckdb_supabase_demo.txt
+```
 
-| Test Suite | Tests | Status | Coverage |
-|------------|-------|--------|----------|
-| `test_fs_config.py` | 19 | ✅ PASS | Config loading, validation, env overrides |
-| `test_fs_paths.py` | 27 | ✅ PASS | TokenRenderer, path resolution, slugification |
-| `test_run_ids.py` | 11 | ✅ PASS | ID generation, SQLite counters, concurrency |
-| `test_init_scaffold.py` | 11 | ✅ PASS | Init command, directory creation, git integration |
-| `test_maintenance_clean.py` | 12 | ✅ PASS | Retention policies, dry-run, deletion |
+**Output:**
+```
+# LATEST is a DIRECTORY, not a file (spec violation)
+drwxr-xr-x@ 7 padak  staff   224 Oct  8 01:17 .
+drwxr-xr-x@ 5 padak  staff   160 Oct  8 02:02 ..
+drwxr-xr-x@ 5 padak  staff   160 Oct  8 01:17 cfg
+-rw-r--r--@ 1 padak  staff   471 Oct  8 02:02 fingerprints.json
+-rw-r--r--@ 1 padak  staff  1238 Oct  8 02:02 manifest.yaml
+-rw-r--r--@ 1 padak  staff   179 Oct  8 02:02 plan.json
+-rw-r--r--@ 1 padak  staff   237 Oct  8 02:02 run_summary.json
 
-**Total**: 80+ unit tests for filesystem contract ✅
+# last_compile.txt (profile line says "None")
+/Users/padak/github/osiris_pipeline/testing_env/build/pipelines/dev/mysql-duckdb-supabase-demo/1b7f319-1b7f319eada0564cc035f9b96a425c2f4f0779d75906160a0ed029d479886bfa/manifest.yaml
+1b7f319eada0564cc035f9b96a425c2f4f0779d75906160a0ed029d479886bfa
+None
 
-#### ⚠️ Integration Tests (Partial Coverage)
+# latest/mysql_duckdb_supabase_demo.txt (profile line says "None")
+/Users/padak/github/osiris_pipeline/testing_env/build/pipelines/dev/mysql-duckdb-supabase-demo/1b7f319-1b7f319eada0564cc035f9b96a425c2f4f0779d75906160a0ed029d479886bfa/manifest.yaml
+1b7f319eada0564cc035f9b96a425c2f4f0779d75906160a0ed029d479886bfa
+None
+```
 
-| Test Suite | Status | Notes |
-|------------|--------|-------|
-| `test_filesystem_contract.py` | ✅ EXISTS | Full flow: init → compile → run → index |
-| `test_e2b_parity.py` | ✅ EXISTS | E2B vs local parity validation |
-| `test_compile_run_profiles.py` | ❌ MISSING | Multi-profile compile+run |
-| `test_runs_cli.py` | ❌ MISSING | CLI runs command end-to-end |
-| `test_retention_cli.py` | ⚠️ PARTIAL | Some tests in test_maintenance_clean.py |
-| `test_last_manifest_pointer.py` | ❌ MISSING | .osiris/index/latest/ resolution |
-
-#### ❌ Golden Tests (Not Found)
-
-Per milestone plan Section 9, expected but missing:
-- `tests/golden/build_dev_orders/` — Build tree snapshot
-- `tests/golden/run_logs_dev_orders/` — Run logs layout
-- `tests/golden/aiop_orders_run/` — AIOP structure
-
-#### ❌ Legacy Path Blocking Tests
-
-**File**: `tests/e2b/test_no_legacy_pack_path.cpython-313-pytest-8.4.1.pyc` (bytecode only)
-
-**Recommendation**: Verify source file exists and extends coverage to all modules
+**Analysis:**
+- ❌ **LATEST is a directory**, not a 3-line text file (ADR-0028 specifies text file)
+- ❌ Profile line in both pointers says `None` instead of `dev` or `default`
+- ✅ Manifest path and hash are correct
 
 ---
 
-### 7. Documentation & Samples
+### 3.3. Runner → run_logs/ Structure
 
-| Item | Expected | Status | Location |
-|------|----------|--------|----------|
-| ADR-0028 (Accepted) | ✅ | ✅ | `docs/adr/0028-filesystem-contract.md` |
-| Milestone Plan | ✅ | ✅ | `docs/milestones/filesystem-contract.md` |
-| Sample osiris.yaml | ✅ | ✅ | `docs/samples/osiris.filesystem.yaml` |
-| .gitignore updates | ✅ | ✅ | Root `.gitignore` lines 99-112 |
-| CHANGELOG.md | ✅ | ❓ | Need to verify migration notes |
-| CLI help text | ✅ | ⚠️ | Compile updated, run partially updated |
-| User guide updates | ✅ | ❌ | Not updated for new directories |
+**Commands:**
+```bash
+python ../osiris.py run --last-compile --dry-run
+find run_logs -maxdepth 4 -type d | sort | tail -10
+# pragma: allowlist secret
+ls -la "run_logs/default/mysql-duckdb-supabase-demo/20251008t000227z_run-000009-01k70j0q156ydc4gh2e8fdq0er-1b7f319/"
+```
 
-**Files**:
-- ✅ `.gitignore` — Contract v1 patterns added, legacy `logs/` marked removed
-- ✅ `docs/samples/osiris.filesystem.yaml` — Complete reference config
-- ⚠️ Documentation incomplete for E2B remote workflow with contract
+**Output:**
+```
+✓ Pipeline completed (local)
+Session:
+/Users/padak/github/osiris_pipeline/testing_env/run_logs/default/mysql-duckdb-supabase-demo/20251008t000227z_run-000009-01k70j0q156ydc4gh2e8fdq0er-1b7f319/
 
----
+run_logs/default/mysql-duckdb-supabase-demo/20251008t000227z_run-000009-01k70j0q156ydc4gh2e8fdq0er-1b7f319
+run_logs/default/mysql-duckdb-supabase-demo/20251008t000227z_run-000009-01k70j0q156ydc4gh2e8fdq0er-1b7f319/artifacts
+run_logs/default/mysql-duckdb-supabase-demo/20251008t000227z_run-000009-01k70j0q156ydc4gh2e8fdq0er-1b7f319/cfg
 
-## Commit-Level Analysis
+total 64
+drwxr-xr-x@  9 padak  staff    288 Oct  8 02:02 .
+drwxr-xr-x@ 11 padak  staff    352 Oct  8 02:02 ..
+drwxr-xr-x@  5 padak  staff    160 Oct  8 02:02 artifacts
+drwxr-xr-x@  5 padak  staff    160 Oct  8 02:02 cfg
+-rw-r--r--@  1 padak  staff  13183 Oct  8 02:02 events.jsonl
+-rw-r--r--@  1 padak  staff   1446 Oct  8 02:02 manifest.yaml
+-rw-r--r--@  1 padak  staff   1859 Oct  8 02:02 metrics.jsonl
+-rw-r--r--@  1 padak  staff   2006 Oct  8 02:02 osiris.log
+-rw-r--r--@  1 padak  staff    225 Oct  8 02:02 status.json
+```
 
-### Foundation Commits (db6d2e4 → 20aade8)
-- ✅ ADR-0028 created and accepted
-- ✅ Core modules implemented (fs_config, fs_paths, run_ids, run_index, retention)
-- ✅ Init scaffolder added with full test coverage
+**Manifest metadata in run_logs:**
+```bash
+cat "run_logs/default/mysql-duckdb-supabase-demo/20251008t000227z_run-000009-01k70j0q156ydc4gh2e8fdq0er-1b7f319/manifest.yaml" | head -25
+```
 
-### Integration Commits (63e9144 → 82f4689)
-- ✅ Compiler integrated with FilesystemContract
-- ✅ Breaking change commit: "remove legacy paths, enforce Contract v1"
-- ⚠️ Integration incomplete — E2B and run command not updated
+```yaml
+meta:
+  generated_at: '2025-10-08T00:02:15.375901Z'
+  manifest_hash: 1b7f319eada0564cc035f9b96a425c2f4f0779d75906160a0ed029d479886bfa
+  manifest_short: 1b7f319
+  oml_version: 0.1.0
+  profile: default                    # ← Says "default"
+  run_id: ${run_id}
+  toolchain:
+    compiler: osiris-compiler/0.1
+    registry: osiris-registry/0.1
+metadata:
+  source_manifest_path: /Users/padak/github/osiris_pipeline/testing_env/build/pipelines/dev/mysql-duckdb-supabase-demo/1b7f319-1b7f319eada0564cc035f9b96a425c2f4f0779d75906160a0ed029d479886bfa/manifest.yaml
+name: mysql-duckdb-supabase-demo
+pipeline:
+  fingerprints:
+    compiler_fp: sha256:7f68eafb369ac0bd1b34b3c15659dc6fda602677620969f91d2a00415e88a805
+    manifest_fp: sha256:d6b121b39555de4ad3e0159fb350e06a79088f8298cecc477f856176108678ee
+    oml_fp: sha256:a9da9b4b38785e373491f6271af43394bc539a8455aef565b768bed537ae6e5b
+    params_fp: sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a
+    profile: default                  # ← Says "default"
+    registry_fp: sha256:2c528c04bb5cf058decb2b93d0c02a47e5cea3f59c2e78b8005dd72837ef2203
+```
 
-### Polish Commits (fab2307 → a5f507f)
-- ✅ Compiler tests updated
-- ✅ Steps 7-9 completed (retention CLI, E2B parity tests, docs)
-- ✅ Config scaffolding improvements
-- ✅ `.osiris_sessions` → `.osiris/sessions` migration (but not in conversational_agent.py!)
-
-**Observation**: Commit `82f4689` claims to "remove legacy paths" but E2B module was not updated.
-
----
-
-## Critical Gap Summary
-
-### Must-Fix Before Merge (P0)
-
-1. **E2B Remote Execution** (`osiris/remote/*.py`)
-   - **Impact**: E2B runs will fail or write to wrong locations
-   - **Effort**: ~8-12 hours (refactor 3 files, update ~40 references)
-   - **Files**: `e2b_transparent_proxy.py`, `e2b_adapter.py`, `e2b_full_pack.py`
-
-2. **Run CLI Command** (`osiris/cli/run.py`)
-   - **Impact**: `osiris run --last-compile` broken, no run index updates
-   - **Effort**: ~4-6 hours
-   - **Files**: `run.py`, `run_command.py` (if separate)
-
-3. **Conversational Agent Sessions** (`osiris/core/conversational_agent.py`)
-   - **Impact**: Chat sessions stored in wrong location
-   - **Effort**: ~1-2 hours
-   - **Files**: `conversational_agent.py`
-
-4. **AIOP Export** (`osiris/core/aiop_export.py`)
-   - **Impact**: AIOP written to legacy `logs/aiop/` instead of contract `aiop/`
-   - **Effort**: ~2-3 hours
-   - **Files**: `aiop_export.py`
-
-### Should-Fix Before Merge (P1)
-
-5. **logs_serialize.py Rename** → `run_logs_serializer.py`
-   - **Impact**: Naming consistency per ADR
-   - **Effort**: 1 hour
-
-6. **Integration Tests** (missing golden tests, E2E tests)
-   - **Impact**: No proof system works end-to-end
-   - **Effort**: ~6-8 hours
-
-7. **CLI Module Organization** (missing aiop.py, pipelines.py)
-   - **Impact**: Commands may be in logs.py instead
-   - **Effort**: ~2-4 hours to verify/refactor
-
-### Nice-to-Have (P2)
-
-8. User guide updates
-9. Additional golden tests
-10. Migration script for users with existing `logs/` data
+**Analysis:**
+- ✅ Path structure matches spec: `run_logs/{profile}/{slug}/{ts}_{run_id}-{short}/`
+- ✅ All required artifacts present: events.jsonl, metrics.jsonl, osiris.log, manifest.yaml, status.json, artifacts/, cfg/
+- ⚠️ **Profile is `default/` in path, but build used `dev/`** — inconsistency
+- ✅ Manifest metadata correctly shows profile as `default`
+- ✅ Session logging setup is correct (verified in run.py:589-612)
 
 ---
 
-## Acceptance Criteria Status (Milestone Section 11)
+### 3.4. AIOP → aiop/ (BROKEN)
 
-| # | Criterion | Status | Evidence |
-|---|-----------|--------|----------|
-| 1 | Compile/run write exclusively to build/, run_logs/, aiop/, .osiris/** | ⚠️ | Compile: YES, Run: NO, E2B: NO |
-| 2 | .osiris/index/runs.jsonl populated with new schema | ⚠️ | Writer exists, not called from run command |
-| 3 | .osiris/index/counters.sqlite increments safely | ✅ | Tested, working |
-| 4 | SessionContext uses naming templates | ✅ | Implemented when fs_contract provided |
-| 5 | AIOP writes summary.json at contract path | ❌ | Not implemented |
-| 6 | Retention deletes only run_logs/annex targets | ✅ | Tested in maintenance CLI |
-| 7 | CI guard prevents logs/ writes | ⚠️ | Test exists but E2B bypasses it |
-| 8 | Sample osiris.yaml validated | ✅ | Sample file complete and tested |
-| 9 | E2B parity tests pass | ⚠️ | Tests exist, unclear if passing |
-| 10 | Documentation updated | ⚠️ | ADR/samples done, CLI help partial |
+**Commands:**
+```bash
+find aiop -maxdepth 6 -type d | sort
+grep "aiop_export" "run_logs/default/mysql-duckdb-supabase-demo/20251008t000227z_run-000009-01k70j0q156ydc4gh2e8fdq0er-1b7f319/events.jsonl"
+```
 
-**Score: 4.5/10 criteria fully met** ⚠️
+**Output:**
+```
+aiop
+# ← Empty directory
 
----
+{"ts":"2025-10-08T00:02:30.095138+00:00","session":"20251008_020227_c2046842","event":"aiop_export_error","error":"type object 'datetime.datetime' has no attribute 'datetime'","session_id":"run_1759881747490"}
+```
 
-## Recommended Actions
+**Root Cause:**
+File: `osiris/cli/run.py:787`
 
-### Immediate (Before Merge)
+```python
+# Line 661: Imports datetime CLASS, not module
+from datetime import datetime
 
-1. **Update E2B Remote Module** (CRITICAL)
-   - Refactor `e2b_transparent_proxy.py` to accept and use FilesystemContract
-   - Update `e2b_adapter.py` to resolve paths via contract
-   - Fix `e2b_full_pack.py` hardcoded `compiled/` references
-   - Verify all 40+ `logs_dir` references are contract-aware
+# Line 787: INCORRECT - tries to call datetime.datetime.utcnow()
+export_success, export_error = export_aiop_auto(
+    session_id=session_id,
+    manifest_hash=manifest_hash,
+    status=final_status,
+    end_time=datetime.datetime.utcnow(),  # ← BUG: should be datetime.utcnow()
+    ...
+)
+```
 
-2. **Fix Run CLI Command** (CRITICAL)
-   - Integrate FilesystemContract instantiation
-   - Replace `logs/.last_compile.json` with `.osiris/index/latest/{slug}.txt`
-   - Add RunIndexWriter calls to append run records
-
-3. **Update AIOP Export** (CRITICAL)
-   - Accept FilesystemContract parameter
-   - Use `contract.aiop_paths()` for directory resolution
-   - Remove hardcoded `logs_dir = Path("logs")`
-
-4. **Fix Conversational Agent** (HIGH)
-   - Change `.osiris_sessions` → `.osiris/sessions`
-   - Use FilesystemContract for session directory resolution
-
-5. **Run Full Test Suite**
-   - Execute all 152 test files
-   - Verify E2B parity tests pass
-   - Check for test failures related to path changes
-
-### Before Final Release
-
-6. Add missing golden tests
-7. Create E2E integration test for compile → run → query flow
-8. Update user documentation
-9. Consider migration helper script
+**Analysis:**
+- ❌ **AIOP export completely broken** — all exports fail with `datetime.datetime` attribute error
+- ❌ `aiop/` directory exists but is empty (no runs exported)
+- ✅ AIOP config is enabled (`aiop.enabled: true` in osiris.yaml)
+- ✅ `export_aiop_auto()` is called with correct parameters (except datetime bug)
 
 ---
 
-## Risk Assessment
+### 3.5. AIOP CLI: `osiris logs aiop --last`
 
-### Merge Risks
+**Commands:**
+```bash
+python ../osiris.py logs aiop --last
+```
 
-**HIGH RISK if merged as-is**:
-- ✅ Compiler works with new paths
-- ❌ E2B execution completely broken (writes to legacy paths)
-- ❌ `osiris run --last-compile` broken
-- ❌ AIOP written to wrong location
-- ⚠️ Chat sessions may go to wrong directory
+**Output:**
+```
+❌ No sessions found
+```
 
-**Data Loss Risk**: LOW (new directories don't conflict with old)
-**Backward Compatibility**: NONE (intentional breaking change per ADR)
-
-### Recommended Merge Strategy
-
-**DO NOT MERGE** until P0 issues resolved. Estimated effort:
-- E2B module: 8-12 hours
-- Run CLI: 4-6 hours
-- AIOP export: 2-3 hours
-- Conversational agent: 1-2 hours
-- Testing/validation: 4-6 hours
-
-**Total: ~20-30 hours of focused development**
+**Analysis:**
+- ❌ Returns "No sessions found" even though 9 runs exist in `run_logs/`
+- Root cause: Likely looking for sessions in wrong location (legacy `logs/` instead of `run_logs/`)
+- Cannot verify until AIOP export is fixed (no AIOP artifacts to test with)
 
 ---
 
-## Conclusion
+### 3.6. Indexes → .osiris/index/
 
-### What Works Well ✅
-- Excellent foundation architecture (fs_config, fs_paths, run_ids, run_index)
-- Compiler fully integrated with FilesystemContract
-- Init scaffolder production-ready with comprehensive tests
-- Maintenance CLI functional with retention policies
-- Documentation (ADR, samples) complete and high-quality
+**Commands:**
+```bash
+find .osiris/index -type f | sort
+test -f .osiris/index/runs.jsonl && wc -l .osiris/index/runs.jsonl || echo "runs.jsonl not found"
+python ../osiris.py runs list --pipeline mysql-duckdb-supabase-demo --json
+```
 
-### What's Broken ❌
-- **E2B remote execution**: Entire module uses legacy paths
-- **Run command**: Not integrated with FilesystemContract
-- **AIOP export**: Writes to wrong directory
-- **Conversational agent**: Uses wrong session directory
+**Output:**
+```
+.osiris/index/counters.sqlite
+.osiris/index/last_compile.txt
+.osiris/index/latest/mysql_duckdb_supabase_demo.txt
 
-### Final Verdict
+runs.jsonl not found
 
-**Implementation Status: 70% Complete** (up from 25% at previous gap analysis)
+[]
+```
 
-The implementation has made **substantial progress** since the previous analysis, with the compiler integration and init scaffolder representing major achievements. However, **critical gaps remain in E2B remote execution and the run command** that make the branch unsuitable for merge.
+**Analysis:**
+- ❌ **`runs.jsonl` never created** — index is not being written during runs
+- ❌ **`by_pipeline/{slug}.jsonl` missing** — per-pipeline indexes not created
+- ✅ `counters.sqlite` exists and working (run IDs incrementing correctly)
+- ✅ `latest/*.txt` pointers exist (but have profile="None" bug)
+- ⚠️ `osiris runs list` command exists and works, but returns empty array (no data to read)
 
-**Recommendation**:
-- Mark branch as **WIP/DRAFT**
-- Address P0 issues (~20-30 hours of work)
-- Re-audit before merge
-- Consider breaking into smaller PRs if E2B integration is complex
-
-**Confidence in Assessment**: HIGH — Thorough code review of 17+ core files, verification of 152 test files, commit-level analysis of 10 commits, cross-referenced against milestone plan and ADR.
+**Root Cause:**
+`RunIndexWriter.append()` is not being called in `osiris/cli/run.py` after run completion.
 
 ---
 
-**Audit Completed**: 2025-10-07
-**Next Review Required**: After P0 issues resolved
+### 3.7. Retention: `osiris maintenance clean`
+
+**Commands:**
+```bash
+python ../osiris.py maintenance clean --dry-run
+```
+
+**Output:**
+```
+🔍 Retention Clean - Dry Run
+
+Would delete 0 items:
+  • Run logs: 0 directories
+  • AIOP annex: 0 items
+  • Build artifacts: 0 (preserved)
+
+No items to delete - all within retention policy
+```
+
+**Analysis:**
+- ✅ Command exists and works
+- ✅ Correctly reports 0 items (all runs are recent, within 7-day policy)
+- ✅ Build artifacts are preserved (never deleted)
+
+---
+
+### 3.8. Profiles & Tags — Deterministic Hashing
+
+**Manifest hashes across two compiles:**
+```bash
+# First compile
+🔐 Hash: 1b7f319
+
+# Second compile (re-ran same command)
+🔐 Hash: 1b7f319
+```
+
+**Profile inconsistency:**
+- Build directory: `build/pipelines/dev/...` (uses `dev` profile)
+- Run logs directory: `run_logs/default/...` (uses `default` profile)
+- Manifest metadata: `profile: default`
+- Pointer files: Profile line says `None`
+
+**Analysis:**
+- ✅ Deterministic hashing works (same inputs → same hash)
+- ❌ **Profile inconsistency across compile and run**
+- ❌ **Pointer files say `None` instead of actual profile**
+
+---
+
+### 3.9. Scaffolder & Config
+
+**Commands:**
+```bash
+python ../osiris.py init --force
+cat osiris.yaml | head -110
+cat .gitignore
+```
+
+**osiris.yaml filesystem section:**
+```yaml
+version: '2.0'
+
+# ============================================================================
+# OSIRIS FILESYSTEM CONTRACT v1 (ADR-0028)
+# ============================================================================
+
+filesystem:
+  base_path: ""
+  profiles:
+    enabled: true
+    values: ["dev", "staging", "prod", "ml", "finance", "incident_debug"]
+    default: "dev"
+  pipelines_dir: "pipelines"
+  build_dir: "build"
+  aiop_dir: "aiop"
+  run_logs_dir: "run_logs"
+  sessions_dir: ".osiris/sessions"
+  cache_dir: ".osiris/cache"
+  index_dir: ".osiris/index"
+  naming:
+    manifest_dir: "{pipeline_slug}/{manifest_short}-{manifest_hash}"
+    run_dir: "{pipeline_slug}/{run_ts}_{run_id}-{manifest_short}"
+    aiop_run_dir: "{run_id}"
+    run_ts_format: "iso_basic_z"
+    manifest_short_len: 7
+  artifacts:
+    manifest: true
+    plan: true
+    fingerprints: true
+    run_summary: true
+    cfg: true
+    save_events_tail: 0
+  retention:
+    run_logs_days: 7
+    aiop_keep_runs_per_pipeline: 200
+    annex_keep_days: 14
+  outputs:
+    directory: "output"
+    format: "csv"
+
+ids:
+  run_id_format: ["incremental", "ulid"]
+  manifest_hash_algo: "sha256_slug"
+```
+
+**AIOP config (legacy paths):**
+```yaml
+aiop:
+  enabled: true
+  policy: core
+  max_core_bytes: 300000
+  timeline_density: medium
+  metrics_topk: 100
+  schema_mode: summary
+  delta: previous
+  run_card: true
+
+  output:
+    core_path: "aiop/{session_id}/aiop.json"         # ← Legacy {session_id}
+    run_card_path: "aiop/{session_id}/run-card.md"   # ← Legacy {session_id}
+
+  annex:
+    enabled: false
+    dir: aiop/annex
+    compress: none
+```
+
+**.gitignore:**
+```
+# Osiris Filesystem Contract v1 - Auto-generated ignore patterns
+
+# Runtime artifacts (ephemeral, do not commit)
+run_logs/
+aiop/**/annex/
+
+# Internal state (do not commit)
+.osiris/cache/
+.osiris/sessions/
+.osiris/index/counters.sqlite
+.osiris/index/counters.sqlite-shm
+.osiris/index/counters.sqlite-wal
+
+# Secrets and credentials (NEVER commit)
+.env
+osiris_connections.yaml
+
+# Build artifacts (team policy - some teams commit these)
+# Uncomment next line if you don't want to version build artifacts:
+# build/
+
+# Legacy logs (migration period)
+logs/
+```
+
+**Analysis:**
+- ✅ Scaffolder creates correct Contract v1 osiris.yaml
+- ✅ `.gitignore` matches spec (all required patterns present)
+- ✅ No `logging.logs_dir` or `.osiris_sessions` in config
+- ⚠️ **AIOP config still uses legacy `{session_id}` paths** — should use contract paths or be removed (deprecated by fs_contract parameter)
+
+---
+
+### 3.10. E2B Parity
+
+**Status:** ⚠️ Not exercised (requires E2B_API_KEY)
+
+Cannot verify E2B parity until:
+1. AIOP export is fixed (P0)
+2. Run index is populated (P0)
+3. Profile consistency is resolved (P1)
+
+---
+
+### 3.11. Documentation
+
+**Commands:**
+```bash
+test -f docs/samples/osiris.filesystem.yaml && echo "File exists" || echo "File not found"
+```
+
+**Output:**
+```
+File exists
+```
+
+**Analysis:**
+- ✅ `docs/samples/osiris.filesystem.yaml` exists
+- ⚠️ Line-by-line verification not performed (out of scope for this audit)
+- ⚠️ User guide update verification deferred (manual review required)
+
+---
+
+### 3.12. Legacy Residue Scan
+
+**Commands:**
+```bash
+cd /Users/padak/github/osiris_pipeline
+grep -R --line-number -E 'logs/|compiled/|\.last_compile\.json|\.osiris_sessions|output_dir|session_dir' osiris | grep -v "\.pyc" | head -100
+```
+
+**Output (80+ matches across 8 files):**
+
+```
+osiris/drivers/supabase_writer_driver.py:204:        output_dir = None
+osiris/drivers/supabase_writer_driver.py:205:        if hasattr(ctx, "output_dir"):
+osiris/drivers/supabase_writer_driver.py:206:            output_dir = Path(ctx.output_dir)
+osiris/drivers/supabase_writer_driver.py:209:            output_dir = Path(f"logs/run_{int(datetime.now().timestamp() * 1000)}/artifacts/{step_id}")
+osiris/core/state_store.py:31:        session_dir = Path(f".osiris_sessions/{session_id}")
+osiris/core/state_store.py:32:        session_dir.mkdir(parents=True, exist_ok=True)
+osiris/core/state_store.py:35:        self.db_path = session_dir / "state.db"
+osiris/core/config.py:446:            "sessions": {"directory": ".osiris_sessions/", "cleanup_days": 30, "cache_ttl": 3600},
+osiris/core/config.py:735:    "use_session_dir": False,
+osiris/core/aiop_export.py:91:        # Use provided session_dir or fallback to legacy logs/ lookup
+osiris/core/aiop_export.py:92:        if session_dir:
+osiris/core/aiop_export.py:93:            session_path = session_dir
+osiris/core/aiop_export.py:263:            latest_symlink = config.get("index", {}).get("latest_symlink", "logs/aiop/latest")
+osiris/core/aiop_export.py:297:        session_dir = Path(f"run_logs/{session_id}")  # Legacy fallback
+osiris/core/aiop_export.py:472:    runs_jsonl = config.get("index", {}).get("runs_jsonl", "logs/aiop/index/runs.jsonl")
+osiris/core/aiop_export.py:479:        by_pipeline_dir = config.get("index", {}).get("by_pipeline_dir", "logs/aiop/index/by_pipeline")
+osiris/core/aiop_export.py:536:    # Find all run directories under logs/aiop/
+osiris/core/aiop_export.py:537:    aiop_dir = Path("logs/aiop")
+osiris/core/runner_v0.py:23:    def __init__(self, manifest_path: str, output_dir: str | Path, fs_contract=None):
+osiris/core/runner_v0.py:28:            output_dir: Artifacts directory (only used if fs_contract not provided)
+osiris/core/runner_v0.py:32:        self.output_dir = Path(output_dir)
+osiris/core/runner_v0.py:35:        # Ensure output_dir is absolute to avoid CWD issues
+osiris/core/runner_v0.py:36:        if not self.output_dir.is_absolute():
+osiris/core/runner_v0.py:37:            self.output_dir = Path.cwd() / self.output_dir
+... (60+ more lines)
+```
+
+**Affected Files:**
+1. `osiris/drivers/supabase_writer_driver.py` (5 occurrences of `output_dir`, 1 `logs/`)
+2. `osiris/core/state_store.py` (3 occurrences of `.osiris_sessions`, 1 `session_dir`)
+3. `osiris/core/config.py` (4 occurrences: `.osiris_sessions`, `use_session_dir`)
+4. `osiris/core/aiop_export.py` (7 occurrences: `session_dir`, `logs/aiop`)
+5. `osiris/core/runner_v0.py` (40+ occurrences of `output_dir`)
+6. `osiris/core/test_harness.py` (7 occurrences of `output_dir`)
+
+**Analysis:**
+- ❌ **80+ lines with disallowed literals** across 6 core modules
+- Most critical: `logs/` hardcoded in drivers, `output_dir` in runner, `.osiris_sessions` in state_store
+- These prevent clean E2B parity and violate ADR-0028's "no legacy paths" requirement
+
+---
+
+## 4. Acceptance Checklist
+
+Per ADR-0028 and milestone acceptance criteria:
+
+| # | Acceptance Criterion | Status | Justification |
+|---|---------------------|--------|---------------|
+| 1 | Compile/run write exclusively under `build/`, `run_logs/`, `aiop/`, `.osiris/**` | ⚠️ Partial | build/ and run_logs/ work; aiop/ broken; legacy code exists |
+| 2 | `.osiris/index/runs.jsonl` populated with new schema | ❌ Fail | File doesn't exist; index never written (§3.6) |
+| 3 | `.osiris/index/counters.sqlite` increments safely under parallel runs | ✅ Pass | Counters working correctly (§3.6) |
+| 4 | `SessionContext` creates directories via naming templates | ✅ Pass | Correct implementation verified (§3.3) |
+| 5 | AIOP exporter writes `summary.json` and `run-card.md` at contract path | ❌ Fail | datetime.datetime bug blocks all exports (§3.4) |
+| 6 | Retention command deletes only configured targets; dry-run verified | ✅ Pass | Works correctly (§3.7) |
+| 7 | CI guard confirms no remaining references to legacy `logs/` | ❌ Fail | 80+ legacy literals in 6 files (§3.12) |
+| 8 | Sample `osiris.yaml` validated by unit/integration tests | ⚠️ Partial | Config generates correctly; AIOP paths still legacy (§3.9) |
+| 9 | Integration suite shows local vs E2B filesystem parity | ⚠️ Not Exercised | Cannot test until P0 issues fixed (§3.10) |
+| 10 | Documentation (CLI help, ADR, guides) updated to new layout | ⚠️ Partial | CLI help correct; user guide not verified (§3.11) |
+
+**Overall: 3/10 Pass, 3/10 Fail, 4/10 Partial**
+
+---
+
+## 5. Conclusion + Prioritized Fix List
+
+### P0 (Merge Blockers)
+
+1. **AIOP datetime bug** (`osiris/cli/run.py:787`)
+   - **Required behavior:** Change `datetime.datetime.utcnow()` to `datetime.utcnow()`
+   - **Modules involved:** `osiris/cli/run.py`
+
+2. **Run index not populated** (`osiris/cli/run.py`)
+   - **Required behavior:** Call `RunIndexWriter.append()` after successful run completion with all metadata (run_id, pipeline_slug, profile, manifest_hash, paths, duration, status, tags)
+   - **Modules involved:** `osiris/cli/run.py`, `osiris/core/run_index.py`
+
+### P1 (High Priority)
+
+3. **Profile inconsistency** (compile vs run)
+   - **Required behavior:** Ensure compile and run use the same profile; manifest metadata must match directory profile segment
+   - **Modules involved:** `osiris/cli/compile.py`, `osiris/cli/run.py`, `osiris/core/compiler_v0.py`
+
+4. **Pointer profile field wrong** (`.osiris/index/last_compile.txt`, `latest/*.txt`)
+   - **Required behavior:** Write actual profile name (e.g., `dev` or `default`) instead of `None` on line 3 of pointer files
+   - **Modules involved:** `osiris/cli/compile.py`, `osiris/core/run_index.py` (wherever pointers are written)
+
+5. **Legacy code residue** (80+ occurrences)
+   - **Required behavior:** Refactor or add allowlist comments for all references to `logs/`, `output_dir`, `session_dir`, `.osiris_sessions`
+   - **Modules involved:** `osiris/drivers/supabase_writer_driver.py`, `osiris/core/state_store.py`, `osiris/core/config.py`, `osiris/core/aiop_export.py`, `osiris/core/runner_v0.py`, `osiris/core/test_harness.py`
+
+### P2 (Medium Priority)
+
+6. **LATEST pointer wrong format** (`build/pipelines/{profile}/{slug}/LATEST`)
+   - **Required behavior:** Change LATEST from directory to 3-line text file (manifest_path, manifest_hash, profile)
+   - **Modules involved:** `osiris/core/compiler_v0.py` or wherever LATEST is created
+
+7. **AIOP config uses legacy paths** (`osiris.yaml` template)
+   - **Required behavior:** Remove or update `aiop.output.core_path` and `aiop.output.run_card_path` to use contract-based paths (or document that fs_contract parameter overrides these)
+   - **Modules involved:** `osiris/core/config.py` (sample config generation)
+
+8. **`osiris logs aiop --last` broken** (`osiris/cli/logs.py`)
+   - **Required behavior:** Fix session lookup to use FilesystemContract paths (`run_logs/` instead of legacy `logs/`)
+   - **Modules involved:** `osiris/cli/logs.py`, `osiris/core/session_reader.py`
+
+### P3 (Nice to Have)
+
+9. **E2B parity verification**
+   - **Required behavior:** Add integration test comparing local vs E2B directory structures after all P0-P1 fixes
+   - **Modules involved:** `tests/integration/test_e2b_parity.py`
+
+---
+
+**End of Audit**
