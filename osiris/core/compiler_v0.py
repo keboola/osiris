@@ -477,11 +477,14 @@ class CompilerV0:
                     )
                 )
 
-        # Write LATEST symlink
+        # Write LATEST pointer file (3-line text file per ADR-0028)
         latest_path = output_dir.parent / "LATEST"
         if latest_path.is_symlink() or latest_path.exists():
             latest_path.unlink()
-        latest_path.symlink_to(output_dir.name)
+        with open(latest_path, "w") as f:
+            f.write(f"{manifest_path}\n")
+            f.write(f"{self.manifest_hash}\n")
+            f.write(f"{profile or ''}\n")
 
     def _has_driver(self, component_name: str) -> bool:
         """Check if a component has a runtime driver.
