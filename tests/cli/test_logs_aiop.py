@@ -13,184 +13,138 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for osiris logs aiop command (PR2 implementation)."""
+"""Tests for osiris logs aiop subcommands."""
 
 from unittest.mock import patch
 
-import pytest
-
 
 def test_aiop_help():
-    """Test that aiop --help displays help text."""
-    from osiris.cli.logs import aiop_export
+    """Test that aiop command displays help text with subcommands."""
+    from osiris.cli.logs import aiop_command
 
     with patch("osiris.cli.logs.console") as mock_console:
-        aiop_export(["--help"])
+        aiop_command([])
 
         # Verify help was printed
         assert mock_console.print.called
         # Check for key help elements
         calls = str(mock_console.print.call_args_list)
-        assert "osiris logs aiop" in calls
-        assert "--session" in calls
-        assert "--last" in calls
-        assert "--output" in calls
-        assert "--format" in calls
-        assert "--policy" in calls
+        assert "AIOP Management" in calls or "aiop" in calls.lower()
+        # Should list subcommands
+        assert "list" in calls
+        assert "show" in calls
+        assert "export" in calls
+        assert "prune" in calls
 
 
-def test_aiop_last_flag(tmp_path):
-    """Test that --last works with proper logs directory."""
+def test_aiop_export_last_run_no_runs(tmp_path, monkeypatch):
+    """Test that export --last-run fails gracefully when no runs exist."""
     from osiris.cli.logs import aiop_export
 
-    # Create empty logs dir
-    logs_dir = tmp_path / "logs"
-    logs_dir.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    # Create minimal osiris.yaml
+    osiris_yaml = tmp_path / "osiris.yaml"
+    osiris_yaml.write_text(
+        """
+version: "2.0"
+filesystem:
+  run_logs: "run_logs"
+  aiop:
+    root: "aiop"
+"""
+    )
 
     with patch("osiris.cli.logs.console"):
-        # Test with --last but no sessions in logs directory
-        with pytest.raises(SystemExit) as exc_info:
-            aiop_export(["--last", "--logs-dir", str(logs_dir)])
+        with patch("sys.exit") as mock_exit:
+            # Should exit when no runs found
+            aiop_export(["--last-run"])
+            # Should have called exit
+            assert mock_exit.called
 
-        # Should exit with code 2 (no sessions found)
-        assert exc_info.value.code == 2
 
-
-def test_aiop_session_with_id(tmp_path):
-    """Test that --session with valid ID exits with error when session not found."""
+def test_aiop_export_with_run_id_not_found(tmp_path, monkeypatch):
+    """Test that export --run exits when run ID not found."""
     from osiris.cli.logs import aiop_export
 
-    # Create empty logs dir
-    logs_dir = tmp_path / "logs"
-    logs_dir.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    # Create minimal osiris.yaml
+    osiris_yaml = tmp_path / "osiris.yaml"
+    osiris_yaml.write_text(
+        """
+version: "2.0"
+filesystem:
+  run_logs: "run_logs"
+  aiop:
+    root: "aiop"
+"""
+    )
 
     with patch("osiris.cli.logs.console"):
-        # Test with specific session that doesn't exist
-        with pytest.raises(SystemExit) as exc_info:
-            aiop_export(["--session", "run_123456", "--logs-dir", str(logs_dir)])
-
-        # Should exit with code 2 (session not found)
-        assert exc_info.value.code == 2
-
-
-def test_aiop_session_empty():
-    """Test that --session with empty string exits with code 2."""
-    from osiris.cli.logs import aiop_export
-
-    with patch("osiris.cli.logs.console") as mock_console:
-        with pytest.raises(SystemExit) as exc_info:
-            aiop_export(["--session", ""])
-
-        # Verify exit code
-        assert exc_info.value.code == 2
-
-        # Verify error message - empty session triggers the general error
-        calls = str(mock_console.print.call_args_list)
-        assert "Error: session id required" in calls or "Either --session or --last is required" in calls
+        with patch("sys.exit") as mock_exit:
+            # Non-existent run ID
+            aiop_export(["--run", "nonexistent_run_123"])
+            # Should have called exit
+            assert mock_exit.called
 
 
-def test_aiop_missing_required():
-    """Test that missing --session and --last exits with code 2."""
-    from osiris.cli.logs import aiop_export
+def test_aiop_list_empty(tmp_path, monkeypatch):
+    """Test that list works with no runs."""
+    from osiris.cli.logs import aiop_list
 
-    with patch("osiris.cli.logs.console") as mock_console:
-        with pytest.raises(SystemExit) as exc_info:
-            aiop_export([])
+    monkeypatch.chdir(tmp_path)
 
-        # Verify exit code
-        assert exc_info.value.code == 2
-
-        # Verify error message
-        calls = str(mock_console.print.call_args_list)
-        assert "Either --session or --last is required" in calls
-
-
-def test_aiop_parse_all_flags(tmp_path):
-    """Test that all flags are parsed correctly."""
-    from osiris.cli.logs import aiop_export
-
-    # Create empty logs dir
-    logs_dir = tmp_path / "logs"
-    logs_dir.mkdir()
+    # Create minimal osiris.yaml
+    osiris_yaml = tmp_path / "osiris.yaml"
+    osiris_yaml.write_text(
+        """
+version: "2.0"
+filesystem:
+  run_logs: "run_logs"
+  aiop:
+    root: "aiop"
+"""
+    )
 
     with patch("osiris.cli.logs.console"):
-        # Test with all optional flags
-        with pytest.raises(SystemExit) as exc_info:
-            aiop_export(
-                [
-                    "--last",
-                    "--logs-dir",
-                    str(logs_dir),
-                    "--output",
-                    "aiop.json",
-                    "--format",
-                    "json",
-                    "--policy",
-                    "annex",
-                    "--max-core-bytes",
-                    "500000",
-                    "--annex-dir",
-                    "/tmp/annex",
-                    "--timeline-density",
-                    "high",
-                    "--metrics-topk",
-                    "50",
-                    "--schema-mode",
-                    "detailed",
-                ]
-            )
-
-        # Should exit with code 2 (no sessions found)
-        assert exc_info.value.code == 2
+        # Should handle empty case gracefully
+        aiop_list([])
+        # No exception means success
 
 
-def test_aiop_invalid_format():
-    """Test that invalid format choice is rejected."""
-    from osiris.cli.logs import aiop_export
+def test_aiop_show_missing_run_id():
+    """Test that show without --run shows help."""
+    from osiris.cli.logs import aiop_show
 
     with patch("osiris.cli.logs.console") as mock_console:
-        # Invalid format should fail argument parsing
-        aiop_export(["--last", "--format", "invalid"])
-
-        # Check for error message
+        # Missing required --run flag shows help
+        aiop_show([])
+        # Should have printed help
+        assert mock_console.print.called
         calls = str(mock_console.print.call_args_list)
-        assert "Invalid arguments" in calls or "invalid choice" in calls.lower()
+        assert "Show AIOP Summary" in calls or "--run" in calls
 
 
-def test_aiop_invalid_policy():
-    """Test that invalid policy choice is rejected."""
-    from osiris.cli.logs import aiop_export
+def test_aiop_prune_dry_run(tmp_path, monkeypatch):
+    """Test that prune --dry-run works."""
+    from osiris.cli.logs import aiop_prune
 
-    with patch("osiris.cli.logs.console") as mock_console:
-        # Invalid policy should fail argument parsing
-        aiop_export(["--last", "--policy", "invalid"])
+    monkeypatch.chdir(tmp_path)
 
-        # Check for error message
-        calls = str(mock_console.print.call_args_list)
-        assert "Invalid arguments" in calls or "invalid choice" in calls.lower()
+    # Create minimal osiris.yaml
+    osiris_yaml = tmp_path / "osiris.yaml"
+    osiris_yaml.write_text(
+        """
+version: "2.0"
+filesystem:
+  run_logs: "run_logs"
+  aiop:
+    root: "aiop"
+"""
+    )
 
-
-def test_aiop_invalid_timeline_density():
-    """Test that invalid timeline density is rejected."""
-    from osiris.cli.logs import aiop_export
-
-    with patch("osiris.cli.logs.console") as mock_console:
-        # Invalid timeline density should fail argument parsing
-        aiop_export(["--last", "--timeline-density", "invalid"])
-
-        # Check for error message
-        calls = str(mock_console.print.call_args_list)
-        assert "Invalid arguments" in calls or "invalid choice" in calls.lower()
-
-
-def test_aiop_invalid_schema_mode():
-    """Test that invalid schema mode is rejected."""
-    from osiris.cli.logs import aiop_export
-
-    with patch("osiris.cli.logs.console") as mock_console:
-        # Invalid schema mode should fail argument parsing
-        aiop_export(["--last", "--schema-mode", "invalid"])
-
-        # Check for error message
-        calls = str(mock_console.print.call_args_list)
-        assert "Invalid arguments" in calls or "invalid choice" in calls.lower()
+    with patch("osiris.cli.logs.console"):
+        # Dry run should succeed even with no data
+        aiop_prune(["--dry-run"])
+        # No exception means success
