@@ -150,9 +150,13 @@ def export_aiop_auto(
         # No need to extract from pipeline.id or add it - it's already there!
         # Just ensure manifest_hash is available for build_aiop to find
         if not manifest.get("manifest_hash"):
-            # Extract manifest hash from pipeline.fingerprints if not at root
-            manifest_hash = manifest.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp", "unknown")
+            # Extract manifest hash from meta.manifest_hash (canonical source)
+            from osiris.core.fs_paths import normalize_manifest_hash
+
+            manifest_hash = manifest.get("meta", {}).get("manifest_hash", "unknown")
             if manifest_hash != "unknown":
+                # Normalize to pure hex (remove any sha256: prefix)
+                manifest_hash = normalize_manifest_hash(manifest_hash)
                 # Add to root for easy access by build_aiop
                 manifest["manifest_hash"] = manifest_hash
 
