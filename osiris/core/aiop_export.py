@@ -217,9 +217,7 @@ def export_aiop_auto(
 
         # Handle Annex if enabled
         annex_size = 0
-        annex_dir = None
-        if config.get("annex", {}).get("enabled", False):
-            annex_dir = render_path(config["annex"]["dir"], ctx, ts_format)
+        if annex_dir and config.get("annex", {}).get("enabled", False):
             Path(annex_dir).mkdir(parents=True, exist_ok=True)
             annex_size = _export_annex(session_id, annex_dir, config.get("annex", {}), session_path=session_path)
 
@@ -248,7 +246,7 @@ def export_aiop_auto(
                 manifest_hash=manifest_hash,
                 status=status,
                 started_at=started_at,  # Now extracted from AIOP
-                ended_at=ts,
+                ended_at=completed_at or end_time,
                 total_rows=total_rows,  # Now extracted from AIOP
                 duration_ms=duration_ms,  # Now extracted from AIOP
                 bytes_core=core_size,
@@ -275,7 +273,9 @@ def export_aiop_auto(
         return False, str(e)
 
 
-def _export_annex(session_id: str, annex_dir: str, annex_config: dict[str, Any], session_path: Path | None = None) -> int:
+def _export_annex(
+    session_id: str, annex_dir: str, annex_config: dict[str, Any], session_path: Path | None = None
+) -> int:
     """Export NDJSON annex shards.
 
     Args:

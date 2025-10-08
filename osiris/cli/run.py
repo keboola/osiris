@@ -2,7 +2,6 @@
 
 import json
 import os
-import shutil
 import sys
 import time
 from pathlib import Path
@@ -597,16 +596,18 @@ def run_command(args: list[str]):
         # Clean up temporary session directory (only if it was created)
         temp_session_dir = session.session_dir
         if temp_session_dir.exists() and temp_session_dir != proper_session.session_dir:
+            import contextlib
             import shutil
 
-            try:
-                shutil.rmtree(temp_session_dir)
-            except Exception:
-                pass  # Best effort cleanup
+            with contextlib.suppress(Exception):
+                shutil.rmtree(temp_session_dir)  # Best effort cleanup
 
         # Update the global current session
         set_current_session(proper_session)
         session = proper_session
+
+        # Setup logging on the proper session (same settings as temp session)
+        session.setup_logging(level=log_level, enable_debug=verbose)
 
         # Create execution context with session directory as base
         exec_context = ExecutionContext(session_id=run_id_final, base_path=session.session_dir)
@@ -657,21 +658,40 @@ def run_command(args: list[str]):
             try:
                 from datetime import datetime
 
-                index_writer = RunIndexWriter(contract.index_paths()["base"])
-                index_writer.append(
-                    run_id=run_id_final,
+                from ..core.run_index import RunRecord
+
+                # Compute AIOP path for index
+                index_profile = manifest_profile or fs_config.profiles.default if fs_config.profiles.enabled else None
+                aiop_paths = contract.aiop_paths(
                     pipeline_slug=pipeline_slug_final,
-                    profile=manifest_profile or fs_config.profiles.default if fs_config.profiles.enabled else None,
                     manifest_hash=manifest_hash,
                     manifest_short=manifest_short,
-                    run_ts=run_ts or datetime.utcnow(),
+                    run_id=run_id_final,
+                    profile=index_profile,
+                )
+                aiop_base_dir = str(aiop_paths["base"])
+
+                # Format run_ts as ISO string
+                run_ts_str = run_ts if isinstance(run_ts, str) else (run_ts or datetime.utcnow()).isoformat()
+
+                # Create run record
+                record = RunRecord(
+                    run_id=run_id_final,
+                    pipeline_slug=pipeline_slug_final,
+                    profile=index_profile,
+                    manifest_hash=manifest_hash,
+                    manifest_short=manifest_short,
+                    run_ts=run_ts_str,
                     status="success",
                     duration_ms=int(total_duration * 1000),
                     run_logs_path=str(session.session_dir),
-                    aiop_path="",  # Will be populated by AIOP export
+                    aiop_path=aiop_base_dir,
                     build_manifest_path=str(manifest_path),
                     tags=[],
                 )
+
+                index_writer = RunIndexWriter(contract.index_paths()["base"])
+                index_writer.append(record)
                 log_event("run_index_updated", run_id=run_id_final)
             except Exception as e:
                 # Best-effort, don't fail the run
@@ -781,7 +801,7 @@ def run_command(args: list[str]):
                 session_id=session_id,
                 manifest_hash=manifest_hash,
                 status=final_status,
-                end_time=datetime.datetime.utcnow(),
+                end_time=datetime.utcnow(),
                 fs_contract=contract if "contract" in locals() else None,
                 pipeline_slug=pipeline_slug_aiop,
                 profile=profile,
