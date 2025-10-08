@@ -1,14 +1,45 @@
 """CLI command for managing pipeline runs."""
 
 import argparse
-from datetime import datetime, timedelta
 import json
-from pathlib import Path
+from datetime import datetime, timedelta
 
 from rich.console import Console
 from rich.table import Table
 
 console = Console()
+
+
+def _render_runs_table(runs):
+    """Render runs as a Rich table."""
+    table = Table(title=f"Pipeline Runs ({len(runs)} found)")
+    table.add_column("Run ID", style="cyan")
+    table.add_column("Pipeline", style="green")
+    table.add_column("Profile", style="blue")
+    table.add_column("Status", style="magenta")
+    table.add_column("Started", style="dim")
+    table.add_column("Duration", style="dim")
+
+    for run in runs:
+        # Format duration from duration_ms
+        duration = ""
+        if run.duration_ms:
+            delta = timedelta(milliseconds=run.duration_ms)
+            duration = str(delta)
+
+        # Format started time (run_ts is ISO string)
+        started_display = run.run_ts[:19] if run.run_ts else ""  # Trim to datetime part
+
+        table.add_row(
+            run.run_id[:20] + "..." if len(run.run_id) > 20 else run.run_id,
+            run.pipeline_slug,
+            run.profile or "default",
+            run.status,
+            started_display,
+            duration,
+        )
+
+    return table
 
 
 def runs_command(args: list[str]):
@@ -69,30 +100,7 @@ def runs_command(args: list[str]):
                 console.print("[yellow]No runs found matching filters[/yellow]")
                 return
 
-            # Create table
-            table = Table(title=f"Pipeline Runs ({len(runs)} found)")
-            table.add_column("Run ID", style="cyan")
-            table.add_column("Pipeline", style="green")
-            table.add_column("Profile", style="blue")
-            table.add_column("Status", style="magenta")
-            table.add_column("Started", style="dim")
-            table.add_column("Duration", style="dim")
-
-            for run in runs:
-                duration = ""
-                if run.completed_at and run.started_at:
-                    delta = datetime.fromisoformat(run.completed_at) - datetime.fromisoformat(run.started_at)
-                    duration = str(delta)
-
-                table.add_row(
-                    run.run_id[:20] + "..." if len(run.run_id) > 20 else run.run_id,
-                    run.pipeline_slug,
-                    run.profile or "default",
-                    run.status,
-                    run.started_at,
-                    duration,
-                )
-
+            table = _render_runs_table(runs)
             console.print(table)
 
     except Exception as e:
