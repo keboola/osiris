@@ -1255,7 +1255,7 @@ def connections_command(args: list) -> None:
 def logs_command(args: list) -> None:
     """Manage session logs (list, show, bundle, gc, html, open, aiop)."""
     from .logs import (
-        aiop_export,
+        aiop_command,
         bundle_session,
         gc_sessions,
         html_report,
@@ -1317,7 +1317,7 @@ def logs_command(args: list) -> None:
     elif subcommand == "open":
         open_session(subcommand_args)
     elif subcommand == "aiop":
-        aiop_export(subcommand_args)
+        aiop_command(subcommand_args)
     else:
         console.print(f"❌ Unknown subcommand: {subcommand}")
         console.print("Available subcommands: list, last, show, bundle, gc, html, open, aiop")
