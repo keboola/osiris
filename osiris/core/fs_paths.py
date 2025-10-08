@@ -14,15 +14,14 @@
 
 """Filesystem Contract v1 - Path resolution and token rendering (ADR-0028)."""
 
-from dataclasses import dataclass
-from datetime import datetime
 import getpass
 import hashlib
 import json
-import os
-from pathlib import Path
 import re
 import subprocess
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from osiris.core.fs_config import FilesystemConfig, IdsConfig
@@ -350,6 +349,46 @@ def slugify_token(value: str) -> str:
     slug = slug.strip("-_")
 
     return slug
+
+
+def normalize_manifest_hash(hash_str: str) -> str:
+    """Normalize manifest hash to pure hex format (remove algorithm prefix if present).
+
+    Accepts various formats and returns pure hex:
+    - 'sha256:<hex>' → '<hex>'
+    - 'sha256<hex>' → '<hex>'
+    - '<hex>' → '<hex>'
+
+    Args:
+        hash_str: Hash string (possibly with algorithm prefix)
+
+    Returns:
+        Pure hex hash string (no prefix)
+
+    Examples:
+        >>> normalize_manifest_hash('sha256:abc123')
+        'abc123'
+        >>> normalize_manifest_hash('sha256abc123')
+        'abc123'
+        >>> normalize_manifest_hash('abc123')
+        'abc123'
+    """
+    if not hash_str:
+        return ""
+
+    # Handle 'sha256:<hex>' format
+    if ":" in hash_str:
+        return hash_str.split(":", 1)[1]
+
+    # Handle 'sha256<hex>' format (no colon)
+    if hash_str.startswith("sha256") and len(hash_str) > 6:
+        # Check if remainder looks like hex
+        remainder = hash_str[6:]
+        if all(c in "0123456789abcdef" for c in remainder.lower()):
+            return remainder
+
+    # Already pure hex
+    return hash_str
 
 
 def compute_manifest_hash(manifest: dict[str, Any], algo: str = "sha256_slug", profile: str | None = None) -> str:

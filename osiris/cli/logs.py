@@ -1291,15 +1291,23 @@ def aiop_list(args: list) -> None:
         # Filter runs that have AIOP summaries
         aiop_runs = []
         for run in runs:
-            # Check if AIOP summary exists
-            aiop_paths = contract.aiop_paths(
-                pipeline_slug=run.pipeline_slug,
-                manifest_hash=run.manifest_hash,
-                manifest_short=run.manifest_short,
-                run_id=run.run_id,
-                profile=run.profile or None,
-            )
-            summary_path = aiop_paths["summary"]
+            # Prefer aiop_path from index; fallback to FilesystemContract
+            if run.aiop_path:
+                # Use stored path from index
+                summary_path = Path(run.aiop_path) / "summary.json"
+            else:
+                # Fallback: compute with FilesystemContract (normalize hash if needed)
+                from osiris.core.fs_paths import normalize_manifest_hash
+
+                normalized_hash = normalize_manifest_hash(run.manifest_hash)
+                aiop_paths = contract.aiop_paths(
+                    pipeline_slug=run.pipeline_slug,
+                    manifest_hash=normalized_hash,
+                    manifest_short=run.manifest_short,
+                    run_id=run.run_id,
+                    profile=run.profile or None,
+                )
+                summary_path = aiop_paths["summary"]
 
             if summary_path.exists():
                 aiop_runs.append(
@@ -1393,15 +1401,23 @@ def aiop_show(args: list) -> None:
             console.print(f"❌ Run not found: {parsed_args.run}")
             sys.exit(2)
 
-        # Get AIOP summary path
-        aiop_paths = contract.aiop_paths(
-            pipeline_slug=run.pipeline_slug,
-            manifest_hash=run.manifest_hash,
-            manifest_short=run.manifest_short,
-            run_id=run.run_id,
-            profile=run.profile or None,
-        )
-        summary_path = aiop_paths["summary"]
+        # Prefer aiop_path from index; fallback to FilesystemContract
+        if run.aiop_path:
+            # Use stored path from index
+            summary_path = Path(run.aiop_path) / "summary.json"
+        else:
+            # Fallback: compute with FilesystemContract (normalize hash if needed)
+            from osiris.core.fs_paths import normalize_manifest_hash
+
+            normalized_hash = normalize_manifest_hash(run.manifest_hash)
+            aiop_paths = contract.aiop_paths(
+                pipeline_slug=run.pipeline_slug,
+                manifest_hash=normalized_hash,
+                manifest_short=run.manifest_short,
+                run_id=run.run_id,
+                profile=run.profile or None,
+            )
+            summary_path = aiop_paths["summary"]
 
         if not summary_path.exists():
             console.print(f"❌ AIOP summary not found for run {parsed_args.run}")

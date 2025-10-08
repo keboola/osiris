@@ -582,7 +582,11 @@ def run_command(args: list[str]):
 
         # Extract pipeline info from manifest for proper session creation
         pipeline_slug_final = manifest_data.get("pipeline", {}).get("id", "unknown")
+        # Get manifest_short from meta (or derive from meta.manifest_hash if missing)
         manifest_short = manifest_data.get("meta", {}).get("manifest_short", "")
+        if not manifest_short:
+            manifest_hash_temp = manifest_data.get("meta", {}).get("manifest_hash", "")
+            manifest_short = manifest_hash_temp[:7] if manifest_hash_temp else ""
         manifest_profile = manifest_data.get("meta", {}).get("profile", profile)
 
         # Generate run_id now that we know the pipeline
@@ -655,8 +659,8 @@ def run_command(args: list[str]):
         if execute_success:
             log_event("run_complete", total_duration=total_duration, adapter_execution=True)
 
-            # Extract full manifest hash for index (already have short version)
-            manifest_hash = manifest_data.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp", "")
+            # Extract full manifest hash for index from meta.manifest_hash (not pipeline.fingerprints.manifest_fp)
+            manifest_hash = manifest_data.get("meta", {}).get("manifest_hash", "")
 
             # Write to run index
             try:
@@ -793,10 +797,13 @@ def run_command(args: list[str]):
             manifest_short_aiop = None
             run_id_aiop = None
             if "manifest_data" in locals() and isinstance(manifest_data, dict):
-                # Manifest hash is at pipeline.fingerprints.manifest_fp
-                manifest_hash = manifest_data.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp")
+                # Manifest hash is at meta.manifest_hash (pure hex, no algorithm prefix)
+                manifest_hash = manifest_data.get("meta", {}).get("manifest_hash", "")
                 pipeline_slug_aiop = manifest_data.get("pipeline", {}).get("id")
-                manifest_short_aiop = manifest_hash[:7] if manifest_hash else None
+                # Derive manifest_short from manifest_hash, or use meta.manifest_short if available
+                manifest_short_aiop = manifest_data.get("meta", {}).get("manifest_short") or (
+                    manifest_hash[:7] if manifest_hash else ""
+                )
                 if "run_id_final" in locals():
                     run_id_aiop = run_id_final
 

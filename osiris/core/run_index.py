@@ -14,11 +14,11 @@
 
 """Run index management for tracking pipeline executions (ADR-0028)."""
 
-from dataclasses import asdict, dataclass
-from datetime import datetime
 import fcntl
 import json
 import os
+from dataclasses import asdict, dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -78,7 +78,14 @@ class RunIndexWriter:
 
         Args:
             record: Run record to append
+
+        Raises:
+            ValueError: If manifest_hash contains algorithm prefix (e.g., "sha256:")
         """
+        # Validate manifest_hash is pure hex (no algorithm prefix)
+        if ":" in record.manifest_hash:
+            raise ValueError(f"manifest_hash must be pure hex (no algorithm prefix): {record.manifest_hash}")
+
         # Write to main index
         self._append_jsonl(self.runs_jsonl, record.to_dict())
 
