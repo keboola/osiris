@@ -2,15 +2,13 @@
 
 from unittest.mock import patch
 
-from osiris.core.compiler_v0 import CompilerV0
-
 
 class TestCompilerSecretCollection:
     """Test secret key collection from component specs."""
 
-    def test_collect_all_secret_keys_with_x_secret(self):
+    def test_collect_all_secret_keys_with_x_secret(self, compiler_instance):
         """Test that x-secret fields are properly collected."""
-        compiler = CompilerV0()
+        compiler = compiler_instance
 
         # Mock registry with a component that has x-secret fields
         mock_spec = {
@@ -36,9 +34,9 @@ class TestCompilerSecretCollection:
         assert "api_token" in secret_keys
         assert "resolved_connection" in secret_keys  # First segment of pointer
 
-    def test_secret_keys_for_component_with_spec(self):
+    def test_secret_keys_for_component_with_spec(self, compiler_instance):
         """Test secret key extraction from a single component spec."""
-        compiler = CompilerV0()
+        compiler = compiler_instance
 
         spec = {"name": "test.writer", "x-secret": ["/service_key", "/auth/token", "/nested/deep/secret"]}
 
@@ -52,9 +50,9 @@ class TestCompilerSecretCollection:
         assert "key" in secret_keys  # Common secret name
         assert "token" in secret_keys  # Common secret name
 
-    def test_secret_keys_for_component_without_spec(self):
+    def test_secret_keys_for_component_without_spec(self, compiler_instance):
         """Test that common secret names are returned when no spec provided."""
-        compiler = CompilerV0()
+        compiler = compiler_instance
 
         secret_keys = compiler._secret_keys_for_component(None)
 
@@ -70,9 +68,9 @@ class TestCompilerSecretCollection:
         assert "dsn" in secret_keys
         assert "connection_string" in secret_keys
 
-    def test_pointer_to_segments(self):
+    def test_pointer_to_segments(self, compiler_instance):
         """Test JSON pointer parsing."""
-        compiler = CompilerV0()
+        compiler = compiler_instance
 
         # Test various pointer formats
         assert compiler._pointer_to_segments("/password") == ["password"]
@@ -85,9 +83,9 @@ class TestCompilerSecretCollection:
         assert compiler._pointer_to_segments("/field~0with~0tilde") == ["field~with~tilde"]
         assert compiler._pointer_to_segments("/field~1with~1slash") == ["field/with/slash"]
 
-    def test_generate_configs_filters_x_secret_fields(self):
+    def test_generate_configs_filters_x_secret_fields(self, compiler_instance):
         """Test that fields marked with x-secret are filtered from configs."""
-        compiler = CompilerV0()
+        compiler = compiler_instance
 
         # Mock component spec with x-secret
         mock_spec = {
@@ -124,9 +122,9 @@ class TestCompilerSecretCollection:
         # Secret field should be filtered
         assert "auth_token" not in config
 
-    def test_primary_key_not_treated_as_secret(self):
+    def test_primary_key_not_treated_as_secret(self, compiler_instance):
         """Test that primary_key is never treated as a secret."""
-        compiler = CompilerV0()
+        compiler = compiler_instance
 
         # Even with a spec that might suggest 'key' is secret
         spec = {"x-secret": ["/api_key", "/secret_key"]}
