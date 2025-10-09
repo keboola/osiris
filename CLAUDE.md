@@ -139,7 +139,7 @@ The project has comprehensive documentation organized as follows:
 
 ### AI-Assisted Development
 - **`docs/developer-guide/ai/checklists/COMPONENT_AI_CHECKLIST.md`** - LLM-assisted component development guide
-- **`docs/COMPONENT_DEVELOPER_AUDIT.md`** - Systematic component review checklist
+- **`docs/developer-guide/human/BUILD_A_COMPONENT.md`** - Human-friendly component building guide
 - **`docs/archive/`** - Archived LLM contracts (llms.txt, llms-drivers.txt, etc.)
 
 ### Architecture Decisions

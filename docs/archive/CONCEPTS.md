@@ -516,7 +516,7 @@ DataFrame
 
 ## Next Steps
 
-- **Build a Component**: See [`COMPONENT_DEVELOPER_AUDIT.md`](../COMPONENT_DEVELOPER_AUDIT.md)
+- **Build a Component**: See [`../developer-guide/human/BUILD_A_COMPONENT.md`](../developer-guide/human/BUILD_A_COMPONENT.md)
 - **Understand Drivers**: See [`module-drivers.md`](module-drivers.md)
 - **Understand Registry**: See [`module-components.md`](module-components.md)
 - **Understand Connectors**: See [`module-connectors.md`](module-connectors.md)
