@@ -40,18 +40,23 @@ Expose Osiris' OML authoring capabilities through a first-class Model Context Pr
 ### MCP Server Responsibilities
 
 - **Tool surface**: Provide typed tools that encapsulate the existing lifecycle:
-  - `osiris.introspect_sources` → wraps discovery, returns structured schema snapshots.
-  - `osiris.generate_oml` → synthesises OML using user intent and optional discovery artifacts; enforces OML v0.1.0 contract.
-  - `osiris.validate_oml` → runs schema guard, returns diagnostics aligned with ADR-0019 regeneration hints.
-  - `osiris.compile_pipeline` → compiles OML to execution graph and fingerprints results.
-  - `osiris.execute_pipeline` (optional) → triggers pipeline run when the caller has runtime permissions.
-  - `osiris.event_log` (resource) → streams structured events mirroring previous chat telemetry (intent captured, discovery done, etc.).
+
+  - `osiris.introspect_sources` → wraps discovery, returns metadata and optional samples.
+  - `osiris.generate_oml` → synthesises OML drafts deterministically from user intent, discovery context, and use-case hints.
+  - `osiris.validate_oml` → runs schema guard using the Python-based validator (`osiris/core/oml_validator.py`), returns diagnostics aligned with ADR-0019 regeneration hints.
+  - `osiris.save_oml` → saves OML drafts.
+  - `osiris.usecases_list` → enumerates business scenarios.
+
 - **Prompt packages**: Ship canonical system / tool prompts as MCP resources so every client loads identical instructions, eliminating prompt drift.
 - **Session contract**: Maintain deterministic sequencing rules from ADR-0019 by embedding them in tool preconditions:
   - Discovery tools tag their outputs with a session identifier.
   - `generate_oml` requires either a discovery summary resource or an explicit override flag to skip discovery.
   - Regeneration is bounded by server-side policy (one retry) regardless of client behaviour.
-- **Authentication & tenancy**: Reuse existing auth middleware; requests inherit workspace scoping so that MCP tools operate against the correct registries, secrets, and memory store entries.
+- **Authentication & tenancy**: MVP scope is single workspace per process, no token-based auth; requests inherit workspace scoping so that MCP tools operate against the correct registries, secrets, and memory store entries.
+
+### Post-MVP Extensions
+
+Future milestones will introduce additional tools such as osiris.compile_pipeline and osiris.execute_pipeline once the authoring layer is stable.
 
 ### Decommissioning Legacy Chat
 
