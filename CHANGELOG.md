@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Major Release: Filesystem Contract v1 Complete**
 
-This release completes the Filesystem Contract v1 implementation (ADR-0028), delivering a production-ready directory structure that separates build artifacts, runtime logs, and observability data. All 47 commits focused on enforcing contract semantics across the entire codebase with comprehensive test coverage (1064 tests passing).
+This release completes the Filesystem Contract v1 implementation (ADR-0028), delivering a production-ready directory structure that separates build artifacts, runtime logs, and observability data. Filesystem Contract v1 provides a deterministic, reproducible filesystem layout for all Osiris runs and artifacts. All 47 commits focused on enforcing contract semantics across the entire codebase with comprehensive test coverage (1064 tests passing).
 
 ### Breaking Changes
 
