@@ -90,7 +90,24 @@ def get_pipeline_name(logs_dir: str, session_id: str) -> str | None:
     """Extract pipeline name from session manifest or OML."""
     session_path = Path(logs_dir) / session_id
 
-    # Try manifest.json in build/e2b or build directories
+    # FilesystemContract v1: Try manifest.yaml in session root
+    manifest_yaml = session_path / "manifest.yaml"
+    if manifest_yaml.exists():
+        try:
+            import yaml
+
+            with open(manifest_yaml) as f:
+                manifest = yaml.safe_load(f)
+                # Try pipeline.id first
+                if manifest and "pipeline" in manifest and "id" in manifest["pipeline"]:
+                    return manifest["pipeline"]["id"]
+                # Fallback to top-level name
+                if manifest and "name" in manifest:
+                    return manifest["name"]
+        except Exception:  # nosec B110
+            pass
+
+    # Legacy: Try manifest.json in build/e2b or build directories
     for manifest_path in [
         session_path / "build" / "e2b" / "manifest.json",
         session_path / "build" / "manifest.json",
@@ -125,9 +142,42 @@ def get_pipeline_name(logs_dir: str, session_id: str) -> str | None:
 def get_session_metadata(logs_dir: str, session_id: str) -> dict[str, Any]:
     """Get session metadata including remote execution details."""
     session_path = Path(logs_dir) / session_id
-    metadata_file = session_path / "metadata.json"
 
-    # First try metadata.json
+    # FilesystemContract v1: Try status.json and manifest.yaml
+    status_file = session_path / "status.json"
+    manifest_yaml = session_path / "manifest.yaml"
+
+    if status_file.exists() or manifest_yaml.exists():
+        metadata = {}
+
+        # Read status.json
+        if status_file.exists():
+            try:
+                with open(status_file) as f:
+                    status_data = json.load(f)
+                    metadata["status"] = status_data
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        # Read manifest.yaml
+        if manifest_yaml.exists():
+            try:
+                import yaml
+
+                with open(manifest_yaml) as f:
+                    manifest_data = yaml.safe_load(f)
+                    if manifest_data:
+                        metadata["pipeline"] = manifest_data.get("pipeline", {})
+                        metadata["pipeline"]["name"] = manifest_data.get("name", "")
+                        metadata["meta"] = manifest_data.get("meta", {})
+            except Exception:  # nosec B110
+                pass
+
+        if metadata:
+            return metadata
+
+    # Legacy: Try metadata.json
+    metadata_file = session_path / "metadata.json"
     if metadata_file.exists():
         try:
             with open(metadata_file) as f:
@@ -254,7 +304,20 @@ def get_pipeline_steps(logs_dir: str, session_id: str) -> list:
     """Extract pipeline steps from manifest for visualization."""
     session_path = Path(logs_dir) / session_id
 
-    # Try manifest.json in build/e2b or build directories
+    # FilesystemContract v1: Try manifest.yaml in session root
+    manifest_yaml = session_path / "manifest.yaml"
+    if manifest_yaml.exists():
+        try:
+            import yaml
+
+            with open(manifest_yaml) as f:
+                manifest = yaml.safe_load(f)
+                if manifest and "steps" in manifest:
+                    return manifest["steps"]
+        except Exception:  # nosec B110
+            pass
+
+    # Legacy: Try manifest.json in build/e2b or build directories
     for manifest_path in [
         session_path / "build" / "e2b" / "manifest.json",
         session_path / "build" / "manifest.json",
@@ -433,7 +496,7 @@ def read_session_logs(logs_dir: str, session_id: str) -> dict[str, Any]:
     # Read log files for Technical Logs tab
     logs = {}
 
-    # Read osiris.log if it exists
+    # Read osiris.log if it exists (legacy structure)
     osiris_log = session_path / "osiris.log"
     if osiris_log.exists():
         try:
@@ -442,7 +505,7 @@ def read_session_logs(logs_dir: str, session_id: str) -> dict[str, Any]:
         except Exception:
             logs["osiris.log"] = "Error reading osiris.log"
 
-    # Read debug.log if it exists
+    # Read debug.log if it exists (legacy structure)
     debug_log = session_path / "debug.log"
     if debug_log.exists():
         try:
@@ -450,6 +513,25 @@ def read_session_logs(logs_dir: str, session_id: str) -> dict[str, Any]:
                 logs["debug.log"] = f.read()
         except Exception:
             logs["debug.log"] = "Error reading debug.log"
+
+    # For FilesystemContract v1: Read manifest.yaml
+    manifest_yaml = session_path / "manifest.yaml"
+    if manifest_yaml.exists():
+        try:
+            with open(manifest_yaml) as f:
+                logs["manifest.yaml"] = f.read()
+        except Exception:
+            logs["manifest.yaml"] = "Error reading manifest.yaml"
+
+    # For FilesystemContract v1: Read status.json
+    status_json = session_path / "status.json"
+    if status_json.exists():
+        try:
+            with open(status_json) as f:
+                status_data = json.load(f)
+                logs["status.json"] = json.dumps(status_data, indent=2)
+        except Exception:
+            logs["status.json"] = "Error reading status.json"
 
     result["logs"] = logs
     return result
@@ -513,7 +595,7 @@ def generate_html_report(
 
         # Read session logs and generate detail page
         session_logs = read_session_logs(logs_dir, session.session_id)
-        session_html = generate_session_detail_page(session, session_logs)
+        session_html = generate_session_detail_page(session, session_logs, logs_dir)
 
         # Write session HTML file
         (session_dir / "index.html").write_text(session_html)
@@ -987,46 +1069,20 @@ def generate_overview_page(sessions, logs_dir: str) -> str:  # noqa: ARG001
     return html
 
 
-def generate_session_detail_page(session, session_logs) -> str:
-    """Generate detailed session page with events, metrics, and artifacts."""
+def generate_session_detail_page(session, session_logs, logs_dir: str) -> str:
+    """Generate detailed session page with events, metrics, and artifacts.
+
+    Args:
+        session: SessionSummary object
+        session_logs: Dict with events, metrics, artifacts, logs
+        logs_dir: Base logs directory path
+    """
     events = session_logs.get("events", [])
     metrics = session_logs.get("metrics", [])
     artifacts = session_logs.get("artifacts", [])
     logs = session_logs.get("logs", {})
 
     # Get additional data from session directory
-    from pathlib import Path
-
-    # The logs_dir should be where the session directories actually are
-    # Since we're in generate_session_detail_page, we know the session exists
-    # Let's use the absolute path to the logs directory
-    # We can check a few common locations
-    possible_paths = [
-        Path("/Users/padak/github/osiris_pipeline/testing_env/logs"),
-        Path("./testing_env/logs"),
-        Path("./logs"),
-        Path("logs"),
-    ]
-
-    logs_dir = None
-    for path in possible_paths:
-        if path.exists() and (path / session.session_id).exists():
-            logs_dir = str(path.absolute())
-            break
-
-    if not logs_dir:
-        # Fallback - try to extract from artifact paths if available
-        if artifacts and len(artifacts) > 0:
-            first_artifact = artifacts[0]
-            artifact_path = Path(first_artifact.get("path", ""))
-            if artifact_path.parts and "artifacts" in artifact_path.parts:
-                idx = artifact_path.parts.index("artifacts")
-                if idx >= 2:
-                    logs_dir = str(Path(*artifact_path.parts[: idx - 1]))
-
-        if not logs_dir:
-            logs_dir = "./testing_env/logs"
-
     metadata = get_session_metadata(logs_dir, session.session_id)
     pipeline_steps = get_pipeline_steps(logs_dir, session.session_id)
 
@@ -1619,6 +1675,32 @@ def generate_session_detail_page(session, session_logs) -> str:
         </div>"""
 
     overview_html += """</div></div>"""
+
+    # Enrich pipeline steps with execution data from events
+    if pipeline_steps and events:
+        # Create a map of step execution data from events
+        step_execution = {}
+        for event in events:
+            event_name = event.get("event", "")
+            step_id = event.get("step_id", "")
+
+            if event_name == "step_start":
+                if step_id not in step_execution:
+                    step_execution[step_id] = {"status": "started"}
+            elif event_name == "step_complete":
+                if step_id not in step_execution:
+                    step_execution[step_id] = {}
+                step_execution[step_id]["status"] = "completed"
+                step_execution[step_id]["duration"] = event.get("duration", 0)
+
+        # Merge execution data into pipeline_steps
+        for step in pipeline_steps:
+            step_id = step.get("id", "")
+            if step_id in step_execution:
+                step["status"] = step_execution[step_id].get("status", "unknown")
+                duration = step_execution[step_id].get("duration", 0)
+                if duration:
+                    step["duration"] = f"{duration:.2f}s"
 
     # Step execution summary
     if pipeline_steps:
@@ -2506,7 +2588,7 @@ if __name__ == "__main__":
         session_logs = read_session_logs(logs_dir, session.session_id)
 
         # Generate detail page
-        detail_html = generate_session_detail_page(session, session_logs)
+        detail_html = generate_session_detail_page(session, session_logs, logs_dir)
 
         # Create session directory
         session_dir = Path(output_dir) / session.session_id

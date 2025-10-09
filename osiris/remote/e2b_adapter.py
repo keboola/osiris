@@ -1004,20 +1004,7 @@ class E2BAdapter(ExecutionAdapter):
             except Exception:
                 pass
 
-        # Fallback: try logs/last_compile pattern (legacy)
-        logs_dir = Path("logs")
-        if logs_dir.exists():
-            for session_dir in sorted(logs_dir.iterdir(), reverse=True):
-                if session_dir.is_dir() and session_dir.name.startswith("compile_"):
-                    cfg_file_path = session_dir / "compiled" / cfg_path
-                    if cfg_file_path.exists():
-                        try:
-                            with open(cfg_file_path) as f:
-                                return json.load(f)
-                        except Exception:
-                            pass
-                        break
-
+        # No fallback - source_manifest_path must be provided
         return None
 
     def _get_connection_descriptor_raw(self, family: str, alias: str) -> dict[str, Any] | None:

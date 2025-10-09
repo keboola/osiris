@@ -129,6 +129,8 @@ class SessionReader:
     def list_sessions(self, limit: int | None = None) -> list[SessionSummary]:
         """List all sessions, ordered by newest first.
 
+        Supports both flat (legacy) and nested (FilesystemContract v1) structures.
+
         Args:
             limit: Maximum number of sessions to return
 
@@ -140,16 +142,47 @@ class SessionReader:
 
         sessions = []
 
-        # Find all session directories
-        for session_dir in self.logs_dir.iterdir():
-            if not session_dir.is_dir():
-                continue
-            if session_dir.name.startswith(".") or session_dir.name.startswith("@"):
-                continue  # Skip hidden and special directories
+        # Recursively find all session directories (supports nested FilesystemContract structure)
+        def find_session_dirs(root: Path, max_depth: int = 5) -> list[Path]:
+            """Recursively find directories containing session files."""
+            session_dirs = []
 
-            summary = self.read_session(session_dir.name)
-            if summary:
-                sessions.append(summary)
+            if max_depth == 0:
+                return session_dirs
+
+            for item in root.iterdir():
+                if not item.is_dir():
+                    continue
+                if item.name.startswith(".") or item.name.startswith("@"):
+                    continue  # Skip hidden and special directories
+
+                # Check if this directory is a session (has events.jsonl or metrics.jsonl)
+                has_events = (item / "events.jsonl").exists()
+                has_metrics = (item / "metrics.jsonl").exists()
+
+                if has_events or has_metrics:
+                    session_dirs.append(item)
+                else:
+                    # Recurse into subdirectories
+                    session_dirs.extend(find_session_dirs(item, max_depth - 1))
+
+            return session_dirs
+
+        # Find all session directories
+        session_paths = find_session_dirs(self.logs_dir)
+
+        # Read session summaries
+        for session_path in session_paths:
+            # Get relative path for session ID
+            try:
+                rel_path = session_path.relative_to(self.logs_dir)
+                str(rel_path).replace("/", "_")  # Convert path to ID
+
+                summary = self.read_session(str(rel_path))
+                if summary:
+                    sessions.append(summary)
+            except ValueError:
+                continue
 
         # Sort by started_at (newest first), with deterministic fallback
         sessions.sort(key=lambda s: (s.started_at or "", s.session_id), reverse=True)

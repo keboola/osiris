@@ -1,7 +1,6 @@
 """Minimal deterministic compiler for OML to manifest."""
 
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 from ..components.registry import ComponentRegistry
@@ -38,8 +37,17 @@ COMMON_SECRET_NAMES = {
 class CompilerV0:
     """Minimal compiler for linear pipelines only."""
 
-    def __init__(self, output_dir: str = "compiled"):
-        self.output_dir = Path(output_dir)
+    def __init__(self, fs_contract, pipeline_slug: str):
+        """Initialize compiler.
+
+        Args:
+            fs_contract: FilesystemContract instance for path resolution (required)
+            pipeline_slug: Pipeline slug for building paths (required)
+        """
+        self.fs_contract = fs_contract
+        self.pipeline_slug = pipeline_slug
+        self.manifest_hash = None
+        self.manifest_short = None
         self.resolver = ParamsResolver()
         self.fingerprints = {}
         self.errors = []
@@ -129,7 +137,7 @@ class CompilerV0:
             # Write outputs
             self._write_outputs(manifest, configs, resolved_oml, profile)
 
-            return True, f"Compilation successful: {self.output_dir}"
+            return True, f"Compilation successful: {manifest['meta'].get('manifest_hash', 'unknown')[:7]}"
 
         except Exception as e:
             return False, f"Compilation failed: {str(e)}"
@@ -189,8 +197,11 @@ class CompilerV0:
         params_bytes = canonical_json(self.resolver.get_effective_params()).encode("utf-8")
         self.fingerprints["params_fp"] = compute_fingerprint(params_bytes)
 
-        # Profile
-        self.fingerprints["profile"] = profile or "default"
+        # Profile - use fs_config default if not provided
+        default_profile = (
+            self.fs_contract.fs_config.profiles.default if self.fs_contract.fs_config.profiles.enabled else None
+        )
+        self.fingerprints["profile"] = profile or default_profile
 
     def _get_cache_key(self) -> str:
         """Generate cache key from fingerprints."""
@@ -294,8 +305,15 @@ class CompilerV0:
         if "metadata" in oml:
             manifest["metadata"] = oml["metadata"]
 
-        # Compute manifest fingerprint
-        manifest_bytes = canonical_json(manifest).encode("utf-8")
+        # Compute manifest fingerprint (exclude ephemeral fields for determinism)
+        import copy
+
+        manifest_for_fp = copy.deepcopy(manifest)
+        if "meta" in manifest_for_fp:
+            # Remove timestamp to ensure deterministic fingerprints
+            manifest_for_fp["meta"].pop("generated_at", None)
+
+        manifest_bytes = canonical_json(manifest_for_fp).encode("utf-8")
         manifest["pipeline"]["fingerprints"]["manifest_fp"] = compute_fingerprint(manifest_bytes)
         self.fingerprints["manifest_fp"] = manifest["pipeline"]["fingerprints"]["manifest_fp"]
 
@@ -393,13 +411,37 @@ class CompilerV0:
 
     def _write_outputs(self, manifest: dict, configs: dict, oml: dict, profile: str | None):
         """Write all compilation outputs."""
+        from .fs_paths import compute_manifest_hash
+
+        # Compute manifest hash
+        self.manifest_hash = compute_manifest_hash(manifest, self.fs_contract.ids_config.manifest_hash_algo, profile)
+        self.manifest_short = self.manifest_hash[: self.fs_contract.fs_config.naming.manifest_short_len]
+
+        # Get paths from filesystem contract
+        paths = self.fs_contract.manifest_paths(
+            pipeline_slug=self.pipeline_slug,
+            manifest_hash=self.manifest_hash,
+            manifest_short=self.manifest_short,
+            profile=profile,
+        )
+
+        # Use contract paths
+        output_dir = paths["base"]
+        manifest_path = paths["manifest"]
+        cfg_dir = paths["cfg_dir"]
+        plan_path = paths["plan"]
+        fingerprints_path = paths["fingerprints"]
+        run_summary_path = paths["run_summary"]
+
         # Create output directory
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        cfg_dir = self.output_dir / "cfg"
+        output_dir.mkdir(parents=True, exist_ok=True)
         cfg_dir.mkdir(exist_ok=True)
 
+        # Add manifest metadata
+        manifest["meta"]["manifest_hash"] = self.manifest_hash
+        manifest["meta"]["manifest_short"] = self.manifest_short
+
         # Write manifest.yaml
-        manifest_path = self.output_dir / "manifest.yaml"
         with open(manifest_path, "w") as f:
             f.write(canonical_yaml(manifest))
 
@@ -409,24 +451,40 @@ class CompilerV0:
             with open(config_path, "w") as f:
                 f.write(canonical_json(config))
 
-        # Write meta.json
-        meta_path = self.output_dir / "meta.json"
-        with open(meta_path, "w") as f:
-            f.write(
-                canonical_json(
-                    {
-                        "fingerprints": self.fingerprints,
-                        "profile": profile,
-                        "oml_version": oml.get("oml_version", "0.1.0"),
-                        "compiled_at": datetime.utcnow().isoformat() + "Z",
-                    }
-                )
-            )
+        # Write additional artifacts based on contract configuration
+        if self.fs_contract.fs_config.artifacts.plan:
+            with open(plan_path, "w") as f:
+                # Simple plan: list of steps
+                plan = {"steps": [{"id": step["id"], "driver": step["driver"]} for step in manifest["steps"]]}
+                f.write(canonical_json(plan))
 
-        # Write effective_config.json
-        config_path = self.output_dir / "effective_config.json"
-        with open(config_path, "w") as f:
-            f.write(canonical_json({"params": self.resolver.get_effective_params(), "profile": profile}))
+        if self.fs_contract.fs_config.artifacts.fingerprints:
+            with open(fingerprints_path, "w") as f:
+                f.write(canonical_json({"fingerprints": self.fingerprints}))
+
+        if self.fs_contract.fs_config.artifacts.run_summary:
+            with open(run_summary_path, "w") as f:
+                f.write(
+                    canonical_json(
+                        {
+                            "profile": profile,
+                            "oml_version": oml.get("oml_version", "0.1.0"),
+                            "compiled_at": datetime.utcnow().isoformat() + "Z",
+                            "manifest_hash": self.manifest_hash,
+                            "manifest_short": self.manifest_short,
+                            "pipeline_slug": self.pipeline_slug,
+                        }
+                    )
+                )
+
+        # Write LATEST pointer file (3-line text file per ADR-0028)
+        latest_path = output_dir.parent / "LATEST"
+        if latest_path.is_symlink() or latest_path.exists():
+            latest_path.unlink()
+        with open(latest_path, "w") as f:
+            f.write(f"{manifest_path}\n")
+            f.write(f"{self.manifest_hash}\n")
+            f.write(f"{profile or ''}\n")
 
     def _has_driver(self, component_name: str) -> bool:
         """Check if a component has a runtime driver.

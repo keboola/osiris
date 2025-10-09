@@ -1,17 +1,14 @@
 """CLI command for compiling OML to manifest with Rich formatting."""
 
 import json
-import shutil
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 
 from rich.console import Console
 
 from ..core.compiler_v0 import CompilerV0
 from ..core.env_loader import load_env
-from ..core.session_logging import SessionContext, log_event, log_metric, set_current_session
 
 console = Console()
 
@@ -125,7 +122,7 @@ def compile_command(args: list[str]):
 
     # Parse arguments manually (like run_command does)
     pipeline_file = None
-    output_dir = "compiled"
+    _output_dir = "compiled"  # Default, not yet used
     profile = None
     params = {}
     compile_mode = "auto"
@@ -138,7 +135,7 @@ def compile_command(args: list[str]):
         if arg.startswith("--"):
             if arg == "--out":
                 if i + 1 < len(args) and not args[i + 1].startswith("--"):
-                    output_dir = args[i + 1]
+                    _output_dir = args[i + 1]  # Parsed but not yet used
                     i += 1
                 else:
                     error_msg = "Option --out requires a value"
@@ -242,77 +239,87 @@ def compile_command(args: list[str]):
             console.print(f"[red]❌ {error_msg}[/red]")
         sys.exit(2)
 
-    # Create a session for this compilation
+    # Load filesystem contract first
+    from ..core.fs_config import load_osiris_config  # noqa: PLC0415
+    from ..core.fs_paths import FilesystemContract  # noqa: PLC0415
+    from ..core.run_index import RunIndexWriter  # noqa: PLC0415
+
+    fs_config, ids_config, _ = load_osiris_config()
+    fs_contract = FilesystemContract(fs_config, ids_config)
+
+    # Resolve profile to default if None
+    if profile is None and fs_config.profiles.enabled:
+        profile = fs_config.profiles.default
+
+    # Extract pipeline slug from filename
+    pipeline_slug = Path(pipeline_file).stem
+
+    # Compile doesn't need run IDs - only runtime execution does
+
+    # Create a session for this compilation (no session logging for compile)
     session_id = f"compile_{int(time.time() * 1000)}"
-    session = SessionContext(session_id=session_id, base_logs_dir=Path("logs"))
-    set_current_session(session)
 
     # Log loaded env files (masked paths)
     if loaded_envs:
-        log_event("env_loaded", files=[str(p) for p in loaded_envs])
+        pass  # No session logging for compile
 
     try:
-        # Log compilation start
-        log_event(
-            "compile_start",
-            pipeline=pipeline_file,
-            profile=profile,
-            params=params,
-            output_dir=output_dir,
-        )
         start_time = time.time()
 
         # Compile the pipeline
         if not use_json:
             console.print(f"[cyan]🔧 Compiling {pipeline_file}...[/cyan]")
-            console.print(f"[dim]📁 Session: logs/{session_id}/[/dim]")
 
-        # Determine session output directory
-        session_output_dir = session.session_dir / "compiled"
-        session_output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Use session directory for compilation
-        compiler = CompilerV0(output_dir=str(session_output_dir))
+        # Use filesystem contract for compilation
+        compiler = CompilerV0(fs_contract=fs_contract, pipeline_slug=pipeline_slug)
         success, message = compiler.compile(
             oml_path=pipeline_file, profile=profile, cli_params=params, compile_mode=compile_mode
         )
 
-        # Calculate duration
-        duration = time.time() - start_time
-        log_metric("compilation_duration", duration, unit="seconds")
+        # Calculate duration (not yet used in output)
+        _duration = time.time() - start_time
 
         if success:
-            # Log successful compilation
-            log_event("compile_complete", message=message, duration=duration)
+            # Write to index
+            index_paths = fs_contract.index_paths()
+            index_writer = RunIndexWriter(index_paths["base"])
 
-            # Write pointer files for successful compilation
-            pointer_data = {
-                "session_id": session_id,
-                "manifest_path": f"logs/{session_id}/compiled/manifest.yaml",
-                "compiled_dir": f"logs/{session_id}/compiled",
-                "generated_at": datetime.utcnow().isoformat() + "Z",
-            }
+            # Write latest manifest pointer (per-pipeline)
+            index_writer.write_latest_manifest(
+                pipeline_slug=pipeline_slug,
+                profile=profile,
+                manifest_hash=compiler.manifest_hash,
+                manifest_path=str(
+                    fs_contract.manifest_paths(
+                        pipeline_slug=pipeline_slug,
+                        manifest_hash=compiler.manifest_hash,
+                        manifest_short=compiler.manifest_short,
+                        profile=profile,
+                    )["manifest"]
+                ),
+            )
 
-            # Write session-specific pointer
-            session_pointer_file = session.session_dir / ".last.json"
-            with open(session_pointer_file, "w") as f:
-                json.dump(pointer_data, f, indent=2)
+            # Write global last_compile.txt pointer for --last-compile flag
+            global_pointer = index_paths["base"] / "last_compile.txt"
+            manifest_path_str = str(
+                fs_contract.manifest_paths(
+                    pipeline_slug=pipeline_slug,
+                    manifest_hash=compiler.manifest_hash,
+                    manifest_short=compiler.manifest_short,
+                    profile=profile,
+                )["manifest"]
+            )
+            with open(global_pointer, "w") as f:
+                f.write(f"{manifest_path_str}\n")
+                f.write(f"{compiler.manifest_hash}\n")
+                f.write(f"{profile}\n")
 
-            # Write global pointer
-            global_pointer_file = Path("logs") / ".last_compile.json"
-            with open(global_pointer_file, "w") as f:
-                json.dump(pointer_data, f, indent=2)
-
-            # If user specified --out, copy artifacts there too
-            if output_dir != "compiled":
-                user_output_dir = Path(output_dir)
-                user_output_dir.mkdir(parents=True, exist_ok=True)
-                # Copy compiled artifacts to user-specified location
-                for item in session_output_dir.iterdir():
-                    if item.is_file():
-                        shutil.copy2(item, user_output_dir / item.name)
-                    elif item.is_dir():
-                        shutil.copytree(item, user_output_dir / item.name, dirs_exist_ok=True)
+            manifest_path = fs_contract.manifest_paths(
+                pipeline_slug=pipeline_slug,
+                manifest_hash=compiler.manifest_hash,
+                manifest_short=compiler.manifest_short,
+                profile=profile,
+            )["manifest"]
 
             if use_json:
                 print(
@@ -321,27 +328,21 @@ def compile_command(args: list[str]):
                             "status": "success",
                             "message": message,
                             "session_id": session_id,
-                            "session_dir": f"logs/{session_id}",
-                            "output_dir": (output_dir if output_dir != "compiled" else f"logs/{session_id}/compiled"),
-                            "manifest": (
-                                f"{output_dir}/manifest.yaml"
-                                if output_dir != "compiled"
-                                else f"logs/{session_id}/compiled/manifest.yaml"
-                            ),
+                            "manifest_path": str(manifest_path),
+                            "manifest_hash": compiler.manifest_hash,
+                            "manifest_short": compiler.manifest_short,
+                            "pipeline_slug": pipeline_slug,
+                            "profile": profile,
                         }
                     )
                 )
             else:
-                console.print(f"[green]✅ {message}[/green]")
-                console.print(f"[dim]📁 Session: logs/{session_id}/[/dim]")
-                if output_dir != "compiled":
-                    console.print(f"[dim]📁 Output: {output_dir}/[/dim]")
-                console.print(f"[dim]📄 Manifest: logs/{session_id}/compiled/manifest.yaml[/dim]")
+                console.print("[green]✅ Compilation successful[/green]")
+                console.print(f"[dim]📁 Build path: {manifest_path.parent}/[/dim]")
+                console.print(f"[dim]📄 Manifest: {manifest_path}[/dim]")
+                console.print(f"[dim]🔐 Hash: {compiler.manifest_short}[/dim]")
             sys.exit(0)
         else:
-            # Log compilation error
-            log_event("compile_error", error=message, duration=duration)
-
             if use_json:
                 error_type = "validation_error" if "secret" in message.lower() else "compilation_error"
                 print(
@@ -350,21 +351,34 @@ def compile_command(args: list[str]):
                             "status": "error",
                             "error_type": error_type,
                             "message": message,
-                            "session_id": session_id,
-                            "session_dir": f"logs/{session_id}",
+                            "pipeline": pipeline_file,
                         }
                     )
                 )
             else:
                 console.print(f"[red]❌ {message}[/red]")
-                console.print(f"[dim]📁 Session logs: logs/{session_id}/[/dim]")
 
             # Exit code 2 for validation/secret errors, 1 for internal errors
             if "secret" in message.lower() or "validation" in message.lower():
                 sys.exit(2)
             else:
                 sys.exit(1)
-    finally:
-        # Clean up session
-        session.close()
-        set_current_session(None)
+    except Exception as e:
+        # Unexpected errors
+        import traceback  # noqa: PLC0415
+
+        if use_json:
+            print(
+                json.dumps(
+                    {
+                        "status": "error",
+                        "message": str(e),
+                        "pipeline": pipeline_file,
+                        "traceback": traceback.format_exc(),
+                    }
+                )
+            )
+        else:
+            console.print(f"[red]❌ Unexpected error: {str(e)}[/red]")
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        sys.exit(1)

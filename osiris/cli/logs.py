@@ -36,16 +36,26 @@ console = Console()
 
 
 def _get_logs_dir_from_config() -> str:
-    """Get logs directory from configuration file, with fallback to 'logs'."""
-    try:
-        from ..core.config import load_config
+    """Get logs directory from configuration file.
 
-        config_data = load_config("osiris.yaml")
-        if "logging" in config_data and "logs_dir" in config_data["logging"]:
-            return config_data["logging"]["logs_dir"]
+    Returns run_logs for FilesystemContract v1, falls back to legacy logs.
+    """
+    try:
+        from ..core.fs_config import load_osiris_config
+
+        fs_config, _, _ = load_osiris_config()
+        # FilesystemContract v1 uses run_logs
+        return "run_logs"
     except (FileNotFoundError, KeyError, Exception):
-        # If config file doesn't exist or has issues, fall back to default
-        pass
+        # Fallback to legacy structure
+        try:
+            from ..core.config import load_config
+
+            config_data = load_config("osiris.yaml")
+            if "logging" in config_data and "logs_dir" in config_data["logging"]:
+                return config_data["logging"]["logs_dir"]
+        except (FileNotFoundError, KeyError, Exception):
+            pass
     return "logs"
 
 
@@ -1177,279 +1187,459 @@ def runs_gc(args: list) -> None:
     gc_sessions(args)
 
 
-def aiop_export(args: list) -> None:
-    """Export AI Operation Package (AIOP) from session logs."""
+def aiop_command(args: list) -> None:
+    """Manage AI Operation Packages (AIOP) - router for list, show, export, prune."""
 
     def show_aiop_help():
-        """Show help for logs aiop subcommand."""
+        """Show help for logs aiop subcommands."""
         console.print()
-        console.print("[bold green]osiris logs aiop - Export AI Operation Package[/bold green]")
-        console.print("🤖 Generate a structured JSON-LD package for LLM consumption")
+        console.print("[bold green]osiris logs aiop - AIOP Management[/bold green]")
+        console.print("🤖 Manage AI Operation Packages for LLM-friendly debugging")
         console.print()
-        console.print("[bold]Usage:[/bold] osiris logs aiop [--session SESSION_ID | --last] [OPTIONS]")
+        console.print("[bold]Usage:[/bold] osiris logs aiop SUBCOMMAND [OPTIONS]")
         console.print()
-        console.print("[bold blue]Required Arguments (one of)[/bold blue]")
-        console.print("  [cyan]--session SESSION_ID[/cyan]  Session ID to export")
-        console.print("  [cyan]--last[/cyan]                Export the most recent session")
-        console.print()
-        console.print("[bold blue]Optional Arguments[/bold blue]")
-        console.print("  [cyan]--output PATH[/cyan]         Output file path (default: stdout)")
-        console.print("  [cyan]--format FORMAT[/cyan]       Output format: json or md (default: json)")
-        console.print("  [cyan]--policy POLICY[/cyan]       Export policy: core or annex (default: core)")
-        console.print("  [cyan]--max-core-bytes N[/cyan]    Max bytes for core package (default: 300000)")
-        console.print("  [cyan]--annex-dir DIR[/cyan]       Directory for annex files (policy=annex)")
-        console.print("  [cyan]--timeline-density D[/cyan]  Timeline detail: low/medium/high (default: medium)")
-        console.print("  [cyan]--metrics-topk N[/cyan]      Top K metrics to include (default: 100)")
-        console.print("  [cyan]--schema-mode MODE[/cyan]    Schema detail: summary/detailed (default: summary)")
+        console.print("[bold blue]Subcommands[/bold blue]")
+        console.print("  [cyan]list[/cyan]       List all runs with AIOP summaries")
+        console.print("  [cyan]show[/cyan]       Display contents of a run's AIOP summary")
+        console.print("  [cyan]export[/cyan]     Generate or regenerate AIOP for a run")
+        console.print("  [cyan]prune[/cyan]      Apply retention policy to AIOP directories")
         console.print()
         console.print("[bold blue]Examples[/bold blue]")
-        console.print("  [green]osiris logs aiop --last[/green]                          # Export latest session")
-        console.print("  [green]osiris logs aiop --session run_123[/green]               # Export specific session")
-        console.print("  [green]osiris logs aiop --last --output aiop.json[/green]       # Save to file")
-        console.print("  [green]osiris logs aiop --last --policy annex[/green]           # Generate with annex")
-        console.print()
-        console.print("[bold yellow]Note:[/bold yellow] This is a stub implementation in PR1.")
-        console.print("      Actual AIOP export will be implemented in PR2+.")
+        console.print("  [green]osiris logs aiop list[/green]                             # List all AIOP runs")
+        console.print("  [green]osiris logs aiop list --pipeline orders_etl[/green]       # Filter by pipeline")
+        console.print("  [green]osiris logs aiop show --run <run_id>[/green]              # Show AIOP summary")
+        console.print("  [green]osiris logs aiop export --last-run[/green]                # Export latest run")
+        console.print("  [green]osiris logs aiop prune --dry-run[/green]                  # Preview cleanup")
         console.print()
 
-    if args and args[0] in ["--help", "-h"]:
+    if not args or args[0] in ["--help", "-h"]:
         show_aiop_help()
         return
 
-    parser = argparse.ArgumentParser(description="Export AI Operation Package", add_help=False)
-    parser.add_argument("--session", help="Session ID to export")
-    parser.add_argument("--last", action="store_true", help="Export most recent session")
-    parser.add_argument("--output", help="Output file path (default: stdout)")
-    parser.add_argument("--format", choices=["json", "md"], default="json", help="Output format (default: json)")
-    parser.add_argument("--policy", choices=["core", "annex"], default="core", help="Export policy (default: core)")
-    parser.add_argument(
-        "--max-core-bytes",
-        type=int,
-        default=300000,
-        help="Max bytes for core package (default: 300000)",
-    )
-    parser.add_argument("--annex-dir", help="Directory for annex files")
-    parser.add_argument(
-        "--timeline-density",
-        choices=["low", "medium", "high"],
-        default="medium",
-        help="Timeline detail level (default: medium)",
-    )
-    parser.add_argument("--metrics-topk", type=int, default=100, help="Top K metrics to include (default: 100)")
-    parser.add_argument(
-        "--schema-mode",
-        choices=["summary", "detailed"],
-        default="summary",
-        help="Schema detail level (default: summary)",
-    )
-    parser.add_argument(
-        "--compress",
-        choices=["none", "gzip"],
-        default="none",
-        help="Compression for annex files (default: none)",
-    )
-    parser.add_argument(
-        "--logs-dir",
-        default=None,
-        help="Base logs directory (default: from config or 'logs')",
-    )
+    subcommand = args[0]
+    subcommand_args = args[1:]
+
+    if subcommand == "list":
+        aiop_list(subcommand_args)
+    elif subcommand == "show":
+        aiop_show(subcommand_args)
+    elif subcommand == "export":
+        aiop_export(subcommand_args)
+    elif subcommand == "prune":
+        aiop_prune(subcommand_args)
+    else:
+        console.print(f"❌ Unknown subcommand: {subcommand}")
+        console.print("Available subcommands: list, show, export, prune")
+        console.print("Use 'osiris logs aiop --help' for detailed help.")
+
+
+def aiop_list(args: list) -> None:
+    """List all runs that have AIOP summaries."""
+    if args and args[0] in ["--help", "-h"]:
+        console.print()
+        console.print("[bold green]osiris logs aiop list - List AIOP Runs[/bold green]")
+        console.print("📋 List all pipeline runs with AIOP summaries")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris logs aiop list [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Options[/bold blue]")
+        console.print("  [cyan]--pipeline SLUG[/cyan]  Filter by pipeline slug")
+        console.print("  [cyan]--profile NAME[/cyan]   Filter by profile name")
+        console.print("  [cyan]--since DURATION[/cyan] Filter by date (e.g., '7d', '1h')")
+        console.print("  [cyan]--json[/cyan]           Output as JSON array")
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print("  [green]osiris logs aiop list[/green]")
+        console.print("  [green]osiris logs aiop list --pipeline orders_etl[/green]")
+        console.print("  [green]osiris logs aiop list --profile prod --json[/green]")
+        console.print()
+        return
+
+    parser = argparse.ArgumentParser(description="List AIOP runs", add_help=False)
+    parser.add_argument("--pipeline", help="Filter by pipeline slug")
+    parser.add_argument("--profile", help="Filter by profile name")
+    parser.add_argument("--since", help="Filter by duration (e.g., '7d', '1h')")
+    parser.add_argument("--json", action="store_true", help="Output as JSON")
 
     try:
         parsed_args = parser.parse_args(args)
     except SystemExit:
-        console.print("❌ Invalid arguments. Use 'osiris logs aiop --help' for usage information.")
+        console.print("❌ Invalid arguments. Use 'osiris logs aiop list --help' for usage information.")
         return
 
-    # Import here to avoid circular imports
+    from osiris.core.fs_config import load_osiris_config
+    from osiris.core.fs_paths import FilesystemContract
+    from osiris.core.run_index import RunIndexReader
 
-    from osiris.core.run_export_v2 import build_aiop, canonicalize_json, export_annex_shards, generate_markdown_runcard
-
-    # Validate required arguments
-    if not (parsed_args.last or parsed_args.session):
-        console.print("❌ Error: Either --session or --last is required")
-        sys.exit(2)
-
-    # Get logs directory
-    logs_dir = parsed_args.logs_dir or _get_logs_dir_from_config()
-    logs_path = Path(logs_dir)
-
-    if not logs_path.exists():
-        console.print(f"❌ Logs directory not found: {logs_path}")
-        sys.exit(2)
-
-    # Find session directory
-    if parsed_args.last:
-        # Get most recent session
-        sessions = []
-        for session_dir in logs_path.iterdir():
-            if session_dir.is_dir() and (session_dir / "events.jsonl").exists():
-                sessions.append((session_dir.stat().st_mtime, session_dir))
-
-        if not sessions:
-            console.print("❌ No sessions found")
-            sys.exit(2)
-
-        sessions.sort(reverse=True)
-        session_path = sessions[0][1]
-        session_id = session_path.name
-    else:
-        # Use specified session
-        session_id = parsed_args.session
-        session_path = logs_path / session_id
-
-        if not session_path.exists():
-            console.print(f"❌ Session not found: {session_id}")
-            sys.exit(2)
-
-    # Read session data
-    reader = SessionReader(str(logs_path))
-    session_summary = reader.read_session(session_id)
-
-    # Load events and metrics
-    events = []
-    metrics = []
-    errors = []
-
-    events_file = session_path / "events.jsonl"
-    if events_file.exists():
-        with open(events_file) as f:
-            for line in f:
-                if line.strip():
-                    event = json.loads(line)
-                    events.append(event)
-                    # Extract errors
-                    if "error" in event.get("event", "").lower() or event.get("level") == "ERROR":
-                        errors.append(event)
-
-    metrics_file = session_path / "metrics.jsonl"
-    if metrics_file.exists():
-        with open(metrics_file) as f:
-            for line in f:
-                if line.strip():
-                    metrics.append(json.loads(line))
-
-    # Get artifacts
-    artifacts = []
-    artifacts_dir = session_path / "artifacts"
-    if artifacts_dir.exists():
-        for artifact_file in artifacts_dir.iterdir():
-            if artifact_file.is_file():
-                artifacts.append(artifact_file)
-
-    # Get manifest (check session root first, then artifacts)
-    manifest = {}
-    # First try session root (where it actually is)
-    manifest_file = session_path / "manifest.yaml"
-    if not manifest_file.exists():
-        # Fallback to artifacts dir for backward compatibility
-        manifest_file = artifacts_dir / "manifest.yaml" if artifacts_dir.exists() else None
-
-    if manifest_file and manifest_file.exists():
-        import yaml
-
-        with open(manifest_file) as f:
-            manifest = yaml.safe_load(f) or {}
-
-    # Get session data
-    session_data = {
-        "session_id": session_id,
-        "started_at": session_summary.started_at,
-        "completed_at": session_summary.finished_at,
-        "status": session_summary.status,
-        "environment": "e2b" if session_summary.adapter_type == "E2B" else "local",
-    }
-
-    # Get config with precedence: CLI > ENV > YAML > defaults
-    from osiris.core.config import resolve_aiop_config
-
-    # Build CLI args dictionary (only non-default values)
-    cli_args = {}
-
-    # Check if CLI values differ from defaults
-    if parsed_args.max_core_bytes != 300000:
-        cli_args["max_core_bytes"] = parsed_args.max_core_bytes
-    if parsed_args.timeline_density != "medium":
-        cli_args["timeline_density"] = parsed_args.timeline_density
-    if parsed_args.metrics_topk != 100:
-        cli_args["metrics_topk"] = parsed_args.metrics_topk
-    if parsed_args.schema_mode != "summary":
-        cli_args["schema_mode"] = parsed_args.schema_mode
-    if parsed_args.policy != "core":
-        cli_args["policy"] = parsed_args.policy
-    if parsed_args.compress != "none":
-        cli_args["compress"] = parsed_args.compress
-    if parsed_args.annex_dir and parsed_args.annex_dir != ".aiop-annex":
-        cli_args["annex_dir"] = parsed_args.annex_dir
-
-    # Resolve configuration with full precedence
-    config, config_sources = resolve_aiop_config(cli_args)
-
-    # Build AIOP
     try:
-        # Show progress if outputting to file (stderr available for progress)
-        show_progress = bool(parsed_args.output)
-        aiop = build_aiop(
-            session_data=session_data,
-            manifest=manifest,
-            events=events,
-            metrics=metrics,
-            artifacts=artifacts,
-            config=config,
-            show_progress=show_progress,
-            config_sources=config_sources,
+        # Load filesystem config
+        fs_config, ids_config, _base_path = load_osiris_config()
+        contract = FilesystemContract(fs_config, ids_config)
+
+        # Get index paths
+        index_paths = contract.index_paths()
+        index_reader = RunIndexReader(index_paths["base"])
+
+        # Query runs
+        runs = index_reader.query_runs(
+            pipeline_slug=parsed_args.pipeline,
+            profile=parsed_args.profile,
+            since=None,  # TODO: Parse --since duration
+            limit=100,
         )
+
+        # Filter runs that have AIOP summaries
+        aiop_runs = []
+        for run in runs:
+            # Prefer aiop_path from index; fallback to FilesystemContract
+            if run.aiop_path:
+                # Use stored path from index
+                summary_path = Path(run.aiop_path) / "summary.json"
+            else:
+                # Fallback: compute with FilesystemContract (normalize hash if needed)
+                from osiris.core.fs_paths import normalize_manifest_hash
+
+                normalized_hash = normalize_manifest_hash(run.manifest_hash)
+                aiop_paths = contract.aiop_paths(
+                    pipeline_slug=run.pipeline_slug,
+                    manifest_hash=normalized_hash,
+                    manifest_short=run.manifest_short,
+                    run_id=run.run_id,
+                    profile=run.profile or None,
+                )
+                summary_path = aiop_paths["summary"]
+
+            if summary_path.exists():
+                aiop_runs.append(
+                    {
+                        "pipeline": run.pipeline_slug,
+                        "run_id": run.run_id,
+                        "profile": run.profile,
+                        "timestamp": run.run_ts,
+                        "status": run.status,
+                        "summary_size": summary_path.stat().st_size,
+                        "summary_path": str(summary_path),
+                    }
+                )
+
+        if parsed_args.json:
+            print(json.dumps(aiop_runs, indent=2))
+        else:
+            if not aiop_runs:
+                console.print("No AIOP runs found.")
+                return
+
+            table = Table(title="AIOP Runs")
+            table.add_column("Pipeline", style="cyan")
+            table.add_column("Run ID", style="magenta")
+            table.add_column("Profile", style="blue")
+            table.add_column("Timestamp", style="dim")
+            table.add_column("Status", style="bold")
+            table.add_column("Summary Size", style="green")
+
+            for run in aiop_runs:
+                table.add_row(
+                    run["pipeline"],
+                    run["run_id"],
+                    run["profile"] or "-",
+                    run["timestamp"],
+                    run["status"],
+                    _format_size(run["summary_size"]),
+                )
+
+            console.print(table)
+
     except Exception as e:
-        console.print(f"❌ Failed to build AIOP: {e}")
+        console.print(f"❌ Error: {e}")
         sys.exit(1)
 
-    # Handle policy
-    exit_code = 0
 
-    if parsed_args.policy == "annex":
-        # Export annex shards
-        annex_dir = Path(parsed_args.annex_dir) if parsed_args.annex_dir else Path(".aiop-annex")
-        annex_dir.mkdir(parents=True, exist_ok=True)
+def aiop_show(args: list) -> None:
+    """Display contents of a single run's AIOP summary."""
+    if not args or args[0] in ["--help", "-h"]:
+        console.print()
+        console.print("[bold green]osiris logs aiop show - Show AIOP Summary[/bold green]")
+        console.print("📊 Display contents of a run's AIOP summary")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris logs aiop show --run RUN_ID [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Options[/bold blue]")
+        console.print("  [cyan]--run RUN_ID[/cyan]    Run ID to show")
+        console.print("  [cyan]--json[/cyan]          Output as JSON")
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print("  [green]osiris logs aiop show --run 2025-10-08T10-30-00Z_01J9Z8[/green]")
+        console.print("  [green]osiris logs aiop show --run <run_id> --json[/green]")
+        console.print()
+        return
 
-        try:
-            annex_manifest = export_annex_shards(
-                events=events,
-                metrics=metrics,
-                errors=errors,
-                annex_dir=annex_dir,
-                compress=parsed_args.compress,
+    parser = argparse.ArgumentParser(description="Show AIOP summary", add_help=False)
+    parser.add_argument("--run", required=True, help="Run ID to show")
+    parser.add_argument("--json", action="store_true", help="Output as JSON")
+
+    try:
+        parsed_args = parser.parse_args(args)
+    except SystemExit:
+        console.print("❌ Invalid arguments. Use 'osiris logs aiop show --help' for usage information.")
+        return
+
+    from osiris.core.fs_config import load_osiris_config
+    from osiris.core.fs_paths import FilesystemContract
+    from osiris.core.run_index import RunIndexReader
+
+    try:
+        # Load filesystem config
+        fs_config, ids_config, _base_path = load_osiris_config()
+        contract = FilesystemContract(fs_config, ids_config)
+
+        # Get index paths and find run
+        index_paths = contract.index_paths()
+        index_reader = RunIndexReader(index_paths["base"])
+
+        run = index_reader.get_run(parsed_args.run)
+        if not run:
+            console.print(f"❌ Run not found: {parsed_args.run}")
+            sys.exit(2)
+
+        # Prefer aiop_path from index; fallback to FilesystemContract
+        if run.aiop_path:
+            # Use stored path from index
+            summary_path = Path(run.aiop_path) / "summary.json"
+        else:
+            # Fallback: compute with FilesystemContract (normalize hash if needed)
+            from osiris.core.fs_paths import normalize_manifest_hash
+
+            normalized_hash = normalize_manifest_hash(run.manifest_hash)
+            aiop_paths = contract.aiop_paths(
+                pipeline_slug=run.pipeline_slug,
+                manifest_hash=normalized_hash,
+                manifest_short=run.manifest_short,
+                run_id=run.run_id,
+                profile=run.profile or None,
             )
-            # Add annex reference to AIOP (remove full path for privacy)
-            clean_manifest = {
-                "compress": annex_manifest["compress"],
-                "files": [
-                    {"name": f["name"], "count": f["count"], "bytes": f["size_bytes"]} for f in annex_manifest["files"]
-                ],
-            }
-            aiop["metadata"]["annex"] = clean_manifest
-        except Exception as e:
-            console.print(f"❌ Failed to export annex: {e}")
-            sys.exit(1)
+            summary_path = aiop_paths["summary"]
 
-    # Check if truncated (exit code 4)
-    if aiop.get("metadata", {}).get("truncated", False):
-        # Write warning to stderr directly (Rich Console doesn't support file= parameter)
-        sys.stderr.write("⚠️ AIOP was truncated due to size limits\n")
-        exit_code = 4
+        if not summary_path.exists():
+            console.print(f"❌ AIOP summary not found for run {parsed_args.run}")
+            sys.exit(2)
 
-    # Generate output
-    if parsed_args.format == "md":
-        output = generate_markdown_runcard(aiop)
-    else:
-        output = canonicalize_json(aiop)
+        # Read and display summary
+        with open(summary_path) as f:
+            summary = json.load(f)
 
-    # Write output
-    if parsed_args.output:
-        output_path = Path(parsed_args.output)
-        with open(output_path, "w") as f:
-            f.write(output)
-        console.print(f"✅ AIOP exported to {output_path}")
-    else:
-        # Print to stdout (without Rich formatting)
-        print(output)
+        if parsed_args.json:
+            print(json.dumps(summary, indent=2))
+        else:
+            console.print(Panel(json.dumps(summary, indent=2), title=f"AIOP Summary: {parsed_args.run}"))
 
-    sys.exit(exit_code)
+    except Exception as e:
+        console.print(f"❌ Error: {e}")
+        sys.exit(1)
+
+
+def aiop_export(args: list) -> None:
+    """Generate or regenerate AIOP for a given run."""
+    if not args or args[0] in ["--help", "-h"]:
+        console.print()
+        console.print("[bold green]osiris logs aiop export - Export AIOP[/bold green]")
+        console.print("🤖 Generate or regenerate AI Operation Package for a run")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris logs aiop export --run RUN_ID | --last-run [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Options[/bold blue]")
+        console.print("  [cyan]--run RUN_ID[/cyan]   Export specific run")
+        console.print("  [cyan]--last-run[/cyan]     Export most recent run")
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print("  [green]osiris logs aiop export --last-run[/green]")
+        console.print("  [green]osiris logs aiop export --run <run_id>[/green]")
+        console.print()
+        return
+
+    parser = argparse.ArgumentParser(description="Export AIOP", add_help=False)
+    parser.add_argument("--run", help="Run ID to export")
+    parser.add_argument("--last-run", action="store_true", help="Export most recent run")
+
+    try:
+        parsed_args = parser.parse_args(args)
+    except SystemExit:
+        console.print("❌ Invalid arguments. Use 'osiris logs aiop export --help' for usage information.")
+        return
+
+    if not (parsed_args.run or parsed_args.last_run):
+        console.print("❌ Error: Either --run or --last-run is required")
+        sys.exit(2)
+
+    from osiris.core.fs_config import load_osiris_config
+    from osiris.core.fs_paths import FilesystemContract
+    from osiris.core.run_index import RunIndexReader
+
+    try:
+        # Load filesystem config
+        fs_config, ids_config, _base_path = load_osiris_config()
+        contract = FilesystemContract(fs_config, ids_config)
+
+        # Get index paths
+        index_paths = contract.index_paths()
+        index_reader = RunIndexReader(index_paths["base"])
+
+        # Find run
+        if parsed_args.last_run:
+            runs = index_reader.query_runs(limit=1)
+            if not runs:
+                console.print("❌ No runs found")
+                sys.exit(2)
+            run = runs[0]
+        else:
+            run = index_reader.get_run(parsed_args.run)
+            if not run:
+                console.print(f"❌ Run not found: {parsed_args.run}")
+                sys.exit(2)
+
+        # Get AIOP paths
+        aiop_paths = contract.aiop_paths(
+            pipeline_slug=run.pipeline_slug,
+            manifest_hash=run.manifest_hash,
+            manifest_short=run.manifest_short,
+            run_id=run.run_id,
+            profile=run.profile or None,
+        )
+
+        # Check if AIOP already exists
+        if aiop_paths["summary"].exists():
+            console.print(f"✅ AIOP already exists for run {run.run_id}")
+            console.print(f"   Path: {aiop_paths['base']}")
+            return
+
+        # Create AIOP directory
+        contract.ensure_dir(aiop_paths["base"])
+
+        # TODO: Actually generate AIOP from run logs
+        # For now, create placeholder
+        summary_data = {
+            "run_id": run.run_id,
+            "pipeline": run.pipeline_slug,
+            "status": run.status,
+            "duration_ms": run.duration_ms,
+            "timestamp": run.run_ts,
+            "note": "AIOP export functionality to be implemented",
+        }
+
+        with open(aiop_paths["summary"], "w") as f:
+            json.dump(summary_data, f, indent=2)
+
+        console.print(f"✅ AIOP exported for run {run.run_id}")
+        console.print(f"   Path: {aiop_paths['base']}")
+
+    except Exception as e:
+        console.print(f"❌ Error: {e}")
+        sys.exit(1)
+
+
+def aiop_prune(args: list) -> None:
+    """Apply retention policy to AIOP directories and annex shards."""
+    if not args or args[0] in ["--help", "-h"]:
+        console.print()
+        console.print("[bold green]osiris logs aiop prune - Prune AIOP Directories[/bold green]")
+        console.print("🗑️  Apply retention policy to AIOP directories and annex shards")
+        console.print()
+        console.print("[bold]Usage:[/bold] osiris logs aiop prune [OPTIONS]")
+        console.print()
+        console.print("[bold blue]Options[/bold blue]")
+        console.print("  [cyan]--dry-run[/cyan]  Preview cleanup without deleting")
+        console.print()
+        console.print("[bold blue]Examples[/bold blue]")
+        console.print("  [green]osiris logs aiop prune --dry-run[/green]")
+        console.print("  [green]osiris logs aiop prune[/green]")
+        console.print()
+        return
+
+    parser = argparse.ArgumentParser(description="Prune AIOP directories", add_help=False)
+    parser.add_argument("--dry-run", action="store_true", help="Preview cleanup without deleting")
+
+    try:
+        parsed_args = parser.parse_args(args)
+    except SystemExit:
+        console.print("❌ Invalid arguments. Use 'osiris logs aiop prune --help' for usage information.")
+        return
+
+    from osiris.core.fs_config import load_osiris_config
+    from osiris.core.fs_paths import FilesystemContract
+    from osiris.core.run_index import RunIndexReader
+
+    try:
+        # Load filesystem config
+        fs_config, ids_config, _base_path = load_osiris_config()
+        contract = FilesystemContract(fs_config, ids_config)
+
+        # Get retention policy
+        retention = fs_config.retention
+
+        # Get index paths
+        index_paths = contract.index_paths()
+        index_reader = RunIndexReader(index_paths["base"])
+
+        # Query all runs
+        all_runs = index_reader.query_runs(limit=10000)
+
+        # Group by pipeline
+        by_pipeline: dict[str, list] = {}
+        for run in all_runs:
+            key = f"{run.pipeline_slug}:{run.profile}"
+            if key not in by_pipeline:
+                by_pipeline[key] = []
+            by_pipeline[key].append(run)
+
+        # Sort each pipeline's runs by timestamp (newest first)
+        for _key, runs in by_pipeline.items():
+            runs.sort(key=lambda r: r.run_ts, reverse=True)
+
+        # Determine what to delete
+        to_delete = []
+        to_keep = []
+
+        for _key, runs in by_pipeline.items():
+            keep_count = retention.aiop_keep_runs_per_pipeline
+            for i, run in enumerate(runs):
+                aiop_paths = contract.aiop_paths(
+                    pipeline_slug=run.pipeline_slug,
+                    manifest_hash=run.manifest_hash,
+                    manifest_short=run.manifest_short,
+                    run_id=run.run_id,
+                    profile=run.profile or None,
+                )
+
+                if aiop_paths["base"].exists():
+                    if i < keep_count:
+                        to_keep.append((run, aiop_paths["base"]))
+                    else:
+                        to_delete.append((run, aiop_paths["base"]))
+
+        if parsed_args.dry_run:
+            console.print(f"🗑️  Would delete {len(to_delete)} AIOP directories:")
+            for run, path in to_delete:
+                size = sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+                console.print(f"   {run.run_id} ({_format_size(size)}) - {path}")
+            console.print(f"✅ Would keep {len(to_keep)} AIOP directories")
+        else:
+            # Delete old AIOP directories
+            deleted_count = 0
+            freed_bytes = 0
+
+            for _run, path in to_delete:
+                size = sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+                shutil.rmtree(path)
+                deleted_count += 1
+                freed_bytes += size
+
+            console.print(f"✅ Deleted {deleted_count} AIOP directories, freed {_format_size(freed_bytes)}")
+            console.print(f"   Kept {len(to_keep)} AIOP directories")
+
+        console.print("\n📋 Note: build/ is never touched by retention policy")
+
+    except Exception as e:
+        console.print(f"❌ Error: {e}")
+        sys.exit(1)
+
+
+# End of AIOP management functions

@@ -76,7 +76,7 @@ Convert an OML pipeline to an executable manifest:
 # Compile OML to manifest
 osiris compile pipeline.oml
 
-# Output is saved to logs/<session_id>/compile_<timestamp>/
+# Output is saved to build/pipelines/[{profile}/]{pipeline_slug}/{manifest_short}-{hash}/
 # The manifest.yaml contains resolved configurations
 ```
 
@@ -89,7 +89,9 @@ Run a compiled pipeline on your local machine:
 osiris run --last-compile
 
 # Or run a specific manifest
-osiris run logs/run_123/compile_456/manifest.yaml
+osiris run build/pipelines/dev/my_pipeline/abc-1234567/manifest.yaml
+# Or use --last-compile to run the most recently compiled manifest
+osiris run --last-compile
 ```
 
 Local execution uses your machine's resources and installed dependencies. Data flows through memory between pipeline steps.
@@ -138,7 +140,7 @@ Every pipeline execution generates comprehensive logs for debugging and analysis
 Each run creates a session directory with structured logs:
 
 ```
-logs/
+run_logs/
 └── run_<timestamp>/
     ├── events.jsonl       # Structured execution events
     ├── metrics.jsonl      # Performance metrics
@@ -190,7 +192,7 @@ When running in E2B, additional metrics are captured:
 
 - **Bootstrap time**: Time to provision and initialize the sandbox (typically 800-1200ms)
 - **E2B badge**: Orange "E2B" indicator in the HTML report header
-- **Remote artifacts**: Files downloaded from sandbox to `logs/<session>/remote/`
+- **Remote artifacts**: Files downloaded from sandbox to `run_logs/<session>/remote/`
 - **Sandbox events**: Worker initialization and RPC communication events
 
 The HTML report automatically detects E2B sessions and displays the appropriate metrics and badges. Bootstrap time appears in the overview section, showing the one-time overhead of sandbox provisioning.
@@ -252,40 +254,40 @@ Performance metrics for monitoring and optimization:
 Look for early events in `events.jsonl`:
 ```bash
 # Check for compilation errors
-grep "compilation_failed" logs/run_*/events.jsonl
+grep "compilation_failed" run_logs/run_*/events.jsonl
 
 # Check for connection issues
-grep "connection_failed" logs/run_*/events.jsonl
+grep "connection_failed" run_logs/run_*/events.jsonl
 ```
 
 #### Step Failed During Execution
 Find the failed step:
 ```bash
 # Find failed steps
-grep "step_failed" logs/run_*/events.jsonl | jq .
+grep "step_failed" run_logs/run_*/events.jsonl | jq .
 
 # View the error details
-jq 'select(.event == "step_failed")' logs/run_*/events.jsonl
+jq 'select(.event == "step_failed")' run_logs/run_*/events.jsonl
 ```
 
 #### Performance Issues
 Analyze metrics:
 ```bash
 # Find slow steps (>5000ms)
-jq 'select(.metric == "step_duration_ms" and .value > 5000)' logs/run_*/metrics.jsonl
+jq 'select(.metric == "step_duration_ms" and .value > 5000)' run_logs/run_*/metrics.jsonl
 
 # Check data volumes
-jq 'select(.metric == "rows_read" or .metric == "rows_written")' logs/run_*/metrics.jsonl
+jq 'select(.metric == "rows_read" or .metric == "rows_written")' run_logs/run_*/metrics.jsonl
 ```
 
 #### No Data Processed
 Check row counts:
 ```bash
 # Look for zero rows
-grep "rows_processed.*0" logs/run_*/events.jsonl
+grep "rows_processed.*0" run_logs/run_*/events.jsonl
 
 # Check SQL queries in artifacts
-cat logs/run_*/artifacts/steps/*/config.json | jq '.query'
+cat run_logs/run_*/artifacts/steps/*/config.json | jq '.query'
 ```
 
 ### Common Log Patterns
@@ -484,7 +486,7 @@ osiris logs list
 osiris logs list --recent 10
 
 # Logs are in:
-ls logs/run_*
+ls run_logs/run_*
 ```
 
 ### Environment Issues

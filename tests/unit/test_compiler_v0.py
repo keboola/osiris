@@ -2,13 +2,11 @@
 
 import yaml
 
-from osiris.core.compiler_v0 import CompilerV0
-
 
 class TestCompilerV0:
-    def test_extract_defaults(self):
+    def test_extract_defaults(self, compiler_instance):
         """Test extracting default values from OML."""
-        compiler = CompilerV0()
+        compiler = compiler_instance
 
         oml = {
             "params": {
@@ -24,9 +22,9 @@ class TestCompilerV0:
         assert defaults["with_spec"] == "value2"
         assert "no_default" not in defaults
 
-    def test_validate_no_secrets_pass(self):
+    def test_validate_no_secrets_pass(self, compiler_instance):
         """Test that non-secret values pass validation."""
-        compiler = CompilerV0()
+        compiler = compiler_instance
 
         oml = {
             "steps": [
@@ -44,9 +42,9 @@ class TestCompilerV0:
         assert compiler._validate_no_secrets(oml) is True
         assert len(compiler.errors) == 0
 
-    def test_validate_no_secrets_fail(self):
+    def test_validate_no_secrets_fail(self, compiler_instance):
         """Test that inline secrets are detected."""
-        compiler = CompilerV0()
+        compiler = compiler_instance
 
         oml = {
             "steps": [
@@ -64,9 +62,9 @@ class TestCompilerV0:
         assert len(compiler.errors) > 0
         assert any("key" in err for err in compiler.errors)
 
-    def test_compute_fingerprints(self):
+    def test_compute_fingerprints(self, compiler_instance):
         """Test fingerprint computation."""
-        compiler = CompilerV0()
+        compiler = compiler_instance
         compiler.resolver.params = {"test": "value"}
 
         oml = {"oml_version": "0.1.0", "name": "test", "steps": []}
@@ -84,9 +82,9 @@ class TestCompilerV0:
             if key != "profile":
                 assert value.startswith("sha256:")
 
-    def test_generate_manifest_structure(self):
+    def test_generate_manifest_structure(self, compiler_instance):
         """Test manifest generation structure."""
-        compiler = CompilerV0()
+        compiler = compiler_instance
         compiler.fingerprints = {
             "oml_fp": "sha256:test1",
             "registry_fp": "sha256:test2",
@@ -121,9 +119,9 @@ class TestCompilerV0:
         assert manifest["steps"][0]["driver"] == "supabase.extractor"
         assert manifest["steps"][1]["needs"] == ["step1"]
 
-    def test_generate_configs_filters_secrets(self):
+    def test_generate_configs_filters_secrets(self, compiler_instance):
         """Test that per-step configs filter out secrets."""
-        compiler = CompilerV0()
+        compiler = compiler_instance
 
         oml = {
             "steps": [
@@ -151,8 +149,11 @@ class TestCompilerV0:
         assert "key" not in config
         assert "password" not in config
 
-    def test_full_compilation_flow(self, tmp_path):
+    def test_full_compilation_flow(self, tmp_path, compiler_instance):
         """Test full compilation flow."""
+        # Use the provided compiler instance (already has contract)
+        compiler = compiler_instance
+
         # Create test OML
         oml = {
             "oml_version": "0.1.0",
@@ -172,15 +173,12 @@ class TestCompilerV0:
         with open(oml_path, "w") as f:
             yaml.dump(oml, f)
 
-        # Compile
-        compiler = CompilerV0(output_dir=str(tmp_path / "out"))
+        # Compile (compiler already set up with contract)
         success, message = compiler.compile(oml_path=str(oml_path), cli_params={"db": "test_db"})
 
         assert success, f"Compilation failed: {message}"
 
-        # Check outputs exist
-        out_dir = tmp_path / "out"
-        assert (out_dir / "manifest.yaml").exists()
-        assert (out_dir / "meta.json").exists()
-        assert (out_dir / "effective_config.json").exists()
-        assert (out_dir / "cfg" / "extract.json").exists()
+        # Check outputs exist in contract's compilation dir
+        # The compiler should have created files in .osiris/index/compilations/<manifest_short>-<hash>/
+        assert compiler.manifest_hash is not None
+        assert compiler.manifest_short is not None

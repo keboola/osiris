@@ -15,47 +15,76 @@ This folder contains deprecated, superseded, or historical documentation that is
 
 ---
 
-## What Moved Here
+## What's In This Archive
 
-### Developer Guide (Legacy)
-Replaced by `docs/developer-guide/human/modules/`
+### Developer Module Documentation (Legacy)
+**Replaced by**: `docs/developer-guide/human/modules/`
 
-- `module-components.md` - Component Registry & validation (replaced by `human/modules/components.md`)
-- `module-connectors.md` - Connection management (replaced by `human/modules/connectors.md`)
-- `module-drivers.md` - Driver protocol (replaced by `human/modules/drivers.md`)
-- `module-runtime.md` - Local execution (replaced by `human/modules/runtime.md`)
-- `module-remote.md` - E2B cloud execution (replaced by `human/modules/remote.md`)
-- `module-cli.md` - CLI commands (replaced by `human/modules/cli.md`)
-- `module-core.md` - LLM agent & compilation (replaced by `human/modules/core.md`)
-
-### Concepts (Legacy)
-Replaced by `docs/developer-guide/human/CONCEPTS.md`
-
-- `CONCEPTS.md` - Old duplicate of core concepts guide
+- `module-cli.md` - CLI commands and patterns
+- `module-components.md` - Component Registry & validation
+- `module-connectors.md` - Connection management
+- `module-core.md` - LLM agent & compilation
+- `module-drivers.md` - Driver protocol
+- `module-remote.md` - E2B cloud execution
+- `module-runtime.md` - Local execution
 
 ### LLM Contracts (Legacy)
-Replaced by `docs/developer-guide/ai/llms/` and `docs/developer-guide/ai/checklists/`
+**Replaced by**: `docs/developer-guide/ai/llms/` and `docs/developer-guide/ai/checklists/`
 
-- `llms.txt` - Main LLM contract (replaced by `ai/llms/overview.md`)
-- `llms-drivers.txt` - Driver patterns (replaced by `ai/llms/drivers.md`)
-- `llms-cli.txt` - CLI patterns (replaced by `ai/llms/cli.md`)
-- `llms-testing.txt` - Test patterns (replaced by `ai/llms/testing.md`)
-- `llms-e2b.txt` - E2B patterns (replaced by `ai/llms/drivers.md` and `human/modules/remote.md`)
+- `llms.txt` - Main LLM development contract
+- `llms-cli.txt` - CLI development patterns
+- `llms-drivers.txt` - Driver implementation patterns
+- `llms-e2b.txt` - E2B cloud execution patterns
+- `llms-testing.txt` - Test writing patterns
 
-### Runtime & E2B (Legacy Notes)
+### Developer Guide (Legacy Structure)
+**Replaced by**: Current `docs/developer-guide/` structure
 
-- `e2b-runtime.md` - DataFrame lifecycle in E2B (details now in `human/modules/remote.md`)
+- `developer-guide/adapters.md` - Execution adapter patterns
+- `developer-guide/components.md` - Component development
+- `developer-guide/discovery.md` - Database discovery patterns
+- `developer-guide/extending.md` - Extension guide
 
-### Milestones & Planning (Historical)
+### Concepts & Architecture (Legacy)
 
-- `milestones/` - Historical milestone planning docs (current roadmap in `docs/roadmap/`)
-- `dev-plan.md` - Old development plan
-- `developer-guide/` - Old developer guide structure (replaced by human/ai split)
-
-### Miscellaneous
-
+- `CONCEPTS.md` - Core concepts guide (replaced by current architecture docs)
 - `component-interfaces.md` - Old component interface notes
+- `e2b-runtime.md` - DataFrame lifecycle in E2B
 - `repository-structure.md` - Old repository structure documentation
+
+### Historical Planning Documents
+
+- `dev-plan.md` - Original development plan
+- `seznam-pitch-cz.md` - Czech pitch document
+
+### Milestones (Historical - Pre v0.4.0)
+**Replaced by**: `docs/roadmap/` and completed milestones in `docs/milestones/`
+
+**Completed Milestones:**
+- `milestones/m0-discovery-cache.md` - M0 Discovery cache (shipped)
+- `milestones/m0-session-logs.md` - M0 Session logging (shipped)
+- `milestones/m1-component-registry-and-runner.md` - M1 Component Registry (shipped in v0.2.0)
+- `milestones/m1a.1-component-spec-schema.md` - M1a.1 Component spec schema (shipped)
+- `milestones/m1a.2-bootstrap-component-specs.md` - M1a.2 Bootstrap specs (shipped)
+- `milestones/m1a.3-component-registry.md` - M1a.3 Registry implementation (shipped)
+- `milestones/m1a.4-friendly-error-mapper.md` - M1a.4 Error mapping (shipped)
+- `milestones/m1b-context-builder-and-validation.md` - M1b LLM context (shipped)
+- `milestones/m1c-compile-and-run-mvp.md` - M1c Compiler/runner (shipped)
+- `milestones/m1c-thin-slice.md` - M1c Thin slice implementation (shipped)
+- `milestones/m1d-logs-and-cli-unification.md` - M1d CLI unification (shipped)
+- `milestones/m1d_logs_browser.md` - M1d HTML logs (shipped)
+- `milestones/m1e-e2b-runner.md` - M1e E2B runner (shipped)
+- `milestones/m1f-e2b-proxy.md` - M1f E2B transparent proxy (shipped in v0.2.0)
+- `milestones/m2a-aiop.md` - M2a AI Operation Package (shipped in v0.3.0)
+- `milestones/filesystem-contract.md` - Filesystem Contract v1 (shipped in v0.4.0)
+
+**Planning Documents:**
+- `milestones/0.x-initial-plan.md` - Initial project planning
+- `milestones/0.x-m1c-ideas.md` - M1c brainstorming
+- `milestones/_initial_plan.md` - Early project structure
+- `milestones/milestone-m1-actual-report.md` - M1 completion report
+- `milestones/reports/m0-validation-4-test-report.md` - M0 validation report
+- `milestones/reports/planning-audit-20250909.md` - Planning audit
 
 ---
 
@@ -86,7 +115,16 @@ If you need to revive content from this archive:
 
 ## Migration History
 
-**Date**: 2025-09-30
+### 2025-10-09: Filesystem Contract v1 (v0.4.0)
+**ADR-0028 Implementation Complete**
+- All legacy `logs/` path references removed from production code
+- New directory structure: `build/`, `run_logs/`, `aiop/`, `.osiris/`
+- 53 commits enforcing deterministic, reproducible filesystem layout
+- 1064 tests passing with 100% contract compliance
+- See: `docs/adr/0028-filesystem-contract.md` (Status: Final)
+- See: `docs/milestones/filesystem-contract.md` (Complete)
+
+### 2025-09-30: Documentation Restructure
 **Reason**: Documentation restructured to separate human-readable guides from AI-oriented contracts
 **Result**: Clear separation into `human/` (narrative, examples, modules) and `ai/` (contracts, checklists, schemas)
 

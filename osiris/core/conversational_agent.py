@@ -95,13 +95,26 @@ class ConversationalPipelineAgent:
         self.state_stores = {}  # Session ID -> SQLiteStateStore
         self.connectors = ConnectorRegistry()
 
+        # Load FilesystemContract for sessions directory
+        from .fs_config import load_osiris_config
+
+        fs_config, _, _ = load_osiris_config()
+
         # Output configuration
-        self.output_dir = Path(os.environ.get("OUTPUT_DIR", "output"))
-        self.sessions_dir = Path(os.environ.get("SESSIONS_DIR", ".osiris_sessions"))
+        self.output_dir = Path(fs_config.outputs.directory)
+        self.sessions_dir = fs_config.resolve_path(fs_config.sessions_dir)
+
+        # Migrate from legacy .osiris_sessions if it exists
+        legacy_sessions_dir = Path(".osiris_sessions")
+        if legacy_sessions_dir.exists() and not self.sessions_dir.exists():
+            import shutil
+
+            logger.info(f"Migrating chat sessions from {legacy_sessions_dir} to {self.sessions_dir}")
+            shutil.move(str(legacy_sessions_dir), str(self.sessions_dir))
 
         # Ensure directories exist
-        self.output_dir.mkdir(exist_ok=True)
-        self.sessions_dir.mkdir(exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.sessions_dir.mkdir(parents=True, exist_ok=True)
 
         # Get database configuration
         self.database_config = self._get_database_config()

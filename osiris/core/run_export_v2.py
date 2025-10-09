@@ -734,8 +734,10 @@ def build_semantic_layer(
     manifest_hash = None
     if "manifest_hash" in manifest:
         manifest_hash = manifest["manifest_hash"]
-    elif manifest.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp"):
-        manifest_hash = manifest["pipeline"]["fingerprints"]["manifest_fp"]
+    elif manifest.get("meta", {}).get("manifest_hash"):
+        from osiris.core.fs_paths import normalize_manifest_hash
+
+        manifest_hash = normalize_manifest_hash(manifest["meta"]["manifest_hash"])
 
     if manifest_hash:
         semantic["@id"] = f"osiris://pipeline/@{manifest_hash}"
@@ -907,11 +909,15 @@ def generate_graph_hints(manifest: dict, run_data: dict | None = None) -> dict: 
     triples = []
 
     # Generate pipeline URI (using correct format)
-    # Try to get manifest hash from pipeline.fingerprints.manifest_fp
+    # Try to get manifest hash from meta.manifest_hash (canonical source)
     manifest_hash = manifest.get("manifest_hash", "unknown")
     if manifest_hash == "unknown" and manifest:
-        # Extract from the correct location: pipeline.fingerprints.manifest_fp
-        manifest_hash = manifest.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp", "unknown")
+        # Extract from meta.manifest_hash and normalize
+        from osiris.core.fs_paths import normalize_manifest_hash
+
+        manifest_hash = manifest.get("meta", {}).get("manifest_hash", "unknown")
+        if manifest_hash != "unknown":
+            manifest_hash = normalize_manifest_hash(manifest_hash)
     pipeline_uri = f"osiris://pipeline/@{manifest_hash}"
 
     steps = manifest.get("steps", [])
@@ -2043,12 +2049,15 @@ def _build_controls(session_id: str) -> dict:
     }
 
 
-def _find_previous_run_by_manifest(manifest_hash: str, current_session_id: str = None) -> dict | None:
+def _find_previous_run_by_manifest(
+    manifest_hash: str, current_session_id: str = None, config: dict = None
+) -> dict | None:
     """Find the most recent previous run with the same manifest hash.
 
     Args:
         manifest_hash: Hash of the manifest to look up
         current_session_id: Current session ID to exclude from results
+        config: Optional AIOP config (from resolve_aiop_config)
 
     Returns:
         Previous run record or None if not found
@@ -2056,8 +2065,22 @@ def _find_previous_run_by_manifest(manifest_hash: str, current_session_id: str =
     if not manifest_hash or manifest_hash == "unknown":
         return None
 
-    # Look up in by_pipeline index
-    index_path = Path("logs/aiop/index/by_pipeline") / f"{manifest_hash}.jsonl"
+    # Use config or load default
+    if config is None:
+        from osiris.core.config import resolve_aiop_config
+
+        config, _ = resolve_aiop_config()
+
+    # Get by_pipeline directory from config (matches where writes go)
+    by_pipeline_dir = config.get("index", {}).get("by_pipeline_dir", "aiop/index/by_pipeline")
+    index_path = Path(by_pipeline_dir) / f"{manifest_hash}.jsonl"
+
+    # Try legacy location as fallback for backward compatibility
+    if not index_path.exists():
+        legacy_path = Path("logs/aiop/index/by_pipeline") / f"{manifest_hash}.jsonl"
+        if legacy_path.exists():
+            index_path = legacy_path
+
     if not index_path.exists():
         return None
 
@@ -2225,8 +2248,12 @@ def build_aiop(
             # Extract manifest hash from the correct location
             manifest_hash = manifest.get("manifest_hash", "")
             if not manifest_hash and manifest:
-                # Try pipeline.fingerprints.manifest_fp
-                manifest_hash = manifest.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp", "")
+                # Try meta.manifest_hash (canonical source)
+                from osiris.core.fs_paths import normalize_manifest_hash
+
+                manifest_hash = manifest.get("meta", {}).get("manifest_hash", "")
+                if manifest_hash:
+                    manifest_hash = normalize_manifest_hash(manifest_hash)
             # Load session_id before delta calculation
             session_id = session_data.get("session_id")
 
@@ -2310,8 +2337,12 @@ def build_aiop(
         # Extract manifest hash from the correct location
         manifest_hash = manifest.get("manifest_hash", "")
         if not manifest_hash and manifest:
-            # Try pipeline.fingerprints.manifest_fp
-            manifest_hash = manifest.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp", "")
+            # Try meta.manifest_hash (canonical source)
+            from osiris.core.fs_paths import normalize_manifest_hash
+
+            manifest_hash = manifest.get("meta", {}).get("manifest_hash", "")
+            if manifest_hash:
+                manifest_hash = normalize_manifest_hash(manifest_hash)
         # Load session_id before delta calculation
         session_id = session_data.get("session_id")
         delta = calculate_delta({"metrics": aggregated_metrics, "errors": errors}, manifest_hash, session_id)

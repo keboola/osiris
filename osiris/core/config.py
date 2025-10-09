@@ -55,7 +55,7 @@ def load_config(config_path: str = ".osiris.yaml") -> dict[str, Any]:
 
 
 def create_sample_config(config_path: str = "osiris.yaml", no_comments: bool = False, to_stdout: bool = False) -> str:
-    """Create a sample configuration file.
+    """Create a sample configuration file with Filesystem Contract v1.
 
     Args:
         config_path: Path where to create the config file
@@ -68,11 +68,115 @@ def create_sample_config(config_path: str = "osiris.yaml", no_comments: bool = F
     config_content = """version: '2.0'
 
 # ============================================================================
+# OSIRIS FILESYSTEM CONTRACT v1 (ADR-0028)
+# All paths resolve relative to `base_path`. If omitted, the project root is used.
+# ============================================================================
+
+filesystem:
+  # Absolute root for all Osiris project files (useful for servers/CI).
+  # Example: "/srv/osiris/acme" or leave empty to use the repo root.
+  base_path: ""
+
+  # Profiles: explicitly list allowed profile names and the default.
+  # When enabled, Osiris injects a "{profile}/" path segment in build/aiop/run_logs.
+  profiles:
+    enabled: true
+    values: ["dev", "staging", "prod", "ml", "finance", "incident_debug"]
+    default: "dev"
+
+  # Where AI/human-authored OML lives (pipeline sources).
+  # With profiles enabled, you may mirror pipelines/<profile>/..., or keep a flat pipelines/.
+  pipelines_dir: "pipelines"
+
+  # Deterministic, versionable build artifacts:
+  # build/pipelines/[{profile}/]<slug>/<manifest_short>-<manifest_hash>/{manifest.yaml, plan.json, fingerprints.json, run_summary.json, cfg/...}
+  build_dir: "build"
+
+  # Per-run AI Observability Packs (NEVER overwritten):
+  # aiop/[{profile}/]<slug>/<manifest_short>-<manifest_hash>/<run_id>/{summary.json, run-card.md, annex/...}
+  aiop_dir: "aiop"
+
+  # User-facing full runtime logs by run (cleaned by retention):
+  # run_logs/[{profile}/]<slug>/{run_ts}_{run_id}-{manifest_short}/{events.jsonl, metrics.jsonl, debug.log, osiris.log, artifacts/...}
+  run_logs_dir: "run_logs"
+
+  # Internal hidden state (advanced users rarely need to touch this):
+  # sessions: conversational/chat session state for Osiris chat/agents
+  # cache:    discovery/profiling cache (table schemas, sampled stats)
+  # index:    append-only run indexes and counters for fast listing/queries
+  sessions_dir: ".osiris/sessions"
+  cache_dir: ".osiris/cache"
+  index_dir: ".osiris/index"
+
+  # Naming templates (human-friendly yet machine-stable).
+  # Available tokens:
+  #   {pipeline_slug} {profile} {manifest_hash} {manifest_short} {run_id} {run_ts} {status} {branch} {user} {tags}
+  naming:
+    # Build folder for a compiled manifest (relative to build_dir/pipelines[/profile]):
+    manifest_dir: "{pipeline_slug}/{manifest_short}-{manifest_hash}"
+
+    # Run folder under run_logs_dir[/profile]:
+    run_dir: "{pipeline_slug}/{run_ts}_{run_id}-{manifest_short}"
+
+    # Per-run folder name under aiop/.../<manifest>/:
+    aiop_run_dir: "{run_id}"
+
+    # Timestamp format for {run_ts} (no colons). Options: "iso_basic_z" -> YYYY-mm-ddTHH-MM-SSZ, or "none".
+    run_ts_format: "iso_basic_z"
+
+    # Number of characters used in {manifest_short}:
+    manifest_short_len: 7
+
+  # What to write into build/ (deterministic artifacts):
+  artifacts:
+    # Save compiled manifest (deterministic plan of execution).
+    manifest: true
+    # Save normalized DAG/execution plan (JSON).
+    plan: true
+    # Save SHA-256 fingerprints of inputs (for caching/consistency checks).
+    fingerprints: true
+    # Save compile-time metadata (compiler version, inputs, timestamps, profile, tags).
+    run_summary: true
+    # Save per-step effective configs (useful for diffs and debuggability).
+    cfg: true
+    # Optionally copy last N events to build/ for quick inspection (0 = disabled).
+    save_events_tail: 0
+
+  # Retention applies ONLY to run_logs_dir and aiop annex shards (build/ is permanent).
+  # Execute retention via:
+  #   - "osiris maintenance clean" (manual or scheduled), or
+  #   - a library call from your own cron/systemd timer.
+  retention:
+    run_logs_days: 7  # delete run_logs older than N days
+    aiop_keep_runs_per_pipeline: 200  # keep last N runs per pipeline in aiop/
+    annex_keep_days: 14  # delete NDJSON annex shards older than N days
+
+  # Output configuration for pipeline data exports
+  outputs:
+    directory: "output"  # where pipeline data exports land
+    format: "csv"        # default writer format if not overridden
+
+ids:
+  # Run identifier format (choose one OR compose multiple; examples):
+  # - "ulid"        -> 01J9Z8KQ8R1WQH6K9Z7Q2R1X7F
+  # - "iso_ulid"    -> 2025-10-07T14-22-19Z_01J9Z8KQ8R1WQH6K9Z7Q2R1X7F
+  # - "uuidv4"      -> 550e8400-e29b-41d4-a716-446655440000
+  # - "snowflake"   -> 193514046488576000 (time-ordered 64-bit)
+  # - "incremental" -> run-000123  (requires the indexer to maintain counters)
+  #
+  # You may also define a composite format, e.g. ["incremental", "ulid"]
+  # which renders as "run-000124_01J9Z8KQ8R1..." (order matters).
+  run_id_format: ["incremental", "ulid"]
+
+  # Manifest fingerprint algorithm (used for build folder naming):
+  # - "sha256_slug": hex sha256; {manifest_short} length controlled above
+  manifest_hash_algo: "sha256_slug"
+
+# ============================================================================
 # LOGGING CONFIGURATION
 # Enhanced session logging with structured events and metrics (M0-Validation-4)
 # ============================================================================
 logging:
-  logs_dir: ./logs      # Session logs directory (per-session directories created here)
   level: INFO           # Log verbosity for .log files: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
   # IMPORTANT: Events and log levels are INDEPENDENT systems:
@@ -135,28 +239,8 @@ logging:
   retention: 7d         # Session retention policy (7d = 7 days, supports: 1d, 30d, 6m, 1y)
   env_overrides:        # Environment variables that can override these settings
     OSIRIS_LOG_LEVEL: level
-    OSIRIS_LOGS_DIR: logs_dir
   cli_flags:            # CLI flags that can override these settings (highest precedence)
     --log-level: level
-    --logs-dir: logs_dir
-
-# ============================================================================
-# OUTPUT CONFIGURATION
-# Where generated pipeline results are saved
-# ============================================================================
-output:
-  format: csv           # Output format: csv, parquet, json
-  directory: output/    # Directory for pipeline outputs
-  filename_template: pipeline_{session_id}_{timestamp}
-
-# ============================================================================
-# SESSION MANAGEMENT
-# Osiris automatically manages conversation sessions and discovery cache
-# ============================================================================
-sessions:
-  directory: .osiris_sessions/  # Where session data is stored
-  cleanup_days: 30              # Auto-delete sessions older than N days (background cleanup)
-  cache_ttl: 3600               # Cache database discovery for N seconds (avoids re-scanning)
 
 # ============================================================================
 # DATABASE DISCOVERY SETTINGS
@@ -245,12 +329,12 @@ aiop:
   run_card: true           # Also write Markdown run-card for PR/Slack
 
   output:
-    core_path: "logs/aiop/aiop.json"            # Default core output (use AIOP_USE_SESSION_DIR=1 for per-session dir)
-    run_card_path: "logs/aiop/run-card.md"       # Where to write Markdown run-card (customizable)
+    core_path: "aiop/{session_id}/aiop.json"         # Where to write Core JSON
+    run_card_path: "aiop/{session_id}/run-card.md"   # Where to write Markdown run-card
 
   annex:
     enabled: false         # Enable NDJSON Annex (timeline/metrics/errors shards)
-    dir: logs/aiop/annex   # Directory for Annex shards
+    dir: aiop/annex        # Directory for Annex shards
     compress: none         # none|gzip|zstd (applies to Annex only; Core is always uncompressed for readability)
 
   # Path variable templating (for output paths)
@@ -265,9 +349,9 @@ aiop:
   # Index configuration (tracks all runs for delta analysis)
   index:
     enabled: true          # Enable index updates after each run
-    runs_jsonl: "logs/aiop/index/runs.jsonl"        # All runs chronologically
-    by_pipeline_dir: "logs/aiop/index/by_pipeline"  # Per-pipeline run history
-    latest_symlink: "logs/aiop/latest"              # Symlink to latest run
+    runs_jsonl: "aiop/index/runs.jsonl"        # All runs chronologically
+    by_pipeline_dir: "aiop/index/by_pipeline"  # Per-pipeline run history
+    latest_symlink: "aiop/latest"              # Symlink to latest run
 
   retention:
     keep_runs: 50          # Keep last N Core files (optional)
@@ -653,19 +737,19 @@ AIOP_DEFAULTS = {
         "ts_format": "%Y%m%d-%H%M%S",
     },
     "output": {
-        "core_path": "logs/aiop/aiop.json",
-        "run_card_path": "logs/aiop/run-card.md",
+        "core_path": "aiop/aiop.json",
+        "run_card_path": "aiop/run-card.md",
     },
     "annex": {
         "enabled": False,
-        "dir": "logs/aiop/annex",
+        "dir": "aiop/annex",
         "compress": "none",
     },
     "index": {
         "enabled": True,
-        "runs_jsonl": "logs/aiop/index/runs.jsonl",
-        "by_pipeline_dir": "logs/aiop/index/by_pipeline",
-        "latest_symlink": "logs/aiop/latest",
+        "runs_jsonl": "aiop/index/runs.jsonl",
+        "by_pipeline_dir": "aiop/index/by_pipeline",
+        "latest_symlink": "aiop/latest",
     },
     "retention": {
         "keep_runs": 50,
@@ -896,13 +980,13 @@ def _apply_aiop_session_dir(config: dict[str, Any], sources: dict[str, str]) -> 
     defaults stable while opt-in builds can still segregate outputs per run.
     """
 
-    default_core = "logs/aiop/aiop.json"
-    default_run_card = "logs/aiop/run-card.md"
-    default_annex = "logs/aiop/annex"
+    default_core = "aiop/aiop.json"
+    default_run_card = "aiop/run-card.md"
+    default_annex = "aiop/annex"
 
-    session_core = "logs/aiop/{session_id}/aiop.json"
-    session_run_card = "logs/aiop/{session_id}/run-card.md"
-    session_annex = "logs/aiop/{session_id}/annex"
+    session_core = "aiop/{session_id}/aiop.json"
+    session_run_card = "aiop/{session_id}/run-card.md"
+    session_annex = "aiop/{session_id}/annex"
 
     use_session_dir = bool(config.get("use_session_dir"))
 

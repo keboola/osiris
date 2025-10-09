@@ -159,8 +159,8 @@ class TestChatLogsIntegration:
                 annex_dir = Path("annex")
                 annex_dir.mkdir()
 
-                # Call export with actual paths
-                total_bytes = _export_annex(session_id, str(annex_dir), {})
+                # Call export with actual paths (pass session_path for Filesystem Contract v1)
+                total_bytes = _export_annex(session_id, str(annex_dir), {}, session_path=session_dir)
 
                 # Check that files were created
                 assert total_bytes > 0
@@ -199,8 +199,8 @@ class TestChatLogsIntegration:
 
                 annex_config = {"compress": "gzip"}
 
-                # Test compression path
-                total_bytes = _export_annex(session_id, str(annex_dir), annex_config)
+                # Test compression path (pass session_path for Filesystem Contract v1)
+                total_bytes = _export_annex(session_id, str(annex_dir), annex_config, session_path=session_dir)
 
                 # Check that gzip files were created
                 assert total_bytes > 0

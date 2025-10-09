@@ -1,18 +1,7 @@
 # Testing environment - ignore artifacts but keep directory accessible to Claude
-testing_env/.osiris_sessions/
-testing_env/.osiris_cache/
-testing_env/output/
-testing_env/*.yaml
-testing_env/*.csv
-testing_env/*.log
-testing_env/*.json
-testing_env/.env
-testing_env/tmp/
-testing_env/tests/*
-docs/m1c-tmp-gpt.md
-testing_env/aiop*
-testing_env/.aiop-annex/*
-testing_env/debug_out/*
+testing_env/**/**
+testing_env/.gitignore
+testing_env/.env.example
 
 # ChatGPT mempack
 mempack.txt
@@ -26,6 +15,7 @@ mempack-*.txt
 .osiris_prompts/
 output/
 .aiop-annex/*
+build/
 
 # Test artifacts that shouldn't be in repo root
 *MagicMock*
@@ -47,7 +37,7 @@ htmlcov/
 # Internal tools
 .claude/
 .audit/
-.playwright-mcp/*
+.playwright-mcp/
 
 # Python artifacts
 __pycache__/
@@ -59,7 +49,8 @@ __pycache__/
 .pytest_cache/
 
 # Python packaging
-build/
+# NOTE: Contract v1 uses build/ for compiled artifacts (see below)
+# Python packaging build dir conflicts; use dist/ for packaging
 dist/
 *.egg-info/
 *.egg
@@ -103,9 +94,22 @@ Thumbs.db
 .env.local
 .env.*.local
 
-# Logs
-#*.log
+# Old Logs
 logs/
+
+# Filesystem Contract v1 (ADR-0028) - new directories
+run_logs/            # Per-run execution logs (ephemeral)
+aiop/**/annex/       # AIOP annex shards (optional to commit)
+.osiris/cache/       # Discovery/profiling cache
+.osiris/index/counters.sqlite  # Incremental run ID counters
+.osiris/index/counters.sqlite-wal
+.osiris/index/counters.sqlite-shm
+
+# build/ - Deterministic compiled artifacts (versionable, team decides to track or ignore)
+# Recommended: Track in Git for reproducibility, or add to .gitignore if too large
+# build/pipelines/  # Uncomment to ignore compiled manifests
+
+# Legacy logs/ directory removed per ADR-0028
 
 # Coverage reports
 htmlcov/

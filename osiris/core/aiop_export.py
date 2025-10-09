@@ -15,6 +15,12 @@ def export_aiop_auto(
     manifest_hash: str | None = None,
     status: str = "completed",
     end_time: datetime.datetime | None = None,
+    fs_contract=None,
+    pipeline_slug: str | None = None,
+    profile: str | None = None,
+    run_id: str | None = None,
+    manifest_short: str | None = None,
+    session_dir: Path | None = None,
 ) -> tuple[bool, str | None]:
     """Automatically export AIOP at the end of a run.
 
@@ -23,6 +29,12 @@ def export_aiop_auto(
         manifest_hash: Hash of the manifest (if available)
         status: Run status (completed, failed, partial)
         end_time: End time of the run
+        fs_contract: Optional FilesystemContract for path resolution
+        pipeline_slug: Pipeline identifier
+        profile: Profile name
+        run_id: Run identifier
+        manifest_short: Short manifest hash
+        session_dir: Path to session directory (overrides session_id lookup)
 
     Returns:
         Tuple of (success, error_message)
@@ -36,23 +48,33 @@ def export_aiop_auto(
         if not config.get("enabled", True):
             return True, None
 
-        # Build context for path templating
-        ts = end_time or datetime.datetime.utcnow()
-        ctx = {
-            "session_id": session_id,
-            "ts": ts,
-            "manifest_hash": manifest_hash or "unknown",
-            "status": status,
-        }
-
-        # Get ts_format from config
-        ts_format = config.get("path_vars", {}).get("ts_format", "%Y%m%d-%H%M%S")
-
-        # Render output paths
-        core_path = render_path(config["output"]["core_path"], ctx, ts_format)
-        run_card_path = None
-        if config.get("run_card", True):
-            run_card_path = render_path(config["output"]["run_card_path"], ctx, ts_format)
+        # Get output paths from filesystem contract if available
+        if fs_contract and pipeline_slug and run_id and manifest_hash and manifest_short:
+            paths = fs_contract.aiop_paths(
+                pipeline_slug=pipeline_slug,
+                manifest_hash=manifest_hash,
+                manifest_short=manifest_short,
+                run_id=run_id,
+                profile=profile,
+            )
+            core_path = str(paths["summary"])
+            run_card_path = str(paths["run_card"]) if config.get("run_card", True) else None
+            annex_dir = paths["annex"] if config.get("annex", {}).get("enabled", False) else None
+        else:
+            # Legacy path mode - DEPRECATED
+            ts = end_time or datetime.datetime.utcnow()
+            ctx = {
+                "session_id": session_id,
+                "ts": ts,
+                "manifest_hash": manifest_hash or "unknown",
+                "status": status,
+            }
+            ts_format = config.get("path_vars", {}).get("ts_format", "%Y%m%d-%H%M%S")
+            core_path = render_path(config["output"]["core_path"], ctx, ts_format)
+            run_card_path = None
+            if config.get("run_card", True):
+                run_card_path = render_path(config["output"]["run_card_path"], ctx, ts_format)
+            annex_dir = None
 
         # Create parent directories
         Path(core_path).parent.mkdir(parents=True, exist_ok=True)
@@ -66,11 +88,17 @@ def export_aiop_auto(
 
         from ..core.session_reader import SessionReader
 
-        logs_dir = Path("logs")
-        session_path = logs_dir / session_id
+        # Use provided session_dir or fallback to legacy logs/ lookup
+        if session_dir:
+            session_path = session_dir
+            logs_dir = session_path.parent
+        else:
+            # Legacy fallback - DEPRECATED
+            logs_dir = Path("run_logs")
+            session_path = logs_dir / session_id
 
         if not session_path.exists():
-            return False, f"Session not found: {session_id}"
+            return False, f"Session not found: {session_path}"
 
         # Read session summary
         reader = SessionReader(str(logs_dir))
@@ -122,9 +150,13 @@ def export_aiop_auto(
         # No need to extract from pipeline.id or add it - it's already there!
         # Just ensure manifest_hash is available for build_aiop to find
         if not manifest.get("manifest_hash"):
-            # Extract manifest hash from pipeline.fingerprints if not at root
-            manifest_hash = manifest.get("pipeline", {}).get("fingerprints", {}).get("manifest_fp", "unknown")
+            # Extract manifest hash from meta.manifest_hash (canonical source)
+            from osiris.core.fs_paths import normalize_manifest_hash
+
+            manifest_hash = manifest.get("meta", {}).get("manifest_hash", "unknown")
             if manifest_hash != "unknown":
+                # Normalize to pure hex (remove any sha256: prefix)
+                manifest_hash = normalize_manifest_hash(manifest_hash)
                 # Add to root for easy access by build_aiop
                 manifest["manifest_hash"] = manifest_hash
 
@@ -189,11 +221,9 @@ def export_aiop_auto(
 
         # Handle Annex if enabled
         annex_size = 0
-        annex_dir = None
-        if config.get("annex", {}).get("enabled", False):
-            annex_dir = render_path(config["annex"]["dir"], ctx, ts_format)
+        if annex_dir and config.get("annex", {}).get("enabled", False):
             Path(annex_dir).mkdir(parents=True, exist_ok=True)
-            annex_size = _export_annex(session_id, annex_dir, config.get("annex", {}))
+            annex_size = _export_annex(session_id, annex_dir, config.get("annex", {}), session_path=session_path)
 
         # Extract started_at, total_rows, and duration_ms from AIOP for index
         started_at = None
@@ -220,7 +250,7 @@ def export_aiop_auto(
                 manifest_hash=manifest_hash,
                 status=status,
                 started_at=started_at,  # Now extracted from AIOP
-                ended_at=ts,
+                ended_at=completed_at or end_time,
                 total_rows=total_rows,  # Now extracted from AIOP
                 duration_ms=duration_ms,  # Now extracted from AIOP
                 bytes_core=core_size,
@@ -247,13 +277,16 @@ def export_aiop_auto(
         return False, str(e)
 
 
-def _export_annex(session_id: str, annex_dir: str, annex_config: dict[str, Any]) -> int:
+def _export_annex(
+    session_id: str, annex_dir: str, annex_config: dict[str, Any], session_path: Path | None = None
+) -> int:
     """Export NDJSON annex shards.
 
     Args:
         session_id: Session ID
         annex_dir: Directory for annex files
         annex_config: Annex configuration
+        session_path: Optional path to session directory (overrides session_id lookup)
 
     Returns:
         Total bytes written to annex
@@ -262,7 +295,11 @@ def _export_annex(session_id: str, annex_dir: str, annex_config: dict[str, Any])
     compress = annex_config.get("compress", "none")
 
     # Read session data
-    session_dir = Path(f"logs/{session_id}")
+    if session_path:
+        session_dir = session_path
+    else:
+        session_dir = Path(f"run_logs/{session_id}")  # Legacy fallback
+
     if not session_dir.exists():
         return 0
 

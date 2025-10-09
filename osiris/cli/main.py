@@ -64,7 +64,6 @@ def show_main_help():
     console.print("  [cyan]compile[/cyan]      Compile OML pipeline to deterministic manifest")
     console.print("  [cyan]run[/cyan]          Execute pipeline (OML or compiled manifest)")
     console.print("  [cyan]logs[/cyan]         Manage session logs (list, show, bundle, gc)")
-    console.print("  [cyan]aiop[/cyan]         Manage AI Operation Package (prune)")
     console.print("  [cyan]test[/cyan]         Run automated test scenarios")
     console.print("  [cyan]components[/cyan]   Manage and inspect Osiris components")
     console.print("  [cyan]connections[/cyan]  Manage database connections")
@@ -100,9 +99,9 @@ def parse_main_args():
             "chat",
             "run",
             "runs",  # deprecated but still supported
-            "aiop",
             "compile",
             "logs",
+            "maintenance",
             "test",
             "components",
             "connections",
@@ -190,13 +189,17 @@ def main():
     command_args = ["--help"] + args.args if args.help and args.command else args.args
 
     if args.command == "init":
-        init_command(command_args)
+        from .init import init_command
+
+        init_command(command_args, json_output=json_output)
     elif args.command == "validate":
         validate_command(command_args)
     elif args.command == "run":
         run_command(command_args)
     elif args.command == "runs":
-        runs_command(command_args)  # deprecated
+        from .runs import runs_command
+
+        runs_command(command_args)
     elif args.command == "logs":
         logs_command(command_args)
     elif args.command == "test":
@@ -215,8 +218,10 @@ def main():
         dump_prompts_command(command_args)
     elif args.command == "prompts":
         prompts_command(command_args)
-    elif args.command == "aiop":
-        aiop_command(command_args)
+    elif args.command == "maintenance":
+        from .maintenance import maintenance_command
+
+        maintenance_command(command_args)
     elif args.command == "chat":
         # This case is now handled early in main() to preserve argument order
         pass
@@ -233,7 +238,6 @@ def main():
                             "compile",
                             "run",
                             "logs",
-                            "aiop",
                             "components",
                             "connections",
                             "oml",
@@ -258,7 +262,6 @@ def main():
                             "compile",
                             "run",
                             "logs",
-                            "aiop",
                             "components",
                             "connections",
                             "oml",
@@ -271,154 +274,6 @@ def main():
         else:
             console.print(f"❌ Unknown command: {args.command}")
             console.print("💡 Run 'osiris.py --help' to see available commands")
-        sys.exit(1)
-
-
-def init_command(args: list):
-    """Initialize a new Osiris project with sample configuration."""
-    # Check for help flag first
-    if "--help" in args or "-h" in args:
-        # Check if JSON output is requested
-        if "--json" in args or json_output:
-            help_data = {
-                "command": "init",
-                "description": "Initialize a new Osiris project with sample configuration",
-                "usage": "osiris init [OPTIONS]",
-                "options": {
-                    "--json": "Output in JSON format for programmatic use",
-                    "--no-comments": "Generate config without comments",
-                    "--stdout": "Output config to stdout instead of file",
-                    "--help": "Show this help message",
-                },
-                "creates": [
-                    "osiris.yaml - Main configuration file",
-                    "Sample settings for logging, output, sessions",
-                    "LLM and pipeline configuration templates",
-                ],
-                "next_steps": [
-                    "Create .env file with your credentials",
-                    "Run 'osiris validate' to check setup",
-                    "Run 'osiris chat' to start pipeline generation",
-                ],
-                "examples": ["osiris init", "osiris init --json"],
-            }
-            print(json.dumps(help_data, indent=2))
-        else:
-            console.print()
-            console.print("[bold green]osiris init - Initialize Project[/bold green]")
-            console.print("🚀 Create a new Osiris project with sample configuration")
-            console.print()
-            console.print("[bold]Usage:[/bold] osiris init [OPTIONS]")
-            console.print()
-            console.print("[bold blue]Options[/bold blue]")
-            console.print("  [cyan]--json[/cyan]         Output in JSON format for programmatic use")
-            console.print("  [cyan]--no-comments[/cyan]  Generate config without comments")
-            console.print("  [cyan]--stdout[/cyan]       Output config to stdout instead of file")
-            console.print("  [cyan]--help[/cyan]         Show this help message")
-            console.print()
-            console.print("[bold blue]What this creates[/bold blue]")
-            console.print("  • osiris.yaml - Main configuration file")
-            console.print("  • Sample settings for logging, output, sessions")
-            console.print("  • LLM and pipeline configuration templates")
-            console.print()
-            console.print("[bold blue]Next steps after init[/bold blue]")
-            console.print("  1. Create .env file with your credentials")
-            console.print("  2. Run 'osiris validate' to check setup")
-            console.print("  3. Run 'osiris chat' to start pipeline generation")
-            console.print()
-        return
-
-    # Parse init-specific arguments
-    parser = argparse.ArgumentParser(description="Initialize Osiris project", add_help=False)
-    parser.add_argument("--json", action="store_true", help="Output in JSON format")
-    parser.add_argument("--no-comments", action="store_true", help="Generate config without comments")
-    parser.add_argument("--stdout", action="store_true", help="Output config to stdout instead of file")
-
-    try:
-        parsed_args = parser.parse_args(args)
-    except SystemExit:
-        if json_output:
-            print(json.dumps({"error": "Invalid arguments"}))
-        else:
-            console.print("❌ Invalid arguments. Use --help for usage information.")
-        return
-
-    use_json = json_output or parsed_args.json
-    try:
-        from pathlib import Path
-
-        from ..core.config import create_sample_config
-
-        # Check if config already exists
-        config_exists = Path("osiris.yaml").exists()
-
-        # Generate config with options
-        config_content = create_sample_config(no_comments=parsed_args.no_comments, to_stdout=parsed_args.stdout)
-
-        if parsed_args.stdout:
-            # Output to stdout
-            print(config_content)
-            return
-
-        if use_json:
-            result = {
-                "status": "success",
-                "message": "Osiris project initialization complete",
-                "config_file": "osiris.yaml",
-                "config_existed": config_exists,
-                "config_sections": [
-                    "logging",
-                    "output",
-                    "sessions",
-                    "discovery",
-                    "llm",
-                    "pipeline",
-                ],
-                "next_steps": [
-                    "Create .env file with database and LLM credentials",
-                    "Run 'osiris validate' to check your setup",
-                    "Run 'osiris chat' to start pipeline generation",
-                ],
-            }
-            print(json.dumps(result, indent=2))
-        else:
-            console.print("🚀 Osiris project initialization complete!")
-            console.print("")
-
-            if config_exists:
-                console.print("⚠️  Existing config backed up to osiris.yaml.backup")
-
-            console.print("✅ Created sample osiris.yaml configuration")
-            console.print("📋 Configuration includes: logging, output, sessions, discovery, LLM, pipeline settings")
-            console.print("")
-
-            # Check if .env.dist exists
-            env_dist_exists = Path("../.env.dist").exists()
-            if env_dist_exists:
-                console.print("🔐 Next steps for database and LLM setup:")
-                console.print("   1. Copy environment template:")
-                console.print("      cp ../.env.dist .env")
-                console.print("   2. Edit .env with your credentials:")
-                console.print("      • Database: MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE")
-                console.print("      • Database: SUPABASE_PROJECT_ID, SUPABASE_ANON_PUBLIC_KEY")
-                console.print("      • LLM APIs: OPENAI_API_KEY, CLAUDE_API_KEY, GEMINI_API_KEY")
-            else:
-                console.print("🔐 Environment setup:")
-                console.print("   Create .env file with your credentials:")
-                console.print("   • Database: MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE")
-                console.print("   • Database: SUPABASE_PROJECT_ID, SUPABASE_ANON_PUBLIC_KEY")
-                console.print("   • LLM APIs: OPENAI_API_KEY, CLAUDE_API_KEY, GEMINI_API_KEY")
-
-            console.print("")
-            console.print("💡 Ready to continue:")
-            console.print("   osiris validate      # Check your setup")
-            console.print("   osiris chat          # Start pipeline generation")
-
-    except Exception as e:
-        if use_json:
-            print(json.dumps({"status": "error", "message": str(e)}))
-        else:
-            console.print(f"❌ Initialization failed: {e}")
         sys.exit(1)
 
 
@@ -1400,7 +1255,7 @@ def connections_command(args: list) -> None:
 def logs_command(args: list) -> None:
     """Manage session logs (list, show, bundle, gc, html, open, aiop)."""
     from .logs import (
-        aiop_export,
+        aiop_command,
         bundle_session,
         gc_sessions,
         html_report,
@@ -1462,7 +1317,7 @@ def logs_command(args: list) -> None:
     elif subcommand == "open":
         open_session(subcommand_args)
     elif subcommand == "aiop":
-        aiop_export(subcommand_args)
+        aiop_command(subcommand_args)
     else:
         console.print(f"❌ Unknown subcommand: {subcommand}")
         console.print("Available subcommands: list, last, show, bundle, gc, html, open, aiop")
@@ -1938,47 +1793,6 @@ def oml_command(args: list) -> None:
         console.print(f"❌ Unknown subcommand: {subcommand}")
         console.print("Available subcommands: validate")
         console.print("Use 'osiris oml --help' for detailed help.")
-
-
-def aiop_command(args: list) -> None:
-    """Manage AIOP (AI Operation Package) - retention and pruning."""
-    console = Console()
-
-    def show_aiop_help():
-        console.print()
-        console.print("[bold green]osiris aiop - AIOP Management[/bold green]")
-        console.print("🤖 Manage AI Operation Package exports and retention")
-        console.print()
-        console.print("[bold]Usage:[/bold] osiris aiop [SUBCOMMAND] [OPTIONS]")
-        console.print()
-        console.print("[bold blue]Subcommands[/bold blue]")
-        console.print("  [cyan]prune[/cyan]                  Apply retention policies to AIOP outputs")
-        console.print()
-        console.print("[bold blue]Examples[/bold blue]")
-        console.print("  [green]osiris aiop prune[/green]                        # Apply configured retention")
-        console.print()
-
-    if not args or args[0] in ["--help", "-h"]:
-        show_aiop_help()
-        return
-
-    subcommand = args[0]
-    args[1:]
-
-    if subcommand == "prune":
-        from ..core.aiop_export import prune_aiop
-
-        success, error = prune_aiop()
-        if success:
-            console.print("[green]✓[/green] AIOP retention policies applied successfully")
-        else:
-            console.print(f"[red]✗[/red] Failed to apply retention: {error}")
-            sys.exit(1)
-    else:
-        console.print(f"❌ Unknown subcommand: {subcommand}")
-        console.print("Available subcommands: prune")
-        console.print("Use 'osiris aiop --help' for detailed help.")
-        sys.exit(1)
 
 
 if __name__ == "__main__":

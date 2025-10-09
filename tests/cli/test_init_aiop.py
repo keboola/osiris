@@ -170,13 +170,13 @@ class TestInitAIOP:
 
         # Check output section
         assert "output" in aiop
-        assert aiop["output"]["core_path"] == "logs/aiop/aiop.json"
-        assert aiop["output"]["run_card_path"] == "logs/aiop/run-card.md"
+        assert aiop["output"]["core_path"] == "aiop/{session_id}/aiop.json"
+        assert aiop["output"]["run_card_path"] == "aiop/{session_id}/run-card.md"
 
         # Check annex section
         assert "annex" in aiop
         assert aiop["annex"]["enabled"] is False
-        assert aiop["annex"]["dir"] == "logs/aiop/annex"
+        assert aiop["annex"]["dir"] == "aiop/annex"
         assert aiop["annex"]["compress"] == "none"
 
         # Check retention section
