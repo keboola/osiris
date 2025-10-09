@@ -138,7 +138,7 @@ The project has comprehensive documentation organized as follows:
 - **`docs/reference/events_and_metrics_schema.md`** - Log format and metrics
 
 ### AI-Assisted Development
-- **`docs/COMPONENT_AI_CHECKLIST.md`** - LLM-assisted component development guide
+- **`docs/developer-guide/ai/checklists/COMPONENT_AI_CHECKLIST.md`** - LLM-assisted component development guide
 - **`docs/COMPONENT_DEVELOPER_AUDIT.md`** - Systematic component review checklist
 - **`docs/archive/`** - Archived LLM contracts (llms.txt, llms-drivers.txt, etc.)
 
