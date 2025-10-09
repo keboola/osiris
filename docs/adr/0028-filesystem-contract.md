@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Final
+Version: v1 (shipped in Osiris 0.4.0)
+Effective: 2025-10-09
 
 ## Context
 
