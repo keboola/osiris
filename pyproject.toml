@@ -75,11 +75,11 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/keboola/osiris_pipeline"
-Documentation = "https://github.com/keboola/osiris_pipeline/tree/main/docs"
-Repository = "https://github.com/keboola/osiris_pipeline"
-Issues = "https://github.com/keboola/osiris_pipeline/issues"
-Changelog = "https://github.com/keboola/osiris_pipeline/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/keboola/osiris"
+Documentation = "https://github.com/keboola/osiris/tree/main/docs"
+Repository = "https://github.com/keboola/osiris"
+Issues = "https://github.com/keboola/osiris/issues"
+Changelog = "https://github.com/keboola/osiris/blob/main/CHANGELOG.md"
 
 [project.scripts]
 osiris = "osiris.cli.main:main"
