@@ -1,16 +1,28 @@
 """Test for run command with last-compile features."""
 
-import json
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import yaml
 
 
-def test_compile_writes_pointer_files(tmp_path):
-    """Test that compile command writes both .last.json and .last_compile.json."""
+def test_compile_writes_pointer_files(tmp_path, monkeypatch):
+    """Test that compile command writes pointer files using contract paths."""
+    from unittest.mock import MagicMock, patch
+
     from osiris.cli.compile import compile_command
+
+    monkeypatch.chdir(tmp_path)
+
+    # Create minimal osiris.yaml
+    osiris_yaml = tmp_path / "osiris.yaml"
+    osiris_yaml.write_text(
+        """
+version: "2.0"
+filesystem:
+  compilations: ".osiris/index/compilations"
+"""
+    )
 
     # Create a simple OML file
     oml_file = tmp_path / "test.yaml"
@@ -29,37 +41,26 @@ def test_compile_writes_pointer_files(tmp_path):
         yaml.dump(oml_content, f)
 
     # Mock the compiler to succeed
-    with patch("osiris.cli.compile.CompilerV0") as mock_compiler:
-        mock_instance = MagicMock()
-        mock_instance.compile.return_value = (True, "Success")
-        mock_compiler.return_value = mock_instance
+    with patch("osiris.cli.compile.CompilerV0") as mock_compiler_cls:
+        mock_compiler = MagicMock()
+        mock_compiler.compile.return_value = (True, "Success")
+        mock_compiler.manifest_hash = "abc123"
+        mock_compiler.manifest_short = "test"
+        mock_compiler_cls.return_value = mock_compiler
 
-        # Mock session context
-        with patch("osiris.cli.compile.SessionContext") as mock_session:
-            mock_session_instance = MagicMock()
-            mock_session_instance.session_dir = tmp_path / "logs" / "compile_123"
-            mock_session_instance.session_dir.mkdir(parents=True, exist_ok=True)
-            mock_session.return_value = mock_session_instance
+        # Patch sys.exit to avoid test exit
+        with patch("sys.exit"):
+            # Run compile (will create pointer files)
+            compile_command([str(oml_file)])
 
-            with patch("osiris.cli.compile.Path") as mock_path:
-                # Make Path("logs") return our tmp_path / "logs"
-                def path_side_effect(p):
-                    if p == "logs":
-                        return tmp_path / "logs"
-                    return Path(p)
+    # Check that contract-based pointer files were created
+    # Global latest pointer
+    global_pointer = tmp_path / ".osiris" / "index" / "last_compile.txt"
+    assert global_pointer.exists(), f"Global pointer not found at {global_pointer}"
 
-                mock_path.side_effect = path_side_effect
-
-                # Run compile
-                with patch("sys.exit"):
-                    compile_command([str(oml_file)])
-
-                # Check that pointer files were created
-                _session_pointer = mock_session_instance.session_dir / ".last.json"
-                _global_pointer = tmp_path / "logs" / ".last_compile.json"
-
-                # We need to actually create these in the test since our mock doesn't
-                # In real code these would be created
+    # Per-pipeline latest pointer (uses manifest_short, not pipeline name)
+    pipeline_pointer = tmp_path / ".osiris" / "index" / "latest" / "test.txt"
+    assert pipeline_pointer.exists(), f"Pipeline pointer not found at {pipeline_pointer}"
 
 
 def test_run_with_last_compile():
@@ -68,88 +69,118 @@ def test_run_with_last_compile():
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
-        logs_dir = tmp_path / "logs"
-        logs_dir.mkdir()
 
-        # Create pointer file
-        pointer_file = logs_dir / ".last_compile.json"
-        compile_dir = logs_dir / "compile_123" / "compiled"
+        # Create osiris.yaml
+        osiris_yaml = tmp_path / "osiris.yaml"
+        osiris_yaml.write_text(
+            """
+version: "2.0"
+filesystem:
+  compilations: ".osiris/index/compilations"
+"""
+        )
+
+        # Create contract structure
+        index_dir = tmp_path / ".osiris" / "index"
+        index_dir.mkdir(parents=True)
+
+        # Create compilation directory
+        compile_dir = index_dir / "compilations" / "test_abc123"
         compile_dir.mkdir(parents=True)
         manifest_path = compile_dir / "manifest.yaml"
         manifest_path.write_text("test: manifest")
 
-        pointer_data = {
-            "session_id": "compile_123",
-            "manifest_path": str(manifest_path),
-            "compiled_dir": str(compile_dir),
-            "generated_at": "2025-09-05T12:00:00Z",
-        }
-        with open(pointer_file, "w") as f:
-            json.dump(pointer_data, f)
+        # Create global pointer file
+        pointer_file = index_dir / "last_compile.txt"
+        pointer_file.write_text(str(manifest_path))
 
-        # Mock Path("logs") to return our test directory
-        with patch("osiris.cli.run.Path") as mock_path:
+        # Test finding last compile (should work from tmp_path)
+        import os
 
-            def path_side_effect(p):
-                if p == "logs":
-                    return logs_dir
-                return Path(p)
-
-            mock_path.side_effect = path_side_effect
-
-            # Test find_last_compile_manifest
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
             result = find_last_compile_manifest()
-            assert result == str(manifest_path)
+            assert result == str(manifest_path), f"Expected {manifest_path}, got {result}"
+        finally:
+            os.chdir(original_cwd)
 
 
 def test_run_with_last_compile_in():
-    """Test that run --last-compile-in finds latest compile in directory."""
+    """Test that run --last-compile-in uses per-pipeline pointer."""
     from osiris.cli.run import find_last_compile_manifest
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
-        logs_dir = tmp_path / "logs"
-        logs_dir.mkdir()
 
-        # Create two compile sessions
-        for _i, timestamp in enumerate([100, 200]):
-            compile_dir = logs_dir / f"compile_{timestamp}" / "compiled"
-            compile_dir.mkdir(parents=True)
-            manifest_path = compile_dir / "manifest.yaml"
-            manifest_path.write_text(f"test: manifest_{timestamp}")
-            # Touch to set mtime
-            import os
+        # Create osiris.yaml
+        osiris_yaml = tmp_path / "osiris.yaml"
+        osiris_yaml.write_text(
+            """
+version: "2.0"
+filesystem:
+  compilations: ".osiris/index/compilations"
+"""
+        )
 
-            os.utime(compile_dir.parent, (timestamp, timestamp))
+        # Create contract structure
+        index_dir = tmp_path / ".osiris" / "index"
+        latest_dir = index_dir / "latest"
+        latest_dir.mkdir(parents=True)
 
-        # Test find_last_compile_manifest with directory
-        result = find_last_compile_manifest(str(logs_dir))
-        assert result.endswith("compile_200/compiled/manifest.yaml")
+        # Create compilation directory
+        compile_dir = index_dir / "compilations" / "pipe_200_xyz789"
+        compile_dir.mkdir(parents=True)
+        manifest_path = compile_dir / "manifest.yaml"
+        manifest_path.write_text("test: pipeline_200")
+
+        # Create per-pipeline pointer
+        pipeline_pointer = latest_dir / "pipeline_200.txt"
+        pipeline_pointer.write_text(str(manifest_path))
+
+        # Test finding pipeline-specific compile
+        import os
+
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            result = find_last_compile_manifest(pipeline_slug="pipeline_200")
+            assert result is not None, "Expected manifest path, got None"
+            assert "pipeline_200" in result or "pipe_200" in result, f"Expected pipeline_200 in path, got {result}"
+        finally:
+            os.chdir(original_cwd)
 
 
-def test_detect_file_type():
-    """Test that detect_file_type correctly identifies OML vs manifest."""
+def test_detect_file_type(tmp_path):
+    """Test the file type detection logic."""
     from osiris.cli.run import detect_file_type
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = Path(tmpdir)
+    # Create a manifest file (has pipeline, steps, meta)
+    manifest_file = tmp_path / "manifest.yaml"
+    manifest_file.write_text(
+        """
+pipeline: test
+steps:
+  - id: step1
+meta:
+  version: 1.0
+"""
+    )
+    assert detect_file_type(str(manifest_file)) == "manifest"
 
-        # Test OML file
-        oml_file = tmp_path / "oml.yaml"
-        oml_content = {"oml_version": "0.1.0", "name": "test", "steps": []}
-        with open(oml_file, "w") as f:
-            yaml.dump(oml_content, f)
+    # Create an OML file (has oml_version or name, steps, but no meta)
+    oml_file = tmp_path / "pipeline.yaml"
+    oml_file.write_text(
+        """
+oml_version: "0.1.0"
+name: test_pipeline
+steps:
+  - id: step1
+"""
+    )
+    assert detect_file_type(str(oml_file)) == "oml"
 
-        assert detect_file_type(str(oml_file)) == "oml"
-
-        # Test manifest file
-        manifest_file = tmp_path / "manifest.yaml"
-        manifest_content = {
-            "pipeline": {"id": "test"},
-            "steps": [],
-            "meta": {"compiled_at": "2025-09-05"},
-        }
-        with open(manifest_file, "w") as f:
-            yaml.dump(manifest_content, f)
-
-        assert detect_file_type(str(manifest_file)) == "manifest"
+    # Create an unknown/unparseable file (defaults to 'oml')
+    unknown_file = tmp_path / "unknown.txt"
+    unknown_file.write_text("random content")
+    assert detect_file_type(str(unknown_file)) == "oml"  # Defaults to oml on parse errors
