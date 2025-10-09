@@ -178,8 +178,8 @@ class RetentionPlan:
                             age_days=age_days,
                         )
                     )
-            except Exception:  # nosec B112
-                # Skip directories we can't access
+            except Exception:  # nosec B112 - safe: best-effort cleanup, permissions/race conditions are expected
+                # Skip directories we can't access (permissions, deleted, etc.)
                 continue
 
         return actions
@@ -251,7 +251,7 @@ class RetentionPlan:
                                 size_bytes=size,
                             )
                         )
-                except Exception:  # nosec B112
+                except Exception:  # nosec B112 - safe: best-effort cleanup, filesystem errors are expected
                     continue
 
         return actions

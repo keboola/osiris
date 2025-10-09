@@ -178,10 +178,10 @@ class RunIdGenerator:
         # Encode timestamp (48 bits)
         timestamp_part = self._encode_base32(timestamp_ms, 10)
 
-        # Random part (80 bits)
+        # Random part (80 bits) for collision avoidance (not cryptographic use)
         import random
 
-        random_part = self._encode_base32(random.getrandbits(80), 16)  # nosec B311
+        random_part = self._encode_base32(random.getrandbits(80), 16)  # nosec B311 - non-crypto ID generation
 
         return f"{timestamp_part}{random_part}"
 
@@ -223,10 +223,10 @@ class RunIdGenerator:
 
         machine_id = os.getpid() % 1024
 
-        # Sequence number (random for simplicity)
+        # Sequence number for collision avoidance (not cryptographic use)
         import random
 
-        sequence = random.randint(0, 4095)  # nosec B311
+        sequence = random.randint(0, 4095)  # nosec B311 - non-crypto ID generation
 
         # Combine parts
         snowflake_id = (epoch_ms << 22) | (machine_id << 12) | sequence
