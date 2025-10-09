@@ -115,7 +115,7 @@ aiop:
 
     # Alternative: Test with the unit-level infrastructure
     # Create mock index entries and AIOP summaries directly
-    from osiris.core.fs_config import (
+    from osiris.core.fs_config import (  # noqa: E501
         ArtifactsConfig,
         FilesystemConfig,
         IdsConfig,
@@ -123,7 +123,7 @@ aiop:
         OutputsConfig,
         ProfilesConfig,
         RetentionConfig,
-    )  # noqa: E501
+    )
     from osiris.core.fs_paths import FilesystemContract
     from osiris.core.run_index import RunIndexWriter, RunRecord
 
@@ -267,7 +267,7 @@ aiop:
 @pytest.mark.integration
 def test_aiop_list_prefers_index_path(tmp_path):
     """Test that aiop list prefers aiop_path from index over FilesystemContract fallback."""
-    from osiris.core.fs_config import (
+    from osiris.core.fs_config import (  # noqa: E501
         ArtifactsConfig,
         FilesystemConfig,
         IdsConfig,
@@ -275,7 +275,7 @@ def test_aiop_list_prefers_index_path(tmp_path):
         OutputsConfig,
         ProfilesConfig,
         RetentionConfig,
-    )  # noqa: E501
+    )
     from osiris.core.fs_paths import FilesystemContract
     from osiris.core.run_index import RunIndexReader, RunIndexWriter, RunRecord
 

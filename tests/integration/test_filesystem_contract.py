@@ -1,11 +1,6 @@
 """Integration tests for filesystem contract."""
 
-import json
-from pathlib import Path
-import tempfile
-
 import pytest
-import yaml
 
 from osiris.cli.init import init_command
 from osiris.core.compiler_v0 import CompilerV0
@@ -154,7 +149,7 @@ def test_multiple_runs_no_overwrite(tmp_path):
         run_ids = []
         session_dirs = []
 
-        for i in range(3):
+        for _i in range(3):
             run_id, _ = run_id_gen.generate("test_pipeline")
             run_ids.append(run_id)
 

@@ -14,8 +14,8 @@
 
 """Filesystem Contract v1 - Typed configuration models (ADR-0028)."""
 
-from dataclasses import dataclass, field
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 

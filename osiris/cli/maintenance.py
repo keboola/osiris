@@ -2,7 +2,6 @@
 
 import argparse
 import json
-from pathlib import Path
 
 from rich.console import Console
 
@@ -43,7 +42,7 @@ def clean_command(dry_run: bool, json_output: bool):
         from ..core.retention import RetentionPlan
 
         fs_config, ids_config, _ = load_osiris_config()
-        fs_contract = FilesystemContract(fs_config, ids_config)
+        FilesystemContract(fs_config, ids_config)
 
         # Create retention plan
         plan = RetentionPlan(fs_config)
@@ -82,7 +81,7 @@ def clean_command(dry_run: bool, json_output: bool):
                 console.print(f"[yellow]Would delete {len(actions)} items:[/yellow]")
                 console.print(f"  • Run logs: {stats['run_logs_to_delete']} directories")
                 console.print(f"  • AIOP annex: {stats['aiop_annex_to_delete']} items")
-                console.print(f"  • Build artifacts: 0 (preserved)")
+                console.print("  • Build artifacts: 0 (preserved)")
                 console.print()
 
                 if actions:
@@ -123,7 +122,7 @@ def clean_command(dry_run: bool, json_output: bool):
                 console.print(f"[green]Deleted {deleted} items:[/green]")
                 console.print(f"  • Run logs: {stats['run_logs_to_delete']} directories")
                 console.print(f"  • AIOP annex: {stats['aiop_annex_to_delete']} items")
-                console.print(f"  • Build artifacts: 0 (preserved)")
+                console.print("  • Build artifacts: 0 (preserved)")
 
                 if errors:
                     console.print()

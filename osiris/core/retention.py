@@ -14,13 +14,13 @@
 
 """Retention policy execution for run logs and AIOP (ADR-0028)."""
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
 import shutil
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
-from osiris.core.fs_config import FilesystemConfig, RetentionConfig
+from osiris.core.fs_config import FilesystemConfig
 
 
 @dataclass
@@ -92,7 +92,7 @@ class RetentionPlan:
         annex_days = annex_days if annex_days is not None else self.retention_config.annex_keep_days
 
         # Compute cutoff times
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         run_logs_cutoff = now - timedelta(days=run_logs_days) if run_logs_days > 0 else None
         annex_cutoff = now - timedelta(days=annex_days) if annex_days > 0 else None
 
@@ -164,11 +164,11 @@ class RetentionPlan:
         for run_dir in self._iter_run_dirs(run_logs_root):
             try:
                 # Get modification time as proxy for completion time
-                mtime = datetime.fromtimestamp(run_dir.stat().st_mtime, tz=timezone.utc)
+                mtime = datetime.fromtimestamp(run_dir.stat().st_mtime, tz=UTC)
 
                 if mtime < cutoff:
                     size = self._get_dir_size(run_dir)
-                    age_days = (datetime.now(timezone.utc) - mtime).days
+                    age_days = (datetime.now(UTC) - mtime).days
                     actions.append(
                         RetentionAction(
                             action_type="delete_run_logs",
@@ -240,14 +240,14 @@ class RetentionPlan:
         for annex_dir in aiop_root.rglob("annex"):
             if annex_dir.is_dir():
                 try:
-                    mtime = datetime.fromtimestamp(annex_dir.stat().st_mtime, tz=timezone.utc)
+                    mtime = datetime.fromtimestamp(annex_dir.stat().st_mtime, tz=UTC)
                     if mtime < cutoff:
                         size = self._get_dir_size(annex_dir)
                         actions.append(
                             RetentionAction(
                                 action_type="delete_annex",
                                 path=annex_dir,
-                                reason=f"Annex older than {(datetime.now(timezone.utc) - cutoff).days} days",
+                                reason=f"Annex older than {(datetime.now(UTC) - cutoff).days} days",
                                 size_bytes=size,
                             )
                         )

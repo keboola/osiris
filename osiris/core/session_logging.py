@@ -19,16 +19,16 @@ This module implements per-session logging directories with structured events,
 metrics, and artifact collection for better debugging and audit capabilities.
 """
 
-from contextlib import suppress
-from datetime import UTC, datetime
 import json
 import logging
-from pathlib import Path
 import sys
 import tempfile
 import time
-from typing import Any
 import uuid
+from contextlib import suppress
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 from .redaction import create_redactor
 

@@ -1,8 +1,8 @@
 """Tests for run ID generation (ADR-0028)."""
 
+import tempfile
 from datetime import datetime
 from pathlib import Path
-import tempfile
 
 from osiris.core.run_ids import CounterStore, RunIdGenerator
 
@@ -142,7 +142,7 @@ class TestRunIdGenerator:
 
         try:
             generator.generate("orders_etl")
-            assert False, "Should have raised ValueError"
+            raise AssertionError("Should have raised ValueError")
         except ValueError as e:
             assert "CounterStore required" in str(e)
 

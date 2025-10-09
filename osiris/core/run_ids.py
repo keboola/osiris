@@ -14,12 +14,10 @@
 
 """Run ID generation with multiple formats (ADR-0028)."""
 
-from datetime import datetime, timezone
-from pathlib import Path
 import sqlite3
-import time
-from typing import Any
 import uuid
+from datetime import UTC, datetime
+from pathlib import Path
 
 
 class CounterStore:
@@ -90,7 +88,7 @@ class CounterStore:
                 SET last_value = excluded.last_value,
                     updated_at = excluded.updated_at
             """,
-                (pipeline_slug, new_value, datetime.now(timezone.utc).isoformat()),
+                (pipeline_slug, new_value, datetime.now(UTC).isoformat()),
             )
 
             conn.commit()
@@ -126,7 +124,7 @@ class RunIdGenerator:
         Returns:
             Tuple of (run_id, issued_at_timestamp)
         """
-        issued_at = datetime.now(timezone.utc)
+        issued_at = datetime.now(UTC)
         parts = []
 
         for fmt in self.formats:

@@ -16,9 +16,9 @@
 
 import argparse
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 from rich.console import Console
 
@@ -169,14 +169,14 @@ def init_command(args: list, json_output: bool = False) -> None:
             console.print(f"[bold]Project path:[/bold] {project_path}")
             console.print()
             console.print("[bold blue]Created:[/bold blue]")
-            console.print(f"  ✓ osiris.yaml (Filesystem Contract v1)")
+            console.print("  ✓ osiris.yaml (Filesystem Contract v1)")
             for dir_name in created_dirs:
                 console.print(f"  ✓ {dir_name}/")
-            console.print(f"  ✓ .gitignore")
-            console.print(f"  ✓ .env.example")
-            console.print(f"  ✓ osiris_connections.example.yaml")
+            console.print("  ✓ .gitignore")
+            console.print("  ✓ .env.example")
+            console.print("  ✓ osiris_connections.example.yaml")
             if git_initialized:
-                console.print(f"  ✓ Git repository initialized with initial commit")
+                console.print("  ✓ Git repository initialized with initial commit")
             console.print()
             console.print("[bold blue]Next steps:[/bold blue]")
             console.print("  1. Copy .env.example to .env and fill in credentials")

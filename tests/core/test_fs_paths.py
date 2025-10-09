@@ -1,8 +1,8 @@
 """Tests for filesystem paths and token rendering (ADR-0028)."""
 
-from datetime import datetime, timezone
-from pathlib import Path
 import tempfile
+from datetime import UTC, datetime
+from pathlib import Path
 
 from osiris.core.fs_config import FilesystemConfig, IdsConfig, NamingConfig
 from osiris.core.fs_paths import (
@@ -181,7 +181,7 @@ class TestFilesystemContract:
         ids_config = IdsConfig()
         contract = FilesystemContract(fs_config, ids_config)
 
-        run_ts = datetime(2025, 10, 7, 14, 22, 19, tzinfo=timezone.utc)
+        run_ts = datetime(2025, 10, 7, 14, 22, 19, tzinfo=UTC)
 
         paths = contract.run_log_paths(
             pipeline_slug="orders_etl",
@@ -253,7 +253,7 @@ class TestFilesystemContract:
         ids_config = IdsConfig()
         contract = FilesystemContract(fs_config, ids_config)
 
-        ts = datetime(2025, 10, 7, 14, 22, 19, tzinfo=timezone.utc)
+        ts = datetime(2025, 10, 7, 14, 22, 19, tzinfo=UTC)
         result = contract._format_timestamp(ts)
 
         assert result == "20251007T142219Z"
@@ -264,7 +264,7 @@ class TestFilesystemContract:
         ids_config = IdsConfig()
         contract = FilesystemContract(fs_config, ids_config)
 
-        ts = datetime(2025, 10, 7, 14, 22, 19, tzinfo=timezone.utc)
+        ts = datetime(2025, 10, 7, 14, 22, 19, tzinfo=UTC)
         result = contract._format_timestamp(ts)
 
         assert result.isdigit()
@@ -276,7 +276,7 @@ class TestFilesystemContract:
         ids_config = IdsConfig()
         contract = FilesystemContract(fs_config, ids_config)
 
-        ts = datetime(2025, 10, 7, 14, 22, 19, tzinfo=timezone.utc)
+        ts = datetime(2025, 10, 7, 14, 22, 19, tzinfo=UTC)
         result = contract._format_timestamp(ts)
 
         assert result == ""

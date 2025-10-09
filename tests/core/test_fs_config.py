@@ -1,20 +1,18 @@
 """Tests for filesystem configuration (ADR-0028)."""
 
 import os
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
 import pytest
 import yaml
 
 from osiris.core.config import ConfigError
 from osiris.core.fs_config import (
-    ArtifactsConfig,
     FilesystemConfig,
     IdsConfig,
     NamingConfig,
     ProfilesConfig,
-    RetentionConfig,
     load_osiris_config,
 )
 

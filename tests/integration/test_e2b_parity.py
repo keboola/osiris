@@ -1,9 +1,6 @@
 """Tests for E2B parity with local execution."""
 
-import json
 from pathlib import Path
-import tempfile
-from unittest.mock import MagicMock, patch
 
 import pytest
 

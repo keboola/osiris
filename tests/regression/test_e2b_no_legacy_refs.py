@@ -3,26 +3,23 @@
 import re
 from pathlib import Path
 
-import pytest
-
-
 BANNED_PATTERNS = [
     r'\bPath\("logs"\)',  # Path("logs")
     r'"logs/"',  # Hardcoded "logs/" string (but allow in comments/docstrings)
-    r'\.last_compile\.json',  # .last_compile.json references
-    r'\.osiris_sessions',  # .osiris_sessions references
-    r'\bcompiled/',  # compiled/ directory (allow in sandbox context ./compiled/)
+    r"\.last_compile\.json",  # .last_compile.json references
+    r"\.osiris_sessions",  # .osiris_sessions references
+    r"\bcompiled/",  # compiled/ directory (allow in sandbox context ./compiled/)
 ]
 
 # Patterns that are OK in specific contexts
 ALLOWLIST_PATTERNS = [
-    r'# .*logs/',  # Comments
+    r"# .*logs/",  # Comments
     r'""".*logs/',  # Docstrings
     r"'''.*logs/",  # Docstrings
-    r'\.\/compiled/',  # ./compiled/ is OK (sandbox path)
+    r"\.\/compiled/",  # ./compiled/ is OK (sandbox path)
     r'"compiled/manifest\.yaml"',  # Sandbox manifest path is OK
     r"'compiled/manifest\.yaml'",  # Sandbox manifest path (single quotes) is OK
-    r'io_layout.*logs/',  # io_layout defines sandbox paths
+    r"io_layout.*logs/",  # io_layout defines sandbox paths
 ]
 
 

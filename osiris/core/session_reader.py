@@ -176,7 +176,7 @@ class SessionReader:
             # Get relative path for session ID
             try:
                 rel_path = session_path.relative_to(self.logs_dir)
-                session_id = str(rel_path).replace("/", "_")  # Convert path to ID
+                str(rel_path).replace("/", "_")  # Convert path to ID
 
                 summary = self.read_session(str(rel_path))
                 if summary:

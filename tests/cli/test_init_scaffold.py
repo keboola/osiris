@@ -15,7 +15,6 @@
 """Tests for osiris init command - Filesystem Contract v1 scaffolder."""
 
 import json
-from pathlib import Path
 import subprocess
 
 import pytest
@@ -139,7 +138,6 @@ def test_init_creates_connections_example(tmp_path):
 
 def test_init_json_output(tmp_path):
     """Test that 'osiris init --json' produces valid JSON output."""
-    import sys
     from unittest.mock import patch
 
     from osiris.cli.init import init_command
@@ -216,7 +214,7 @@ def test_init_git_option(tmp_path):
     assert git_dir.exists()
 
     # Verify initial commit exists
-    result = subprocess.run(["git", "log", "--oneline"], capture_output=True, text=True, cwd=tmp_path)
+    result = subprocess.run(["git", "log", "--oneline"], check=False, capture_output=True, text=True, cwd=tmp_path)
     assert "initialize osiris project" in result.stdout.lower()
 
 

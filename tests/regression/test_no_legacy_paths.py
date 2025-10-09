@@ -5,14 +5,13 @@ from pathlib import Path
 
 import pytest
 
-
 # Banned string literals (strict patterns for new violations)
 BANNED_LITERALS = [
     r'\bPath\("logs"\)\b',  # Path("logs") - exact match
     r'\bPath\("compiled"\)\b',  # Path("compiled") - exact match
     r'f"logs/',  # f-string with logs/ (new hardcoded paths)
     r'f"compiled/',  # f-string with compiled/
-    r'\.last_compile\.json',  # .last_compile.json
+    r"\.last_compile\.json",  # .last_compile.json
 ]
 
 # Files/directories to exclude from the check
@@ -39,14 +38,14 @@ ALLOWLIST_PATHS = [
 
 # Patterns that are OK in specific contexts
 CONTEXT_ALLOWLIST = [
-    r'# .*',  # Comments
+    r"# .*",  # Comments
     r'""".*"""',  # Docstrings
     r"'''.*'''",  # Docstrings
-    r'\.\/compiled/',  # ./compiled/ (sandbox paths)
+    r"\.\/compiled/",  # ./compiled/ (sandbox paths)
     r'"compiled/manifest\.yaml"',  # Sandbox manifest paths
-    r'io_layout',  # E2B sandbox io_layout
-    r'old.*dir',  # References to old/legacy for migration code
-    r'legacy',  # Explicit legacy references in migration code
+    r"io_layout",  # E2B sandbox io_layout
+    r"old.*dir",  # References to old/legacy for migration code
+    r"legacy",  # Explicit legacy references in migration code
 ]
 
 
