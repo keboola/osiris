@@ -240,9 +240,9 @@ def compile_command(args: list[str]):
         sys.exit(2)
 
     # Load filesystem contract first
-    from ..core.fs_config import load_osiris_config
-    from ..core.fs_paths import FilesystemContract
-    from ..core.run_index import RunIndexWriter
+    from ..core.fs_config import load_osiris_config  # noqa: PLC0415
+    from ..core.fs_paths import FilesystemContract  # noqa: PLC0415
+    from ..core.run_index import RunIndexWriter  # noqa: PLC0415
 
     fs_config, ids_config, _ = load_osiris_config()
     fs_contract = FilesystemContract(fs_config, ids_config)
@@ -365,7 +365,7 @@ def compile_command(args: list[str]):
                 sys.exit(1)
     except Exception as e:
         # Unexpected errors
-        import traceback
+        import traceback  # noqa: PLC0415
 
         if use_json:
             print(

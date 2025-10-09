@@ -178,7 +178,7 @@ class RetentionPlan:
                             age_days=age_days,
                         )
                     )
-            except Exception:
+            except Exception:  # nosec B112
                 # Skip directories we can't access
                 continue
 
@@ -251,7 +251,7 @@ class RetentionPlan:
                                 size_bytes=size,
                             )
                         )
-                except Exception:
+                except Exception:  # nosec B112
                     continue
 
         return actions

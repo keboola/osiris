@@ -181,7 +181,7 @@ class RunIdGenerator:
         # Random part (80 bits)
         import random
 
-        random_part = self._encode_base32(random.getrandbits(80), 16)
+        random_part = self._encode_base32(random.getrandbits(80), 16)  # nosec B311
 
         return f"{timestamp_part}{random_part}"
 
@@ -226,7 +226,7 @@ class RunIdGenerator:
         # Sequence number (random for simplicity)
         import random
 
-        sequence = random.randint(0, 4095)
+        sequence = random.randint(0, 4095)  # nosec B311
 
         # Combine parts
         snowflake_id = (epoch_ms << 22) | (machine_id << 12) | sequence
