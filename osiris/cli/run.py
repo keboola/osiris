@@ -516,7 +516,6 @@ def run_command(args: list[str]):
             console.print("[cyan]Executing pipeline... [/cyan]", end="")
 
         # Determine paths
-        session_compiled_dir = session.session_dir / "compiled"
         session_artifacts_dir = session.session_dir / "artifacts"
         session_artifacts_dir.mkdir(parents=True, exist_ok=True)
 
@@ -530,8 +529,7 @@ def run_command(args: list[str]):
                 oml_data = yaml.safe_load(f)
             pipeline_slug = oml_data.get("pipeline", {}).get("id", Path(pipeline_file).stem)
 
-            # Use FilesystemContract for compilation
-            session_compiled_dir.mkdir(parents=True, exist_ok=True)
+            # Use FilesystemContract for compilation (writes to build/ directory)
             compiler = CompilerV0(fs_contract=contract, pipeline_slug=pipeline_slug)
             compile_success, compile_message = compiler.compile(
                 oml_path=pipeline_file, profile=profile, cli_params=params
@@ -564,7 +562,14 @@ def run_command(args: list[str]):
                 sys.exit(2)
 
             log_event("compile_complete", message=compile_message, duration=compile_duration)
-            manifest_path = session_compiled_dir / "manifest.yaml"
+
+            # Get manifest path from compiler via FilesystemContract
+            manifest_path = contract.manifest_paths(
+                pipeline_slug=pipeline_slug,
+                manifest_hash=compiler.manifest_hash,
+                manifest_short=compiler.manifest_short,
+                profile=profile,
+            )["manifest"]
 
             if not use_json:
                 console.print("[green]✓[/green]")
