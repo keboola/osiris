@@ -86,7 +86,16 @@ If you need to revive content from this archive:
 
 ## Migration History
 
-**Date**: 2025-09-30
+### 2025-10-09: Filesystem Contract v1 (v0.4.0)
+**ADR-0028 Implementation Complete**
+- All legacy `logs/` path references removed from production code
+- New directory structure: `build/`, `run_logs/`, `aiop/`, `.osiris/`
+- 53 commits enforcing deterministic, reproducible filesystem layout
+- 1064 tests passing with 100% contract compliance
+- See: `docs/adr/0028-filesystem-contract.md` (Status: Final)
+- See: `docs/milestones/filesystem-contract.md` (Complete)
+
+### 2025-09-30: Documentation Restructure
 **Reason**: Documentation restructured to separate human-readable guides from AI-oriented contracts
 **Result**: Clear separation into `human/` (narrative, examples, modules) and `ai/` (contracts, checklists, schemas)
 
