@@ -1,17 +1,12 @@
 """Tests for maintenance clean command."""
 
-from datetime import datetime, timedelta
 import json
-from pathlib import Path
-import tempfile
-from unittest.mock import patch
-
-import pytest
+from datetime import datetime, timedelta
 
 from osiris.cli.init import init_command
 from osiris.cli.maintenance import clean_command
 from osiris.core.fs_config import FilesystemConfig, RetentionConfig
-from osiris.core.retention import RetentionAction, RetentionPlan
+from osiris.core.retention import RetentionPlan
 
 
 def test_dry_run_shows_expected_plan(tmp_path):
@@ -61,15 +56,15 @@ def test_real_run_deletes_correct_files(tmp_path):
     run_logs = tmp_path / "run_logs" / "test_pipeline"
     run_logs.mkdir(parents=True)
 
-    # Create old run
+    # Create old run (must have events.jsonl to be recognized as a run dir)
     old_run = run_logs / "old_run"
     old_run.mkdir()
-    (old_run / "test.txt").write_text("old")
+    (old_run / "events.jsonl").write_text("{}")
 
     # Create new run
     new_run = run_logs / "new_run"
     new_run.mkdir()
-    (new_run / "test.txt").write_text("new")
+    (new_run / "events.jsonl").write_text("{}")
 
     # Make old directory appear old
     import os
@@ -131,16 +126,20 @@ def test_build_directory_never_touched(tmp_path):
 
 
 def test_retention_counters_match_policy(tmp_path):
-    """Test that retention respects configured policies."""
+    """Test that retention respects configured policies for AIOP annex."""
     # Set up AIOP directory structure
     aiop_dir = tmp_path / "aiop" / "test_pipeline" / "hash123"
     aiop_dir.mkdir(parents=True)
 
-    # Create multiple run directories
+    # Create multiple run directories with annex (retention only deletes annex, not runs)
     for i in range(10):
         run_dir = aiop_dir / f"run-{i:03d}"
         run_dir.mkdir()
         (run_dir / "summary.json").write_text("{}")
+        # Add annex subdirectory so retention will delete it
+        annex_dir = run_dir / "annex"
+        annex_dir.mkdir()
+        (annex_dir / "data.jsonl").write_text("{}")
 
     # Create filesystem config with keep 5 runs
     fs_config = FilesystemConfig(
@@ -153,8 +152,10 @@ def test_retention_counters_match_policy(tmp_path):
     plan = RetentionPlan(fs_config)
     actions = plan._select_aiop_for_retention(keep_runs=5)
 
-    # Should delete 5 oldest runs (keeping 5 newest)
+    # Should delete 5 oldest annex dirs (keeping 5 newest runs with their annex)
     assert len(actions) == 5
+    # All actions should be delete_annex type
+    assert all(a.action_type == "delete_annex" for a in actions)
 
 
 def test_maintenance_clean_json_output(tmp_path, capsys):
@@ -168,11 +169,15 @@ def test_maintenance_clean_json_output(tmp_path, capsys):
         # Initialize project
         init_command(["."], json_output=False)
 
-        # Create old run logs
+        # Clear captured output from init
+        capsys.readouterr()
+
+        # Create old run logs (must have events.jsonl to be recognized)
         run_logs = tmp_path / "run_logs" / "test"
         run_logs.mkdir(parents=True)
         old_run = run_logs / "old_run"
         old_run.mkdir()
+        (old_run / "events.jsonl").write_text("{}")
 
         # Make it old
         import time
@@ -185,6 +190,7 @@ def test_maintenance_clean_json_output(tmp_path, capsys):
 
         # Check JSON output
         captured = capsys.readouterr()
+        # Parse JSON - should have dry_run, stats, actions
         result = json.loads(captured.out)
         assert result["dry_run"] is True
         assert "stats" in result
