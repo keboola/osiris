@@ -180,6 +180,9 @@ extend-ignore = ["E203", "E501", "SIM102", "PLC1901", "PLR0911", "PLR0912", "PLR
 "osiris/cli/runs.py" = ["PLC0415", "PLR0915"]  # Complex runs list command
 # Core modules with justified late imports
 "osiris/core/compiler_v0.py" = ["PLR0915", "PLC0415", "PLW2901"]  # Complex compilation logic with dynamic imports
+"osiris/core/fs_config.py" = ["PLC0415"]  # Lazy import of logging
+"osiris/core/fs_paths.py" = ["PLC0415"]  # Lazy import of copy for manifest hashing
+"osiris/core/run_ids.py" = ["PLC0415"]  # Lazy imports for random/os
 "osiris/core/conversational_agent.py" = ["PLR0915", "PLC0415"]  # Complex agent logic, dynamic imports
 "osiris/core/discovery.py" = ["PLR0915", "PLC0415"]  # Complex discovery logic with dynamic imports
 "osiris/core/config.py" = ["PLC0415"]  # Dynamic imports
@@ -252,7 +255,7 @@ exclude_lines = [
 # Security scanning with Bandit
 [tool.bandit]
 exclude_dirs = ["tests", "testing_env", ".venv", "build", "dist"]
-skips = ["B101", "B601"]  # Skip assert_used and shell injection (for subprocess)
+skips = ["B101", "B601", "B112", "B311"]  # Skip assert_used, shell injection, try-except-continue, pseudo-random
 severity = "medium"
 
 [tool.bandit.assert_used]

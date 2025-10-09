@@ -1591,8 +1591,8 @@ def aiop_prune(args: list) -> None:
             by_pipeline[key].append(run)
 
         # Sort each pipeline's runs by timestamp (newest first)
-        for key in by_pipeline:
-            by_pipeline[key].sort(key=lambda r: r.run_ts, reverse=True)
+        for _key, runs in by_pipeline.items():
+            runs.sort(key=lambda r: r.run_ts, reverse=True)
 
         # Determine what to delete
         to_delete = []
