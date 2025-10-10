@@ -265,3 +265,8 @@ No conversational state or retries occur server-side—multi-turn reasoning happ
 
 Protocol-level errors (invalid JSON, unknown tool, transport issues) are handled directly by the MCP SDK.
 Application-level errors (OML validation, discovery failures, semantic checks) follow the structured format `{code, path, message, suggest?}` and are emitted via the shared error model in `osiris/mcp/errors.py`.
+
+The document _mcp_implementation_findings.md_ provides in-depth research and design exploration
+around MCP server patterns, FastMCP frameworks, decomposed OML generation, and advanced observability.
+Its findings are considered non-binding guidance for future milestones (post-MVP).
+The current milestone implements only the scope defined above, maintaining a stateless MVP server.
