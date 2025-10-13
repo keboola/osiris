@@ -29,6 +29,40 @@
   - The CLI is packaged with the standard Osiris build and included in all release distributions (wheel, container, binary).
   - QA validation includes verifying that osiris mcp run initializes the MCP server, passes handshake within <2 s, and lists all registered tools.
 
+## Repository Structure & Resource Namespace
+
+All MCP-related resources are now consolidated under the `osiris/mcp/` directory, using the following structure:
+
+```
+osiris/mcp/
+  data/                 # read-only resources
+    schemas/
+    prompts/
+    usecases/
+  state/                # writable, ephemeral runtime data
+    discovery/cache/
+    drafts/oml/
+    memory/sessions/
+  tools/
+  server.py
+  resolver.py
+```
+
+All MCP URIs are unified under the `osiris://mcp/...` namespace, with the following mappings:
+
+- `osiris://mcp/schemas/...` → `osiris/mcp/data/schemas/...`
+- `osiris://mcp/prompts/...` → `osiris/mcp/data/prompts/...`
+- `osiris://mcp/usecases/...` → `osiris/mcp/data/usecases/...`
+- `osiris://mcp/discovery/...` → `osiris/mcp/state/discovery/cache/...`
+- `osiris://mcp/drafts/...` → `osiris/mcp/state/drafts/...`
+- `osiris://mcp/memory/...` → `osiris/mcp/state/memory/...`
+
+All read-only data is versioned and immutable under `data/`, while all runtime state is isolated under `state/` and tied to `OSIRIS_HOME`.
+
+The `resolver.py` module enforces this namespace boundary and validates all resource access through canonical `osiris://mcp/` URIs.
+
+This consolidation replaces prior scattered paths (such as `/memory`, `/oml`, `/schemas`, etc.) and ensures predictability, clean packaging, and easier mempack generation.
+
 ## Deterministic Behavior Requirements
 
 1. **Tool Names & Aliases**: Fixed primary names `osiris.*` with ADR-0036 aliases (`discovery.request`, `guide.start`, `oml.validate`, `oml.save`), enforced via manifest golden test.
