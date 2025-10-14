@@ -119,12 +119,19 @@ class OMLTools:
             try:
                 oml_data = yaml.safe_load(oml_content)
             except yaml.YAMLError as e:
+                # Extract line and column from problem_mark if available
+                line = 0
+                column = 0
+                if hasattr(e, 'problem_mark') and e.problem_mark:
+                    line = e.problem_mark.line
+                    column = e.problem_mark.column
+
                 return {
                     "valid": False,
                     "diagnostics": [{
                         "type": "error",
-                        "line": getattr(e, 'problem_mark', {}).get('line', 0),
-                        "column": getattr(e, 'problem_mark', {}).get('column', 0),
+                        "line": line,
+                        "column": column,
                         "message": f"YAML parse error: {str(e)}",
                         "id": "OML001_0_0"
                     }],
