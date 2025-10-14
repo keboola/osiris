@@ -62,7 +62,7 @@ async def run_selftest() -> bool:
 
                 # Test 2: connections.list tool
                 try:
-                    result = await session.call_tool("osiris.connections.list", {})
+                    result = await session.call_tool("connections.list", {})
                     if result and hasattr(result, 'content'):
                         # Parse the response
                         content = result.content[0]
@@ -82,7 +82,7 @@ async def run_selftest() -> bool:
 
                 # Test 3: oml.schema.get tool
                 try:
-                    result = await session.call_tool("osiris.oml.schema.get", {})
+                    result = await session.call_tool("oml.schema.get", {})
                     if result and hasattr(result, 'content'):
                         content = result.content[0]
                         if hasattr(content, 'text'):

@@ -58,7 +58,7 @@ class OsirisMCPServer:
         tools = [
             # Connection tools
             types.Tool(
-                name="osiris.connections.list",
+                name="connections.list",
                 description="List all configured database connections",
                 inputSchema={
                     "type": "object",
@@ -66,7 +66,7 @@ class OsirisMCPServer:
                 }
             ),
             types.Tool(
-                name="osiris.connections.doctor",
+                name="connections.doctor",
                 description="Diagnose connection issues",
                 inputSchema={
                     "type": "object",
@@ -82,7 +82,7 @@ class OsirisMCPServer:
 
             # Component tools
             types.Tool(
-                name="osiris.components.list",
+                name="components.list",
                 description="List available pipeline components",
                 inputSchema={
                     "type": "object",
@@ -92,7 +92,7 @@ class OsirisMCPServer:
 
             # Discovery tool
             types.Tool(
-                name="osiris.introspect_sources",
+                name="discovery.request",
                 description="Discover database schema and optionally sample data",
                 inputSchema={
                     "type": "object",
@@ -122,7 +122,7 @@ class OsirisMCPServer:
 
             # Use cases tool
             types.Tool(
-                name="osiris.usecases.list",
+                name="usecases.list",
                 description="List available OML use case templates",
                 inputSchema={
                     "type": "object",
@@ -132,7 +132,7 @@ class OsirisMCPServer:
 
             # OML tools
             types.Tool(
-                name="osiris.oml.schema.get",
+                name="oml.schema.get",
                 description="Get the OML v0.1.0 JSON schema",
                 inputSchema={
                     "type": "object",
@@ -140,7 +140,7 @@ class OsirisMCPServer:
                 }
             ),
             types.Tool(
-                name="osiris.validate_oml",
+                name="oml.validate",
                 description="Validate an OML pipeline definition",
                 inputSchema={
                     "type": "object",
@@ -159,7 +159,7 @@ class OsirisMCPServer:
                 }
             ),
             types.Tool(
-                name="osiris.save_oml",
+                name="oml.save",
                 description="Save an OML pipeline draft",
                 inputSchema={
                     "type": "object",
@@ -183,7 +183,7 @@ class OsirisMCPServer:
 
             # Guide tool
             types.Tool(
-                name="osiris.guide_start",
+                name="guide.start",
                 description="Get guided next steps for OML authoring",
                 inputSchema={
                     "type": "object",
@@ -216,7 +216,7 @@ class OsirisMCPServer:
 
             # Memory tool
             types.Tool(
-                name="osiris.memory.capture",
+                name="memory.capture",
                 description="Capture session memory with consent",
                 inputSchema={
                     "type": "object",
@@ -300,32 +300,32 @@ class OsirisMCPServer:
             actual_name = self.tool_aliases.get(name, name)
 
             # Route to appropriate handler
-            if actual_name == "osiris.connections.list":
+            if actual_name == "connections.list":
                 result = await self._handle_connections_list(arguments)
-            elif actual_name == "osiris.connections.doctor":
+            elif actual_name == "connections.doctor":
                 result = await self._handle_connections_doctor(arguments)
-            elif actual_name == "osiris.components.list":
+            elif actual_name == "components.list":
                 result = await self._handle_components_list(arguments)
-            elif actual_name == "osiris.introspect_sources":
+            elif actual_name == "discovery.request":
                 result = await self._handle_discovery_request(arguments)
-            elif actual_name == "osiris.usecases.list":
+            elif actual_name == "usecases.list":
                 result = await self._handle_usecases_list(arguments)
-            elif actual_name == "osiris.oml.schema.get":
+            elif actual_name == "oml.schema.get":
                 result = await self._handle_oml_schema_get(arguments)
-            elif actual_name == "osiris.validate_oml":
+            elif actual_name == "oml.validate":
                 result = await self._handle_validate_oml(arguments)
-            elif actual_name == "osiris.save_oml":
+            elif actual_name == "oml.save":
                 result = await self._handle_save_oml(arguments)
-            elif actual_name == "osiris.guide_start":
+            elif actual_name == "guide.start":
                 result = await self._handle_guide_start(arguments)
-            elif actual_name == "osiris.memory.capture":
+            elif actual_name == "memory.capture":
                 result = await self._handle_memory_capture(arguments)
             else:
                 raise OsirisError(
                     ErrorFamily.SEMANTIC,
                     f"Unknown tool: {name}",
                     path=["tool", "name"],
-                    suggest="Use osiris.guide_start to see available tools"
+                    suggest="Use guide.start to see available tools"
                 )
 
             # Convert result to JSON
@@ -419,12 +419,18 @@ class OsirisMCPServer:
         # Register handlers
         self._register_handlers()
 
-        # Tool aliases for ADR-0036 compatibility
+        # Tool aliases for backward compatibility (legacy -> spec)
         self.tool_aliases = {
-            "discovery.request": "osiris.introspect_sources",
-            "guide.start": "osiris.guide_start",
-            "oml.validate": "osiris.validate_oml",
-            "oml.save": "osiris.save_oml",
+            "osiris.connections.list": "connections.list",
+            "osiris.connections.doctor": "connections.doctor",
+            "osiris.components.list": "components.list",
+            "osiris.introspect_sources": "discovery.request",
+            "osiris.usecases.list": "usecases.list",
+            "osiris.oml.schema.get": "oml.schema.get",
+            "osiris.validate_oml": "oml.validate",
+            "osiris.save_oml": "oml.save",
+            "osiris.guide_start": "guide.start",
+            "osiris.memory.capture": "memory.capture",
         }
 
     # Tool handler implementations using actual tool modules
