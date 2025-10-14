@@ -14,8 +14,8 @@ pip install -r requirements.txt
 # Initialize configuration
 osiris init
 
-# Start conversation - describe what you want in plain English
-osiris chat
+# Start MCP server for AI integration (Claude Desktop, etc.)
+osiris mcp
 ```
 
 ## 🎯 What Makes Osiris Different
@@ -40,28 +40,20 @@ osiris chat
 ![Pipeline Steps](docs/img/run-pipeline-steps.jpg)
 *Detailed view of pipeline steps with row counts and execution times*
 
-## Example Conversation
+## Example Usage via MCP
 
 ```
-$ osiris chat
+# Start the MCP server
+$ osiris mcp
 
-You: "Identify customers inactive for 90 days and export to CSV for re-activation campaign"
+# Use with Claude Desktop or any MCP-compatible client to:
+# - Discover database schemas and sample data
+# - Generate SQL queries and transformations
+# - Validate and compile pipelines
+# - Execute with deterministic, reproducible results
 
-Osiris: I'll help you identify inactive customers. Let me explore your database...
-        Found tables: customers, orders, sessions. I'll create a pipeline that:
-        1. Identifies customers with no activity in the last 90 days
-        2. Exports their details for your re-activation campaign
-
-        Here's the generated pipeline:
-        [Shows OML pipeline with SQL queries and transformations]
-
-        Shall I compile this for execution?
-
-You: "Yes, compile and run it locally"
-
-Osiris: ✓ Pipeline compiled (manifest hash: a3f2b1c4)
-        ✓ Execution complete: 847 inactive customers exported to output/inactive_customers.csv
-        View report: osiris logs html --open
+# Or run pipelines directly:
+$ osiris run examples/inactive_customers.yaml
 ```
 
 ## ✨ Key Features
@@ -79,7 +71,7 @@ Osiris provides machine-readable documentation for AI assistants:
 
 - **For Users**: Share [`docs/user-guide/llms.txt`](docs/user-guide/llms.txt) with ChatGPT/Claude to generate pipelines
 - **For Developers**: Use [`docs/developer-guide/llms.txt`](docs/developer-guide/llms.txt) for AI-assisted development
-- **Pro Mode**: Customize AI behavior with `osiris dump-prompts --export` and `osiris chat --pro-mode`
+- **Pro Mode**: Customize AI behavior with `osiris dump-prompts --export`
 
 ## 🚀 E2B Cloud Execution
 

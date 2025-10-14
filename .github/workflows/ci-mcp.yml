@@ -59,6 +59,26 @@ jobs:
           python -m osiris.cli.mcp_entrypoint --selftest
         timeout-minutes: 2
 
+      - name: Verify chat command deprecated
+        run: |
+          # Test that chat command returns error
+          ! python osiris.py chat
+
+          # Test deprecation message appears
+          python osiris.py chat 2>&1 | grep -i "deprecated"
+
+          # Test JSON mode deprecation
+          python osiris.py chat --json 2>&1 | grep '"error".*"deprecated"'
+
+      - name: Test help has no chat
+        run: |
+          # Ensure chat not listed as a command
+          ! python osiris.py --help | grep -E "^\s+chat\s+.*Conversational"
+
+      - name: Run no-chat regression tests
+        run: |
+          pytest -q tests/cli/test_no_chat.py -v
+
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.10'
         uses: codecov/codecov-action@v3
@@ -66,6 +86,23 @@ jobs:
           file: ./coverage.xml
           flags: mcp
           name: mcp-coverage
+
+  docs-check:
+    name: Documentation Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Check for chat references in docs
+        run: |
+          # Find any remaining "osiris chat" references
+          if grep -r "osiris chat" README.md docs/quickstart.md docs/user-guide/ 2>/dev/null; then
+            echo "ERROR: Found 'osiris chat' references in documentation"
+            echo "These should be updated to reference MCP instead"
+            exit 1
+          fi
+          echo "✓ No 'osiris chat' references found in user docs"
 
   validate-manifest:
     name: Validate Tool Manifest

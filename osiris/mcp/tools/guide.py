@@ -34,12 +34,21 @@ class GuideTools:
         has_error_report = args.get("has_error_report", False)
 
         if not intent:
-            raise OsirisError(
-                ErrorFamily.SCHEMA,
-                "intent is required",
-                path=["intent"],
-                suggest="Describe what you want to accomplish"
-            )
+            # Return error object with suggested first step
+            return {
+                "error": {
+                    "code": "SCHEMA/OML020",
+                    "message": "intent is required",
+                    "path": ["intent"]
+                },
+                "next_steps": [
+                    {
+                        "tool": "connections.list",
+                        "params": {}
+                    }
+                ],
+                "status": "success"  # Still success despite error structure
+            }
 
         try:
             # Determine the next logical step based on context
@@ -54,18 +63,31 @@ class GuideTools:
             # Get relevant references
             references = self._get_relevant_references(next_step)
 
+            # Format next steps as array per spec
+            next_steps = []
+            if example and isinstance(example, dict):
+                next_steps.append({
+                    "tool": example.get("tool", ""),
+                    "params": example.get("arguments", {})
+                })
+
+            # Add recommendations for backward compatibility
+            recommendations = self._get_tips_for_step(next_step)
+
             return {
                 "objective": objective,
                 "next_step": next_step,
-                "example": example,
-                "references": references,
+                "next_steps": next_steps,
+                "examples": {
+                    "minimal_request": example
+                },
                 "context": {
                     "has_connections": len(known_connections) > 0,
                     "has_discovery": has_discovery,
                     "has_previous_oml": has_previous_oml,
                     "has_error_report": has_error_report
                 },
-                "tips": self._get_tips_for_step(next_step),
+                "recommendations": recommendations,
                 "status": "success"
             }
 

@@ -11,6 +11,19 @@ from osiris.mcp.errors import OsirisError, ErrorFamily
 logger = logging.getLogger(__name__)
 
 
+def parse_connection_ref(s: str) -> tuple:
+    """Parse connection reference into family and alias."""
+    # Import the real function when needed
+    from osiris.core.config import parse_connection_ref as _parse_ref
+    return _parse_ref(s)
+
+
+def resolve_connection(family: str, alias: str) -> dict:
+    """Resolve connection configuration."""
+    from osiris.core.config import resolve_connection as _resolve
+    return _resolve(family, alias)
+
+
 class ConnectionsTools:
     """Tools for managing database connections."""
 
@@ -96,7 +109,6 @@ class ConnectionsTools:
             )
 
         try:
-            from osiris.core.config import parse_connection_ref, resolve_connection
 
             # Parse connection reference
             if not connection_id.startswith("@"):

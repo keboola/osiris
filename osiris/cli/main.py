@@ -40,9 +40,9 @@ def show_main_help():
     """Display clean main help using simple Rich formatting."""
 
     console.print()
-    console.print("[bold green]Osiris v0.2.0 - LLM-first Conversational ETL Pipeline Generator[/bold green]")
-    console.print("🤖 Your AI data engineering buddy that discovers, analyzes, and executes")
-    console.print("production-ready ETL pipelines through natural conversation.")
+    console.print("[bold green]Osiris v0.5.0 - MCP-based ETL Pipeline Generator[/bold green]")
+    console.print("🤖 Your AI data engineering assistant for building")
+    console.print("production-ready ETL pipelines via Model Context Protocol.")
     console.print()
 
     # Usage
@@ -52,7 +52,7 @@ def show_main_help():
     # Quick Start
     console.print("[bold blue]💡 Quick Start[/bold blue]")
     console.print("  [cyan]1.[/cyan] [green]osiris init[/green]      Create configuration files")
-    console.print("  [cyan]2.[/cyan] [green]osiris chat[/green]     Start conversational pipeline generation")
+    console.print("  [cyan]2.[/cyan] [green]osiris mcp[/green]      Start MCP server for AI integration")
     console.print("  [cyan]3.[/cyan] [green]osiris validate[/green] Check your setup")
     console.print()
 
@@ -60,7 +60,6 @@ def show_main_help():
     console.print("[bold blue]Commands[/bold blue]")
     console.print("  [cyan]init[/cyan]         Initialize a new Osiris project with sample configuration")
     console.print("  [cyan]validate[/cyan]     Validate Osiris configuration file and environment setup")
-    console.print("  [cyan]chat[/cyan]         Conversational pipeline generation with LLM")
     console.print("  [cyan]compile[/cyan]      Compile OML pipeline to deterministic manifest")
     console.print("  [cyan]run[/cyan]          Execute pipeline (OML or compiled manifest)")
     console.print("  [cyan]logs[/cyan]         Manage session logs (list, show, bundle, gc)")
@@ -97,7 +96,6 @@ def parse_main_args():
         if not arg.startswith("-") and arg in [
             "init",
             "validate",
-            "chat",
             "run",
             "runs",  # deprecated but still supported
             "compile",
@@ -107,6 +105,7 @@ def parse_main_args():
             "components",
             "connections",
             "oml",
+            "mcp",
             "dump-prompts",
             "prompts",
         ]:
@@ -126,7 +125,7 @@ def parse_main_args():
 
     # Parse global arguments
     parser = argparse.ArgumentParser(
-        description="Osiris v0.2.0 - LLM-first Conversational ETL Pipeline Generator",
+        description="Osiris v0.5.0 - MCP-based ETL Pipeline Generator",
         add_help=False,
         prog="osiris.py",
     )
@@ -161,14 +160,14 @@ def main():
     """Main CLI entry point with Rich formatting."""
     global json_output
 
-    # Special handling for chat command to preserve argument order
+    # Special handling for deprecated chat command
     if len(sys.argv) > 1 and sys.argv[1] == "chat":
-        from .chat import chat
+        from .chat_deprecation import handle_chat_deprecation
 
-        # Pass all arguments after "chat" directly
-        chat_args = sys.argv[2:]  # Skip "osiris.py" and "chat"
-        chat(chat_args)
-        return
+        # Check if JSON flag is present
+        json_flag = "--json" in sys.argv
+        exit_code = handle_chat_deprecation(json_output=json_flag)
+        sys.exit(exit_code)
 
     args, unknown = parse_main_args()
 
@@ -180,9 +179,9 @@ def main():
 
     if args.version:
         if json_output:
-            print(json.dumps({"version": "v0.2.0"}))
+            print(json.dumps({"version": "v0.5.0"}))
         else:
-            console.print("Osiris v0.2.0")
+            console.print("Osiris v0.5.0")
         return
 
     # Handle commands first, then help
@@ -234,9 +233,6 @@ def main():
         else:
             # Default to run if no subcommand
             subprocess.run([sys.executable, "-m", "osiris.cli.mcp_entrypoint"] + command_args)
-    elif args.command == "chat":
-        # This case is now handled early in main() to preserve argument order
-        pass
     elif args.help or not args.command:
         if json_output:
             print(
@@ -246,7 +242,6 @@ def main():
                         "available_commands": [
                             "init",
                             "validate",
-                            "chat",
                             "compile",
                             "run",
                             "logs",
@@ -270,7 +265,6 @@ def main():
                         "available_commands": [
                             "init",
                             "validate",
-                            "chat",
                             "compile",
                             "run",
                             "logs",

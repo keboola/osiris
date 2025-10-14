@@ -31,7 +31,7 @@ We will replace the legacy chat interface with a first-class MCP server implemen
   - Emit structured telemetry events mirroring ADR-0019 for discovery, validation, and regeneration.
   - Integrate selftest endpoints to verify MCP server health and tool responsiveness.
 - **Resource Layer**:
-  - Expose Osiris artifacts as MCP resources at canonical `osiris://` URIs.
+  - Expose Osiris artifacts as MCP resources at canonical `osiris://mcp/` URIs.
   - Provide a formal JSON Schema for OML v0.1.0 to enable client-side validation.
 
 ### Deprecation of Legacy Chat

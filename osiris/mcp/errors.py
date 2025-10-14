@@ -10,12 +10,16 @@ from typing import Any, Dict, List, Optional, Union
 
 # Deterministic error code mappings
 ERROR_CODES = {
-    # Schema errors (SCHEMA/*)
-    "missing required field": "OML001",
-    "invalid type": "OML002",
-    "invalid format": "OML003",
-    "unknown property": "OML004",
-    "yaml parse error": "OML005",
+    # Schema errors (SCHEMA/*) - exact matches have priority
+    "missing required field: name": "OML001",
+    "missing required field: steps": "OML002",
+    "missing required field: version": "OML003",
+    "missing required field": "OML004",
+    "invalid type": "OML005",
+    "invalid format": "OML006",
+    "unknown property": "OML007",
+    "yaml parse error": "OML010",
+    "intent is required": "OML020",
 
     # Semantic errors (SEMANTIC/*)
     "unknown tool": "SEM001",
@@ -37,10 +41,11 @@ ERROR_CODES = {
     "performance warning": "LINT003",
 
     # Policy errors (POLICY/*)
-    "payload too large": "POL001",
-    "rate limit exceeded": "POL002",
-    "unauthorized": "POL003",
-    "forbidden operation": "POL004",
+    "consent required": "POL001",
+    "payload too large": "POL002",
+    "rate limit exceeded": "POL003",
+    "unauthorized": "POL004",
+    "forbidden operation": "POL005",
 }
 
 
@@ -91,23 +96,30 @@ class OsirisError(Exception):
 
     def _generate_code(self) -> str:
         """Generate specific error code based on message."""
-        # Look for known error patterns in the message
         message_lower = self.message.lower()
 
-        for pattern, code in ERROR_CODES.items():
+        # Check for exact matches first (longer patterns before shorter)
+        sorted_patterns = sorted(ERROR_CODES.items(), key=lambda x: -len(x[0]))
+        for pattern, code in sorted_patterns:
             if pattern in message_lower:
                 return code
 
-        # Default codes by family if no pattern matches
-        default_codes = {
-            ErrorFamily.SCHEMA: "OML999",
-            ErrorFamily.SEMANTIC: "SEM999",
-            ErrorFamily.DISCOVERY: "DISC999",
-            ErrorFamily.LINT: "LINT999",
-            ErrorFamily.POLICY: "POL999",
+        # Generate unique code for unknown errors using hash
+        import hashlib
+        msg_hash = hashlib.sha256(self.message.encode()).hexdigest()[:3].upper()
+
+        # Family-specific prefixes for unknown errors
+        family_prefixes = {
+            ErrorFamily.SCHEMA: "OML",
+            ErrorFamily.SEMANTIC: "SEM",
+            ErrorFamily.DISCOVERY: "DISC",
+            ErrorFamily.LINT: "LINT",
+            ErrorFamily.POLICY: "POL",
         }
 
-        return default_codes.get(self.family, "ERR999")
+        prefix = family_prefixes.get(self.family, "ERR")
+        # Ensure different messages get different codes
+        return f"{prefix}{msg_hash}"
 
 
 class SchemaError(OsirisError):

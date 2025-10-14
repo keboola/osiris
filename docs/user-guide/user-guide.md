@@ -119,7 +119,7 @@ Here's a typical development workflow:
 
 ```bash
 # 1. Write or generate your pipeline
-osiris chat  # Interactive pipeline creation
+osiris mcp   # Start MCP server for AI integration
 
 # 2. Compile the OML
 osiris compile output/pipeline.oml
@@ -528,7 +528,7 @@ ls -la .env  # Check if exists here
 4. **Use batch_size for writers** with large data
 
 ### Development Workflow
-1. **Start with `osiris chat`** to generate pipelines
+1. **Use MCP interface** to generate pipelines via Claude Desktop or `osiris mcp`
 2. **Test connections first** with `osiris connections doctor`
 3. **Compile before running** to catch errors early
 4. **Use HTML reports** for debugging

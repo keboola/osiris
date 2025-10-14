@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from osiris.mcp.cache import DiscoveryCache
 from osiris.mcp.errors import OsirisError, ErrorFamily
+from osiris.core.driver import DriverRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +122,6 @@ class DiscoveryTools:
         """
         try:
             from osiris.core.config import parse_connection_ref, resolve_connection
-            from osiris.core.driver import DriverRegistry
 
             # Parse and resolve connection
             family, alias = parse_connection_ref(connection_id)
