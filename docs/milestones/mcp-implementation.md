@@ -1,7 +1,7 @@
-# MCP TODO (post-verify checklist) — Osiris v0.5.0
+# MCP Implementation Checklist — Osiris v0.5.0
 
-> This list captures the production hardening work we’ll do **after** we confirm MCP server basic functionality (handshake + tools).  
-> Scope aligns with ADR-0036 and `docs/milestones/mcp-final.md`.
+> This list captures the production hardening work we'll do **after** we confirm MCP server basic functionality (handshake + tools).
+> Scope aligns with ADR-0036 and `docs/milestones/mcp-milestone.md`.
 
 ---
 

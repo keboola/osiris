@@ -191,7 +191,7 @@ tests/mcp/test_oml_schema_parity.py  # OML jsonschema vs oml_validator parity
 - Audit events logged for every tool.
 - Docs present; migration guide added.
 - Legacy chat path emits deprecation warning.
-- Align all work with ADR-0036 and new milestone `mcp-final.md`.
+- Align all work with ADR-0036 and new milestone `mcp-milestone.md`.
 - Target Osiris v0.5.0 release for this functionality.
 
 Out of scope (deferred): compile/run, paging, cancel/timeout implementation, policy gating beyond audit, advanced PII/DLP.
@@ -213,4 +213,4 @@ To keep determinism: never cache LLM outputs beyond one call; the only cache is 
 
 ---
 
-To Codex: please proceed with the full implementation as above, keeping the code minimal, tested, and aligned with ADR-0036 and the milestone `mcp-final.md`. If an external MCP SDK causes friction, switch to a minimal stdio JSON-RPC shim but preserve the same public tool/resource contracts.
+To Codex: please proceed with the full implementation as above, keeping the code minimal, tested, and aligned with ADR-0036 and the milestone `mcp-milestone.md`. If an external MCP SDK causes friction, switch to a minimal stdio JSON-RPC shim but preserve the same public tool/resource contracts.
