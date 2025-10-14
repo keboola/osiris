@@ -68,6 +68,7 @@ def show_main_help():
     console.print("  [cyan]components[/cyan]   Manage and inspect Osiris components")
     console.print("  [cyan]connections[/cyan]  Manage database connections")
     console.print("  [cyan]oml[/cyan]          Validate OML (Osiris Markup Language) files")
+    console.print("  [cyan]mcp[/cyan]          Run MCP (Model Context Protocol) server for AI integration")
     console.print(
         "  [cyan]dump-prompts[/cyan] Export LLM system prompts for customization (pro mode)\n"
         "  [cyan]prompts[/cyan]      Manage component context for LLM"
@@ -222,6 +223,18 @@ def main():
         from .maintenance import maintenance_command
 
         maintenance_command(command_args)
+    elif args.command == "mcp":
+        # MCP server command
+        import subprocess
+        import sys
+        # Check for subcommand
+        if command_args and command_args[0] == "run":
+            # osiris mcp run -> run the MCP server
+            mcp_args = command_args[1:]  # Remove 'run'
+            subprocess.run([sys.executable, "-m", "osiris.cli.mcp_entrypoint"] + mcp_args)
+        else:
+            # Default to run if no subcommand
+            subprocess.run([sys.executable, "-m", "osiris.cli.mcp_entrypoint"] + command_args)
     elif args.command == "chat":
         # This case is now handled early in main() to preserve argument order
         pass

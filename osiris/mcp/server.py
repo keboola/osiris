@@ -16,15 +16,13 @@ from mcp.server.stdio import stdio_server
 
 from osiris.mcp.audit import AuditLogger
 from osiris.mcp.cache import DiscoveryCache
+from osiris.mcp.config import get_config
 from osiris.mcp.errors import OsirisErrorHandler, OsirisError, ErrorFamily
+from osiris.mcp.payload_limits import get_limiter
 from osiris.mcp.resolver import ResourceResolver
+from osiris.mcp.telemetry import get_telemetry, init_telemetry
 
 logger = logging.getLogger(__name__)
-
-# MCP Protocol version
-MCP_VERSION = "0.5"
-MCP_PAYLOAD_LIMIT_MB = 16
-SERVER_VERSION = "0.5.0"
 
 
 class OsirisMCPServer:
@@ -330,15 +328,23 @@ class OsirisMCPServer:
                     suggest="Use osiris.guide_start to see available tools"
                 )
 
-            # Check payload size
+            # Convert result to JSON
             result_json = json.dumps(result)
-            if len(result_json) > MCP_PAYLOAD_LIMIT_MB * 1024 * 1024:
-                raise OsirisError(
-                    ErrorFamily.POLICY,
-                    f"Response exceeds {MCP_PAYLOAD_LIMIT_MB}MB limit",
-                    path=["payload"],
-                    suggest="Request smaller data or use pagination"
-                )
+
+            # Check payload size
+            limiter = get_limiter()
+            try:
+                limiter.check_response(result_json)
+            except Exception as e:
+                if hasattr(e, 'family'):
+                    raise
+                else:
+                    raise OsirisError(
+                        ErrorFamily.POLICY,
+                        str(e),
+                        path=["payload"],
+                        suggest="Request smaller data or use pagination"
+                    )
 
             return [types.TextContent(type="text", text=result_json)]
 
@@ -373,15 +379,17 @@ class OsirisMCPServer:
 
     def __init__(
         self,
-        server_name: str = "osiris-mcp-server",
+        server_name: str = None,
         debug: bool = False
     ):
         """Initialize the MCP server."""
-        self.server_name = server_name
+        # Load configuration
+        self.config = get_config()
+        self.server_name = server_name or self.config.SERVER_NAME
         self.debug = debug
 
         # Initialize low-level server
-        self.server = Server(server_name)
+        self.server = Server(self.server_name)
 
         # Initialize components
         self.audit = AuditLogger()
@@ -462,19 +470,29 @@ class OsirisMCPServer:
 
     async def run(self):
         """Run the MCP server with stdio transport."""
-        async with stdio_server() as (read_stream, write_stream):
-            await self.server.run(
-                read_stream,
-                write_stream,
-                InitializationOptions(
-                    server_name=self.server_name,
-                    server_version=SERVER_VERSION,
-                    capabilities=self.server.get_capabilities(
-                        notification_options=NotificationOptions(),
-                        experimental_capabilities={}
+        # Initialize telemetry if enabled
+        telemetry = None
+        if self.config.telemetry_enabled:
+            telemetry = init_telemetry(enabled=True, output_dir=self.config.telemetry_dir)
+            telemetry.emit_server_start(self.config.SERVER_VERSION, self.config.PROTOCOL_VERSION)
+
+        try:
+            async with stdio_server() as (read_stream, write_stream):
+                await self.server.run(
+                    read_stream,
+                    write_stream,
+                    InitializationOptions(
+                        server_name=self.server_name,
+                        server_version=self.config.SERVER_VERSION,
+                        capabilities=self.server.get_capabilities(
+                            notification_options=NotificationOptions(),
+                            experimental_capabilities={}
+                        )
                     )
                 )
-            )
+        finally:
+            if telemetry:
+                telemetry.emit_server_stop("shutdown")
 
 
 def main():

@@ -61,7 +61,8 @@ def main():
         # Run self-test mode
         logger.info("Running MCP server self-test...")
         from osiris.mcp.selftest import run_selftest
-        asyncio.run(run_selftest())
+        success = asyncio.run(run_selftest())
+        sys.exit(0 if success else 1)
     else:
         # Create and run server
         server = OsirisMCPServer(debug=debug)

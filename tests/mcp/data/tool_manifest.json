@@ -1,0 +1,62 @@
+{
+  "tools": [
+    {
+      "name": "osiris.connections.list",
+      "description": "List all configured database connections"
+    },
+    {
+      "name": "osiris.connections.doctor",
+      "description": "Diagnose connection issues"
+    },
+    {
+      "name": "osiris.components.list",
+      "description": "List available pipeline components"
+    },
+    {
+      "name": "osiris.introspect_sources",
+      "description": "Discover database schema and optionally sample data"
+    },
+    {
+      "name": "osiris.usecases.list",
+      "description": "List available OML use case templates"
+    },
+    {
+      "name": "osiris.oml.schema.get",
+      "description": "Get the OML v0.1.0 JSON schema"
+    },
+    {
+      "name": "osiris.validate_oml",
+      "description": "Validate an OML pipeline definition"
+    },
+    {
+      "name": "osiris.save_oml",
+      "description": "Save an OML pipeline draft"
+    },
+    {
+      "name": "osiris.guide_start",
+      "description": "Get guided next steps for OML authoring"
+    },
+    {
+      "name": "osiris.memory.capture",
+      "description": "Capture session memory with consent"
+    },
+    {
+      "name": "discovery.request",
+      "description": "Alias for osiris.introspect_sources: Discover database schema and optionally sample data"
+    },
+    {
+      "name": "guide.start",
+      "description": "Alias for osiris.guide_start: Get guided next steps for OML authoring"
+    },
+    {
+      "name": "oml.validate",
+      "description": "Alias for osiris.validate_oml: Validate an OML pipeline definition"
+    },
+    {
+      "name": "oml.save",
+      "description": "Alias for osiris.save_oml: Save an OML pipeline draft"
+    }
+  ],
+  "protocol_version": "0.5",
+  "server_version": "0.5.0"
+}
