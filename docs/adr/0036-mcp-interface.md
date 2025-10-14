@@ -1,5 +1,7 @@
 # ADR-0036: Adopt Clean MCP Interface via Official SDK for Osiris
 
+🧩 **Updated for MCP v0.5.0 implementation parity (October 2025)**
+
 ## Status
 
 Proposed (supersedes ADR-0019 when accepted)
@@ -16,23 +18,53 @@ We will replace the legacy chat interface with a first-class MCP server implemen
 
 ### MCP Server Implementation
 
-- **Protocol Version**: MCP v0.5 (pinned explicitly)
-- **SDK**: Use the official `modelcontextprotocol` Python SDK as the sole implementation. No stdio or hybrid paths.
-- **Tool Surface**:
-  - `osiris.introspect_sources` (`discovery.request`): Discovery of sources with metadata and optional samples.
-  - `osiris.guide_start` (`guide.start`): Recommends next MCP actions with example payloads.
-  - `osiris.validate_oml` (`oml.validate`): Runs schema validation using the Python-based validator with ADR-0019-aligned diagnostics.
-  - `osiris.save_oml` (`oml.save`): Persists OML drafts.
-  - `osiris.usecases_list`: Enumerates business scenarios and provides snippet URIs.
+- **Protocol Version**: MCP v0.5 (config reference), actual protocol version negotiated by SDK during handshake (typically `2025-06-18` for modern clients like Claude Desktop v0.7.0+)
+- **SDK**: Use the official `modelcontextprotocol` Python SDK (v1.2.1+) as the sole implementation. No stdio or hybrid paths.
+- **Tool Naming**: All tool names use underscore-separated format (`connections_list`, `discovery_request`) to comply with MCP client validation pattern `^[a-zA-Z0-9_-]{1,64}$`. Legacy `osiris.*` prefixed names and dot-notation names are supported via backward compatibility aliases.
+- **Tool Surface** (10 tools total):
+  - **Connection Management**:
+    - `connections_list` (aliases: `osiris.connections.list`, `connections.list`): List configured database connections from `osiris_connections.yaml`.
+    - `connections_doctor` (aliases: `osiris.connections.doctor`, `connections.doctor`): Diagnose connection configuration issues.
+  - **Component Management**:
+    - `components_list` (aliases: `osiris.components.list`, `components.list`): List available pipeline components from registry.
+  - **Discovery**:
+    - `discovery_request` (aliases: `osiris.introspect_sources`, `discovery.request`): Discover database schema with optional sampling and 24-hour caching.
+  - **OML Operations**:
+    - `oml_schema_get` (aliases: `osiris.oml.schema.get`, `oml.schema.get`): Retrieve OML v0.1.0 JSON Schema.
+    - `oml_validate` (aliases: `osiris.validate_oml`, `oml.validate`): Validate OML pipeline with ADR-0019-compatible diagnostics.
+    - `oml_save` (aliases: `osiris.save_oml`, `oml.save`): Persist OML pipeline drafts to session-scoped storage.
+  - **Guidance**:
+    - `guide_start` (aliases: `osiris.guide_start`, `guide.start`): Provide guided next steps for OML authoring.
+  - **Memory**:
+    - `memory_capture` (aliases: `osiris.memory.capture`, `memory.capture`): Capture session memory with consent and PII redaction.
+  - **Use Cases**:
+    - `usecases_list` (aliases: `osiris.usecases.list`, `usecases.list`): Enumerate OML use case templates.
 - **Safety and Limits**:
   - Payload size capped at 16 MB (`payload_limit_mb = 16`).
   - Memory capture requires explicit user consent with redaction enforced.
+- **Environment Integration**:
+  - `OSIRIS_HOME` environment variable controls base directory for all stateful data
+  - Defaults to `<repo_root>/testing_env` if not set, enabling zero-config local development
+  - Connection files searched in `OSIRIS_HOME` first, then CWD, enabling multi-environment deployment
 - **Observability**:
   - Emit structured telemetry events mirroring ADR-0019 for discovery, validation, and regeneration.
   - Integrate selftest endpoints to verify MCP server health and tool responsiveness.
 - **Resource Layer**:
   - Expose Osiris artifacts as MCP resources at canonical `osiris://mcp/` URIs.
   - Provide a formal JSON Schema for OML v0.1.0 to enable client-side validation.
+
+### CLI Integration
+
+The MCP server is exposed via a multi-command CLI interface:
+
+- **Primary Command**: `osiris mcp run` starts the server via stdio transport
+- **Self-Test**: `osiris mcp run --selftest` validates server health in <2 seconds
+- **Debug Mode**: `osiris mcp run --debug` enables verbose logging to stderr
+- **Configuration Discovery**: `osiris mcp clients` outputs auto-detected Claude Desktop config with resolved paths
+- **Tool Inspection**: `osiris mcp tools` lists all registered tools for debugging
+- **Help Safety**: `osiris mcp --help` displays help **without starting the server** (prevents accidental activation)
+
+This design ensures `--help` is safe to invoke and provides additional utility commands for setup and debugging.
 
 ### Deprecation of Legacy Chat
 
@@ -50,6 +82,8 @@ We will replace the legacy chat interface with a first-class MCP server implemen
 - **Improved automation and tooling**: Enables pipelines, CI, and agents to interact programmatically without conversational overhead.
 - **Enhanced observability and reliability**: Structured telemetry and selftests ensure operational confidence.
 - **Future-proofing**: Aligns Osiris with the broader MCP ecosystem and industry standards.
+- **Environment flexibility**: OSIRIS_HOME integration supports production deployments and multi-environment configurations.
+- **Enhanced tool discovery**: Additional connection, component, and schema tools complete the API surface.
 
 ### Negative
 
