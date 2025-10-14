@@ -116,6 +116,85 @@ python osiris.py mcp tools --json | jq '.tools | length'
 
 ---
 
+---
+
+## 9) CLI‑first adapter for secrets & connections (no secrets in MCP)
+
+### Problem (current)
+
+- MCP server runs in a sandboxed stdio context (Claude Desktop etc.) without a shell‑loaded `.env`, so environment variable substitution like `${MYSQL_PASSWORD}` in `osiris_connections.yaml` is not resolved.
+- Current MCP tools attempt to access connections directly via loaders that expect resolved env vars → empty/broken connection configs and failing `connections_doctor`/`discovery_request`.
+- Separately, some tool invocations write logs into ad‑hoc session folders (e.g., `<OSIRIS_HOME>/logs/connections_*`), which violates the filesystem contract centered on config‑driven paths.
+
+### Decision
+
+- **Osiris remains CLI‑first.** MCP is a **thin adapter** that delegates to CLI subcommands for any operation that needs resolved secrets or project configuration.
+- **No secrets flow through MCP.** MCP tools **never** require secret values, nor do they read `.env` directly. Resolution happens inside the CLI process.
+- **Single source of truth for paths.** MCP server and tools derive all writable locations from `osiris.yaml` `filesystem.*` keys; env variables only act as soft fallbacks with a WARNING.
+
+### Design (high level)
+
+1. **Tool delegation to CLI**
+
+   - `connections_list` → `osiris connections list --json`
+   - `connections_doctor` → `osiris connections doctor <id> --json`
+   - `discovery_request` → `osiris discovery request --connection <id> --component <id> [--samples N] --json`
+   - `oml_validate` / `oml_save` remain in‑process (no secrets); others may remain native where safe.
+   - All delegates launched via `subprocess` with:
+     - `cwd = <filesystem.base_path>` (from `osiris.yaml`) to ensure stable path resolution,
+     - inherited environment so `.env`/shell init (if any) is honored by the CLI process,
+     - bounded timeouts and payload size guards.
+
+2. **Error & result bridging**
+
+   - Standardize a bridge layer that maps CLI JSON outputs to MCP result shapes and maps CLI error codes/messages to deterministic MCP error families (`SCHEMA/…`, `DISCOVERY/…`, `POLICY/…`).
+   - Include `correlation_id` (prefix `mcp_`), `duration_ms`, `bytes_in/out` in audit.
+
+3. **Filesystem contract compliance**
+   - Extend `osiris init` to populate:
+     - `filesystem.base_path: "<ABSOLUTE_PROJECT_PATH>"`
+     - `filesystem.mcp_logs_dir: ".osiris/mcp/logs"`
+   - Ensure MCP server and tools **only** write under `<base_path>/.osiris/mcp/logs/{server.log,audit/,telemetry/,cache/}` (created on first run).
+   - Keep current Sections **1) Config-first paths** and **2) Dogfood CLI in `mcp clients`** as prerequisites.
+
+### Implementation plan
+
+- **MCP server**
+
+  - Add `mcp/cli_bridge.py` with helpers: `run_cli_json(args, timeout_s)`, `ensure_base_path()`.
+  - Update tools:
+    - `connections.py`: implement `list_via_cli()`, `doctor_via_cli(connection_id)`.
+    - `discovery.py`: add `request_via_cli(connection_id, component_id, samples)`.
+  - Centralize logging path resolution through `MCPFilesystemConfig.from_config()` (uses `osiris.yaml`; env fallback with WARNING).
+
+- **CLI**
+
+  - No changes to secrets handling; continue to source `.env` via user’s shell or project conventions.
+  - Add `osiris connections doctor --json` stability checks if missing.
+
+- **Tests**
+
+  - `tests/mcp/test_cli_bridge_connections.py`
+    - Mocks `subprocess.run` to return golden JSON for `list`/`doctor`.
+    - Verifies mapping to MCP result schema and deterministic error codes.
+  - `tests/mcp/test_cli_bridge_discovery.py`
+    - Verifies delegation arguments and timeout handling.
+  - `tests/mcp/test_filesystem_contract_mcp.py`
+    - Asserts server/audit/telemetry write under `<base_path>/.osiris/mcp/logs`.
+  - Update existing self‑test to include one delegated tool call (e.g., `connections_list`) and still complete &lt; 2s.
+
+- **Docs**
+  - ADR‑0036 addendum: “MCP is a thin adapter; secrets remain in CLI scope.”
+  - Config reference: document `filesystem.mcp_logs_dir`.
+  - MCP quickstart: run `osiris init` first; then use `osiris mcp clients` (which calls `osiris mcp run`).
+
+### Acceptance criteria
+
+- No MCP tool requires secrets; delegated tools succeed when CLI succeeds with `.env` present.
+- `osiris.py mcp run --selftest` passes from **any** CWD (&lt; 2s) and exercises at least one delegated tool.
+- All MCP logs/audit/telemetry land under `<base_path>/.osiris/mcp/logs`.
+- `osiris mcp clients --json` snippet launches MCP via `osiris.py mcp run` (no env block needed).
+
 ## Definition of Done
 
 - All checkboxes above are complete.
