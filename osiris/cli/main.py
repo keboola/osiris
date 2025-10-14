@@ -226,7 +226,6 @@ def main():
     elif args.command == "mcp":
         # MCP server command
         import subprocess
-        import sys
         # Check for subcommand
         if command_args and command_args[0] == "run":
             # osiris mcp run -> run the MCP server
