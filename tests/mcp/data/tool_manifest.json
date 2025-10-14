@@ -1,60 +1,44 @@
 {
   "tools": [
     {
-      "name": "osiris.connections.list",
+      "name": "connections.list",
       "description": "List all configured database connections"
     },
     {
-      "name": "osiris.connections.doctor",
+      "name": "connections.doctor",
       "description": "Diagnose connection issues"
     },
     {
-      "name": "osiris.components.list",
+      "name": "components.list",
       "description": "List available pipeline components"
     },
     {
-      "name": "osiris.introspect_sources",
+      "name": "discovery.request",
       "description": "Discover database schema and optionally sample data"
     },
     {
-      "name": "osiris.usecases.list",
+      "name": "usecases.list",
       "description": "List available OML use case templates"
     },
     {
-      "name": "osiris.oml.schema.get",
+      "name": "oml.schema.get",
       "description": "Get the OML v0.1.0 JSON schema"
     },
     {
-      "name": "osiris.validate_oml",
+      "name": "oml.validate",
       "description": "Validate an OML pipeline definition"
     },
     {
-      "name": "osiris.save_oml",
+      "name": "oml.save",
       "description": "Save an OML pipeline draft"
     },
     {
-      "name": "osiris.guide_start",
+      "name": "guide.start",
       "description": "Get guided next steps for OML authoring"
     },
     {
-      "name": "osiris.memory.capture",
+      "name": "memory.capture",
       "description": "Capture session memory with consent"
-    },
-    {
-      "name": "discovery.request",
-      "description": "Alias for osiris.introspect_sources: Discover database schema and optionally sample data"
-    },
-    {
-      "name": "guide.start",
-      "description": "Alias for osiris.guide_start: Get guided next steps for OML authoring"
-    },
-    {
-      "name": "oml.validate",
-      "description": "Alias for osiris.validate_oml: Validate an OML pipeline definition"
-    },
-    {
-      "name": "oml.save",
-      "description": "Alias for osiris.save_oml: Save an OML pipeline draft"
     }
   ],
   "protocol_version": "0.5",
