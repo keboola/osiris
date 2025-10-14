@@ -26,7 +26,6 @@ python-dotenv>=1.0      # Environment variable loading from .env files
 
 # MCP Server dependencies
 mcp>=1.2.1              # Model Context Protocol Python SDK
-fastmcp>=0.1.0          # High-level MCP interface
 
 # Development dependencies
 pytest>=7.0.0           # Testing framework
