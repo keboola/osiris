@@ -472,19 +472,32 @@ def load_connections_yaml(substitute_env: bool = True) -> dict[str, Any]:
                        If False, return raw config with ${VAR} patterns intact.
 
     Searches for osiris_connections.yaml in:
-    1. Current working directory
-    2. Repository root (parent directories)
+    1. OSIRIS_HOME (if set)
+    2. Current working directory
+    3. Repository root (parent directories)
 
     Returns:
         Dict structure {family: {alias: {fields}}}
         Returns empty dict if no connections file found
     """
+    import os
+
     # Search for connections file
-    search_paths = [
-        Path.cwd() / "osiris_connections.yaml",
-        Path.cwd().parent / "osiris_connections.yaml",
-        Path(__file__).parent.parent.parent / "osiris_connections.yaml",  # Repo root from osiris/core/
-    ]
+    search_paths = []
+
+    # 1. Check OSIRIS_HOME first (highest priority)
+    osiris_home = os.environ.get('OSIRIS_HOME', '').strip()
+    if osiris_home:
+        search_paths.append(Path(osiris_home) / "osiris_connections.yaml")
+
+    # 2. Check current working directory
+    search_paths.append(Path.cwd() / "osiris_connections.yaml")
+
+    # 3. Check parent of current working directory
+    search_paths.append(Path.cwd().parent / "osiris_connections.yaml")
+
+    # 4. Check repository root (from osiris/core/)
+    search_paths.append(Path(__file__).parent.parent.parent / "osiris_connections.yaml")
 
     connections_file = None
     for path in search_paths:

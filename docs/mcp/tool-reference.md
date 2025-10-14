@@ -2,11 +2,16 @@
 
 This document provides detailed input/output schemas for all MCP tools in Osiris v0.5.0.
 
+**IMPORTANT**: All tool names use underscores (`_`) instead of periods (`.`) to comply with Claude Desktop's MCP validation requirements. Legacy dot-notation names are supported via backward compatibility aliases.
+
 ## Connection Management
 
-### osiris.connections.list
+### connections_list
 
-List all configured database connections.
+List all configured database connections from `osiris_connections.yaml`.
+
+**Tool Name**: `connections_list`
+**Aliases**: `osiris.connections.list`, `connections.list`
 
 **Input Schema:**
 ```json
@@ -39,9 +44,41 @@ List all configured database connections.
 }
 ```
 
-### osiris.connections.doctor
+**Example Output:**
+```json
+{
+  "connections": [
+    {
+      "family": "mysql",
+      "alias": "db_movies",
+      "reference": "@mysql.db_movies",
+      "config": {
+        "host": "test-api-to-mysql.cjtmwuzxk8bh.us-east-1.rds.amazonaws.com",
+        "database": "padak",
+        "default": true
+      }
+    },
+    {
+      "family": "supabase",
+      "alias": "main",
+      "reference": "@supabase.main",
+      "config": {
+        "url": "https://nedklmkgzjsyvqfxbmve.supabase.co",
+        "default": true
+      }
+    }
+  ],
+  "count": 2,
+  "status": "success"
+}
+```
 
-Diagnose connection issues.
+### connections_doctor
+
+Diagnose connection issues and validate configuration.
+
+**Tool Name**: `connections_doctor`
+**Aliases**: `osiris.connections.doctor`, `connections.doctor`
 
 **Input Schema:**
 ```json
@@ -85,9 +122,12 @@ Diagnose connection issues.
 
 ## Component Management
 
-### osiris.components.list
+### components_list
 
-List available pipeline components.
+List available pipeline components from the component registry.
+
+**Tool Name**: `components_list`
+**Aliases**: `osiris.components.list`, `components.list`
 
 **Input Schema:**
 ```json
@@ -119,9 +159,12 @@ List available pipeline components.
 
 ## Discovery
 
-### osiris.introspect_sources
+### discovery_request
 
-Discover database schema with caching.
+Discover database schema with optional sampling and caching.
+
+**Tool Name**: `discovery_request`
+**Aliases**: `osiris.introspect_sources`, `discovery.request`
 
 **Input Schema:**
 ```json
@@ -174,9 +217,12 @@ Discover database schema with caching.
 
 ## OML Operations
 
-### osiris.oml.schema.get
+### oml_schema_get
 
 Get OML v0.1.0 JSON schema.
+
+**Tool Name**: `oml_schema_get`
+**Aliases**: `osiris.oml.schema.get`, `oml.schema.get`
 
 **Input Schema:**
 ```json
@@ -199,9 +245,12 @@ Get OML v0.1.0 JSON schema.
 }
 ```
 
-### osiris.validate_oml
+### oml_validate
 
-Validate OML pipeline definition.
+Validate OML pipeline definition with ADR-0019 compatible diagnostics.
+
+**Tool Name**: `oml_validate`
+**Aliases**: `osiris.validate_oml`, `oml.validate`
 
 **Input Schema:**
 ```json
@@ -254,9 +303,12 @@ Validate OML pipeline definition.
 }
 ```
 
-### osiris.save_oml
+### oml_save
 
-Save OML pipeline draft.
+Save OML pipeline draft to session-scoped storage.
+
+**Tool Name**: `oml_save`
+**Aliases**: `osiris.save_oml`, `oml.save`
 
 **Input Schema:**
 ```json
@@ -297,9 +349,12 @@ Save OML pipeline draft.
 
 ## Guidance
 
-### osiris.guide_start
+### guide_start
 
-Get guided next steps for OML authoring.
+Get guided next steps for OML authoring based on current context.
+
+**Tool Name**: `guide_start`
+**Aliases**: `osiris.guide_start`, `guide.start`
 
 **Input Schema:**
 ```json
@@ -363,9 +418,12 @@ Get guided next steps for OML authoring.
 
 ## Memory
 
-### osiris.memory.capture
+### memory_capture
 
-Capture session memory with consent.
+Capture session memory with consent and PII redaction.
+
+**Tool Name**: `memory_capture`
+**Aliases**: `osiris.memory.capture`, `memory.capture`
 
 **Input Schema:**
 ```json
@@ -412,9 +470,12 @@ Capture session memory with consent.
 
 ## Use Cases
 
-### osiris.usecases.list
+### usecases_list
 
-List OML use case templates.
+List OML use case templates with examples and requirements.
+
+**Tool Name**: `usecases_list`
+**Aliases**: `osiris.usecases.list`, `usecases.list`
 
 **Input Schema:**
 ```json
@@ -454,13 +515,69 @@ List OML use case templates.
 }
 ```
 
-## Tool Aliases
+## Tool Naming and Aliases
 
-The following aliases are provided for backward compatibility:
+### Current Names (v0.5.0+)
 
-- `discovery.request` → `osiris.introspect_sources`
-- `guide.start` → `osiris.guide_start`
-- `oml.validate` → `osiris.validate_oml`
-- `oml.save` → `osiris.save_oml`
+All tools use underscore-separated names to comply with MCP validation pattern `^[a-zA-Z0-9_-]{1,64}$`:
 
-All aliases accept the same input and return the same output as their primary tools.
+- `connections_list`
+- `connections_doctor`
+- `components_list`
+- `discovery_request`
+- `usecases_list`
+- `oml_schema_get`
+- `oml_validate`
+- `oml_save`
+- `guide_start`
+- `memory_capture`
+
+### Backward Compatibility Aliases
+
+The server provides comprehensive backward compatibility through alias resolution:
+
+#### Osiris-Prefixed Names (ADR-0036)
+- `osiris.connections.list` → `connections_list`
+- `osiris.connections.doctor` → `connections_doctor`
+- `osiris.components.list` → `components_list`
+- `osiris.introspect_sources` → `discovery_request`
+- `osiris.usecases.list` → `usecases_list`
+- `osiris.oml.schema.get` → `oml_schema_get`
+- `osiris.validate_oml` → `oml_validate`
+- `osiris.save_oml` → `oml_save`
+- `osiris.guide_start` → `guide_start`
+- `osiris.memory.capture` → `memory_capture`
+
+#### Dot-Notation Names (Pre-0.5.0)
+- `connections.list` → `connections_list`
+- `connections.doctor` → `connections_doctor`
+- `components.list` → `components_list`
+- `discovery.request` → `discovery_request`
+- `usecases.list` → `usecases_list`
+- `oml.schema.get` → `oml_schema_get`
+- `oml.validate` → `oml_validate`
+- `oml.save` → `oml_save`
+- `guide.start` → `guide_start`
+- `memory.capture` → `memory_capture`
+
+All aliases accept the same input schemas and return the same output schemas as their primary tool names.
+
+## Migration Guide
+
+### From v0.4.x to v0.5.0
+
+**Breaking Change**: Tool names changed from dot-notation to underscore-notation.
+
+**Action Required**: None for most users - backward compatibility aliases are automatically applied.
+
+**Recommended**: Update code/docs to use new underscore names:
+
+```python
+# Old (still works via alias)
+await client.call_tool("connections.list", {})
+
+# New (recommended)
+await client.call_tool("connections_list", {})
+```
+
+**Claude Desktop**: Restart after update to pick up new tool names. No config changes needed.

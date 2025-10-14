@@ -31,23 +31,26 @@ osiris/mcp/
 
 ## Protocol Details
 
-- **MCP Version**: 0.5
+- **MCP Version**: 2025-06-18 (latest)
 - **Server Version**: 0.5.0
 - **Transport**: stdio with JSON-RPC
 - **Payload Limit**: 16MB (configurable via OSIRIS_MCP_PAYLOAD_LIMIT_MB)
 - **Handshake Timeout**: 2 seconds
+- **Tool Naming**: Underscore-separated (e.g., `connections_list`) to comply with MCP validation
 
 ## Tool Surface
 
+**IMPORTANT**: All tool names use underscores instead of periods to comply with Claude Desktop's MCP tool naming requirements (`^[a-zA-Z0-9_-]{1,64}$`).
+
 ### Connection Tools
 
-#### osiris.connections.list
+#### connections_list
 List all configured database connections from `osiris_connections.yaml`.
 
 **Input**: None required
 **Output**: List of connections with family, alias, and sanitized configuration
 
-#### osiris.connections.doctor
+#### connections_doctor
 Diagnose connection issues and validate configuration.
 
 **Input**: `connection_id` (string, required)
@@ -55,7 +58,7 @@ Diagnose connection issues and validate configuration.
 
 ### Component Tools
 
-#### osiris.components.list
+#### components_list
 List available pipeline components from the component registry.
 
 **Input**: None required
@@ -63,7 +66,7 @@ List available pipeline components from the component registry.
 
 ### Discovery Tools
 
-#### osiris.introspect_sources (alias: discovery.request)
+#### discovery_request
 Discover database schema with optional sampling. Results are cached for 24 hours.
 
 **Input**:
@@ -76,13 +79,13 @@ Discover database schema with optional sampling. Results are cached for 24 hours
 
 ### OML Tools
 
-#### osiris.oml.schema.get
+#### oml_schema_get
 Retrieve the OML v0.1.0 JSON schema.
 
 **Input**: None required
 **Output**: Schema URI and JSON schema definition
 
-#### osiris.validate_oml (alias: oml.validate)
+#### oml_validate
 Validate OML pipeline definition with ADR-0019 compatible diagnostics.
 
 **Input**:
@@ -91,7 +94,7 @@ Validate OML pipeline definition with ADR-0019 compatible diagnostics.
 
 **Output**: Validation status and diagnostics
 
-#### osiris.save_oml (alias: oml.save)
+#### oml_save
 Save OML pipeline draft.
 
 **Input**:
@@ -103,7 +106,7 @@ Save OML pipeline draft.
 
 ### Guidance Tools
 
-#### osiris.guide_start (alias: guide.start)
+#### guide_start
 Get guided next steps for OML authoring based on current context.
 
 **Input**:
@@ -117,7 +120,7 @@ Get guided next steps for OML authoring based on current context.
 
 ### Memory Tools
 
-#### osiris.memory.capture
+#### memory_capture
 Capture session memory with consent and PII redaction.
 
 **Input**:
@@ -130,11 +133,39 @@ Capture session memory with consent and PII redaction.
 
 ### Use Case Tools
 
-#### osiris.usecases.list
+#### usecases_list
 List available OML use case templates.
 
 **Input**: None required
 **Output**: Use cases categorized by type with examples
+
+## Tool Aliases (Backward Compatibility)
+
+For backward compatibility, the server supports legacy tool names via aliasing:
+
+### Osiris-Prefixed Names (ADR-0036 Legacy)
+- `osiris.connections.list` → `connections_list`
+- `osiris.connections.doctor` → `connections_doctor`
+- `osiris.components.list` → `components_list`
+- `osiris.introspect_sources` → `discovery_request`
+- `osiris.usecases.list` → `usecases_list`
+- `osiris.oml.schema.get` → `oml_schema_get`
+- `osiris.validate_oml` → `oml_validate`
+- `osiris.save_oml` → `oml_save`
+- `osiris.guide_start` → `guide_start`
+- `osiris.memory.capture` → `memory_capture`
+
+### Dot-Notation Names (Pre-0.5.0)
+- `connections.list` → `connections_list`
+- `connections.doctor` → `connections_doctor`
+- `components.list` → `components_list`
+- `discovery.request` → `discovery_request`
+- `usecases.list` → `usecases_list`
+- `oml.schema.get` → `oml_schema_get`
+- `oml.validate` → `oml_validate`
+- `oml.save` → `oml_save`
+- `guide.start` → `guide_start`
+- `memory.capture` → `memory_capture`
 
 ## Resource Layer
 
@@ -172,66 +203,125 @@ Error families:
 
 ## Configuration
 
-Environment variables:
+### Environment Variables
+
+#### Core Configuration
+- `OSIRIS_HOME`: Base directory for connections, cache, memory, audit, telemetry (default: `<repo_root>/testing_env`)
+- `PYTHONPATH`: Repository root path (required for imports)
+
+#### MCP Server Configuration
 - `OSIRIS_MCP_PAYLOAD_LIMIT_MB`: Max payload size (default: 16)
 - `OSIRIS_MCP_HANDSHAKE_TIMEOUT`: Handshake timeout in seconds (default: 2.0)
 - `OSIRIS_MCP_CACHE_TTL_HOURS`: Discovery cache TTL (default: 24)
 - `OSIRIS_MCP_MEMORY_RETENTION_DAYS`: Memory retention period (default: 365)
 - `OSIRIS_MCP_TELEMETRY_ENABLED`: Enable telemetry (default: true)
-- `OSIRIS_HOME`: Base directory for cache, memory, audit, telemetry
+
+### OSIRIS_HOME Resolution
+
+The server resolves `OSIRIS_HOME` with the following priority:
+
+1. **Environment variable** `OSIRIS_HOME` (if set and non-empty) - takes precedence
+2. **Default**: `<repo_root>/testing_env` - fallback if not set
+
+This path is used for:
+- **Connection files**: `osiris_connections.yaml` searched in OSIRIS_HOME first
+- **Discovery cache**: `<OSIRIS_HOME>/.osiris/discovery/cache/`
+- **OML drafts**: `<OSIRIS_HOME>/.osiris/drafts/oml/`
+- **Session memory**: `<OSIRIS_HOME>/.osiris/memory/sessions/`
+- **Audit logs**: `<OSIRIS_HOME>/.osiris_audit/`
+- **Telemetry**: `<OSIRIS_HOME>/.osiris_telemetry/`
+
+### Connection File Resolution
+
+`osiris_connections.yaml` is searched in this order:
+
+1. **`OSIRIS_HOME/osiris_connections.yaml`** (highest priority) - NEW in v0.5.0
+2. Current working directory
+3. Parent of current working directory
+4. Repository root
 
 ## Running the Server
 
-### Via CLI
+### CLI Subcommands (Recommended)
+
 ```bash
-# Run MCP server
+# Show help (does NOT start server)
+osiris mcp --help
+
+# Start MCP server
 osiris mcp run
 
 # Run with debug output
 osiris mcp run --debug
 
-# Run self-test
+# Run self-test (<2s)
 osiris mcp run --selftest
+
+# Show Claude Desktop config
+osiris mcp clients
+
+# List available tools
+osiris mcp tools
 ```
 
 ### Direct Python Module
+
 ```bash
 # Run server
 python -m osiris.cli.mcp_entrypoint
 
 # With flags
-python -m osiris.cli.mcp_entrypoint --debug --selftest
+python -m osiris.cli.mcp_entrypoint --debug
+python -m osiris.cli.mcp_entrypoint --selftest
 ```
 
 ### Integration with Claude Desktop
 
-Add to Claude Desktop configuration:
+**Recommended configuration** (uses bash wrapper for proper environment):
 
 ```json
 {
   "mcpServers": {
     "osiris": {
-      "command": "python",
-      "args": ["-m", "osiris.cli.mcp_entrypoint"],
+      "command": "/bin/bash",
+      "args": [
+        "-lc",
+        "cd /path/to/osiris && exec /path/to/osiris/.venv/bin/python -m osiris.cli.mcp_entrypoint"
+      ],
+      "transport": {
+        "type": "stdio"
+      },
       "env": {
-        "OSIRIS_HOME": "/path/to/osiris/home"
+        "OSIRIS_HOME": "/path/to/osiris/testing_env",
+        "PYTHONPATH": "/path/to/osiris"
       }
     }
   }
 }
 ```
 
+**Get auto-detected config**:
+```bash
+osiris mcp clients
+```
+
+This will output the correct paths for your system, including:
+- Detected repository root
+- Virtual environment python path
+- Resolved OSIRIS_HOME
+- Suggested OSIRIS_LOGS_DIR
+
 ## Observability
 
 ### Telemetry
-When enabled, the server emits structured telemetry events to `~/.osiris_telemetry/`:
+When enabled, the server emits structured telemetry events to `<OSIRIS_HOME>/.osiris_telemetry/`:
 - Tool call events with duration and payload size
 - Handshake timing
 - Server start/stop events
 - Session metrics
 
 ### Audit Logging
-All tool invocations are logged to `~/.osiris_audit/` with:
+All tool invocations are logged to `<OSIRIS_HOME>/.osiris_audit/` with:
 - Tool name and sanitized arguments
 - Session and correlation IDs
 - Timestamps and call counters
@@ -247,21 +337,63 @@ osiris mcp run --selftest
 
 Tests:
 1. Handshake completes in <2 seconds
-2. connections.list responds successfully
-3. oml.schema.get returns valid schema
-4. All tools are properly registered
+2. `connections_list` responds successfully (tests alias resolution)
+3. `oml_schema_get` returns valid v0.1.0 schema
+4. All 10 tools are properly registered
+5. Tool names comply with MCP validation pattern
+
+Expected output:
+```
+✅ Handshake completed in 0.6s (<2s requirement)
+✅ connections_list responded successfully
+✅ oml_schema_get returned valid schema (v0.1.0)
+✅ Found 10 registered tools
+✅ All tests PASSED
+```
 
 ## Security Considerations
 
 - **Payload Limits**: Enforced 16MB limit prevents DoS
-- **Secret Redaction**: Automatic masking in audit logs
+- **Secret Redaction**: Automatic masking in audit logs and telemetry
 - **PII Protection**: Memory capture includes PII redaction
 - **Consent Required**: Memory capture requires explicit consent
 - **Connection Isolation**: Each session has isolated state
+- **Environment Variable Substitution**: Connections support `${VAR}` for secrets
+
+## Troubleshooting
+
+### Tools Not Appearing in Claude Desktop
+
+**Problem**: Claude Desktop shows validation error for tool names with periods.
+
+**Solution**: We migrated to underscore-based tool names in v0.5.0. Restart Claude Desktop to pick up changes. Old dot-notation names work via backward compatibility aliases.
+
+### Empty Connections List
+
+**Problem**: `connections_list` returns empty array.
+
+**Cause**: Connection file not found at expected location.
+
+**Solution**:
+1. Ensure `osiris_connections.yaml` exists in `OSIRIS_HOME`
+2. Set `OSIRIS_HOME` environment variable in Claude Desktop config
+3. Check connection file search order (see Configuration section)
+4. Run `osiris mcp clients` to verify detected paths
+
+### Handshake Timeout
+
+**Problem**: Server fails to start or times out during handshake.
+
+**Solution**:
+1. Ensure `PYTHONPATH` is set to repository root
+2. Activate virtual environment or specify full python path
+3. Check `OSIRIS_HOME` exists and is writable
+4. Run `osiris mcp run --selftest` for diagnostics
 
 ## Compatibility
 
-- **Python**: 3.8+ required
+- **Python**: 3.10+ required (3.13 recommended)
 - **MCP SDK**: modelcontextprotocol>=1.2.1
-- **Protocol**: MCP v0.5
-- **Clients**: Claude Desktop, any MCP-compatible client
+- **Protocol**: MCP v2025-06-18 (latest)
+- **Clients**: Claude Desktop v0.7.0+, any MCP-compatible client
+- **Breaking Changes from v0.4.x**: Tool names changed from dot-notation to underscores (aliases provided for compatibility)

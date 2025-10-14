@@ -223,16 +223,9 @@ def main():
 
         maintenance_command(command_args)
     elif args.command == "mcp":
-        # MCP server command
-        import subprocess
-        # Check for subcommand
-        if command_args and command_args[0] == "run":
-            # osiris mcp run -> run the MCP server
-            mcp_args = command_args[1:]  # Remove 'run'
-            subprocess.run([sys.executable, "-m", "osiris.cli.mcp_entrypoint"] + mcp_args)
-        else:
-            # Default to run if no subcommand
-            subprocess.run([sys.executable, "-m", "osiris.cli.mcp_entrypoint"] + command_args)
+        # MCP server command - dispatch to mcp_cmd module
+        from .mcp_cmd import main as mcp_main
+        mcp_main(command_args)
     elif args.help or not args.command:
         if json_output:
             print(
