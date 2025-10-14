@@ -62,8 +62,12 @@ class TestCacheTTL:
 
         # Mock time to after expiry
         future_time = datetime.now(timezone.utc) + timedelta(seconds=2)
+
+        # Patch datetime.now to return future time
         with patch('osiris.mcp.cache.datetime') as mock_datetime:
-            mock_datetime.now.return_value = future_time
+            # Configure mock to handle both datetime.now(timezone.utc) and datetime.fromisoformat
+            mock_datetime.now = lambda tz=None: future_time
+            mock_datetime.fromisoformat = datetime.fromisoformat
 
             # Should be expired
             result = await cache.get("conn1", "comp1", 0)
@@ -79,7 +83,9 @@ class TestCacheTTL:
         # Mock time to expire first entry
         future_time = datetime.now(timezone.utc) + timedelta(seconds=2)
         with patch('osiris.mcp.cache.datetime') as mock_datetime:
-            mock_datetime.now.return_value = future_time
+            # Configure mock to handle both datetime.now(timezone.utc) and datetime.fromisoformat
+            mock_datetime.now = lambda tz=None: future_time
+            mock_datetime.fromisoformat = datetime.fromisoformat
 
             # Clear expired entries
             await cache.clear_expired()
