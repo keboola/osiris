@@ -40,7 +40,7 @@ class TestConnectionsTools:
             }
         }
 
-        with patch('osiris.mcp.tools.connections.load_connections_yaml',
+        with patch('osiris.core.config.load_connections_yaml',
                   return_value=mock_connections):
             result = await connections_tools.list({})
 
@@ -75,7 +75,7 @@ class TestConnectionsTools:
             }
         }
 
-        with patch('osiris.mcp.tools.connections.load_connections_yaml',
+        with patch('osiris.core.config.load_connections_yaml',
                   return_value=mock_connections):
             with patch('osiris.mcp.tools.connections.parse_connection_ref',
                       return_value=("mysql", "default")):
@@ -108,7 +108,7 @@ class TestConnectionsTools:
         """Test diagnosis of missing connection."""
         mock_connections = {"mysql": {}}
 
-        with patch('osiris.mcp.tools.connections.load_connections_yaml',
+        with patch('osiris.core.config.load_connections_yaml',
                   return_value=mock_connections):
             with patch('osiris.mcp.tools.connections.parse_connection_ref',
                       return_value=("mysql", "nonexistent")):

@@ -125,9 +125,9 @@ class TestDiscoveryTools:
         mock_registry = MagicMock()
         mock_registry.get.return_value = mock_driver
 
-        with patch('osiris.mcp.tools.discovery.parse_connection_ref',
+        with patch('osiris.core.config.parse_connection_ref',
                   return_value=("mysql", "default")):
-            with patch('osiris.mcp.tools.discovery.resolve_connection',
+            with patch('osiris.core.config.resolve_connection',
                       return_value={
                           "host": "localhost",
                           "database": "test_db",
@@ -151,9 +151,9 @@ class TestDiscoveryTools:
     @pytest.mark.asyncio
     async def test_perform_discovery_non_extractor(self, discovery_tools):
         """Test performing discovery for non-extractor component."""
-        with patch('osiris.mcp.tools.discovery.parse_connection_ref',
+        with patch('osiris.core.config.parse_connection_ref',
                   return_value=("mysql", "default")):
-            with patch('osiris.mcp.tools.discovery.resolve_connection',
+            with patch('osiris.core.config.resolve_connection',
                       return_value={"database": "test"}):
                 with patch('osiris.mcp.tools.discovery.DriverRegistry'):
                     result = await discovery_tools._perform_discovery(
