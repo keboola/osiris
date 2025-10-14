@@ -271,19 +271,7 @@ class OsirisMCPServer:
             ),
         ]
 
-        # Add tool aliases
-        for alias, primary in self.tool_aliases.items():
-            # Find the primary tool
-            primary_tool = next((t for t in tools if t.name == primary), None)
-            if primary_tool:
-                # Create alias tool with same schema but different name
-                alias_tool = types.Tool(
-                    name=alias,
-                    description=f"Alias for {primary}: {primary_tool.description}",
-                    inputSchema=primary_tool.inputSchema
-                )
-                tools.append(alias_tool)
-
+        # Note: Aliases are handled in _call_tool, not registered as separate tools
         return tools
 
     async def _call_tool(
