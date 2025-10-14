@@ -254,9 +254,28 @@ Key aspects of the CLI Bridge:
 
 ## Observability
 
-- **Audit Logging**: All tool invocations logged to `<OSIRIS_HOME>/.osiris_audit/` with correlation IDs, timestamps, and automatic secret redaction
-- **Telemetry**: Structured events emitted to `<OSIRIS_HOME>/.osiris_telemetry/` when enabled (default: true)
-- **Event Schema**: Consistent with milestone example, includes duration, payload size, status
+All MCP runtime outputs follow the Osiris Filesystem Contract defined in `osiris.yaml`.
+
+### Logging and Audit Paths
+
+MCP log destinations are configuration-driven:
+
+```yaml
+filesystem:
+  base_path: "/path/to/project"
+  mcp_logs_dir: ".osiris/mcp/logs" # default
+  mcp_audit_dir: ".osiris/mcp/logs/audit" # default
+```
+
+If omitted, Osiris defaults to <base_path>/.osiris/mcp/logs/server.log for the main server log
+and <base_path>/.osiris/mcp/logs/audit/ for per-tool audit events.
+
+The osiris init command automatically writes these keys when generating a new project configuration.
+
+Event Telemetry
+• Audit Logging: All MCP tool invocations are appended to the audit directory with correlation IDs, timestamps, and secret redaction.
+• Telemetry: Structured JSONL events are emitted to <OSIRIS_HOME>/.osiris_telemetry/ (configurable via logging.telemetry_dir).
+• Schema: Duration, payload size, session ID, and status fields are standardized across all events.
 
 **Example telemetry event emitted during MCP tool execution**:
 

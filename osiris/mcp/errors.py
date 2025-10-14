@@ -4,6 +4,7 @@ Error taxonomy for Osiris MCP server.
 Provides structured error handling with consistent format across all tools.
 """
 
+import re
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
@@ -19,6 +20,7 @@ ERROR_CODES = {
     "invalid format": "OML006",
     "unknown property": "OML007",
     "yaml parse error": "OML010",
+    "oml parse error": "OML010",
     "intent is required": "OML020",
 
     # Semantic errors (SEMANTIC/*)
@@ -32,7 +34,6 @@ ERROR_CODES = {
     "connection not found": "DISC001",
     "source unreachable": "DISC002",
     "permission denied": "DISC003",
-    "timeout": "DISC004",
     "invalid schema": "DISC005",
 
     # Lint errors (LINT/*)
@@ -46,6 +47,26 @@ ERROR_CODES = {
     "rate limit exceeded": "POL003",
     "unauthorized": "POL004",
     "forbidden operation": "POL005",
+
+    # Connection/CLI-bridge errors (SEMANTIC/E_CONN_*)
+    # Longer patterns first for priority matching
+    "missing environment variable": "E_CONN_SECRET_MISSING",
+    "environment variable": "E_CONN_SECRET_MISSING",
+    "not set": "E_CONN_SECRET_MISSING",
+    "authentication failed": "E_CONN_AUTH_FAILED",
+    "invalid password": "E_CONN_AUTH_FAILED",
+    "invalid credentials": "E_CONN_AUTH_FAILED",
+    "connection refused": "E_CONN_REFUSED",
+    "dns resolution failed": "E_CONN_DNS",
+    "no such host": "E_CONN_DNS",
+    "name or service not known": "E_CONN_DNS",
+    "could not connect": "E_CONN_UNREACHABLE",
+    "network is unreachable": "E_CONN_UNREACHABLE",
+    "unreachable host": "E_CONN_UNREACHABLE",
+    "connection timeout": "E_CONN_TIMEOUT",
+    "request timeout": "E_CONN_TIMEOUT",
+    "timed out": "E_CONN_TIMEOUT",
+    "timeout": "E_CONN_TIMEOUT",  # Generic timeout pattern (must come last after specific ones)
 }
 
 
@@ -218,3 +239,109 @@ class OsirisErrorHandler:
             prefix = "OML003"
 
         return f"{prefix}_{line}_{index}"
+
+
+def _redact_secrets_from_message(message: str) -> str:
+    """
+    Redact secrets from error messages (DSNs, URLs with credentials).
+
+    Args:
+        message: Raw error message
+
+    Returns:
+        Sanitized message with secrets redacted
+    """
+    # Redact DSN/URL with credentials: scheme://user:password@host/path -> scheme://***@host/path
+    message = re.sub(
+        r'(\w+://)[^:/@\s]+:[^@\s]+@([^/\s]+)',
+        r'\1***@\2',
+        message
+    )
+
+    # Redact password= or token= parameters (handles both & and ; separators)
+    message = re.sub(
+        r'(password|token|secret|key)=[^\s&;]+',
+        r'\1=***',
+        message,
+        flags=re.IGNORECASE
+    )
+
+    return message
+
+
+def map_cli_error_to_mcp(exc_or_msg: Union[Exception, str]) -> OsirisError:
+    """
+    Map CLI subprocess output or exception to structured OsirisError.
+
+    Analyzes error messages from subprocess stderr/stdout or Exception objects
+    and returns an OsirisError with:
+    - Inferred family (POLICY, DISCOVERY, SCHEMA, or SEMANTIC)
+    - Stable code from ERROR_CODES (fallback to hash if no match)
+    - Normalized message (single line, trimmed, secrets redacted)
+    - Empty path list
+
+    Args:
+        exc_or_msg: Exception or error message string from subprocess
+
+    Returns:
+        OsirisError with deterministic classification
+    """
+    # Extract message
+    if isinstance(exc_or_msg, Exception):
+        raw_message = str(exc_or_msg)
+    else:
+        raw_message = exc_or_msg
+
+    # Normalize: single line, strip whitespace
+    normalized = " ".join(raw_message.strip().split())
+
+    # Redact secrets
+    normalized = _redact_secrets_from_message(normalized)
+
+    message_lower = normalized.lower()
+
+    # Pattern recognition for CLI-bridge errors
+    family = ErrorFamily.SEMANTIC  # Default for connection errors
+    suggest = None
+
+    # OML/Schema errors (check first for priority)
+    if any(pattern in message_lower for pattern in ["oml parse", "yaml parse", "missing required field"]):
+        family = ErrorFamily.SCHEMA
+    # Policy errors (check before auth to avoid conflict)
+    elif any(pattern in message_lower for pattern in ["consent required", "rate limit", "forbidden"]):
+        family = ErrorFamily.POLICY
+    # Unauthorized (must check full word, not just "auth")
+    elif re.search(r'\bunauthorized\b', message_lower):
+        family = ErrorFamily.POLICY
+    # Timeout errors (DISCOVERY)
+    elif any(pattern in message_lower for pattern in ["timeout", "timed out"]):
+        family = ErrorFamily.DISCOVERY
+        suggest = "Check network connectivity and increase timeout if needed"
+    # Authentication errors (SEMANTIC) - check after policy checks
+    elif any(pattern in message_lower for pattern in ["authentication failed", "invalid password", "invalid credentials", "auth error"]):
+        family = ErrorFamily.SEMANTIC
+        suggest = "Verify credentials in osiris_connections.yaml and environment"
+    # Secret/environment errors (SEMANTIC)
+    elif any(pattern in message_lower for pattern in ["not set", "missing env", "${"]):
+        family = ErrorFamily.SEMANTIC
+        suggest = "Check environment variables and .env file"
+    # Connection refused (SEMANTIC)
+    elif "connection refused" in message_lower:
+        family = ErrorFamily.SEMANTIC
+        suggest = "Verify the service is running and port is correct"
+    # DNS errors (SEMANTIC)
+    elif any(pattern in message_lower for pattern in ["no such host", "name or service not known", "dns"]):
+        family = ErrorFamily.SEMANTIC
+        suggest = "Check hostname spelling and network connectivity"
+    # Unreachable errors (SEMANTIC)
+    elif any(pattern in message_lower for pattern in ["could not connect", "unreachable", "network is unreachable"]):
+        family = ErrorFamily.SEMANTIC
+        suggest = "Check network connectivity and firewall rules"
+
+    # Build OsirisError
+    return OsirisError(
+        family=family,
+        message=normalized,
+        path=[],
+        suggest=suggest
+    )

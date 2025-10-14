@@ -14,6 +14,7 @@ List all configured database connections from `osiris_connections.yaml`.
 **Aliases**: `osiris.connections.list`, `connections.list`
 
 **Input Schema:**
+
 ```json
 {
   "type": "object",
@@ -22,6 +23,7 @@ List all configured database connections from `osiris_connections.yaml`.
 ```
 
 **Output Schema:**
+
 ```json
 {
   "type": "object",
@@ -31,20 +33,21 @@ List all configured database connections from `osiris_connections.yaml`.
       "items": {
         "type": "object",
         "properties": {
-          "family": {"type": "string"},
-          "alias": {"type": "string"},
-          "reference": {"type": "string"},
-          "config": {"type": "object"}
+          "family": { "type": "string" },
+          "alias": { "type": "string" },
+          "reference": { "type": "string" },
+          "config": { "type": "object" }
         }
       }
     },
-    "count": {"type": "integer"},
-    "status": {"type": "string", "enum": ["success", "error"]}
+    "count": { "type": "integer" },
+    "status": { "type": "string", "enum": ["success", "error"] }
   }
 }
 ```
 
 **Example Output:**
+
 ```json
 {
   "connections": [
@@ -81,6 +84,7 @@ Diagnose connection issues and validate configuration.
 **Aliases**: `osiris.connections.doctor`, `connections.doctor`
 
 **Input Schema:**
+
 ```json
 {
   "type": "object",
@@ -95,27 +99,28 @@ Diagnose connection issues and validate configuration.
 ```
 
 **Output Schema:**
+
 ```json
 {
   "type": "object",
   "properties": {
-    "connection_id": {"type": "string"},
-    "family": {"type": "string"},
-    "alias": {"type": "string"},
-    "health": {"type": "string", "enum": ["healthy", "unhealthy"]},
+    "connection_id": { "type": "string" },
+    "family": { "type": "string" },
+    "alias": { "type": "string" },
+    "health": { "type": "string", "enum": ["healthy", "unhealthy"] },
     "diagnostics": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
-          "check": {"type": "string"},
-          "status": {"type": "string", "enum": ["passed", "failed"]},
-          "message": {"type": "string"},
-          "severity": {"type": "string", "enum": ["error", "warning", "info"]}
+          "check": { "type": "string" },
+          "status": { "type": "string", "enum": ["passed", "failed"] },
+          "message": { "type": "string" },
+          "severity": { "type": "string", "enum": ["error", "warning", "info"] }
         }
       }
     },
-    "status": {"type": "string"}
+    "status": { "type": "string" }
   }
 }
 ```
@@ -130,6 +135,7 @@ List available pipeline components from the component registry.
 **Aliases**: `osiris.components.list`, `components.list`
 
 **Input Schema:**
+
 ```json
 {
   "type": "object",
@@ -138,6 +144,7 @@ List available pipeline components from the component registry.
 ```
 
 **Output Schema:**
+
 ```json
 {
   "type": "object",
@@ -145,14 +152,14 @@ List available pipeline components from the component registry.
     "components": {
       "type": "object",
       "properties": {
-        "extractors": {"type": "array"},
-        "writers": {"type": "array"},
-        "processors": {"type": "array"},
-        "other": {"type": "array"}
+        "extractors": { "type": "array" },
+        "writers": { "type": "array" },
+        "processors": { "type": "array" },
+        "other": { "type": "array" }
       }
     },
-    "total_count": {"type": "integer"},
-    "status": {"type": "string"}
+    "total_count": { "type": "integer" },
+    "status": { "type": "string" }
   }
 }
 ```
@@ -167,6 +174,7 @@ Discover database schema with optional sampling and caching.
 **Aliases**: `osiris.introspect_sources`, `discovery.request`
 
 **Input Schema:**
+
 ```json
 {
   "type": "object",
@@ -195,22 +203,23 @@ Discover database schema with optional sampling and caching.
 ```
 
 **Output Schema:**
+
 ```json
 {
   "type": "object",
   "properties": {
-    "discovery_id": {"type": "string"},
-    "cached": {"type": "boolean"},
-    "status": {"type": "string"},
+    "discovery_id": { "type": "string" },
+    "cached": { "type": "boolean" },
+    "status": { "type": "string" },
     "artifacts": {
       "type": "object",
       "properties": {
-        "overview": {"type": "string", "format": "uri"},
-        "tables": {"type": "string", "format": "uri"},
-        "samples": {"type": "string", "format": "uri"}
+        "overview": { "type": "string", "format": "uri" },
+        "tables": { "type": "string", "format": "uri" },
+        "samples": { "type": "string", "format": "uri" }
       }
     },
-    "summary": {"type": "object"}
+    "summary": { "type": "object" }
   }
 }
 ```
@@ -225,6 +234,7 @@ Get OML v0.1.0 JSON schema.
 **Aliases**: `osiris.oml.schema.get`, `oml.schema.get`
 
 **Input Schema:**
+
 ```json
 {
   "type": "object",
@@ -233,14 +243,15 @@ Get OML v0.1.0 JSON schema.
 ```
 
 **Output Schema:**
+
 ```json
 {
   "type": "object",
   "properties": {
-    "schema_uri": {"type": "string", "format": "uri"},
-    "version": {"type": "string"},
-    "schema": {"type": "object"},
-    "status": {"type": "string"}
+    "schema_uri": { "type": "string", "format": "uri" },
+    "version": { "type": "string" },
+    "schema": { "type": "object" },
+    "status": { "type": "string" }
   }
 }
 ```
@@ -253,6 +264,7 @@ Validate OML pipeline definition with ADR-0019 compatible diagnostics.
 **Aliases**: `osiris.validate_oml`, `oml.validate`
 
 **Input Schema:**
+
 ```json
 {
   "type": "object",
@@ -272,33 +284,34 @@ Validate OML pipeline definition with ADR-0019 compatible diagnostics.
 ```
 
 **Output Schema:**
+
 ```json
 {
   "type": "object",
   "properties": {
-    "valid": {"type": "boolean"},
+    "valid": { "type": "boolean" },
     "diagnostics": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
-          "type": {"type": "string", "enum": ["error", "warning", "info"]},
-          "line": {"type": "integer"},
-          "column": {"type": "integer"},
-          "message": {"type": "string"},
-          "id": {"type": "string"}
+          "type": { "type": "string", "enum": ["error", "warning", "info"] },
+          "line": { "type": "integer" },
+          "column": { "type": "integer" },
+          "message": { "type": "string" },
+          "id": { "type": "string" }
         }
       }
     },
     "summary": {
       "type": "object",
       "properties": {
-        "errors": {"type": "integer"},
-        "warnings": {"type": "integer"},
-        "info": {"type": "integer"}
+        "errors": { "type": "integer" },
+        "warnings": { "type": "integer" },
+        "info": { "type": "integer" }
       }
     },
-    "status": {"type": "string"}
+    "status": { "type": "string" }
   }
 }
 ```
@@ -311,6 +324,7 @@ Save OML pipeline draft to session-scoped storage.
 **Aliases**: `osiris.save_oml`, `oml.save`
 
 **Input Schema:**
+
 ```json
 {
   "type": "object",
@@ -333,19 +347,86 @@ Save OML pipeline draft to session-scoped storage.
 ```
 
 **Output Schema:**
+
 ```json
 {
   "type": "object",
   "properties": {
-    "saved": {"type": "boolean"},
-    "uri": {"type": "string", "format": "uri"},
-    "filename": {"type": "string"},
-    "session_id": {"type": "string"},
-    "timestamp": {"type": "string", "format": "date-time"},
-    "status": {"type": "string"}
+    "saved": { "type": "boolean" },
+    "uri": { "type": "string", "format": "uri" },
+    "filename": { "type": "string" },
+    "session_id": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "status": { "type": "string" }
   }
 }
 ```
+
+## MCP → CLI Delegation Map
+
+Certain MCP tools act as lightweight adapters that delegate execution to the Osiris CLI.
+This ensures that:
+
+- All secrets remain within the CLI process (never exposed to the MCP server)
+- Behavior stays consistent with direct terminal usage
+- MCP can be updated independently from core logic
+
+| MCP Tool (primary)   | CLI Subcommand (delegated)             | Notes                                                |
+| -------------------- | -------------------------------------- | ---------------------------------------------------- |
+| `connections_list`   | `osiris mcp connections list --json`   | Reads config & .env; masks secrets in output         |
+| `connections_doctor` | `osiris mcp connections doctor --json` | Runs real connectivity checks using resolved secrets |
+| `components_list`    | `osiris mcp components list --json`    | Safe, no secrets                                     |
+| `discovery_request`  | `osiris mcp discovery run --json`      | Uses resolved connections; caches per config         |
+| `oml_schema_get`     | `osiris mcp oml schema --json`         | Pure read-only (no secrets)                          |
+| `oml_validate`       | `osiris mcp oml validate --json`       | Canonical validator, deterministic IDs               |
+| `oml_save`           | `osiris mcp oml save --json`           | Writes drafts under filesystem contract              |
+| `guide_start`        | `osiris mcp guide start --json`        | Pure logic; may consult discovery state              |
+| `memory_capture`     | `osiris mcp memory capture --json`     | Consent-gated; writes to configured memory store     |
+| `usecases_list`      | `osiris mcp usecases list --json`      | Future-facing; no secrets                            |
+
+**Aliases:** Legacy dotted names (e.g. `connections.list`) remain mapped to the underscore primaries.
+
+_All CLI commands are executed through the internal subprocess bridge (`osiris/mcp/cli_bridge.py`) which standardizes JSON I/O, exit codes, and logging._
+
+## Error Semantics
+
+MCP tools return structured error objects with deterministic codes and user-facing messages.
+
+### Error Code Taxonomy
+
+Osiris MCP uses a unified, deterministic error code taxonomy derived from ADR-0019 and extended for CLI bridge scenarios.
+
+| Family              | Example                                       | Description                              |
+| ------------------- | --------------------------------------------- | ---------------------------------------- |
+| `SCHEMA/OML###`     | `SCHEMA/OML001`                               | OML schema validation errors             |
+| `DISCOVERY/DISC###` | `DISCOVERY/DISC001`                           | Data discovery or profiling errors       |
+| `POLICY/POL###`     | `POLICY/POL001`                               | Consent and retention policy enforcement |
+| `SEMANTIC/SEM###`   | `SEMANTIC/SEM001`                             | Invalid or unknown tool invocation       |
+| `E_CONN_###`        | `E_CONN_SECRET_MISSING`, `E_CONN_UNREACHABLE` | CLI bridge / connection-level errors     |
+
+All codes are generated deterministically via `osiris/mcp/errors.py`
+and surfaced in the JSON error payloads returned to clients.
+
+| Error Code              | Description                           | Example Cause                           | Recommended Action                              |
+| ----------------------- | ------------------------------------- | --------------------------------------- | ----------------------------------------------- |
+| `E_CONN_SECRET_MISSING` | Required environment variable not set | `${MYSQL_PASSWORD}` unresolved          | Run `osiris connections setup @mysql.db_movies` |
+| `E_CONN_UNREACHABLE`    | Connection test failed                | Host unreachable or invalid credentials | Check your database settings                    |
+| `E_DISCOVERY_TIMEOUT`   | Discovery operation exceeded timeout  | Large schema or network lag             | Retry or limit scope                            |
+| `E_OML_INVALID`         | Invalid OML syntax                    | YAML parse error                        | Run `osiris oml validate` for details           |
+
+All errors are returned in the form:
+
+```json
+{
+  "error": {
+    "code": "E_CONN_SECRET_MISSING",
+    "message": "Missing MYSQL_PASSWORD",
+    "path": []
+  }
+}
+```
+
+Claude Desktop (or any MCP client) should display these messages and instruct the user to complete setup using the Osiris CLI.
 
 ## Guidance
 
@@ -357,6 +438,7 @@ Get guided next steps for OML authoring based on current context.
 **Aliases**: `osiris.guide_start`, `guide.start`
 
 **Input Schema:**
+
 ```json
 {
   "type": "object",
@@ -368,7 +450,7 @@ Get guided next steps for OML authoring based on current context.
     },
     "known_connections": {
       "type": "array",
-      "items": {"type": "string"},
+      "items": { "type": "string" },
       "description": "List of known connection IDs"
     },
     "has_discovery": {
@@ -388,30 +470,31 @@ Get guided next steps for OML authoring based on current context.
 ```
 
 **Output Schema:**
+
 ```json
 {
   "type": "object",
   "properties": {
-    "objective": {"type": "string"},
-    "next_step": {"type": "string"},
+    "objective": { "type": "string" },
+    "next_step": { "type": "string" },
     "example": {
       "type": "object",
       "properties": {
-        "tool": {"type": "string"},
-        "arguments": {"type": "object"},
-        "description": {"type": "string"}
+        "tool": { "type": "string" },
+        "arguments": { "type": "object" },
+        "description": { "type": "string" }
       }
     },
     "references": {
       "type": "array",
-      "items": {"type": "string", "format": "uri"}
+      "items": { "type": "string", "format": "uri" }
     },
-    "context": {"type": "object"},
+    "context": { "type": "object" },
     "tips": {
       "type": "array",
-      "items": {"type": "string"}
+      "items": { "type": "string" }
     },
-    "status": {"type": "string"}
+    "status": { "type": "string" }
   }
 }
 ```
@@ -426,6 +509,7 @@ Capture session memory with consent and PII redaction.
 **Aliases**: `osiris.memory.capture`, `memory.capture`
 
 **Input Schema:**
+
 ```json
 {
   "type": "object",
@@ -440,30 +524,31 @@ Capture session memory with consent and PII redaction.
       "default": 365,
       "description": "Days to retain memory"
     },
-    "session_id": {"type": "string"},
-    "actor_trace": {"type": "array"},
-    "intent": {"type": "string"},
-    "decisions": {"type": "array"},
-    "artifacts": {"type": "array"},
-    "oml_uri": {"type": ["string", "null"]},
-    "error_report": {"type": ["object", "null"]},
-    "notes": {"type": "string"}
+    "session_id": { "type": "string" },
+    "actor_trace": { "type": "array" },
+    "intent": { "type": "string" },
+    "decisions": { "type": "array" },
+    "artifacts": { "type": "array" },
+    "oml_uri": { "type": ["string", "null"] },
+    "error_report": { "type": ["object", "null"] },
+    "notes": { "type": "string" }
   }
 }
 ```
 
 **Output Schema:**
+
 ```json
 {
   "type": "object",
   "properties": {
-    "captured": {"type": "boolean"},
-    "memory_uri": {"type": "string", "format": "uri"},
-    "session_id": {"type": "string"},
-    "timestamp": {"type": "string", "format": "date-time"},
-    "entry_size_bytes": {"type": "integer"},
-    "redactions_applied": {"type": "integer"},
-    "status": {"type": "string"}
+    "captured": { "type": "boolean" },
+    "memory_uri": { "type": "string", "format": "uri" },
+    "session_id": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "entry_size_bytes": { "type": "integer" },
+    "redactions_applied": { "type": "integer" },
+    "status": { "type": "string" }
   }
 }
 ```
@@ -478,6 +563,7 @@ List OML use case templates with examples and requirements.
 **Aliases**: `osiris.usecases.list`, `usecases.list`
 
 **Input Schema:**
+
 ```json
 {
   "type": "object",
@@ -486,6 +572,7 @@ List OML use case templates with examples and requirements.
 ```
 
 **Output Schema:**
+
 ```json
 {
   "type": "object",
@@ -495,22 +582,22 @@ List OML use case templates with examples and requirements.
       "items": {
         "type": "object",
         "properties": {
-          "id": {"type": "string"},
-          "name": {"type": "string"},
-          "description": {"type": "string"},
-          "category": {"type": "string"},
-          "tags": {"type": "array"},
-          "difficulty": {"type": "string"},
-          "snippet_uri": {"type": "string", "format": "uri"},
-          "requirements": {"type": "object"},
-          "example": {"type": "object"}
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "category": { "type": "string" },
+          "tags": { "type": "array" },
+          "difficulty": { "type": "string" },
+          "snippet_uri": { "type": "string", "format": "uri" },
+          "requirements": { "type": "object" },
+          "example": { "type": "object" }
         }
       }
     },
-    "by_category": {"type": "object"},
-    "total_count": {"type": "integer"},
-    "categories": {"type": "array"},
-    "status": {"type": "string"}
+    "by_category": { "type": "object" },
+    "total_count": { "type": "integer" },
+    "categories": { "type": "array" },
+    "status": { "type": "string" }
   }
 }
 ```
@@ -537,6 +624,7 @@ All tools use underscore-separated names to comply with MCP validation pattern `
 The server provides comprehensive backward compatibility through alias resolution:
 
 #### Osiris-Prefixed Names (ADR-0036)
+
 - `osiris.connections.list` → `connections_list`
 - `osiris.connections.doctor` → `connections_doctor`
 - `osiris.components.list` → `components_list`
@@ -549,6 +637,7 @@ The server provides comprehensive backward compatibility through alias resolutio
 - `osiris.memory.capture` → `memory_capture`
 
 #### Dot-Notation Names (Pre-0.5.0)
+
 - `connections.list` → `connections_list`
 - `connections.doctor` → `connections_doctor`
 - `components.list` → `components_list`
@@ -585,13 +674,16 @@ await client.call_tool("connections_list", {})
 ## Related Documentation
 
 ### Getting Started
+
 - **[MCP Overview](./overview.md)** - Architecture, configuration, getting started guide, and CLI-first adapter pattern explanation
 
 ### Architecture & Specifications
+
 - **[ADR-0036: MCP Interface](../adr/0036-mcp-interface.md)** - Architectural decision record explaining the MCP design, CLI-first adapter pattern, and rationale for replacing the legacy chat interface
 - **[MCP v0.5.0 Milestone](../milestones/mcp-milestone.md)** - Complete milestone specification including deliverables, deterministic behavior requirements, acceptance criteria, and testing strategy
 - **[MCP Implementation Checklist](../milestones/mcp-implementation.md)** - Known implementation gaps, work in progress items, and production hardening tasks for v0.5.0
 
 ### Development
+
 - **[ADR-0019: Chat State Machine](../adr/0019-chat-state-machine.md)** - Legacy chat interface (superseded by MCP)
 - **[OML v0.1.0 Specification](../reference/pipeline-format.md)** - OML pipeline format reference

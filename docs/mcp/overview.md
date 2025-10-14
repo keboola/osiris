@@ -42,6 +42,15 @@ When MCP tools need to access database connections or perform operations requiri
 3. **Return JSON**: Parse structured CLI output and return to MCP client
 4. **No Direct Secret Access**: MCP server process never reads passwords or credentials directly
 
+### Security Principle: No Secrets in MCP Process
+
+Osiris MCP never accesses or stores any credentials.  
+All operations that require secrets (such as database passwords or API keys) are executed via the CLI bridge subprocess,  
+which inherits the user’s environment and resolves variables like `${MYSQL_PASSWORD}` securely.
+
+> This ensures complete isolation: the MCP server never touches `.env` files or sensitive data —  
+> it simply delegates to `osiris ... --json` and returns structured results to the AI client.
+
 ### Example: Connection Doctor Flow
 
 ```
@@ -96,12 +105,14 @@ See [ADR-0036](../adr/0036-mcp-interface.md) for the complete architectural rati
 ### Connection Tools
 
 #### connections_list
+
 List all configured database connections from `osiris_connections.yaml`.
 
 **Input**: None required
 **Output**: List of connections with family, alias, and sanitized configuration
 
 #### connections_doctor
+
 Diagnose connection issues and validate configuration.
 
 **Input**: `connection_id` (string, required)
@@ -110,6 +121,7 @@ Diagnose connection issues and validate configuration.
 ### Component Tools
 
 #### components_list
+
 List available pipeline components from the component registry.
 
 **Input**: None required
@@ -118,9 +130,11 @@ List available pipeline components from the component registry.
 ### Discovery Tools
 
 #### discovery_request
+
 Discover database schema with optional sampling. Results are cached for 24 hours.
 
 **Input**:
+
 - `connection_id` (string, required)
 - `component_id` (string, required)
 - `samples` (integer, optional, 0-100)
@@ -131,24 +145,29 @@ Discover database schema with optional sampling. Results are cached for 24 hours
 ### OML Tools
 
 #### oml_schema_get
+
 Retrieve the OML v0.1.0 JSON schema.
 
 **Input**: None required
 **Output**: Schema URI and JSON schema definition
 
 #### oml_validate
+
 Validate OML pipeline definition with ADR-0019 compatible diagnostics.
 
 **Input**:
+
 - `oml_content` (string, required)
 - `strict` (boolean, optional, default: true)
 
 **Output**: Validation status and diagnostics
 
 #### oml_save
+
 Save OML pipeline draft.
 
 **Input**:
+
 - `oml_content` (string, required)
 - `session_id` (string, required)
 - `filename` (string, optional)
@@ -158,9 +177,11 @@ Save OML pipeline draft.
 ### Guidance Tools
 
 #### guide_start
+
 Get guided next steps for OML authoring based on current context.
 
 **Input**:
+
 - `intent` (string, required)
 - `known_connections` (array, optional)
 - `has_discovery` (boolean, optional)
@@ -172,9 +193,11 @@ Get guided next steps for OML authoring based on current context.
 ### Memory Tools
 
 #### memory_capture
+
 Capture session memory with consent and PII redaction.
 
 **Input**:
+
 - `consent` (boolean, required)
 - `session_id` (string, required)
 - `retention_days` (integer, optional, default: 365)
@@ -185,6 +208,7 @@ Capture session memory with consent and PII redaction.
 ### Use Case Tools
 
 #### usecases_list
+
 List available OML use case templates.
 
 **Input**: None required
@@ -195,6 +219,7 @@ List available OML use case templates.
 For backward compatibility, the server supports legacy tool names via aliasing:
 
 ### Osiris-Prefixed Names (ADR-0036 Legacy)
+
 - `osiris.connections.list` → `connections_list`
 - `osiris.connections.doctor` → `connections_doctor`
 - `osiris.components.list` → `components_list`
@@ -207,6 +232,7 @@ For backward compatibility, the server supports legacy tool names via aliasing:
 - `osiris.memory.capture` → `memory_capture`
 
 ### Dot-Notation Names (Pre-0.5.0)
+
 - `connections.list` → `connections_list`
 - `connections.doctor` → `connections_doctor`
 - `components.list` → `components_list`
@@ -223,11 +249,13 @@ For backward compatibility, the server supports legacy tool names via aliasing:
 All resources are served under the `osiris://mcp/` namespace:
 
 ### Read-Only Resources (data/)
+
 - `osiris://mcp/schemas/oml/v0.1.0.json` - OML JSON schema
 - `osiris://mcp/prompts/oml_authoring_guide.md` - Authoring guide
 - `osiris://mcp/usecases/catalog.yaml` - Use case catalog
 
 ### Runtime Resources (state/)
+
 - `osiris://mcp/discovery/{id}/*.json` - Discovery artifacts (cached)
 - `osiris://mcp/drafts/oml/{session}.yaml` - OML drafts
 - `osiris://mcp/memory/sessions/{session}.jsonl` - Session memory
@@ -246,6 +274,7 @@ The server implements a structured error taxonomy:
 ```
 
 Error families:
+
 - **SCHEMA**: Schema validation errors
 - **SEMANTIC**: Logic and semantic errors
 - **DISCOVERY**: Discovery operation failures
@@ -257,10 +286,12 @@ Error families:
 ### Environment Variables
 
 #### Core Configuration
+
 - `OSIRIS_HOME`: Base directory for connections, cache, memory, audit, telemetry (default: `<repo_root>/testing_env`)
 - `PYTHONPATH`: Repository root path (required for imports)
 
 #### MCP Server Configuration
+
 - `OSIRIS_MCP_PAYLOAD_LIMIT_MB`: Max payload size (default: 16)
 - `OSIRIS_MCP_HANDSHAKE_TIMEOUT`: Handshake timeout in seconds (default: 2.0)
 - `OSIRIS_MCP_CACHE_TTL_HOURS`: Discovery cache TTL (default: 24)
@@ -275,6 +306,7 @@ The server resolves `OSIRIS_HOME` with the following priority:
 2. **Default**: `<repo_root>/testing_env` - fallback if not set
 
 This path is used for:
+
 - **Connection files**: `osiris_connections.yaml` searched in OSIRIS_HOME first
 - **Discovery cache**: `<OSIRIS_HOME>/.osiris/discovery/cache/`
 - **OML drafts**: `<OSIRIS_HOME>/.osiris/drafts/oml/`
@@ -352,11 +384,13 @@ python -m osiris.cli.mcp_entrypoint --selftest
 ```
 
 **Get auto-detected config**:
+
 ```bash
 osiris mcp clients
 ```
 
 This will output the correct paths for your system, including:
+
 - Detected repository root
 - Virtual environment python path
 - Resolved OSIRIS_HOME
@@ -365,14 +399,18 @@ This will output the correct paths for your system, including:
 ## Observability
 
 ### Telemetry
+
 When enabled, the server emits structured telemetry events to `<OSIRIS_HOME>/.osiris_telemetry/`:
+
 - Tool call events with duration and payload size
 - Handshake timing
 - Server start/stop events
 - Session metrics
 
 ### Audit Logging
+
 All tool invocations are logged to `<OSIRIS_HOME>/.osiris_audit/` with:
+
 - Tool name and sanitized arguments
 - Session and correlation IDs
 - Timestamps and call counters
@@ -387,6 +425,7 @@ osiris mcp run --selftest
 ```
 
 Tests:
+
 1. Handshake completes in <2 seconds
 2. `connections_list` responds successfully (tests alias resolution)
 3. `oml_schema_get` returns valid v0.1.0 schema
@@ -394,6 +433,7 @@ Tests:
 5. Tool names comply with MCP validation pattern
 
 Expected output:
+
 ```
 ✅ Handshake completed in 0.6s (<2s requirement)
 ✅ connections_list responded successfully
@@ -426,6 +466,7 @@ Expected output:
 **Cause**: Connection file not found at expected location.
 
 **Solution**:
+
 1. Ensure `osiris_connections.yaml` exists in `OSIRIS_HOME`
 2. Set `OSIRIS_HOME` environment variable in Claude Desktop config
 3. Check connection file search order (see Configuration section)
@@ -436,6 +477,7 @@ Expected output:
 **Problem**: Server fails to start or times out during handshake.
 
 **Solution**:
+
 1. Ensure `PYTHONPATH` is set to repository root
 2. Activate virtual environment or specify full python path
 3. Check `OSIRIS_HOME` exists and is writable
@@ -452,12 +494,15 @@ Expected output:
 ## Related Documentation
 
 ### Core Documentation
+
 - **[ADR-0036: MCP Interface](../adr/0036-mcp-interface.md)** - Architectural decision record explaining why MCP was chosen over the legacy chat interface and the CLI-first adapter pattern
 - **[MCP v0.5.0 Milestone](../milestones/mcp-milestone.md)** - Complete milestone specification including deliverables, acceptance criteria, and testing requirements
 - **[MCP Implementation Checklist](../milestones/mcp-implementation.md)** - Known implementation gaps, work in progress, and production hardening tasks
 
 ### API Reference
+
 - **[Tool Reference](./tool-reference.md)** - Detailed input/output schemas and examples for all 10 MCP tools
 
 ### Migration Guides
+
 - **[Chat to MCP Migration](../migration/chat-to-mcp.md)** - Guide for migrating from legacy chat interface (if exists)

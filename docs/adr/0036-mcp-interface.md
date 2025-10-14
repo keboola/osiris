@@ -57,6 +57,26 @@ We will replace the legacy chat interface with a first-class MCP server implemen
 
 The MCP server employs a CLI-first adapter approach, where MCP server tools delegate to the existing Osiris CLI for operations that require environment variables or secrets. This design leverages a CLI Bridge component that routes commands such as `osiris connections list` and `osiris oml validate` internally, ensuring that all sensitive information and environment-specific configurations remain managed by the CLI environment.
 
+### CLI Subcommand Namespace
+
+All CLI-first adapter operations are implemented under the unified namespace `osiris mcp`.
+
+This ensures that every MCP-delegated tool has a corresponding CLI command that behaves identically,
+including configuration loading, environment variable resolution, and filesystem logging.
+
+| MCP Tool             | CLI Subcommand                         |
+| -------------------- | -------------------------------------- |
+| `connections_list`   | `osiris mcp connections list --json`   |
+| `connections_doctor` | `osiris mcp connections doctor --json` |
+| `discovery_request`  | `osiris mcp discovery run --json`      |
+| `oml_schema_get`     | `osiris mcp oml schema --json`         |
+| `oml_validate`       | `osiris mcp oml validate --json`       |
+| `guide_start`        | `osiris mcp guide start --json`        |
+| `memory_capture`     | `osiris mcp memory capture --json`     |
+
+> The `osiris mcp` namespace isolates all subprocess executions for the MCP adapter layer
+> while preserving the same UX and security guarantees as standard CLI usage.
+
 This architecture guarantees that no secrets are handled directly by the MCP server, preserving parity and consistency with the CLI's behavior. By reusing the established CLI logic for core operations, the MCP server maintains a clean separation of concerns while providing a unified interface for clients via the official SDK.
 
 ### CLI Integration
