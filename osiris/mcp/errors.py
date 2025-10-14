@@ -8,6 +8,42 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 
+# Deterministic error code mappings
+ERROR_CODES = {
+    # Schema errors (SCHEMA/*)
+    "missing required field": "OML001",
+    "invalid type": "OML002",
+    "invalid format": "OML003",
+    "unknown property": "OML004",
+    "yaml parse error": "OML005",
+
+    # Semantic errors (SEMANTIC/*)
+    "unknown tool": "SEM001",
+    "invalid connection": "SEM002",
+    "invalid component": "SEM003",
+    "circular dependency": "SEM004",
+    "duplicate name": "SEM005",
+
+    # Discovery errors (DISCOVERY/*)
+    "connection not found": "DISC001",
+    "source unreachable": "DISC002",
+    "permission denied": "DISC003",
+    "timeout": "DISC004",
+    "invalid schema": "DISC005",
+
+    # Lint errors (LINT/*)
+    "naming convention": "LINT001",
+    "deprecated feature": "LINT002",
+    "performance warning": "LINT003",
+
+    # Policy errors (POLICY/*)
+    "payload too large": "POL001",
+    "rate limit exceeded": "POL002",
+    "unauthorized": "POL003",
+    "forbidden operation": "POL004",
+}
+
+
 class ErrorFamily(Enum):
     """Error family classification."""
     SCHEMA = "SCHEMA"      # Schema validation errors
@@ -55,10 +91,23 @@ class OsirisError(Exception):
 
     def _generate_code(self) -> str:
         """Generate specific error code based on message."""
-        # Simple hash-based code generation for consistency
-        import hashlib
-        hash_obj = hashlib.md5(self.message.encode())
-        return hash_obj.hexdigest()[:8].upper()
+        # Look for known error patterns in the message
+        message_lower = self.message.lower()
+
+        for pattern, code in ERROR_CODES.items():
+            if pattern in message_lower:
+                return code
+
+        # Default codes by family if no pattern matches
+        default_codes = {
+            ErrorFamily.SCHEMA: "OML999",
+            ErrorFamily.SEMANTIC: "SEM999",
+            ErrorFamily.DISCOVERY: "DISC999",
+            ErrorFamily.LINT: "LINT999",
+            ErrorFamily.POLICY: "POL999",
+        }
+
+        return default_codes.get(self.family, "ERR999")
 
 
 class SchemaError(OsirisError):
