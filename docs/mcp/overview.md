@@ -29,6 +29,57 @@ osiris/mcp/
     └── usecases.py     # Use case templates
 ```
 
+## CLI-First Adapter Architecture
+
+Osiris MCP server employs a **CLI-first adapter pattern** where tools requiring database connections or secrets delegate to Osiris CLI commands instead of handling environment variables directly. This architectural decision ensures secure secret management and maintains consistency with the standalone CLI.
+
+### How It Works
+
+When MCP tools need to access database connections or perform operations requiring secrets (passwords, API keys), they:
+
+1. **Delegate to CLI**: Call `osiris connections list --json`, `osiris discovery request --json`, etc. via subprocess
+2. **Inherit Environment**: CLI commands run in the same shell environment, automatically resolving secrets from `.env` files or environment variables
+3. **Return JSON**: Parse structured CLI output and return to MCP client
+4. **No Direct Secret Access**: MCP server process never reads passwords or credentials directly
+
+### Example: Connection Doctor Flow
+
+```
+Claude Desktop (MCP client)
+    ↓ calls connections_doctor
+MCP Server
+    ↓ spawns subprocess
+CLI: osiris connections doctor --json
+    ↓ reads osiris_connections.yaml
+    ↓ resolves ${MYSQL_PASSWORD} from environment
+    ↓ tests connection
+    ↓ returns JSON result
+MCP Server
+    ↓ parses JSON
+    ↓ returns to client
+Claude Desktop
+```
+
+### Benefits
+
+- **Security**: Secrets stay in CLI process, never flow through MCP protocol or client config
+- **Consistency**: Single source of truth for connection handling - CLI and MCP use identical logic
+- **Simplicity**: MCP server remains lightweight, focused on protocol handling rather than business logic
+- **Debugging**: Same `osiris connections doctor --json` works in CLI and MCP contexts
+- **Zero Configuration**: No need to pass secrets in Claude Desktop config
+
+### Tools Using CLI Delegation
+
+The following tools delegate to CLI commands:
+
+- `connections_list` → `osiris connections list --json`
+- `connections_doctor` → `osiris connections doctor --json`
+- `discovery_request` → `osiris components discover --json`
+
+Other tools (validation, schema retrieval, etc.) operate in-process as they don't require secrets.
+
+See [ADR-0036](../adr/0036-mcp-interface.md) for the complete architectural rationale.
+
 ## Protocol Details
 
 - **MCP Version**: 2025-06-18 (latest)
@@ -397,3 +448,16 @@ Expected output:
 - **Protocol**: MCP v2025-06-18 (latest)
 - **Clients**: Claude Desktop v0.7.0+, any MCP-compatible client
 - **Breaking Changes from v0.4.x**: Tool names changed from dot-notation to underscores (aliases provided for compatibility)
+
+## Related Documentation
+
+### Core Documentation
+- **[ADR-0036: MCP Interface](../adr/0036-mcp-interface.md)** - Architectural decision record explaining why MCP was chosen over the legacy chat interface and the CLI-first adapter pattern
+- **[MCP v0.5.0 Milestone](../milestones/mcp-milestone.md)** - Complete milestone specification including deliverables, acceptance criteria, and testing requirements
+- **[MCP Implementation Checklist](../milestones/mcp-implementation.md)** - Known implementation gaps, work in progress, and production hardening tasks
+
+### API Reference
+- **[Tool Reference](./tool-reference.md)** - Detailed input/output schemas and examples for all 10 MCP tools
+
+### Migration Guides
+- **[Chat to MCP Migration](../migration/chat-to-mcp.md)** - Guide for migrating from legacy chat interface (if exists)

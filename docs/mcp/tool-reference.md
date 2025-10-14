@@ -581,3 +581,17 @@ await client.call_tool("connections_list", {})
 ```
 
 **Claude Desktop**: Restart after update to pick up new tool names. No config changes needed.
+
+## Related Documentation
+
+### Getting Started
+- **[MCP Overview](./overview.md)** - Architecture, configuration, getting started guide, and CLI-first adapter pattern explanation
+
+### Architecture & Specifications
+- **[ADR-0036: MCP Interface](../adr/0036-mcp-interface.md)** - Architectural decision record explaining the MCP design, CLI-first adapter pattern, and rationale for replacing the legacy chat interface
+- **[MCP v0.5.0 Milestone](../milestones/mcp-milestone.md)** - Complete milestone specification including deliverables, deterministic behavior requirements, acceptance criteria, and testing strategy
+- **[MCP Implementation Checklist](../milestones/mcp-implementation.md)** - Known implementation gaps, work in progress items, and production hardening tasks for v0.5.0
+
+### Development
+- **[ADR-0019: Chat State Machine](../adr/0019-chat-state-machine.md)** - Legacy chat interface (superseded by MCP)
+- **[OML v0.1.0 Specification](../reference/pipeline-format.md)** - OML pipeline format reference
