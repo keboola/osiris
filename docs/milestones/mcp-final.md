@@ -108,11 +108,13 @@ The server resolves `OSIRIS_HOME` with the following priority:
 2. **Default**: `<repo_root>/testing_env` - calculated via repository root detection
 
 **Repository Root Detection**:
+
 - Walk up directory tree from `osiris/cli/mcp_entrypoint.py`
 - Find first parent directory containing `osiris` package directory
 - Fallback to grandparent (2 levels up) if not found
 
 **OSIRIS_HOME is used for**:
+
 - Connection files: `<OSIRIS_HOME>/osiris_connections.yaml` (searched first)
 - Discovery cache: `<OSIRIS_HOME>/.osiris/discovery/cache/`
 - OML drafts: `<OSIRIS_HOME>/.osiris/drafts/oml/`
@@ -130,27 +132,29 @@ The server resolves `OSIRIS_HOME` with the following priority:
 4. Repository root (`<repo_root>/osiris_connections.yaml`)
 
 This hierarchy allows:
+
 - Production deployments to isolate connection configs in `OSIRIS_HOME`
 - Local development to use repo-root connections as defaults
 - Testing to override connections per test environment
 
 **Connection files use environment variable substitution** for secrets:
+
 ```yaml
 connections:
   mysql:
     db_movies:
-      password: "${MYSQL_PASSWORD}"  # Resolved from environment
+      password: "${MYSQL_PASSWORD}" # Resolved from environment
 ```
 
 ### Environment Variables
 
-| Variable | Purpose | Default | Required |
-|----------|---------|---------|----------|
-| `OSIRIS_HOME` | Base directory for connections, cache, state | `<repo_root>/testing_env` | No |
-| `PYTHONPATH` | Repository root for imports | Detected | Yes (for Claude Desktop) |
-| `OSIRIS_LOGS_DIR` | Logs directory | `<OSIRIS_HOME>/logs` | No |
-| `OSIRIS_MCP_PAYLOAD_LIMIT_MB` | Max payload size | `16` | No |
-| `OSIRIS_MCP_TELEMETRY_ENABLED` | Enable telemetry | `true` | No |
+| Variable                       | Purpose                                      | Default                   | Required                 |
+| ------------------------------ | -------------------------------------------- | ------------------------- | ------------------------ |
+| `OSIRIS_HOME`                  | Base directory for connections, cache, state | `<repo_root>/testing_env` | No                       |
+| `PYTHONPATH`                   | Repository root for imports                  | Detected                  | Yes (for Claude Desktop) |
+| `OSIRIS_LOGS_DIR`              | Logs directory                               | `<OSIRIS_HOME>/logs`      | No                       |
+| `OSIRIS_MCP_PAYLOAD_LIMIT_MB`  | Max payload size                             | `16`                      | No                       |
+| `OSIRIS_MCP_TELEMETRY_ENABLED` | Enable telemetry                             | `true`                    | No                       |
 
 ## Deterministic Behavior Requirements
 
@@ -175,8 +179,11 @@ connections:
     "mcpServers": {
       "osiris": {
         "command": "/bin/bash",
-        "args": ["-lc", "cd <repo_root> && exec <venv_python> -m osiris.cli.mcp_entrypoint"],
-        "transport": {"type": "stdio"},
+        "args": [
+          "-lc",
+          "cd <repo_root> && exec <venv_python> -m osiris.cli.mcp_entrypoint"
+        ],
+        "transport": { "type": "stdio" },
         "env": {
           "OSIRIS_HOME": "<OSIRIS_HOME>",
           "PYTHONPATH": "<repo_root>"
@@ -185,6 +192,28 @@ connections:
     }
   }
   ```
+
+## CLI-Bridge Architecture
+
+To ensure secure and consistent delegation from the MCP server to the Osiris CLI, the implementation introduces a dedicated CLI Bridge component at `osiris/mcp/cli_bridge.py`.
+
+### How the CLI Bridge Works
+
+The CLI Bridge is responsible for invoking Osiris CLI commands (such as `osiris connections list`, `osiris oml validate`, etc.) on behalf of the MCP server. It executes these commands within the current process environment, inheriting all secrets, credentials, and configuration files from the user's shell or deployment context. This approach ensures that secret resolution and environment-specific logic remain outside the MCP server's direct control, improving security and simplifying configuration management.
+
+Key aspects of the CLI Bridge:
+
+- **Secure Environment Inheritance:** CLI commands are executed with the same environment variables and file system access as the invoking process. This allows for seamless use of secrets (e.g., database passwords, API keys) resolved by the CLI, without MCP ever reading or storing them directly.
+- **Standardized JSON I/O:** The bridge communicates with CLI commands using JSON input/output, enforcing a uniform contract for all delegated operations.
+- **Exit Code & Error Mapping:** CLI exit codes are mapped to structured MCP errors, ensuring that failures are reported in a consistent, protocol-compliant manner.
+- **Centralized Logging:** All CLI Bridge invocations and outputs are logged to the MCP log directories as defined by the filesystem contract (e.g., `<OSIRIS_HOME>/logs`), supporting unified observability and troubleshooting.
+
+#### Benefits of the CLI Bridge
+
+- Reuses existing CLI logic for consistency with standalone CLI behavior.
+- Avoids duplicating secret resolution or environment logic within the MCP server.
+- Keeps the MCP server lightweight and focused on protocol handling.
+- Maintains full parity with Osiris CLI features and side effects.
 
 ## Implementation Plan
 

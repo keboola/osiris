@@ -53,6 +53,12 @@ We will replace the legacy chat interface with a first-class MCP server implemen
   - Expose Osiris artifacts as MCP resources at canonical `osiris://mcp/` URIs.
   - Provide a formal JSON Schema for OML v0.1.0 to enable client-side validation.
 
+### CLI-First Adapter Architecture
+
+The MCP server employs a CLI-first adapter approach, where MCP server tools delegate to the existing Osiris CLI for operations that require environment variables or secrets. This design leverages a CLI Bridge component that routes commands such as `osiris connections list` and `osiris oml validate` internally, ensuring that all sensitive information and environment-specific configurations remain managed by the CLI environment.
+
+This architecture guarantees that no secrets are handled directly by the MCP server, preserving parity and consistency with the CLI's behavior. By reusing the established CLI logic for core operations, the MCP server maintains a clean separation of concerns while providing a unified interface for clients via the official SDK.
+
 ### CLI Integration
 
 The MCP server is exposed via a multi-command CLI interface:
