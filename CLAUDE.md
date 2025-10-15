@@ -18,7 +18,12 @@ Osiris MVP is an **LLM-first conversational ETL pipeline generator**. It uses AI
   - Split-run test strategy for Supabase isolation (917 non-Supabase + 54 Supabase)
   - Stateless driver pattern eliminates test cross-contamination
   - Test suite runtime: ~50 seconds (Supabase suite <1 second)
-- **🚀 Next**: M2b (Real-time AIOP streaming), M3 (Scale), M4 (DWH Agent)
+- **🚧 In Progress**: MCP v0.5.0 Phase 1 - CLI-First Security Architecture
+  - Eliminating all secret access from MCP process
+  - CLI delegation pattern for all operations requiring credentials
+  - Shared helper modules with spec-aware secret masking (component x-secret declarations)
+  - ComponentRegistry integration for automatic secret field detection
+- **🚀 Next**: MCP Phase 2 (Functional Parity), M2b (Real-time AIOP streaming), M3 (Scale), M4 (DWH Agent)
 
 ## Quick Setup
 
@@ -34,8 +39,12 @@ Osiris MVP is an **LLM-first conversational ETL pipeline generator**. It uses AI
    # Always activate venv first!
    source .venv/bin/activate
 
-   # Initialize Osiris configuration
-   python osiris.py init
+   # Initialize Osiris configuration (automatically sets base_path to current directory)
+   cd testing_env   # Or your desired project directory
+   python ../osiris.py init
+
+   # Creates osiris.yaml with base_path set to absolute path of current directory
+   # Example: base_path: "/Users/padak/github/osiris/testing_env"
    ```
 
 ## Common Commands
@@ -189,6 +198,20 @@ The project has comprehensive documentation organized as follows:
   - `chat.py` - Interactive conversational mode with Rich formatting
   - `main.py` - CLI entry point and command routing with Rich terminal output
   - `logs.py` - Session log management commands (list, show, cleanup, aiop export)
+  - `connections_cmd.py` - Connection management (list, doctor) with spec-aware secret masking
+  - `mcp_cmd.py` - MCP server entrypoint and subcommand router
+  - `helpers/` - Shared helper functions to eliminate code duplication
+    - `connection_helpers.py` - Spec-aware secret masking using component x-secret declarations
+  - `mcp_subcommands/` - MCP CLI subcommands (delegate to CLI bridge)
+    - `connections_cmds.py` - MCP connections tools (reuses spec-aware masking from shared helpers)
+    - `discovery_cmds.py` - MCP discovery tools
+    - `oml_cmds.py` - MCP OML validation tools
+
+- **`osiris/mcp/`** - Model Context Protocol server
+  - `cli_bridge.py` - CLI delegation via subprocess (security boundary)
+  - `tools/` - MCP tool implementations (delegate to CLI subcommands)
+  - `config.py` - MCP server configuration with filesystem contract
+  - `cache.py` - Discovery cache management
 
 ### Key Principles
 
@@ -197,6 +220,8 @@ The project has comprehensive documentation organized as follows:
 3. **Human Validation**: Expert approval required before pipeline execution
 4. **Progressive Discovery**: AI explores database schema intelligently
 5. **Stateful Sessions**: Context preserved across conversation turns
+6. **Security-First**: MCP process has zero access to secrets (CLI-first delegation pattern)
+7. **DRY Code**: Shared helpers eliminate duplication between CLI and MCP commands
 
 ## File Structure
 
@@ -450,6 +475,15 @@ Only run `detect-secrets scan > .secrets.baseline` when:
 4. After merge: Tag release (`git push origin v0.x.y`) and create GitHub Release
 
 ### Current Development Branches
+- **`feat/mcp-phase1-cli-bridge`** - MCP v0.5.0 Phase 1 - CLI-First Security Architecture (active development)
+  - ✅ CLI bridge implementation with subprocess delegation
+  - ✅ 10 CLI subcommands for MCP tools
+  - ✅ Tool refactoring to eliminate secret access from MCP process
+  - ✅ Filesystem contract compliance
+  - ✅ Shared helpers module to prevent code duplication
+  - ✅ Security fix: Spec-aware secret masking using ComponentRegistry (replaces hardcoded lists)
+  - ✅ Component x-secret declarations as single source of truth for secret detection
+  - 📋 Status: Phase 1 complete (989+ tests passing), ready for Phase 2
 - **`debug/codex-test`** - Test infrastructure fixes, E2B parity improvements, DuckDB processor (24 commits, ready for review)
 - **`feat/graphql-extractor-component`** - GraphQL API extractor component (1 commit, ready for merge)
 
@@ -490,3 +524,182 @@ AIOP exports structured, LLM-consumable data after every pipeline run (`osiris l
 - Verify determinism, redaction, and parity for all changes
 
 See `docs/milestones/m2a-aiop.md` and ADR-0027 for complete AIOP specification.
+
+## MCP (Model Context Protocol) Development
+
+Osiris implements MCP v0.5.0 with a **CLI-first security architecture** (ADR-0036) to enable LLM tool integration without exposing secrets to the MCP process.
+
+### Architecture Overview
+
+**Security Model**: The MCP server process **never accesses secrets directly**. All operations requiring credentials delegate to CLI subprocesses via `run_cli_json()`.
+
+```
+┌─────────────────┐
+│  Claude Desktop │
+│   (MCP Client)  │
+└────────┬────────┘
+         │ stdio
+         ▼
+┌─────────────────────┐
+│   MCP Server        │
+│   (osiris/mcp/)     │  ◀── NO SECRET ACCESS
+│                     │
+│  • Tools delegate   │
+│  • Uses CLI bridge  │
+└─────────┬───────────┘
+          │ subprocess
+          ▼
+┌─────────────────────┐
+│  CLI Subcommands    │
+│  (osiris mcp ...)   │  ◀── HAS SECRET ACCESS
+│                     │      (inherits env vars)
+│  • Connections      │
+│  • Discovery        │
+│  • OML validation   │
+└─────────────────────┘
+```
+
+### Critical Development Rules
+
+**1. Code Reuse - NO Duplication**
+- MCP commands **MUST** reuse existing CLI logic via shared helpers
+- **DO NOT** reimplement functionality in MCP subcommands
+- Extract common logic to `osiris/cli/helpers/` modules
+- Use thin adapters to transform output schemas when needed
+
+**Example - CORRECT Pattern (Spec-Aware Masking)**:
+```python
+# osiris/cli/helpers/connection_helpers.py (single source of truth)
+def mask_connection_for_display(connection: dict, family: str | None = None) -> dict:
+    """Spec-aware masking using component x-secret declarations."""
+    # Queries ComponentRegistry for secret fields from spec.yaml
+    secret_fields = _get_secret_fields_for_family(family)  # Uses component specs!
+    # Automatically detects any field declared in x-secret: [/cangaroo]
+
+# osiris/cli/connections_cmd.py (original CLI command)
+from osiris.cli.helpers.connection_helpers import mask_connection_for_display
+# Pass family for spec-aware detection
+result = mask_connection_for_display(config, family=family)
+
+# osiris/cli/mcp_subcommands/connections_cmds.py (MCP command)
+from osiris.cli.helpers.connection_helpers import mask_connection_for_display
+# Reuses SAME helper with spec-aware detection
+result = mask_connection_for_display(config, family=family)
+```
+
+**Example - INCORRECT Pattern** (creates security bugs):
+```python
+# ❌ WRONG: Hardcoded list, misses custom secret fields
+def _sanitize_config(config):
+    sensitive_keys = ["password", "secret", "token"]  # Missing "key"! BUG!
+
+# ❌ WRONG: Duplicate implementation in MCP subcommand
+def mask_connection(config):
+    # Reimplements masking logic instead of using shared helper
+```
+
+**2. Secret Masking Requirements - Spec-Aware Approach**
+- All connection output **MUST** use `mask_connection_for_display(config, family=family)` from shared helpers
+- Secret detection reads `x-secret` declarations from component spec.yaml files (single source of truth)
+- Falls back to `COMMON_SECRET_NAMES` for unknown families
+- Test both `osiris connections` and `osiris mcp connections` produce identical masking
+- Verify no secrets leak in JSON output: `jq '.connections[].config'`
+- **How it works**: Component specs declare secrets via JSON pointers (e.g., `x-secret: [/key, /password]`)
+- **Future-proof**: Adding `x-secret: [/cangaroo]` to a spec automatically masks that field
+- Same pattern as `compiler_v0.py` for consistency across the codebase
+
+**3. MCP Tool Implementation Pattern**
+```python
+# osiris/mcp/tools/connections.py
+from osiris.mcp.cli_bridge import run_cli_json
+
+async def list(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    # Delegate to CLI subprocess
+    result = await run_cli_json(["mcp", "connections", "list"])
+    return result  # CLI already returns MCP-compliant format
+```
+
+**4. CLI Subcommand Pattern**
+```python
+# osiris/cli/mcp_subcommands/connections_cmds.py
+from osiris.cli.helpers.connection_helpers import mask_connection_for_display
+
+def connections_list(json_output: bool = False) -> Dict[str, Any]:
+    connections = load_connections_yaml()
+
+    # Use shared helper for masking
+    masked_config = mask_connection_for_display(config)
+
+    # Format for MCP protocol
+    return {
+        "connections": formatted,  # Flat array with reference field
+        "count": len(formatted),
+        "status": "success"
+    }
+```
+
+### Output Schema Differences
+
+**Original CLI** (`osiris connections list --json`):
+- Nested structure: `{session_id, connections: {family: {alias: config}}}`
+- Includes session tracking
+- Shows environment variable status
+- Human-oriented metadata
+
+**MCP Protocol** (`osiris mcp connections list --json`):
+- Flat array: `{connections: [{family, alias, reference, config}], count, status}`
+- No session_id (stateless)
+- Explicit reference field (`@family.alias`)
+- Machine-consumable format
+
+Both formats **MUST** use identical secret masking via shared helpers.
+
+### Testing MCP Commands
+
+```bash
+# Test both commands produce masked secrets
+osiris connections list --json | jq '.connections.supabase.main.config.key'
+# Expected: "***MASKED***"
+
+osiris mcp connections list --json | jq '.connections[] | select(.family=="supabase") | .config.key'
+# Expected: "***MASKED***"
+
+# Verify no code duplication
+grep -r "def mask_connection_for_display" osiris/cli/
+# Expected: Only in helpers/connection_helpers.py
+
+# Run MCP-specific tests
+pytest tests/mcp/test_no_env_scenario.py -v
+pytest tests/mcp/test_tools_connections.py -v
+```
+
+### Filesystem Contract
+
+**Base Path Auto-Configuration:**
+- `osiris init` automatically sets `filesystem.base_path` to the absolute path of the directory where it's run
+- Example: Running `cd testing_env && osiris init` creates `base_path: "/Users/padak/github/osiris/testing_env"`
+- This ensures predictable artifact isolation without manual configuration
+
+**MCP Logs** use config-driven paths (not hardcoded):
+- Logs: `<base_path>/.osiris/mcp/logs/`
+- Audit: `<base_path>/.osiris/mcp/logs/audit/`
+- Cache: `<base_path>/.osiris/mcp/logs/cache/`
+- Telemetry: `<base_path>/.osiris/mcp/logs/telemetry/`
+
+Configuration precedence: `osiris.yaml` > environment vars > defaults
+
+### Common Pitfalls
+
+❌ **DON'T**: Duplicate secret masking logic
+✅ **DO**: Extract to shared helpers
+
+❌ **DON'T**: Import `resolve_connection()` in MCP tools
+✅ **DO**: Delegate to CLI subcommands via `run_cli_json()`
+
+❌ **DON'T**: Access environment variables in MCP process
+✅ **DO**: Let CLI subprocesses inherit environment
+
+❌ **DON'T**: Reimplement connection loading in MCP
+✅ **DO**: Call existing CLI commands and transform output
+
+See `docs/milestones/mcp-finish-plan.md` for complete implementation plan and `docs/adr/0036-mcp-interface.md` for architecture rationale.
