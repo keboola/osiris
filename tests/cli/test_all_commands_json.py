@@ -37,7 +37,8 @@ class TestAllCommandsJSON:
         assert "Commands" in stdout
         assert "init" in stdout
         assert "validate" in stdout
-        assert "chat" in stdout
+        # chat is deprecated in v0.5.0, replaced by MCP
+        assert "mcp" in stdout
         assert "run" in stdout
         assert "dump-prompts" in stdout
 
@@ -89,21 +90,18 @@ class TestAllCommandsJSON:
         data = json.loads(stdout)
         assert data["command"] == "validate"
 
-    def test_chat_command_help(self, osiris_path):
-        """Test chat command help with and without JSON."""
-        # Test regular help
+    def test_chat_command_deprecated(self, osiris_path):
+        """Test that chat command shows deprecation message."""
+        # Test regular help - should show deprecation
         stdout, stderr, code = self.run_command(osiris_path, "chat", "--help")
-        assert "conversational" in stdout.lower()
-        assert "--json" in stdout
-        assert "--session-id" in stdout
+        assert "deprecated" in stdout.lower()
+        assert "mcp" in stdout.lower()
 
-        # Test JSON help
+        # Test JSON help - should return deprecation info
         stdout, stderr, code = self.run_command(osiris_path, "chat", "--help", "--json")
         data = json.loads(stdout)
-        assert data["command"] == "chat"
-        assert "options" in data
-        assert "--json" in data["options"]
-        assert "--session-id, -s" in data["options"]
+        assert "error" in data or "deprecated" in data.get("error", "").lower()
+        assert "migration" in data or "message" in data
 
     def test_run_command_help(self, osiris_path):
         """Test run command help with and without JSON."""
@@ -155,7 +153,8 @@ class TestAllCommandsJSON:
 
     def test_all_commands_have_json_in_help(self, osiris_path):
         """Verify that all commands list --json in their help output."""
-        commands = ["init", "validate", "chat", "run", "dump-prompts"]
+        # Note: 'chat' is deprecated in v0.5.0, excluded from this test
+        commands = ["init", "validate", "run", "dump-prompts"]
 
         for cmd in commands:
             # Test that regular help mentions --json
@@ -174,7 +173,8 @@ class TestAllCommandsJSON:
 
     def test_json_output_consistency(self, osiris_path):
         """Test that JSON output has consistent structure across commands."""
-        commands = ["init", "validate", "chat", "run", "dump-prompts"]
+        # Note: 'chat' is deprecated in v0.5.0, excluded from this test
+        commands = ["init", "validate", "run", "dump-prompts"]
 
         for cmd in commands:
             stdout, stderr, code = self.run_command(osiris_path, cmd, "--help", "--json")
