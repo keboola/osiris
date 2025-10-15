@@ -54,13 +54,14 @@ def load_config(config_path: str = ".osiris.yaml") -> dict[str, Any]:
     return config or {}
 
 
-def create_sample_config(config_path: str = "osiris.yaml", no_comments: bool = False, to_stdout: bool = False) -> str:
+def create_sample_config(config_path: str = "osiris.yaml", no_comments: bool = False, to_stdout: bool = False, base_path: str = "") -> str:
     """Create a sample configuration file with Filesystem Contract v1.
 
     Args:
         config_path: Path where to create the config file
         no_comments: If True, remove comment lines
         to_stdout: If True, return content instead of writing to file
+        base_path: Base path for the filesystem contract (default: empty string, uses CWD)
 
     Returns:
         Generated config content if to_stdout is True, else empty string
@@ -75,7 +76,7 @@ def create_sample_config(config_path: str = "osiris.yaml", no_comments: bool = F
 filesystem:
   # Absolute root for all Osiris project files (useful for servers/CI).
   # Example: "/srv/osiris/acme" or leave empty to use the repo root.
-  base_path: ""
+  base_path: "__BASE_PATH_PLACEHOLDER__"
 
   # Profiles: explicitly list allowed profile names and the default.
   # When enabled, Osiris injects a "{profile}/" path segment in build/aiop/run_logs.
@@ -104,9 +105,11 @@ filesystem:
   # sessions: conversational/chat session state for Osiris chat/agents
   # cache:    discovery/profiling cache (table schemas, sampled stats)
   # index:    append-only run indexes and counters for fast listing/queries
+  # mcp_logs: MCP server logs (audit, telemetry, cache)
   sessions_dir: ".osiris/sessions"
   cache_dir: ".osiris/cache"
   index_dir: ".osiris/index"
+  mcp_logs_dir: ".osiris/mcp/logs"
 
   # Naming templates (human-friendly yet machine-stable).
   # Available tokens:
@@ -366,6 +369,9 @@ aiop:
       max_chars: 2000      # truncation limit for chat logs
       redact_pii: true     # PII removal before Annex inclusion
 """
+
+    # Replace base_path placeholder with actual value
+    config_content = config_content.replace("__BASE_PATH_PLACEHOLDER__", base_path)
 
     # Process content based on flags
     if no_comments:

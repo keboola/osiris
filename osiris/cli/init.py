@@ -106,8 +106,8 @@ def init_command(args: list, json_output: bool = False) -> None:
                 full_path.mkdir(parents=True, exist_ok=True)
                 created_dirs.append(dir_path)
 
-        # Create osiris.yaml
-        config_content = create_sample_config(to_stdout=True)
+        # Create osiris.yaml with resolved project path as base_path
+        config_content = create_sample_config(to_stdout=True, base_path=str(project_path))
         config_file.write_text(config_content)
 
         # Create .gitignore
