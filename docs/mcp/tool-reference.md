@@ -383,6 +383,8 @@ This ensures that:
 | `guide_start`        | `osiris mcp guide start --json`        | Pure logic; may consult discovery state              |
 | `memory_capture`     | `osiris mcp memory capture --json`     | Consent-gated; writes to configured memory store     |
 | `usecases_list`      | `osiris mcp usecases list --json`      | Future-facing; no secrets                            |
+| `aiop_list`          | `osiris mcp aiop list --json`          | Read-only; lists recent AIOP runs                    |
+| `aiop_show`          | `osiris mcp aiop show --json`          | Read-only; displays specific AIOP run artifacts      |
 
 **Aliases:** Legacy dotted names (e.g. `connections.list`) remain mapped to the underscore primaries.
 

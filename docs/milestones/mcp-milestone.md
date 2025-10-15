@@ -256,6 +256,10 @@ Key aspects of the CLI Bridge:
 
 All MCP runtime outputs follow the Osiris Filesystem Contract defined in `osiris.yaml`.
 
+All MCP logs are configurable in `osiris.yaml` under `filesystem.mcp_logs_dir`
+(default `<base_path>/.osiris/mcp/logs`). This directory contains `server.log`, `audit/`, and `telemetry/`.
+CLI commands respect `--json` (no logs to stdout) and use Rich for human mode.
+
 ### Logging and Audit Paths
 
 MCP log destinations are configuration-driven:
