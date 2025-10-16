@@ -201,6 +201,8 @@ extend-ignore = ["E203", "E501", "SIM102", "PLC1901", "PLR0911", "PLR0912", "PLR
 "osiris/remote/proxy_worker.py" = ["PLR0915", "PLC0415"]  # Complex worker logic
 "osiris/remote/e2b_adapter.py" = ["PLR0915", "PLC0415", "PLW2901"]  # Complex E2B adapter with var reassignment
 "osiris/remote/e2b_integration.py" = ["PLR0915", "PLW2901"]  # Complex integration logic
+# MCP modules with global singletons and complex functions
+"osiris/mcp/**/*.py" = ["PLW0603", "PLR0915"]  # Global singletons for config/telemetry/limits, complex selftest
 "osiris/remote/e2b_transparent_proxy.py" = ["PLR0915", "PLC0415"]  # Complex proxy logic
 "osiris/remote/e2b_pack.py" = ["PLR0915", "PLC0415"]  # Complex packing logic
 "osiris/remote/e2b_full_pack.py" = ["PLR0915", "PLC0415"]  # Complex packing logic

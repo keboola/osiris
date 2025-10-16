@@ -7,9 +7,9 @@ This server provides OML authoring capabilities through MCP tools and resources.
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
-import mcp.types as types
+from mcp import types
 from mcp.server.lowlevel import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
@@ -17,10 +17,10 @@ from mcp.server.stdio import stdio_server
 from osiris.mcp.audit import AuditLogger
 from osiris.mcp.cache import DiscoveryCache
 from osiris.mcp.config import get_config
-from osiris.mcp.errors import OsirisErrorHandler, OsirisError, ErrorFamily
+from osiris.mcp.errors import ErrorFamily, OsirisError, OsirisErrorHandler
 from osiris.mcp.payload_limits import get_limiter
 from osiris.mcp.resolver import ResourceResolver
-from osiris.mcp.telemetry import get_telemetry, init_telemetry
+from osiris.mcp.telemetry import init_telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,6 @@ class OsirisMCPServer:
     - Memory capture
     """
 
-
     def _register_handlers(self):
         """Register all MCP handlers."""
         # Register tool handlers
@@ -53,7 +52,7 @@ class OsirisMCPServer:
         self.server.list_prompts()(self._list_prompts)
         self.server.get_prompt()(self._get_prompt)
 
-    async def _list_tools(self) -> List[types.Tool]:
+    async def _list_tools(self) -> list[types.Tool]:
         """List all available tools with their schemas."""
         tools = [
             # Connection tools
@@ -63,23 +62,17 @@ class OsirisMCPServer:
                 inputSchema={
                     "type": "object",
                     "properties": {},
-                }
+                },
             ),
             types.Tool(
                 name="connections_doctor",
                 description="Diagnose connection issues",
                 inputSchema={
                     "type": "object",
-                    "properties": {
-                        "connection_id": {
-                            "type": "string",
-                            "description": "Connection ID to diagnose"
-                        }
-                    },
-                    "required": ["connection_id"]
-                }
+                    "properties": {"connection_id": {"type": "string", "description": "Connection ID to diagnose"}},
+                    "required": ["connection_id"],
+                },
             ),
-
             # Component tools
             types.Tool(
                 name="components_list",
@@ -87,9 +80,8 @@ class OsirisMCPServer:
                 inputSchema={
                     "type": "object",
                     "properties": {},
-                }
+                },
             ),
-
             # Discovery tool
             types.Tool(
                 name="discovery_request",
@@ -97,29 +89,19 @@ class OsirisMCPServer:
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "connection_id": {
-                            "type": "string",
-                            "description": "Database connection ID"
-                        },
-                        "component_id": {
-                            "type": "string",
-                            "description": "Component ID for discovery"
-                        },
+                        "connection_id": {"type": "string", "description": "Database connection ID"},
+                        "component_id": {"type": "string", "description": "Component ID for discovery"},
                         "samples": {
                             "type": "integer",
                             "description": "Number of sample rows to fetch",
                             "minimum": 0,
-                            "maximum": 100
+                            "maximum": 100,
                         },
-                        "idempotency_key": {
-                            "type": "string",
-                            "description": "Key for deterministic caching"
-                        }
+                        "idempotency_key": {"type": "string", "description": "Key for deterministic caching"},
                     },
-                    "required": ["connection_id", "component_id"]
-                }
+                    "required": ["connection_id", "component_id"],
+                },
             ),
-
             # Use cases tool
             types.Tool(
                 name="usecases_list",
@@ -127,9 +109,8 @@ class OsirisMCPServer:
                 inputSchema={
                     "type": "object",
                     "properties": {},
-                }
+                },
             ),
-
             # OML tools
             types.Tool(
                 name="oml_schema_get",
@@ -137,7 +118,7 @@ class OsirisMCPServer:
                 inputSchema={
                     "type": "object",
                     "properties": {},
-                }
+                },
             ),
             types.Tool(
                 name="oml_validate",
@@ -145,18 +126,11 @@ class OsirisMCPServer:
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "oml_content": {
-                            "type": "string",
-                            "description": "OML YAML content to validate"
-                        },
-                        "strict": {
-                            "type": "boolean",
-                            "description": "Enable strict validation",
-                            "default": True
-                        }
+                        "oml_content": {"type": "string", "description": "OML YAML content to validate"},
+                        "strict": {"type": "boolean", "description": "Enable strict validation", "default": True},
                     },
-                    "required": ["oml_content"]
-                }
+                    "required": ["oml_content"],
+                },
             ),
             types.Tool(
                 name="oml_save",
@@ -164,23 +138,13 @@ class OsirisMCPServer:
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "oml_content": {
-                            "type": "string",
-                            "description": "OML YAML content to save"
-                        },
-                        "session_id": {
-                            "type": "string",
-                            "description": "Session ID for the draft"
-                        },
-                        "filename": {
-                            "type": "string",
-                            "description": "Optional filename for the draft"
-                        }
+                        "oml_content": {"type": "string", "description": "OML YAML content to save"},
+                        "session_id": {"type": "string", "description": "Session ID for the draft"},
+                        "filename": {"type": "string", "description": "Optional filename for the draft"},
                     },
-                    "required": ["oml_content", "session_id"]
-                }
+                    "required": ["oml_content", "session_id"],
+                },
             ),
-
             # Guide tool
             types.Tool(
                 name="guide_start",
@@ -188,32 +152,19 @@ class OsirisMCPServer:
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "intent": {
-                            "type": "string",
-                            "description": "User's intent or goal"
-                        },
+                        "intent": {"type": "string", "description": "User's intent or goal"},
                         "known_connections": {
                             "type": "array",
                             "description": "List of known connection IDs",
-                            "items": {"type": "string"}
+                            "items": {"type": "string"},
                         },
-                        "has_discovery": {
-                            "type": "boolean",
-                            "description": "Whether discovery has been performed"
-                        },
-                        "has_previous_oml": {
-                            "type": "boolean",
-                            "description": "Whether there's a previous OML draft"
-                        },
-                        "has_error_report": {
-                            "type": "boolean",
-                            "description": "Whether there's an error report"
-                        }
+                        "has_discovery": {"type": "boolean", "description": "Whether discovery has been performed"},
+                        "has_previous_oml": {"type": "boolean", "description": "Whether there's a previous OML draft"},
+                        "has_error_report": {"type": "boolean", "description": "Whether there's an error report"},
                     },
-                    "required": ["intent"]
-                }
+                    "required": ["intent"],
+                },
             ),
-
             # Memory tool
             types.Tool(
                 name="memory_capture",
@@ -221,68 +172,34 @@ class OsirisMCPServer:
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "consent": {
-                            "type": "boolean",
-                            "description": "User consent for memory capture"
-                        },
-                        "retention_days": {
-                            "type": "integer",
-                            "description": "Days to retain memory",
-                            "default": 365
-                        },
-                        "session_id": {
-                            "type": "string",
-                            "description": "Session ID"
-                        },
+                        "consent": {"type": "boolean", "description": "User consent for memory capture"},
+                        "retention_days": {"type": "integer", "description": "Days to retain memory", "default": 365},
+                        "session_id": {"type": "string", "description": "Session ID"},
                         "actor_trace": {
                             "type": "array",
                             "description": "Trace of actor actions",
-                            "items": {"type": "object"}
+                            "items": {"type": "object"},
                         },
-                        "intent": {
-                            "type": "string",
-                            "description": "Captured intent"
-                        },
-                        "decisions": {
-                            "type": "array",
-                            "description": "Decision points",
-                            "items": {"type": "object"}
-                        },
-                        "artifacts": {
-                            "type": "array",
-                            "description": "Artifact URIs",
-                            "items": {"type": "string"}
-                        },
-                        "oml_uri": {
-                            "type": ["string", "null"],
-                            "description": "OML draft URI if available"
-                        },
-                        "error_report": {
-                            "type": ["object", "null"],
-                            "description": "Error report if any"
-                        },
-                        "notes": {
-                            "type": "string",
-                            "description": "Additional notes"
-                        }
+                        "intent": {"type": "string", "description": "Captured intent"},
+                        "decisions": {"type": "array", "description": "Decision points", "items": {"type": "object"}},
+                        "artifacts": {"type": "array", "description": "Artifact URIs", "items": {"type": "string"}},
+                        "oml_uri": {"type": ["string", "null"], "description": "OML draft URI if available"},
+                        "error_report": {"type": ["object", "null"], "description": "Error report if any"},
+                        "notes": {"type": "string", "description": "Additional notes"},
                     },
-                    "required": ["consent", "session_id", "intent"]
-                }
+                    "required": ["consent", "session_id", "intent"],
+                },
             ),
         ]
 
         # Note: Aliases are handled in _call_tool, not registered as separate tools
         return tools
 
-    async def _call_tool(
-        self,
-        name: str,
-        arguments: Dict[str, Any]
-    ) -> List[types.TextContent]:
+    async def _call_tool(self, name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
         """Execute a tool call."""
         try:
             # Log the tool call
-            await self.audit.log_tool_call(name, arguments)
+            await self.audit.log_tool_call(tool_name=name, arguments=arguments)
 
             # Resolve aliases
             actual_name = self.tool_aliases.get(name, name)
@@ -313,7 +230,7 @@ class OsirisMCPServer:
                     ErrorFamily.SEMANTIC,
                     f"Unknown tool: {name}",
                     path=["tool", "name"],
-                    suggest="Use guide_start to see available tools"
+                    suggest="Use guide_start to see available tools",
                 )
 
             # Convert result to JSON
@@ -324,15 +241,12 @@ class OsirisMCPServer:
             try:
                 limiter.check_response(result_json)
             except Exception as e:
-                if hasattr(e, 'family'):
+                if hasattr(e, "family"):
                     raise
                 else:
                     raise OsirisError(
-                        ErrorFamily.POLICY,
-                        str(e),
-                        path=["payload"],
-                        suggest="Request smaller data or use pagination"
-                    )
+                        ErrorFamily.POLICY, str(e), path=["payload"], suggest="Request smaller data or use pagination"
+                    ) from e
 
             return [types.TextContent(type="text", text=result_json)]
 
@@ -344,7 +258,7 @@ class OsirisMCPServer:
             error_response = self.error_handler.format_unexpected_error(str(e))
             return [types.TextContent(type="text", text=json.dumps(error_response))]
 
-    async def _list_resources(self) -> List[types.Resource]:
+    async def _list_resources(self) -> list[types.Resource]:
         """List available resources."""
         return await self.resolver.list_resources()
 
@@ -352,24 +266,16 @@ class OsirisMCPServer:
         """Read a resource by URI."""
         return await self.resolver.read_resource(uri)
 
-    async def _list_prompts(self) -> List[types.Prompt]:
+    async def _list_prompts(self) -> list[types.Prompt]:
         """List available prompts."""
         # For MVP, we may not need prompts
         return []
 
-    async def _get_prompt(self, name: str, arguments: Dict[str, Any]) -> types.GetPromptResult:
+    async def _get_prompt(self, name: str, arguments: dict[str, Any]) -> types.GetPromptResult:
         """Get a prompt by name."""
-        raise OsirisError(
-            ErrorFamily.SEMANTIC,
-            f"Prompt not found: {name}",
-            path=["prompt", "name"]
-        )
+        raise OsirisError(ErrorFamily.SEMANTIC, f"Prompt not found: {name}", path=["prompt", "name"])
 
-    def __init__(
-        self,
-        server_name: str = None,
-        debug: bool = False
-    ):
+    def __init__(self, server_name: str = None, debug: bool = False):
         """Initialize the MCP server."""
         # Load configuration
         self.config = get_config()
@@ -379,21 +285,23 @@ class OsirisMCPServer:
         # Initialize low-level server
         self.server = Server(self.server_name)
 
-        # Initialize components
-        self.audit = AuditLogger()
-        self.cache = DiscoveryCache()
-        self.resolver = ResourceResolver()
+        # Initialize components with config-driven paths (filesystem contract compliance)
+        self.audit = AuditLogger(log_dir=self.config.audit_dir)
+        self.cache = DiscoveryCache(
+            cache_dir=self.config.cache_dir, default_ttl_hours=self.config.discovery_cache_ttl_hours
+        )
+        self.resolver = ResourceResolver(config=self.config)  # Uses config paths for runtime resources
         self.error_handler = OsirisErrorHandler()
 
         # Initialize tool handlers
-        from osiris.mcp.tools import (
-            ConnectionsTools,
+        from osiris.mcp.tools import (  # noqa: PLC0415  # Lazy import for performance
             ComponentsTools,
+            ConnectionsTools,
             DiscoveryTools,
-            OMLTools,
             GuideTools,
             MemoryTools,
-            UsecasesTools
+            OMLTools,
+            UsecasesTools,
         )
 
         self.connections_tools = ConnectionsTools()
@@ -401,7 +309,7 @@ class OsirisMCPServer:
         self.discovery_tools = DiscoveryTools(self.cache)
         self.oml_tools = OMLTools(self.resolver)
         self.guide_tools = GuideTools()
-        self.memory_tools = MemoryTools()
+        self.memory_tools = MemoryTools(memory_dir=self.config.memory_dir)
         self.usecases_tools = UsecasesTools()
 
         # Register handlers
@@ -435,43 +343,43 @@ class OsirisMCPServer:
         }
 
     # Tool handler implementations using actual tool modules
-    async def _handle_connections_list(self, args: Dict[str, Any]) -> dict:
+    async def _handle_connections_list(self, args: dict[str, Any]) -> dict:
         """Handle connections.list tool."""
         return await self.connections_tools.list(args)
 
-    async def _handle_connections_doctor(self, args: Dict[str, Any]) -> dict:
+    async def _handle_connections_doctor(self, args: dict[str, Any]) -> dict:
         """Handle connections.doctor tool."""
         return await self.connections_tools.doctor(args)
 
-    async def _handle_components_list(self, args: Dict[str, Any]) -> dict:
+    async def _handle_components_list(self, args: dict[str, Any]) -> dict:
         """Handle components.list tool."""
         return await self.components_tools.list(args)
 
-    async def _handle_discovery_request(self, args: Dict[str, Any]) -> dict:
+    async def _handle_discovery_request(self, args: dict[str, Any]) -> dict:
         """Handle discovery.request tool."""
         return await self.discovery_tools.request(args)
 
-    async def _handle_usecases_list(self, args: Dict[str, Any]) -> dict:
+    async def _handle_usecases_list(self, args: dict[str, Any]) -> dict:
         """Handle usecases.list tool."""
         return await self.usecases_tools.list(args)
 
-    async def _handle_oml_schema_get(self, args: Dict[str, Any]) -> dict:
+    async def _handle_oml_schema_get(self, args: dict[str, Any]) -> dict:
         """Handle oml.schema.get tool."""
         return await self.oml_tools.schema_get(args)
 
-    async def _handle_validate_oml(self, args: Dict[str, Any]) -> dict:
+    async def _handle_validate_oml(self, args: dict[str, Any]) -> dict:
         """Handle validate_oml tool."""
         return await self.oml_tools.validate(args)
 
-    async def _handle_save_oml(self, args: Dict[str, Any]) -> dict:
+    async def _handle_save_oml(self, args: dict[str, Any]) -> dict:
         """Handle save_oml tool."""
         return await self.oml_tools.save(args)
 
-    async def _handle_guide_start(self, args: Dict[str, Any]) -> dict:
+    async def _handle_guide_start(self, args: dict[str, Any]) -> dict:
         """Handle guide.start tool."""
         return await self.guide_tools.start(args)
 
-    async def _handle_memory_capture(self, args: Dict[str, Any]) -> dict:
+    async def _handle_memory_capture(self, args: dict[str, Any]) -> dict:
         """Handle memory.capture tool."""
         return await self.memory_tools.capture(args)
 
@@ -492,10 +400,9 @@ class OsirisMCPServer:
                         server_name=self.server_name,
                         server_version=self.config.SERVER_VERSION,
                         capabilities=self.server.get_capabilities(
-                            notification_options=NotificationOptions(),
-                            experimental_capabilities={}
-                        )
-                    )
+                            notification_options=NotificationOptions(), experimental_capabilities={}
+                        ),
+                    ),
                 )
         finally:
             if telemetry:
@@ -504,12 +411,12 @@ class OsirisMCPServer:
 
 def main():
     """Entry point for the MCP server."""
-    import sys
+    import sys  # noqa: PLC0415  # Lazy import for performance
 
     # Set up logging
     logging.basicConfig(
         level=logging.INFO if "--debug" not in sys.argv else logging.DEBUG,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
     # Create and run server

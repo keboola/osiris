@@ -2,12 +2,12 @@
 Test MCP connections tools.
 """
 
-import json
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-from osiris.mcp.tools.connections import ConnectionsTools
+import pytest
+
 from osiris.mcp.errors import OsirisError
+from osiris.mcp.tools.connections import ConnectionsTools
 
 
 class TestConnectionsTools:
@@ -20,28 +20,35 @@ class TestConnectionsTools:
 
     @pytest.mark.asyncio
     async def test_connections_list(self, connections_tools):
-        """Test listing connections."""
-        # Mock load_connections_yaml
-        mock_connections = {
-            "mysql": {
-                "default": {
-                    "host": "localhost",
-                    "port": 3306,
-                    "database": "test",
-                    "username": "user",
-                    "password": "${MYSQL_PASSWORD}"
-                }
-            },
-            "supabase": {
-                "prod": {
-                    "url": "${SUPABASE_URL}",
-                    "key": "${SUPABASE_KEY}"
-                }
-            }
+        """Test listing connections via CLI delegation."""
+        # Mock CLI delegation response
+        mock_result = {
+            "connections": [
+                {
+                    "family": "mysql",
+                    "alias": "default",
+                    "reference": "@mysql.default",
+                    "config": {
+                        "host": "localhost",
+                        "port": 3306,
+                        "database": "test",
+                        "username": "user",
+                        "password": "${MYSQL_PASSWORD}",
+                    },
+                },
+                {
+                    "family": "supabase",
+                    "alias": "prod",
+                    "reference": "@supabase.prod",
+                    "config": {"url": "${SUPABASE_URL}", "key": "${SUPABASE_KEY}"},
+                },
+            ],
+            "count": 2,
+            "status": "success",
+            "_meta": {"correlation_id": "test-123", "duration_ms": 10},
         }
 
-        with patch('osiris.core.config.load_connections_yaml',
-                  return_value=mock_connections):
+        with patch("osiris.mcp.tools.connections.run_cli_json", return_value=mock_result):
             result = await connections_tools.list({})
 
             assert result["status"] == "success"
@@ -63,65 +70,59 @@ class TestConnectionsTools:
 
     @pytest.mark.asyncio
     async def test_connections_doctor_success(self, connections_tools):
-        """Test successful connection diagnosis."""
-        mock_connections = {
-            "mysql": {
-                "default": {
-                    "host": "localhost",
-                    "database": "test",
-                    "username": "user",
-                    "password": "secret"  # pragma: allowlist secret
-                }
-            }
+        """Test successful connection diagnosis via CLI delegation."""
+        mock_result = {
+            "connection_id": "@mysql.default",
+            "family": "mysql",
+            "alias": "default",
+            "health": "healthy",
+            "diagnostics": [
+                {"check": "config_exists", "status": "passed", "message": "Connection configuration found"},
+                {"check": "resolution", "status": "passed", "message": "Connection resolved successfully"},
+            ],
+            "status": "success",
+            "_meta": {"correlation_id": "test-456", "duration_ms": 15},
         }
 
-        with patch('osiris.core.config.load_connections_yaml',
-                  return_value=mock_connections):
-            with patch('osiris.mcp.tools.connections.parse_connection_ref',
-                      return_value=("mysql", "default")):
-                with patch('osiris.mcp.tools.connections.resolve_connection',
-                          return_value={
-                              "host": "localhost",
-                              "database": "test",
-                              "username": "user",
-                              "password": "secret"  # pragma: allowlist secret
-                          }):
-                    result = await connections_tools.doctor({
-                        "connection_id": "@mysql.default"
-                    })
+        with patch("osiris.mcp.tools.connections.run_cli_json", return_value=mock_result):
+            result = await connections_tools.doctor({"connection_id": "@mysql.default"})
 
-                    assert result["status"] == "success"
-                    assert result["health"] == "healthy"
-                    assert result["family"] == "mysql"
-                    assert result["alias"] == "default"
-                    assert len(result["diagnostics"]) > 0
+            assert result["status"] == "success"
+            assert result["health"] == "healthy"
+            assert result["family"] == "mysql"
+            assert result["alias"] == "default"
+            assert len(result["diagnostics"]) > 0
 
-                    # Check for passed diagnostics
-                    config_check = next(
-                        d for d in result["diagnostics"]
-                        if d["check"] == "config_exists"
-                    )
-                    assert config_check["status"] == "passed"
+            # Check for passed diagnostics
+            config_check = next(d for d in result["diagnostics"] if d["check"] == "config_exists")
+            assert config_check["status"] == "passed"
 
     @pytest.mark.asyncio
     async def test_connections_doctor_missing_connection(self, connections_tools):
-        """Test diagnosis of missing connection."""
-        mock_connections = {"mysql": {}}
+        """Test diagnosis of missing connection via CLI delegation."""
+        mock_result = {
+            "connection_id": "@mysql.nonexistent",
+            "family": "mysql",
+            "alias": "nonexistent",
+            "health": "unhealthy",
+            "diagnostics": [
+                {
+                    "check": "alias_exists",
+                    "status": "failed",
+                    "message": "Connection alias 'nonexistent' not found in family 'mysql'",
+                    "severity": "error",
+                }
+            ],
+            "status": "success",
+            "_meta": {"correlation_id": "test-789", "duration_ms": 5},
+        }
 
-        with patch('osiris.core.config.load_connections_yaml',
-                  return_value=mock_connections):
-            with patch('osiris.mcp.tools.connections.parse_connection_ref',
-                      return_value=("mysql", "nonexistent")):
-                result = await connections_tools.doctor({
-                    "connection_id": "@mysql.nonexistent"
-                })
+        with patch("osiris.mcp.tools.connections.run_cli_json", return_value=mock_result):
+            result = await connections_tools.doctor({"connection_id": "@mysql.nonexistent"})
 
-                assert result["status"] == "success"
-                assert result["health"] == "unhealthy"
-                assert any(
-                    d["check"] == "alias_exists" and d["status"] == "failed"
-                    for d in result["diagnostics"]
-                )
+            assert result["status"] == "success"
+            assert result["health"] == "unhealthy"
+            assert any(d["check"] == "alias_exists" and d["status"] == "failed" for d in result["diagnostics"])
 
     @pytest.mark.asyncio
     async def test_connections_doctor_no_connection_id(self, connections_tools):
@@ -132,36 +133,5 @@ class TestConnectionsTools:
         assert exc_info.value.family.value == "SCHEMA"
         assert "connection_id is required" in str(exc_info.value)
 
-    def test_sanitize_config(self, connections_tools):
-        """Test configuration sanitization."""
-        config = {
-            "host": "localhost",
-            "username": "user",
-            "password": "secret123",  # pragma: allowlist secret
-            "api_key": "key123",  # pragma: allowlist secret
-            "database": "test",
-            "nested": {
-                "secret": "nested_secret",  # pragma: allowlist secret
-                "public": "value"
-            }
-        }
-
-        sanitized = connections_tools._sanitize_config(config)
-
-        assert sanitized["host"] == "localhost"
-        assert sanitized["username"] == "user"
-        assert sanitized["password"] == "***"
-        assert sanitized["api_key"] == "***"
-        assert sanitized["database"] == "test"
-        assert sanitized["nested"]["secret"] == "***"
-        assert sanitized["nested"]["public"] == "value"
-
-    def test_get_required_fields(self, connections_tools):
-        """Test getting required fields for connection families."""
-        assert connections_tools._get_required_fields("mysql") == [
-            "host", "database", "username", "password"
-        ]
-        assert connections_tools._get_required_fields("supabase") == [
-            "url", "key"
-        ]
-        assert connections_tools._get_required_fields("unknown") == []
+    # Note: _sanitize_config and _get_required_fields are now in CLI subcommands
+    # (connections_cmds.py), not in the MCP tool. The MCP tool delegates to CLI.

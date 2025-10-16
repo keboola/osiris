@@ -63,60 +63,69 @@ class GraphQLExtractorDriver:
                 )
 
             # Execute query (with pagination if enabled)
-            all_data = []
-            requests_made = 0
-            pages_fetched = 0
+            # Nested try block to ensure session cleanup even on exceptions
+            try:
+                all_data = []
+                requests_made = 0
+                pages_fetched = 0
 
-            if config.get("pagination_enabled", False):
-                all_data, requests_made, pages_fetched = self._execute_paginated_query(
-                    step_id, endpoint, query, config, ctx
-                )
-            else:
-                result_data, requests_made = self._execute_single_query(step_id, endpoint, query, config, ctx)
-                all_data = [result_data] if result_data else []
-                pages_fetched = 1 if result_data else 0
+                if config.get("pagination_enabled", False):
+                    all_data, requests_made, pages_fetched = self._execute_paginated_query(
+                        step_id, endpoint, query, config, ctx
+                    )
+                else:
+                    result_data, requests_made = self._execute_single_query(step_id, endpoint, query, config, ctx)
+                    all_data = [result_data] if result_data else []
+                    pages_fetched = 1 if result_data else 0
 
-            # Combine all data
-            if not all_data:
-                df = pd.DataFrame()
-            else:
-                # Flatten and combine data from all pages
-                combined_data = []
-                for page_data in all_data:
-                    if isinstance(page_data, list):
-                        combined_data.extend(page_data)
-                    else:
-                        combined_data.append(page_data)
+                # Combine all data
+                if not all_data:
+                    df = pd.DataFrame()
+                else:
+                    # Flatten and combine data from all pages
+                    combined_data = []
+                    for page_data in all_data:
+                        if isinstance(page_data, list):
+                            combined_data.extend(page_data)
+                        else:
+                            combined_data.append(page_data)
 
-                df = (
-                    pd.json_normalize(combined_data)
-                    if config.get("flatten_result", True)
-                    else pd.DataFrame(combined_data)
-                )
+                    df = (
+                        pd.json_normalize(combined_data)
+                        if config.get("flatten_result", True)
+                        else pd.DataFrame(combined_data)
+                    )
 
-            # Log metrics
-            rows_read = len(df)
-            logger.info(
-                f"Step {step_id}: Extracted {rows_read} rows from GraphQL API ({pages_fetched} pages, {requests_made} requests)"
-            )
-
-            if ctx and hasattr(ctx, "log_metric"):
-                ctx.log_metric("rows_read", rows_read)
-                ctx.log_metric("requests_made", requests_made)
-                ctx.log_metric("pages_fetched", pages_fetched)
-
-            if ctx and hasattr(ctx, "log_event"):
-                ctx.log_event(
-                    "extraction.complete", {"rows": rows_read, "pages": pages_fetched, "requests": requests_made}
+                # Log metrics
+                rows_read = len(df)
+                logger.info(
+                    f"Step {step_id}: Extracted {rows_read} rows from GraphQL API ({pages_fetched} pages, {requests_made} requests)"
                 )
 
-            return {"df": df}
+                if ctx and hasattr(ctx, "log_metric"):
+                    ctx.log_metric("rows_read", rows_read)
+                    ctx.log_metric("requests_made", requests_made)
+                    ctx.log_metric("pages_fetched", pages_fetched)
+
+                if ctx and hasattr(ctx, "log_event"):
+                    ctx.log_event(
+                        "extraction.complete", {"rows": rows_read, "pages": pages_fetched, "requests": requests_made}
+                    )
+
+                return {"df": df}
+
+            finally:
+                # ALWAYS close session, even on exception
+                if self.session:
+                    self.session.close()
+                    self.session = None
 
         except requests.exceptions.RequestException as e:
             error_msg = f"GraphQL API request failed: {str(e)}"
             logger.error(f"Step {step_id}: {error_msg}")
             if ctx and hasattr(ctx, "log_event"):
                 ctx.log_event("extraction.error", {"error": error_msg})
+            # Session already closed in inner finally block
             raise RuntimeError(error_msg) from e
 
         except Exception as e:
@@ -124,11 +133,8 @@ class GraphQLExtractorDriver:
             logger.error(f"Step {step_id}: {error_msg}")
             if ctx and hasattr(ctx, "log_event"):
                 ctx.log_event("extraction.error", {"error": error_msg})
+            # Session already closed in inner finally block
             raise RuntimeError(error_msg) from e
-
-        finally:
-            if self.session:
-                self.session.close()
 
     def _create_session(self, config: dict) -> requests.Session:
         """Create configured requests session."""

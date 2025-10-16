@@ -2,6 +2,9 @@
 testing_env/**/**
 testing_env/.gitignore
 testing_env/.env.example
+run_logs/
+logs/
+
 
 # ChatGPT mempack
 mempack.txt

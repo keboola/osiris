@@ -7,6 +7,7 @@ prototype infrastructure.
 
 import contextlib
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -28,6 +29,8 @@ from ..core.execution_adapter import (
 from ..core.session_logging import log_event, log_metric
 from .e2b_client import E2BClient
 from .e2b_full_pack import build_full_payload, get_required_env_vars
+
+logger = logging.getLogger(__name__)
 
 
 class E2BAdapter(ExecutionAdapter):
@@ -517,8 +520,8 @@ class E2BAdapter(ExecutionAdapter):
                                 warning_lines = self._extract_warning_lines(stderr_content)
                                 for line in warning_lines[-10:]:  # Last 10 warning lines
                                     print(f"   {line}")
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.warning(f"Failed to read stderr file for warnings: {e}")
                     elif not success or errors_count > 0:
                         # Show errors on failure
                         if final_status.stderr:
@@ -572,8 +575,9 @@ class E2BAdapter(ExecutionAdapter):
                             error_msg += "\nLast 30 lines of stdout:\n"
                             for line in stdout_lines[-30:]:
                                 error_msg += f"  {line}\n"
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Failed to read stdout.txt for error reporting: {e}")
+                        error_msg += f"\n(Could not read stdout.txt: {e})\n"
 
                 # Include last 30 lines of stderr if available
                 stderr_file = remote_logs_path / "stderr.txt"
@@ -585,8 +589,9 @@ class E2BAdapter(ExecutionAdapter):
                             error_msg += "\nLast 30 lines of stderr:\n"
                             for line in stderr_lines[-30:]:
                                 error_msg += f"  {line}\n"
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Failed to read stderr.txt for error reporting: {e}")
+                        error_msg += f"\n(Could not read stderr.txt: {e})\n"
                 elif final_status.stderr:
                     # Fallback to process stderr if file not available
                     stderr_lines = final_status.stderr.strip().split("\n")
@@ -667,8 +672,8 @@ class E2BAdapter(ExecutionAdapter):
                         msg_parts.append("\nLast stderr lines:")
                         for line in lines[-10:]:
                             msg_parts.append(f"  {line.rstrip()}")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to read remote stderr for error formatting: {e}")
 
         return "\n".join(msg_parts)
 
@@ -703,8 +708,15 @@ class E2BAdapter(ExecutionAdapter):
                 if content:
                     (remote_logs_dir / file_name).write_bytes(content)
                     downloaded_count += 1
-            except Exception:
-                pass
+            except Exception as e:
+                # Don't silently pass - log the failure!
+                logger.warning(f"Failed to download E2B artifact {file_name}: {e}")
+                log_event(
+                    "e2b_artifact_download_failed",
+                    file_name=file_name,
+                    error=str(e),
+                    remote_path=remote_path,
+                )
 
         # Download entire session directory recursively
         session_remote_path = f"{remote_base_path}/session"
@@ -766,20 +778,24 @@ class E2BAdapter(ExecutionAdapter):
                                     if sub_items is not None:
                                         # It's a directory, recurse
                                         count += download_directory_recursive(remote_item_path, local_item_path)
-                                except Exception:
-                                    pass
-                        except Exception:
+                                except Exception as e:
+                                    # Log but continue - item might not exist or be inaccessible
+                                    logger.debug(f"Unable to check if {item_name} is directory: {e}")
+                        except Exception as e:
                             # If download fails, try as directory
+                            logger.debug(f"Download failed for {item_name}, attempting directory listing: {e}")
                             try:
                                 sub_items = self.client.transport.list_files(self.sandbox_handle, remote_item_path)
                                 if sub_items is not None:
                                     # It's a directory, recurse
                                     count += download_directory_recursive(remote_item_path, local_item_path)
-                            except Exception:
-                                # Skip files that can't be downloaded (permissions, corrupted, etc)
+                            except Exception as e:
+                                # Log but don't fail - best effort artifact collection
+                                logger.warning(f"Failed to download directory item {item_name}: {e}")
                                 continue  # nosec B112 - best effort artifact collection
-            except Exception:
-                pass
+            except Exception as e:
+                # Log directory listing failures
+                logger.warning(f"Failed to list directory {remote_dir}: {e}")
 
             return count
 
@@ -923,9 +939,9 @@ class E2BAdapter(ExecutionAdapter):
             with open(file_path, "w") as f:
                 f.writelines(lines)
 
-        except Exception:
+        except Exception as e:
             # Best effort - don't fail collection if tagging fails
-            pass  # nosec B110
+            logger.debug(f"Failed to tag JSONL file {file_path}: {e}")  # nosec B110
 
     def _extract_connections_from_steps(
         self, plan: dict[str, Any], cfg_index: dict[str, Any]  # noqa: ARG002
@@ -992,8 +1008,8 @@ class E2BAdapter(ExecutionAdapter):
                 try:
                     with open(cfg_file_path) as f:
                         return json.load(f)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to load cfg file {cfg_file_path}: {e}")
 
         # Fallback: try current working directory
         cfg_file_path = Path(cfg_path)
@@ -1001,8 +1017,8 @@ class E2BAdapter(ExecutionAdapter):
             try:
                 with open(cfg_file_path) as f:
                     return json.load(f)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to load cfg file {cfg_file_path}: {e}")
 
         # No fallback - source_manifest_path must be provided
         return None
@@ -1044,7 +1060,8 @@ class E2BAdapter(ExecutionAdapter):
 
             return connection_config if connection_config else None
 
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to load connection descriptor for {family}.{alias}: {e}")
             return None
 
     def _parse_and_report_execution_phases(self, stdout: str) -> None:

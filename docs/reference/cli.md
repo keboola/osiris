@@ -430,8 +430,71 @@ Key environment variables used by Osiris:
 
 ## Output Locations
 
-- **Compiled manifests**: `logs/<session_id>/compile_<timestamp>/`
-- **Execution logs**: `logs/<session_id>/events.jsonl`, `metrics.jsonl`
-- **Artifacts**: `logs/<session_id>/artifacts/<step_id>/`
-- **HTML reports**: `logs/index.html` and session-specific reports
-- **Generated pipelines**: `output/` directory
+All output locations respect the filesystem contract configured in `osiris.yaml`. Default paths are shown below.
+
+### CLI Session Logs
+
+CLI commands (like `osiris connections list`, `osiris connections doctor`) create session logs under:
+
+```
+<base_path>/<run_logs_dir>/<session_id>/
+```
+
+Default: `run_logs/<session_id>/` (relative to current directory)
+
+**Configuration** (in `osiris.yaml`):
+```yaml
+filesystem:
+  base_path: ""              # Base path for all files (default: current directory)
+  run_logs_dir: "run_logs"   # Directory for CLI session logs
+```
+
+**Structure**:
+```
+run_logs/
+└── connections_1234567890/
+    ├── osiris.log       # Main session log
+    ├── events.jsonl     # Structured events
+    └── metrics.jsonl    # Performance metrics
+```
+
+### Pipeline Execution Logs
+
+Pipeline runs (via `osiris run`) use the full filesystem contract with profile support:
+
+```
+<base_path>/<run_logs_dir>/[<profile>/]<pipeline_slug>/<run_ts>_<run_id>-<manifest_short>/
+```
+
+**Structure**:
+```
+run_logs/
+└── dev/                    # Profile (if profiles.enabled)
+    └── orders_etl/         # Pipeline slug
+        └── 20250116T120000Z_001-abc1234/
+            ├── osiris.log
+            ├── debug.log
+            ├── events.jsonl
+            ├── metrics.jsonl
+            └── artifacts/
+```
+
+### Build Artifacts
+
+Compiled pipelines and manifests:
+
+```
+<base_path>/<build_dir>/[<profile>/]pipelines/<pipeline_slug>/<manifest_short>-<manifest_hash>/
+```
+
+Default: `build/pipelines/<pipeline_slug>/...`
+
+### Other Outputs
+
+- **Generated pipelines**: `<base_path>/<outputs.directory>/` (default: `output/`)
+- **AIOP exports**: `<base_path>/<aiop_dir>/...` (default: `aiop/`)
+- **HTML reports**: Generated in session directories
+- **Session cache**: `<base_path>/.osiris/sessions/`
+- **Discovery cache**: `<base_path>/.osiris/cache/`
+
+See [Filesystem Contract](../samples/osiris.filesystem.yaml) for full configuration options.

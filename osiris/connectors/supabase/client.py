@@ -57,14 +57,16 @@ class SupabaseClient:
         if not self.url or not self.key:
             raise ValueError("Supabase URL and key are required (config or env vars)")
 
-    def connect(self) -> Client:
+    async def connect(self) -> Client:
         """Connect to Supabase and return client."""
         if self._initialized and self.client:
             return self.client
 
         try:
-            # Create Supabase client
-            self.client = create_client(self.url, self.key)
+            # Create Supabase client in thread pool (sync SDK operation)
+            import asyncio  # noqa: PLC0415  # Lazy import for async operations
+
+            self.client = await asyncio.to_thread(create_client, self.url, self.key)
             self._initialized = True
             logger.info("Connected to Supabase project")
             return self.client
@@ -73,19 +75,19 @@ class SupabaseClient:
             logger.error(f"Failed to connect to Supabase: {e}")
             raise
 
-    def disconnect(self) -> None:
+    async def disconnect(self) -> None:
         """Close Supabase connection."""
         # Supabase client doesn't need explicit disconnect
         self.client = None
         self._initialized = False
         logger.debug("Supabase connection closed")
 
-    def __enter__(self) -> Client:
-        """Context manager entry."""
-        return self.connect()
+    async def __aenter__(self) -> Client:
+        """Async context manager entry."""
+        return await self.connect()
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Context manager exit."""
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Async context manager exit."""
         # Supabase client doesn't need explicit cleanup
         pass
 

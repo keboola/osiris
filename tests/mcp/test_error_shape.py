@@ -3,10 +3,18 @@ Test MCP error shape and taxonomy.
 """
 
 import pytest
+
 from osiris.mcp.errors import (
-    OsirisError, SchemaError, SemanticError, DiscoveryError,
-    LintError, PolicyError, ErrorFamily, OsirisErrorHandler,
-    map_cli_error_to_mcp, _redact_secrets_from_message
+    DiscoveryError,
+    ErrorFamily,
+    LintError,
+    OsirisError,
+    OsirisErrorHandler,
+    PolicyError,
+    SchemaError,
+    SemanticError,
+    _redact_secrets_from_message,
+    map_cli_error_to_mcp,
 )
 
 
@@ -16,10 +24,7 @@ class TestErrorShape:
     def test_error_shape_basic(self):
         """Test basic error shape has required fields."""
         error = OsirisError(
-            ErrorFamily.SCHEMA,
-            "Test error message",
-            path=["field", "subfield"],
-            suggest="Try fixing this"
+            ErrorFamily.SCHEMA, "Test error message", path=["field", "subfield"], suggest="Try fixing this"
         )
 
         error_dict = error.to_dict()
@@ -40,10 +45,7 @@ class TestErrorShape:
 
     def test_error_shape_without_suggest(self):
         """Test error shape without suggest field."""
-        error = SemanticError(
-            "Semantic error",
-            path="single_path"
-        )
+        error = SemanticError("Semantic error", path="single_path")
 
         error_dict = error.to_dict()
 
@@ -62,7 +64,7 @@ class TestErrorShape:
             (SemanticError, "SEMANTIC"),
             (DiscoveryError, "DISCOVERY"),
             (LintError, "LINT"),
-            (PolicyError, "POLICY")
+            (PolicyError, "POLICY"),
         ]
 
         for error_class, family_name in families:
@@ -73,11 +75,7 @@ class TestErrorShape:
     def test_error_handler_format_error(self):
         """Test error handler formatting."""
         handler = OsirisErrorHandler()
-        error = PolicyError(
-            "Permission denied",
-            path=["resource", "access"],
-            suggest="Check permissions"
-        )
+        error = PolicyError("Permission denied", path=["resource", "access"], suggest="Check permissions")
 
         formatted = handler.format_error(error)
 
@@ -100,18 +98,8 @@ class TestErrorShape:
         """Test ADR-0019 compatible diagnostic formatting."""
         handler = OsirisErrorHandler()
         diagnostics = [
-            {
-                "type": "error",
-                "line": 10,
-                "column": 5,
-                "message": "Missing required field"
-            },
-            {
-                "type": "warning",
-                "line": 20,
-                "column": 0,
-                "message": "Deprecated feature"
-            }
+            {"type": "error", "line": 10, "column": 5, "message": "Missing required field"},
+            {"type": "warning", "line": 20, "column": 0, "message": "Deprecated feature"},
         ]
 
         formatted = handler.format_validation_diagnostics(diagnostics)
@@ -150,38 +138,38 @@ class TestErrorShape:
 class TestCLIBridgeErrorMapping:
     """Test CLI-bridge error mapping to MCP format."""
 
-    @pytest.mark.parametrize("message,expected_code,expected_family", [
-        # Connection errors (SEMANTIC)
-        ("Missing environment variable MYSQL_PASSWORD", "E_CONN_SECRET_MISSING", ErrorFamily.SEMANTIC),
-        ("Environment variable DB_HOST not set", "E_CONN_SECRET_MISSING", ErrorFamily.SEMANTIC),
-        ("Variable ${DATABASE_URL} is not set", "E_CONN_SECRET_MISSING", ErrorFamily.SEMANTIC),
-        ("Authentication failed for user root", "E_CONN_AUTH_FAILED", ErrorFamily.SEMANTIC),
-        ("Invalid password for database connection", "E_CONN_AUTH_FAILED", ErrorFamily.SEMANTIC),
-        ("Auth error: invalid credentials", "E_CONN_AUTH_FAILED", ErrorFamily.SEMANTIC),
-        ("Connection refused by host", "E_CONN_REFUSED", ErrorFamily.SEMANTIC),
-        ("No such host: mysql.example.com", "E_CONN_DNS", ErrorFamily.SEMANTIC),
-        ("DNS resolution failed for database.local", "E_CONN_DNS", ErrorFamily.SEMANTIC),
-        ("Name or service not known", "E_CONN_DNS", ErrorFamily.SEMANTIC),
-        ("Could not connect to remote host", "E_CONN_UNREACHABLE", ErrorFamily.SEMANTIC),
-        ("Network is unreachable", "E_CONN_UNREACHABLE", ErrorFamily.SEMANTIC),
-        ("Unreachable host: 10.0.0.1", "E_CONN_UNREACHABLE", ErrorFamily.SEMANTIC),
-
-        # Timeout errors (DISCOVERY)
-        ("Connection timeout after 30 seconds", "E_CONN_TIMEOUT", ErrorFamily.DISCOVERY),
-        ("Operation timed out", "E_CONN_TIMEOUT", ErrorFamily.DISCOVERY),
-        ("Request timeout", "E_CONN_TIMEOUT", ErrorFamily.DISCOVERY),
-
-        # OML/Schema errors (SCHEMA)
-        ("OML parse error at line 10", "OML010", ErrorFamily.SCHEMA),
-        ("YAML parse error: invalid syntax", "OML010", ErrorFamily.SCHEMA),
-        ("Missing required field: steps", "OML002", ErrorFamily.SCHEMA),
-
-        # Policy errors (POLICY)
-        ("Consent required for this operation", "POL001", ErrorFamily.POLICY),
-        ("Unauthorized access", "POL004", ErrorFamily.POLICY),
-        ("Forbidden operation: delete", "POL005", ErrorFamily.POLICY),
-        ("Rate limit exceeded", "POL003", ErrorFamily.POLICY),
-    ])
+    @pytest.mark.parametrize(
+        "message,expected_code,expected_family",
+        [
+            # Connection errors (SEMANTIC)
+            ("Missing environment variable MYSQL_PASSWORD", "E_CONN_SECRET_MISSING", ErrorFamily.SEMANTIC),
+            ("Environment variable DB_HOST not set", "E_CONN_SECRET_MISSING", ErrorFamily.SEMANTIC),
+            ("Variable ${DATABASE_URL} is not set", "E_CONN_SECRET_MISSING", ErrorFamily.SEMANTIC),
+            ("Authentication failed for user root", "E_CONN_AUTH_FAILED", ErrorFamily.SEMANTIC),
+            ("Invalid password for database connection", "E_CONN_AUTH_FAILED", ErrorFamily.SEMANTIC),
+            ("Auth error: invalid credentials", "E_CONN_AUTH_FAILED", ErrorFamily.SEMANTIC),
+            ("Connection refused by host", "E_CONN_REFUSED", ErrorFamily.SEMANTIC),
+            ("No such host: mysql.example.com", "E_CONN_DNS", ErrorFamily.SEMANTIC),
+            ("DNS resolution failed for database.local", "E_CONN_DNS", ErrorFamily.SEMANTIC),
+            ("Name or service not known", "E_CONN_DNS", ErrorFamily.SEMANTIC),
+            ("Could not connect to remote host", "E_CONN_UNREACHABLE", ErrorFamily.SEMANTIC),
+            ("Network is unreachable", "E_CONN_UNREACHABLE", ErrorFamily.SEMANTIC),
+            ("Unreachable host: 10.0.0.1", "E_CONN_UNREACHABLE", ErrorFamily.SEMANTIC),
+            # Timeout errors (DISCOVERY)
+            ("Connection timeout after 30 seconds", "E_CONN_TIMEOUT", ErrorFamily.DISCOVERY),
+            ("Operation timed out", "E_CONN_TIMEOUT", ErrorFamily.DISCOVERY),
+            ("Request timeout", "E_CONN_TIMEOUT", ErrorFamily.DISCOVERY),
+            # OML/Schema errors (SCHEMA)
+            ("OML parse error at line 10", "OML010", ErrorFamily.SCHEMA),
+            ("YAML parse error: invalid syntax", "OML010", ErrorFamily.SCHEMA),
+            ("Missing required field: steps", "OML002", ErrorFamily.SCHEMA),
+            # Policy errors (POLICY)
+            ("Consent required for this operation", "POL001", ErrorFamily.POLICY),
+            ("Unauthorized access", "POL004", ErrorFamily.POLICY),
+            ("Forbidden operation: delete", "POL005", ErrorFamily.POLICY),
+            ("Rate limit exceeded", "POL003", ErrorFamily.POLICY),
+        ],
+    )
     def test_cli_error_mapping_deterministic_codes(self, message, expected_code, expected_family):
         """Test CLI errors map to correct deterministic codes."""
         error = map_cli_error_to_mcp(message)
@@ -239,41 +227,27 @@ class TestCLIBridgeErrorMapping:
 class TestSecretRedaction:
     """Test secret redaction in error messages."""
 
-    @pytest.mark.parametrize("input_msg,expected_output", [
-        # DSN redaction
-        (
-            "mysql://root:secret123@localhost/db",  # pragma: allowlist secret
-            "mysql://***@localhost/db"
-        ),
-        (
-            "postgresql://user:pass@db.example.com:5432/mydb",  # pragma: allowlist secret
-            "postgresql://***@db.example.com:5432/mydb"
-        ),
-        (
-            "https://admin:token@api.example.com/v1",  # pragma: allowlist secret
-            "https://***@api.example.com/v1"
-        ),
-
-        # Query parameter redaction
-        (
-            "GET /api?password=secret123&key=abc",  # pragma: allowlist secret
-            "GET /api?password=***&key=***"
-        ),
-        (
-            "Connection string: server=host;password=mypass;token=xyz",  # pragma: allowlist secret
-            "Connection string: server=host;password=***;token=***"
-        ),
-
-        # No redaction needed
-        (
-            "Connection refused by localhost",
-            "Connection refused by localhost"
-        ),
-        (
-            "Timeout after 30 seconds",
-            "Timeout after 30 seconds"
-        ),
-    ])
+    @pytest.mark.parametrize(
+        "input_msg,expected_output",
+        [
+            # DSN redaction
+            ("mysql://root:secret123@localhost/db", "mysql://***@localhost/db"),  # pragma: allowlist secret
+            (
+                "postgresql://user:pass@db.example.com:5432/mydb",  # pragma: allowlist secret
+                "postgresql://***@db.example.com:5432/mydb",
+            ),
+            ("https://admin:token@api.example.com/v1", "https://***@api.example.com/v1"),  # pragma: allowlist secret
+            # Query parameter redaction
+            ("GET /api?password=secret123&key=abc", "GET /api?password=***&key=***"),  # pragma: allowlist secret
+            (
+                "Connection string: server=host;password=mypass;token=xyz",  # pragma: allowlist secret
+                "Connection string: server=host;password=***;token=***",
+            ),
+            # No redaction needed
+            ("Connection refused by localhost", "Connection refused by localhost"),
+            ("Timeout after 30 seconds", "Timeout after 30 seconds"),
+        ],
+    )
     def test_secret_redaction(self, input_msg, expected_output):
         """Test secrets are properly redacted from error messages."""
         redacted = _redact_secrets_from_message(input_msg)

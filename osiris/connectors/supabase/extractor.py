@@ -56,10 +56,10 @@ class SupabaseExtractor(IExtractor):
     async def list_tables(self) -> list[str]:
         """List all available tables.
 
-        Note: Requires either:
-        1. A custom RPC function in Supabase
-        2. Configuration with known table names
-        3. Access to information_schema
+        Note: Automatically discovers tables using one of:
+        1. PostgreSQL information_schema (if pg_dsn provided)
+        2. Custom RPC function in Supabase
+        3. Configuration with known table names
 
         Returns:
             List of table names
@@ -67,28 +67,89 @@ class SupabaseExtractor(IExtractor):
         if not self._initialized:
             await self.connect()
 
-        # Option 1: Try custom RPC if available
+        # Option 1: Try PostgreSQL information_schema if pg_dsn is available
+        pg_dsn = self.config.get("pg_dsn")
+        if pg_dsn:
+            try:
+                import asyncio  # noqa: PLC0415  # Lazy import for async operations
+
+                tables = await asyncio.to_thread(self._discover_tables_via_postgres, pg_dsn)
+                if tables:
+                    logger.info(f"Discovered {len(tables)} tables via PostgreSQL")
+                    return tables
+            except Exception as e:
+                logger.debug(f"PostgreSQL table discovery failed: {e}")  # nosec B110
+
+        # Option 2: Try custom RPC if available
         try:
-            response = self.client.rpc("list_tables", {}).execute()
+            import asyncio  # noqa: PLC0415  # Lazy import for async operations
+
+            # Execute sync Supabase call in thread pool
+            response = await asyncio.to_thread(lambda: self.client.rpc("list_tables", {}).execute())
             if response.data:
                 return [t["table_name"] for t in response.data]
         except Exception as e:
             logger.debug(f"RPC list_tables not available: {e}")  # nosec B110
 
-        # Option 2: Use configured tables
+        # Option 3: Use configured tables
         configured_tables = self.config.get("tables", [])
         if configured_tables:
             logger.info(f"Using configured tables: {configured_tables}")
             return configured_tables
 
-        # Option 3: Fallback message
+        # Option 4: Fallback message
         logger.warning(
             "Cannot auto-discover tables. Either:\n"
-            "1. Create an RPC function 'list_tables' in Supabase\n"
-            "2. Provide 'tables' list in config\n"
-            "3. Grant access to information_schema"
+            "1. Add 'pg_dsn' to connection config for automatic discovery\n"
+            "2. Create an RPC function 'list_tables' in Supabase\n"
+            "3. Provide 'tables' list in config"
         )
         return []
+
+    def _discover_tables_via_postgres(self, pg_dsn: str) -> list[str]:
+        """Discover tables using PostgreSQL information_schema.
+
+        Args:
+            pg_dsn: PostgreSQL connection string
+
+        Returns:
+            List of table names
+        """
+        try:
+            import psycopg2  # noqa: PLC0415  # Lazy import for PostgreSQL
+
+            # Connect to PostgreSQL
+            conn = psycopg2.connect(pg_dsn)
+            cursor = conn.cursor()
+
+            # Query information_schema for tables in public schema
+            schema = self.config.get("schema", "public")
+            cursor.execute(
+                """
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = %s
+                AND table_type = 'BASE TABLE'
+                ORDER BY table_name
+                """,
+                (schema,),
+            )
+
+            tables = [row[0] for row in cursor.fetchall()]
+
+            cursor.close()
+            conn.close()
+
+            return tables
+
+        except ImportError:
+            logger.warning(
+                "psycopg2 not installed - cannot use PostgreSQL discovery. Install with: pip install psycopg2-binary"
+            )  # noqa: E501
+            return []
+        except Exception as e:
+            logger.error(f"Failed to discover tables via PostgreSQL: {e}")
+            return []
 
     async def get_table_info(self, table_name: str) -> TableInfo:
         """Get schema and sample data for a table.
@@ -103,12 +164,16 @@ class SupabaseExtractor(IExtractor):
             await self.connect()
 
         try:
-            # Get sample data
-            response = self.client.table(table_name).select("*").limit(10).execute()
+            import asyncio  # noqa: PLC0415  # Lazy import for async operations
+
+            # Get sample data (run sync Supabase call in thread pool)
+            response = await asyncio.to_thread(lambda: self.client.table(table_name).select("*").limit(10).execute())
             sample_data = response.data
 
             # Get total count (with proper count query)
-            count_response = self.client.table(table_name).select("*", count="exact", head=True).execute()
+            count_response = await asyncio.to_thread(
+                lambda: self.client.table(table_name).select("*", count="exact", head=True).execute()
+            )
             row_count = count_response.count if hasattr(count_response, "count") else len(sample_data)
 
             # Infer schema from sample data
@@ -178,7 +243,10 @@ class SupabaseExtractor(IExtractor):
             await self.connect()
 
         try:
-            response = self.client.table(table_name).select("*").limit(size).execute()
+            import asyncio  # noqa: PLC0415  # Lazy import for async operations
+
+            # Execute sync Supabase call in thread pool
+            response = await asyncio.to_thread(lambda: self.client.table(table_name).select("*").limit(size).execute())
             return pd.DataFrame(response.data)
         except Exception as e:
             logger.error(f"Failed to sample table {table_name}: {e}")
@@ -199,6 +267,8 @@ class SupabaseExtractor(IExtractor):
             await self.connect()
 
         try:
+            import asyncio  # noqa: PLC0415  # Lazy import for async operations
+
             query = self.client.table(table_name).select("*")
 
             # Apply filters
@@ -209,7 +279,8 @@ class SupabaseExtractor(IExtractor):
             if limit:
                 query = query.limit(limit)
 
-            response = query.execute()
+            # Execute sync Supabase call in thread pool
+            response = await asyncio.to_thread(query.execute)
             return pd.DataFrame(response.data)
 
         except Exception as e:

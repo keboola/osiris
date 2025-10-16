@@ -248,12 +248,64 @@ Get OML v0.1.0 JSON schema.
 {
   "type": "object",
   "properties": {
-    "schema_uri": { "type": "string", "format": "uri" },
-    "version": { "type": "string" },
-    "schema": { "type": "object" },
-    "status": { "type": "string" }
+    "version": { "type": "string", "description": "Top-level OML version (0.1.0)" },
+    "schema": {
+      "type": "object",
+      "description": "JSON Schema with nested version field",
+      "properties": {
+        "$schema": { "type": "string" },
+        "version": { "type": "string", "description": "Schema version (0.1.0)" }
+      }
+    },
+    "status": { "type": "string" },
+    "schema_uri": { "type": "string", "format": "uri" }
   }
 }
+```
+
+**Example Output:**
+
+```json
+{
+  "version": "0.1.0",
+  "schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "version": "0.1.0",
+    "title": "OML Pipeline Schema",
+    "description": "Osiris Markup Language v0.1.0 pipeline specification",
+    "type": "object",
+    "required": ["oml_version", "name", "steps"],
+    "properties": {
+      "oml_version": {
+        "type": "string",
+        "const": "0.1.0"
+      },
+      "name": {
+        "type": "string"
+      },
+      "steps": {
+        "type": "array",
+        "items": { "type": "object" }
+      }
+    }
+  },
+  "status": "success"
+}
+```
+
+**Usage Examples:**
+
+```bash
+# Get full schema
+python osiris.py mcp oml schema --json
+
+# Extract top-level version
+python osiris.py mcp oml schema --json | jq '.version'
+# Output: "0.1.0"
+
+# Extract schema version
+python osiris.py mcp oml schema --json | jq '.schema.version'
+# Output: "0.1.0"
 ```
 
 ### oml_validate

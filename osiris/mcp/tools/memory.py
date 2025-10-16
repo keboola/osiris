@@ -5,11 +5,10 @@ MCP tools for memory capture and management.
 import json
 import logging
 import re
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
-from osiris.mcp.errors import OsirisError, ErrorFamily, PolicyError
+from osiris.mcp.errors import ErrorFamily, OsirisError, PolicyError
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +16,21 @@ logger = logging.getLogger(__name__)
 class MemoryTools:
     """Tools for capturing and managing session memory."""
 
-    def __init__(self, memory_dir: Optional[Path] = None):
+    def __init__(self, memory_dir: Path | None = None):
         """Initialize memory tools."""
-        self.memory_dir = memory_dir or Path.home() / ".osiris_memory" / "mcp" / "sessions"
+        if memory_dir is None:
+            from osiris.mcp.config import get_config  # noqa: PLC0415  # Lazy import for performance
+
+            config = get_config()
+            memory_dir = config.memory_dir
+        self.memory_dir = memory_dir
         self.memory_dir.mkdir(parents=True, exist_ok=True)
 
-    async def capture(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def capture(self, args: dict[str, Any]) -> dict[str, Any]:
         """
         Capture session memory with consent and PII redaction.
+
+        Delegates to CLI subprocess for filesystem access (CLI-first security model).
 
         Args:
             args: Tool arguments including consent, session_id, content
@@ -37,13 +43,9 @@ class MemoryTools:
         if not consent:
             # Return error object instead of raising exception
             return {
-                "error": {
-                    "code": "POLICY/POL001",
-                    "message": "Consent required for memory capture",
-                    "path": []
-                },
+                "error": {"code": "POLICY/POL001", "message": "Consent required for memory capture", "path": []},
                 "captured": False,  # Explicitly set captured to False
-                "status": "success"  # Still success despite error structure
+                "status": "success",  # Still success despite error structure
             }
 
         session_id = args.get("session_id")
@@ -52,54 +54,51 @@ class MemoryTools:
                 ErrorFamily.SCHEMA,
                 "session_id is required",
                 path=["session_id"],
-                suggest="Provide a session ID for memory storage"
+                suggest="Provide a session ID for memory storage",
             )
 
         try:
-            # Prepare memory entry
-            # Ensure retention_days is valid (positive and within limits)
+            # Prepare events data
             retention_days = args.get("retention_days", 365)
             if retention_days < 0:
                 retention_days = 365  # Default to 365 if negative
             elif retention_days > 730:
                 retention_days = 730  # Cap at 2 years max
 
-            memory_entry = {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "session_id": session_id,
-                "retention_days": retention_days,
-                "intent": args.get("intent", ""),
-                "actor_trace": args.get("actor_trace", []),
-                "decisions": args.get("decisions", []),
-                "artifacts": args.get("artifacts", []),
-                "oml_uri": args.get("oml_uri"),
-                "error_report": args.get("error_report"),
-                "notes": args.get("notes", "")
-            }
+            # Build events list from args
+            events = [
+                {
+                    "intent": args.get("intent", ""),
+                    "actor_trace": args.get("actor_trace", []),
+                    "decisions": args.get("decisions", []),
+                    "artifacts": args.get("artifacts", []),
+                    "oml_uri": args.get("oml_uri"),
+                    "error_report": args.get("error_report"),
+                    "notes": args.get("notes", ""),
+                }
+            ]
 
-            # Apply PII redaction
-            redacted_entry = self._redact_pii(memory_entry)
+            # Delegate to CLI subprocess (MCP process should NOT write files)
+            from osiris.mcp.cli_bridge import run_cli_json  # noqa: PLC0415  # Lazy import for performance
 
-            # Generate memory URI
-            memory_uri = f"osiris://mcp/memory/sessions/{session_id}.jsonl"
+            result = await run_cli_json(
+                [
+                    "mcp",
+                    "memory",
+                    "capture",
+                    "--session-id",
+                    session_id,
+                    "--consent",
+                    "--events",
+                    json.dumps(events),
+                    "--retention-days",
+                    str(retention_days),
+                    "--json",
+                ]
+            )
 
-            # Save memory using internal method (for testing)
-            memory_id = self._save_memory(redacted_entry)
-
-            # Calculate entry size
-            entry_size = len(json.dumps(redacted_entry))
-
-            return {
-                "captured": True,
-                "memory_id": memory_id,
-                "memory_uri": memory_uri,
-                "retention_days": memory_entry.get("retention_days", 365),
-                "session_id": session_id,
-                "timestamp": memory_entry["timestamp"],
-                "entry_size_bytes": entry_size,
-                "redactions_applied": self._count_redactions(memory_entry, redacted_entry),
-                "status": "success"
-            }
+            # CLI returns the result in proper format
+            return result
 
         except PolicyError:
             raise
@@ -109,8 +108,8 @@ class MemoryTools:
                 ErrorFamily.SEMANTIC,
                 f"Memory capture failed: {str(e)}",
                 path=["memory"],
-                suggest="Check file permissions and disk space"
-            )
+                suggest="Check file permissions and disk space",
+            ) from e
 
     def _save_memory(self, *args) -> str:
         """
@@ -134,13 +133,19 @@ class MemoryTools:
             session_id = args[0]
             entry = args[1]
 
-        # Save to JSONL file
-        memory_file = self.memory_dir / f"{session_id}.jsonl"
+        # Save to JSONL file - use sessions/ subdirectory to match URI scheme
+        # URIs use osiris://mcp/memory/sessions/<session_id>.jsonl format
+        # Resolver expects memory_dir/sessions/<session_id>.jsonl
+        sessions_dir = self.memory_dir / "sessions"
+        sessions_dir.mkdir(parents=True, exist_ok=True)
+
+        memory_file = sessions_dir / f"{session_id}.jsonl"
         with open(memory_file, "a") as f:
             f.write(json.dumps(entry) + "\n")
 
         # Generate a stable memory ID
-        import hashlib
+        import hashlib  # noqa: PLC0415  # Lazy import for performance
+
         entry_str = json.dumps(entry, sort_keys=True)
         memory_hash = hashlib.sha256(entry_str.encode()).hexdigest()[:6]
         return f"mem_{memory_hash}"
@@ -157,39 +162,19 @@ class MemoryTools:
         """
         if isinstance(data, str):
             # Redact email addresses
-            data = re.sub(
-                r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
-                '***EMAIL***',
-                data
-            )
+            data = re.sub(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", "***EMAIL***", data)
 
             # Redact phone numbers (basic patterns)
-            data = re.sub(
-                r'\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b',
-                '***PHONE***',
-                data
-            )
+            data = re.sub(r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b", "***PHONE***", data)
 
             # Redact SSN-like patterns
-            data = re.sub(
-                r'\b\d{3}-\d{2}-\d{4}\b',
-                '***SSN***',
-                data
-            )
+            data = re.sub(r"\b\d{3}-\d{2}-\d{4}\b", "***SSN***", data)
 
             # Redact credit card-like patterns (basic)
-            data = re.sub(
-                r'\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b',
-                '***CARD***',
-                data
-            )
+            data = re.sub(r"\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b", "***CARD***", data)
 
             # Redact IP addresses
-            data = re.sub(
-                r'\b(?:\d{1,3}\.){3}\d{1,3}\b',
-                '***IP***',
-                data
-            )
+            data = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "***IP***", data)
 
             return data
 
@@ -197,11 +182,20 @@ class MemoryTools:
             redacted = {}
             for key, value in data.items():
                 # Redact sensitive keys
-                if any(sensitive in key.lower() for sensitive in [
-                    'password', 'secret', 'token', 'api_key', 'private_key',
-                    'ssn', 'credit_card', 'card_number'
-                ]):
-                    redacted[key] = '***REDACTED***'
+                if any(
+                    sensitive in key.lower()
+                    for sensitive in [
+                        "password",
+                        "secret",
+                        "token",
+                        "api_key",
+                        "private_key",
+                        "ssn",
+                        "credit_card",
+                        "card_number",
+                    ]
+                ):
+                    redacted[key] = "***REDACTED***"
                 else:
                     redacted[key] = self._redact_pii(value)
             return redacted
@@ -226,24 +220,17 @@ class MemoryTools:
         count = 0
 
         # Convert to JSON strings and count redaction markers
-        original_str = json.dumps(original)
+        json.dumps(original)
         redacted_str = json.dumps(redacted)
 
-        patterns = [
-            '***EMAIL***',
-            '***PHONE***',
-            '***SSN***',
-            '***CARD***',
-            '***IP***',
-            '***REDACTED***'
-        ]
+        patterns = ["***EMAIL***", "***PHONE***", "***SSN***", "***CARD***", "***IP***", "***REDACTED***"]
 
         for pattern in patterns:
             count += redacted_str.count(pattern)
 
         return count
 
-    async def list_sessions(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def list_sessions(self, args: dict[str, Any]) -> dict[str, Any]:
         """
         List available memory sessions.
 
@@ -256,8 +243,13 @@ class MemoryTools:
         try:
             sessions = []
 
-            # Scan memory directory for session files
-            for session_file in self.memory_dir.glob("*.jsonl"):
+            # Scan memory directory for session files (in sessions/ subdirectory)
+            sessions_dir = self.memory_dir / "sessions"
+            if not sessions_dir.exists():
+                # Return empty list if sessions directory doesn't exist yet
+                return {"sessions": [], "count": 0, "total_size_kb": 0.0, "status": "success"}
+
+            for session_file in sessions_dir.glob("*.jsonl"):
                 session_id = session_file.stem
 
                 # Get file stats
@@ -279,20 +271,22 @@ class MemoryTools:
                     else:
                         first_timestamp = last_timestamp = "unknown"
 
-                sessions.append({
-                    "session_id": session_id,
-                    "file": str(session_file),
-                    "entries": entry_count,
-                    "size_kb": round(size_kb, 2),
-                    "first_entry": first_timestamp,
-                    "last_entry": last_timestamp
-                })
+                sessions.append(
+                    {
+                        "session_id": session_id,
+                        "file": str(session_file),
+                        "entries": entry_count,
+                        "size_kb": round(size_kb, 2),
+                        "first_entry": first_timestamp,
+                        "last_entry": last_timestamp,
+                    }
+                )
 
             return {
                 "sessions": sessions,
                 "count": len(sessions),
                 "total_size_kb": sum(s["size_kb"] for s in sessions),
-                "status": "success"
+                "status": "success",
             }
 
         except Exception as e:
@@ -301,5 +295,5 @@ class MemoryTools:
                 ErrorFamily.SEMANTIC,
                 f"Failed to list sessions: {str(e)}",
                 path=["sessions"],
-                suggest="Check memory directory permissions"
-            )
+                suggest="Check memory directory permissions",
+            ) from e

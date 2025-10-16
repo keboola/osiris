@@ -2,14 +2,14 @@
 MCP tools for OML use case management.
 """
 
-import json
+import builtins
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import yaml
 
-from osiris.mcp.errors import OsirisError, ErrorFamily
+from osiris.mcp.errors import ErrorFamily, OsirisError
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +17,11 @@ logger = logging.getLogger(__name__)
 class UsecasesTools:
     """Tools for managing OML use case templates."""
 
-    def __init__(self, usecases_dir: Optional[Path] = None):
+    def __init__(self, usecases_dir: Path | None = None):
         """Initialize usecases tools."""
         self.usecases_dir = usecases_dir or Path(__file__).parent.parent / "data" / "usecases"
 
-    async def list(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def list(self, args: dict[str, Any]) -> dict[str, Any]:
         """
         List available OML use case templates.
 
@@ -45,7 +45,7 @@ class UsecasesTools:
                     "category": usecase.get("category", "general"),
                     "tags": usecase.get("tags", []),
                     "difficulty": usecase.get("difficulty", "medium"),
-                    "snippet_uri": f"osiris://mcp/usecases/{usecase.get('id', 'unknown')}.yaml"
+                    "snippet_uri": f"osiris://mcp/usecases/{usecase.get('id', 'unknown')}.yaml",
                 }
 
                 # Add requirements if present
@@ -71,7 +71,7 @@ class UsecasesTools:
                 "by_category": categories,
                 "total_count": len(formatted_usecases),
                 "categories": list(categories.keys()),
-                "status": "success"
+                "status": "success",
             }
 
         except Exception as e:
@@ -80,10 +80,10 @@ class UsecasesTools:
                 ErrorFamily.SEMANTIC,
                 f"Failed to list use cases: {str(e)}",
                 path=["usecases"],
-                suggest="Check use cases catalog file"
-            )
+                suggest="Check use cases catalog file",
+            ) from e
 
-    def _load_usecases_catalog(self) -> List[Dict[str, Any]]:
+    def _load_usecases_catalog(self) -> builtins.list[dict[str, Any]]:
         """Load the use cases catalog."""
         # For now, return a hardcoded catalog
         # In production, this would load from osiris/mcp/data/usecases/catalog.yaml
@@ -95,10 +95,7 @@ class UsecasesTools:
                 "category": "data_export",
                 "tags": ["mysql", "csv", "export", "etl"],
                 "difficulty": "easy",
-                "requirements": {
-                    "connections": ["mysql"],
-                    "components": ["mysql.extractor", "filesystem.csv_writer"]
-                },
+                "requirements": {"connections": ["mysql"], "components": ["mysql.extractor", "filesystem.csv_writer"]},
                 "example": {
                     "version": "0.1.0",
                     "name": "mysql_export",
@@ -107,21 +104,16 @@ class UsecasesTools:
                         {
                             "id": "extract",
                             "component": "mysql.extractor",
-                            "config": {
-                                "connection": "@mysql.default",
-                                "query": "SELECT * FROM users"
-                            }
+                            "config": {"connection": "@mysql.default", "query": "SELECT * FROM users"},
                         },
                         {
                             "id": "save",
                             "component": "filesystem.csv_writer",
-                            "config": {
-                                "path": "output/users.csv"
-                            },
-                            "depends_on": ["extract"]
-                        }
-                    ]
-                }
+                            "config": {"path": "output/users.csv"},
+                            "depends_on": ["extract"],
+                        },
+                    ],
+                },
             },
             {
                 "id": "mysql_to_supabase",
@@ -132,7 +124,7 @@ class UsecasesTools:
                 "difficulty": "medium",
                 "requirements": {
                     "connections": ["mysql", "supabase"],
-                    "components": ["mysql.extractor", "supabase.writer"]
+                    "components": ["mysql.extractor", "supabase.writer"],
                 },
                 "example": {
                     "version": "0.1.0",
@@ -142,23 +134,16 @@ class UsecasesTools:
                         {
                             "id": "extract-users",
                             "component": "mysql.extractor",
-                            "config": {
-                                "connection": "@mysql.source",
-                                "query": "SELECT * FROM users"
-                            }
+                            "config": {"connection": "@mysql.source", "query": "SELECT * FROM users"},
                         },
                         {
                             "id": "write-users",
                             "component": "supabase.writer",
-                            "config": {
-                                "connection": "@supabase.target",
-                                "table": "users",
-                                "mode": "upsert"
-                            },
-                            "depends_on": ["extract-users"]
-                        }
-                    ]
-                }
+                            "config": {"connection": "@supabase.target", "table": "users", "mode": "upsert"},
+                            "depends_on": ["extract-users"],
+                        },
+                    ],
+                },
             },
             {
                 "id": "data_transformation",
@@ -169,7 +154,7 @@ class UsecasesTools:
                 "difficulty": "medium",
                 "requirements": {
                     "connections": ["mysql"],
-                    "components": ["mysql.extractor", "duckdb.processor", "filesystem.csv_writer"]
+                    "components": ["mysql.extractor", "duckdb.processor", "filesystem.csv_writer"],
                 },
                 "example": {
                     "version": "0.1.0",
@@ -179,10 +164,7 @@ class UsecasesTools:
                         {
                             "id": "extract",
                             "component": "mysql.extractor",
-                            "config": {
-                                "connection": "@mysql.default",
-                                "query": "SELECT * FROM transactions"
-                            }
+                            "config": {"connection": "@mysql.default", "query": "SELECT * FROM transactions"},
                         },
                         {
                             "id": "transform",
@@ -198,18 +180,16 @@ class UsecasesTools:
                                     GROUP BY 1, 2
                                 """
                             },
-                            "depends_on": ["extract"]
+                            "depends_on": ["extract"],
                         },
                         {
                             "id": "save",
                             "component": "filesystem.csv_writer",
-                            "config": {
-                                "path": "output/monthly_summary.csv"
-                            },
-                            "depends_on": ["transform"]
-                        }
-                    ]
-                }
+                            "config": {"path": "output/monthly_summary.csv"},
+                            "depends_on": ["transform"],
+                        },
+                    ],
+                },
             },
             {
                 "id": "incremental_sync",
@@ -220,8 +200,8 @@ class UsecasesTools:
                 "difficulty": "hard",
                 "requirements": {
                     "connections": ["mysql", "supabase"],
-                    "components": ["mysql.extractor", "duckdb.processor", "supabase.writer"]
-                }
+                    "components": ["mysql.extractor", "duckdb.processor", "supabase.writer"],
+                },
             },
             {
                 "id": "data_validation",
@@ -230,14 +210,11 @@ class UsecasesTools:
                 "category": "quality",
                 "tags": ["validation", "quality", "testing"],
                 "difficulty": "medium",
-                "requirements": {
-                    "connections": ["mysql"],
-                    "components": ["mysql.extractor", "duckdb.processor"]
-                }
-            }
+                "requirements": {"connections": ["mysql"], "components": ["mysql.extractor", "duckdb.processor"]},
+            },
         ]
 
-    async def get_template(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def get_template(self, args: dict[str, Any]) -> dict[str, Any]:
         """
         Get a specific use case template.
 
@@ -253,7 +230,7 @@ class UsecasesTools:
                 ErrorFamily.SCHEMA,
                 "usecase_id is required",
                 path=["usecase_id"],
-                suggest="Provide a use case ID from the catalog"
+                suggest="Provide a use case ID from the catalog",
             )
 
         try:
@@ -266,7 +243,7 @@ class UsecasesTools:
                     ErrorFamily.SEMANTIC,
                     f"Use case not found: {usecase_id}",
                     path=["usecase_id"],
-                    suggest="Use osiris.usecases.list to see available use cases"
+                    suggest="Use osiris.usecases.list to see available use cases",
                 )
 
             # Convert example to YAML if present
@@ -278,7 +255,7 @@ class UsecasesTools:
                 "usecase": usecase,
                 "oml_template": oml_template,
                 "snippet_uri": f"osiris://mcp/usecases/{usecase_id}.yaml",
-                "status": "success"
+                "status": "success",
             }
 
         except OsirisError:
@@ -289,5 +266,5 @@ class UsecasesTools:
                 ErrorFamily.SEMANTIC,
                 f"Failed to get template: {str(e)}",
                 path=["template"],
-                suggest="Check use case ID"
-            )
+                suggest="Check use case ID",
+            ) from e

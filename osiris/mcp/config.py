@@ -1,12 +1,104 @@
 """
 Configuration module for Osiris MCP server.
 
-Centralizes configuration and tunable parameters.
+Centralizes configuration and tunable parameters with filesystem contract support.
 """
 
+import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
+
+import yaml
+
+logger = logging.getLogger(__name__)
+
+
+class MCPFilesystemConfig:
+    """
+    Filesystem configuration for MCP server.
+
+    Resolution order:
+    1. osiris.yaml (filesystem.base_path, filesystem.mcp_logs_dir)
+    2. Environment variables (OSIRIS_HOME, OSIRIS_MCP_LOGS_DIR)
+    3. Default fallbacks
+    """
+
+    @classmethod
+    def from_config(cls, config_path: str = "osiris.yaml") -> "MCPFilesystemConfig":
+        """
+        Load filesystem configuration from osiris.yaml.
+
+        Args:
+            config_path: Path to osiris.yaml (default: "osiris.yaml")
+
+        Returns:
+            MCPFilesystemConfig instance with resolved paths
+        """
+        instance = cls()
+
+        # Try to load from osiris.yaml
+        config_file = Path(config_path)
+        if config_file.exists():
+            try:
+                with open(config_file) as f:
+                    config = yaml.safe_load(f)
+
+                if config and "filesystem" in config:
+                    fs_config = config["filesystem"]
+
+                    # Get base_path from config
+                    base_path_str = fs_config.get("base_path", "")
+                    if base_path_str:
+                        instance.base_path = Path(base_path_str).resolve()
+                    else:
+                        # Empty string means use config file's directory
+                        instance.base_path = config_file.parent.resolve()
+
+                    # Get mcp_logs_dir from config (relative to base_path)
+                    mcp_logs_dir = fs_config.get("mcp_logs_dir", ".osiris/mcp/logs")
+                    instance.mcp_logs_dir = instance.base_path / mcp_logs_dir
+
+                    logger.info(f"MCP filesystem config loaded from {config_path}")
+                    logger.info(f"  base_path: {instance.base_path}")
+                    logger.info(f"  mcp_logs_dir: {instance.mcp_logs_dir}")
+
+                    return instance
+
+            except Exception as e:
+                logger.warning(f"Failed to load osiris.yaml: {e}")
+
+        # Fall back to environment variables (with warning)
+        osiris_home = os.environ.get("OSIRIS_HOME", "").strip()
+        if osiris_home:
+            logger.warning("Using OSIRIS_HOME from environment (config preferred)")
+            instance.base_path = Path(osiris_home).resolve()
+        else:
+            # Ultimate fallback: current working directory
+            instance.base_path = Path.cwd().resolve()
+            logger.warning(f"No config found, using CWD as base_path: {instance.base_path}")
+
+        # Check for MCP logs dir override
+        mcp_logs_env = os.environ.get("OSIRIS_MCP_LOGS_DIR", "").strip()
+        if mcp_logs_env:
+            logger.warning("Using OSIRIS_MCP_LOGS_DIR from environment (config preferred)")
+            instance.mcp_logs_dir = Path(mcp_logs_env).resolve()
+        else:
+            instance.mcp_logs_dir = instance.base_path / ".osiris" / "mcp" / "logs"
+
+        return instance
+
+    def __init__(self):
+        """Initialize with default values."""
+        self.base_path = Path.cwd().resolve()
+        self.mcp_logs_dir = self.base_path / ".osiris" / "mcp" / "logs"
+
+    def ensure_directories(self):
+        """Create necessary directories if they don't exist."""
+        self.mcp_logs_dir.mkdir(parents=True, exist_ok=True)
+        (self.mcp_logs_dir / "audit").mkdir(exist_ok=True)
+        (self.mcp_logs_dir / "telemetry").mkdir(exist_ok=True)
+        (self.mcp_logs_dir / "cache").mkdir(exist_ok=True)
 
 
 class MCPConfig:
@@ -48,15 +140,20 @@ class MCPConfig:
     DEFAULT_AUDIT_DIR = Path.home() / ".osiris_audit"
     DEFAULT_TELEMETRY_DIR = Path.home() / ".osiris_telemetry"
 
-    def __init__(self):
-        """Initialize configuration with defaults and environment overrides."""
+    def __init__(self, fs_config: MCPFilesystemConfig | None = None):
+        """
+        Initialize configuration with defaults and environment overrides.
+
+        Args:
+            fs_config: Filesystem configuration (if None, will load from osiris.yaml)
+        """
+        # Load filesystem configuration
+        if fs_config is None:
+            fs_config = MCPFilesystemConfig.from_config()
+        self.fs_config = fs_config
+
         # Payload limit (can be overridden by environment)
-        self.payload_limit_mb = int(
-            os.environ.get(
-                "OSIRIS_MCP_PAYLOAD_LIMIT_MB",
-                self.DEFAULT_PAYLOAD_LIMIT_MB
-            )
-        )
+        self.payload_limit_mb = int(os.environ.get("OSIRIS_MCP_PAYLOAD_LIMIT_MB", self.DEFAULT_PAYLOAD_LIMIT_MB))
 
         # Validate payload limit
         if self.payload_limit_mb < self.MIN_PAYLOAD_LIMIT_MB:
@@ -68,66 +165,39 @@ class MCPConfig:
         self.payload_limit_bytes = self.payload_limit_mb * 1024 * 1024
 
         # Timeouts
-        self.handshake_timeout = float(
-            os.environ.get(
-                "OSIRIS_MCP_HANDSHAKE_TIMEOUT",
-                self.DEFAULT_HANDSHAKE_TIMEOUT
-            )
-        )
-        self.tool_timeout = float(
-            os.environ.get(
-                "OSIRIS_MCP_TOOL_TIMEOUT",
-                self.DEFAULT_TOOL_TIMEOUT
-            )
-        )
-        self.resource_timeout = float(
-            os.environ.get(
-                "OSIRIS_MCP_RESOURCE_TIMEOUT",
-                self.DEFAULT_RESOURCE_TIMEOUT
-            )
-        )
+        self.handshake_timeout = float(os.environ.get("OSIRIS_MCP_HANDSHAKE_TIMEOUT", self.DEFAULT_HANDSHAKE_TIMEOUT))
+        self.tool_timeout = float(os.environ.get("OSIRIS_MCP_TOOL_TIMEOUT", self.DEFAULT_TOOL_TIMEOUT))
+        self.resource_timeout = float(os.environ.get("OSIRIS_MCP_RESOURCE_TIMEOUT", self.DEFAULT_RESOURCE_TIMEOUT))
 
         # Cache configuration
         self.discovery_cache_ttl_hours = int(
-            os.environ.get(
-                "OSIRIS_MCP_CACHE_TTL_HOURS",
-                self.DEFAULT_DISCOVERY_CACHE_TTL_HOURS
-            )
+            os.environ.get("OSIRIS_MCP_CACHE_TTL_HOURS", self.DEFAULT_DISCOVERY_CACHE_TTL_HOURS)
         )
 
         # Memory retention
         self.memory_retention_days = int(
-            os.environ.get(
-                "OSIRIS_MCP_MEMORY_RETENTION_DAYS",
-                self.DEFAULT_MEMORY_RETENTION_DAYS
-            )
+            os.environ.get("OSIRIS_MCP_MEMORY_RETENTION_DAYS", self.DEFAULT_MEMORY_RETENTION_DAYS)
         )
 
         # Telemetry
         self.telemetry_enabled = os.environ.get(
-            "OSIRIS_MCP_TELEMETRY_ENABLED",
-            str(self.TELEMETRY_ENABLED_DEFAULT)
+            "OSIRIS_MCP_TELEMETRY_ENABLED", str(self.TELEMETRY_ENABLED_DEFAULT)
         ).lower() in ("true", "1", "yes", "on")
 
-        # Directories (can be overridden by OSIRIS_HOME)
-        osiris_home = os.environ.get("OSIRIS_HOME")
-        if osiris_home:
-            base_path = Path(osiris_home)
-            self.cache_dir = base_path / "cache" / "mcp"
-            self.memory_dir = base_path / "memory" / "mcp"
-            self.audit_dir = base_path / "audit"
-            self.telemetry_dir = base_path / "telemetry"
-        else:
-            self.cache_dir = self.DEFAULT_CACHE_DIR
-            self.memory_dir = self.DEFAULT_MEMORY_DIR
-            self.audit_dir = self.DEFAULT_AUDIT_DIR
-            self.telemetry_dir = self.DEFAULT_TELEMETRY_DIR
+        # Directories - use filesystem config
+        self.cache_dir = fs_config.mcp_logs_dir / "cache"
+        self.memory_dir = fs_config.mcp_logs_dir / "memory"
+        self.audit_dir = fs_config.mcp_logs_dir / "audit"
+        self.telemetry_dir = fs_config.mcp_logs_dir / "telemetry"
 
         # Data and state directories (relative to module)
         self.data_dir = self.DEFAULT_DATA_DIR
         self.state_dir = self.DEFAULT_STATE_DIR
 
-    def to_dict(self) -> Dict[str, Any]:
+        # Ensure directories exist
+        fs_config.ensure_directories()
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert configuration to dictionary."""
         return {
             "protocol_version": self.PROTOCOL_VERSION,
@@ -147,8 +217,8 @@ class MCPConfig:
                 "cache": str(self.cache_dir),
                 "memory": str(self.memory_dir),
                 "audit": str(self.audit_dir),
-                "telemetry": str(self.telemetry_dir)
-            }
+                "telemetry": str(self.telemetry_dir),
+            },
         }
 
     @classmethod
@@ -158,7 +228,7 @@ class MCPConfig:
 
 
 # Global configuration instance
-_config: Optional[MCPConfig] = None
+_config: MCPConfig | None = None
 
 
 def get_config() -> MCPConfig:

@@ -2,12 +2,13 @@
 Test discovery cache TTL behavior.
 """
 
-import pytest
-from datetime import datetime, timedelta, timezone
-from unittest.mock import patch, MagicMock
 import json
 import tempfile
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 from osiris.mcp.cache import DiscoveryCache
 
@@ -29,22 +30,21 @@ class TestCacheTTL:
     @pytest.mark.asyncio
     async def test_cache_set_and_get(self, cache):
         """Test basic cache set and get."""
-        test_data = {
-            "database": "test",
-            "tables": ["users", "orders"]
-        }
+        test_data = {"database": "test", "tables": ["users", "orders"]}
 
         # Set cache entry
-        discovery_id = await cache.set(
-            "conn1", "comp1", 5, test_data, "key1"
-        )
+        discovery_id = await cache.set("conn1", "comp1", 5, test_data, "key1")
 
-        # Get cached entry
+        # Get cached entry (returns full entry including TTL metadata)
         result = await cache.get("conn1", "comp1", 5, "key1")
 
         assert result is not None
-        assert result["database"] == "test"
-        assert result["tables"] == ["users", "orders"]
+        assert result["data"]["database"] == "test"
+        assert result["data"]["tables"] == ["users", "orders"]
+        # Verify TTL metadata is present (CACHE-002 fix)
+        assert "expires_at" in result
+        assert "ttl_seconds" in result
+        assert "discovery_id" in result
 
     @pytest.mark.asyncio
     async def test_cache_ttl_expiry(self, cache):
@@ -52,19 +52,17 @@ class TestCacheTTL:
         test_data = {"test": "data"}
 
         # Set with 1 second TTL
-        discovery_id = await cache.set(
-            "conn1", "comp1", 0, test_data, ttl=timedelta(seconds=1)
-        )
+        discovery_id = await cache.set("conn1", "comp1", 0, test_data, ttl=timedelta(seconds=1))
 
         # Should be available immediately
         result = await cache.get("conn1", "comp1", 0)
         assert result is not None
 
         # Mock time to after expiry
-        future_time = datetime.now(timezone.utc) + timedelta(seconds=2)
+        future_time = datetime.now(UTC) + timedelta(seconds=2)
 
         # Patch datetime.now to return future time
-        with patch('osiris.mcp.cache.datetime') as mock_datetime:
+        with patch("osiris.mcp.cache.datetime") as mock_datetime:
             # Configure mock to handle both datetime.now(timezone.utc) and datetime.fromisoformat
             mock_datetime.now = lambda tz=None: future_time
             mock_datetime.fromisoformat = datetime.fromisoformat
@@ -81,8 +79,8 @@ class TestCacheTTL:
         await cache.set("conn2", "comp2", 0, {"data": 2}, ttl=timedelta(hours=24))
 
         # Mock time to expire first entry
-        future_time = datetime.now(timezone.utc) + timedelta(seconds=2)
-        with patch('osiris.mcp.cache.datetime') as mock_datetime:
+        future_time = datetime.now(UTC) + timedelta(seconds=2)
+        with patch("osiris.mcp.cache.datetime") as mock_datetime:
             # Configure mock to handle both datetime.now(timezone.utc) and datetime.fromisoformat
             mock_datetime.now = lambda tz=None: future_time
             mock_datetime.fromisoformat = datetime.fromisoformat
@@ -119,9 +117,7 @@ class TestCacheTTL:
         test_data = {"persistent": "data"}
 
         # Set cache entry
-        discovery_id = await cache.set(
-            "conn1", "comp1", 0, test_data
-        )
+        discovery_id = await cache.set("conn1", "comp1", 0, test_data)
 
         # Check file exists
         cache_file = temp_cache_dir / f"{discovery_id}.json"

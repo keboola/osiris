@@ -27,7 +27,7 @@ def find_repo_root():
 
     # Walk up the directory tree looking for a directory containing 'osiris' package
     for parent in current.parents:
-        if (parent / 'osiris').is_dir():
+        if (parent / "osiris").is_dir():
             return parent.resolve()
 
     # Fallback to grandparent (2 levels up from this file)
@@ -51,21 +51,21 @@ def setup_environment():
         sys.path.insert(0, str(repo_root))
 
     # Resolve OSIRIS_HOME with proper precedence
-    osiris_home_env = os.environ.get('OSIRIS_HOME', '').strip()
+    osiris_home_env = os.environ.get("OSIRIS_HOME", "").strip()
     if osiris_home_env:
         osiris_home = Path(osiris_home_env).resolve()
     else:
-        osiris_home = (repo_root / 'testing_env').resolve()
+        osiris_home = (repo_root / "testing_env").resolve()
 
     # Create OSIRIS_HOME if it doesn't exist
     osiris_home.mkdir(parents=True, exist_ok=True)
 
     # Set environment variable for child processes
-    os.environ['OSIRIS_HOME'] = str(osiris_home)
+    os.environ["OSIRIS_HOME"] = str(osiris_home)
 
     # Set PYTHONPATH if not already set
-    if 'PYTHONPATH' not in os.environ:
-        os.environ['PYTHONPATH'] = str(repo_root)
+    if "PYTHONPATH" not in os.environ:
+        os.environ["PYTHONPATH"] = str(repo_root)
 
     return repo_root, osiris_home
 
@@ -73,7 +73,7 @@ def setup_environment():
 # Setup environment before importing osiris modules
 repo_root, osiris_home = setup_environment()
 
-from osiris.mcp.server import OsirisMCPServer
+from osiris.mcp.server import OsirisMCPServer  # noqa: E402  # Must import after setup_environment()
 
 
 def setup_logging(debug: bool = False):
@@ -88,11 +88,11 @@ def setup_logging(debug: bool = False):
     # Configure root logger
     logging.basicConfig(
         level=level,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[
             # Log to stderr to avoid interfering with stdio protocol
             logging.StreamHandler(sys.stderr)
-        ]
+        ],
     )
 
     # Suppress noisy libraries unless in debug mode
@@ -122,7 +122,8 @@ def main():
     if selftest:
         # Run self-test mode
         logger.info("Running MCP server self-test...")
-        from osiris.mcp.selftest import run_selftest
+        from osiris.mcp.selftest import run_selftest  # noqa: PLC0415  # Lazy import for CLI performance
+
         success = asyncio.run(run_selftest())
         sys.exit(0 if success else 1)
     else:

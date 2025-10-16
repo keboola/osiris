@@ -4,7 +4,6 @@ import argparse
 import json
 import logging
 import os
-import re
 import time
 from pathlib import Path
 from typing import Any
@@ -14,63 +13,18 @@ from rich.console import Console
 from rich.table import Table
 from supabase import create_client
 
+from osiris.cli.helpers.connection_helpers import (
+    check_env_var_set,
+    extract_env_vars,
+    mask_connection_for_display,
+)
+from osiris.cli.helpers.session_helpers import get_logs_directory_for_cli
 from osiris.core.config import load_connections_yaml, resolve_connection
 from osiris.core.env_loader import load_env
 from osiris.core.secrets_masking import mask_sensitive_dict
 from osiris.core.session_logging import SessionContext, log_event, set_current_session
 
 console = Console()
-
-
-def check_env_var_set(var_name: str) -> bool:
-    """Check if an environment variable is set (not checking value)."""
-    return var_name in os.environ
-
-
-def extract_env_vars(value: Any) -> list[str]:
-    """Extract environment variable names from a value with ${VAR} patterns."""
-    if isinstance(value, str):
-        pattern = r"\$\{([^}]+)\}"
-        return re.findall(pattern, value)
-    elif isinstance(value, dict):
-        vars_list = []
-        for v in value.values():
-            vars_list.extend(extract_env_vars(v))
-        return vars_list
-    elif isinstance(value, list):
-        vars_list = []
-        for item in value:
-            vars_list.extend(extract_env_vars(item))
-        return vars_list
-    return []
-
-
-def mask_connection_for_display(connection: dict[str, Any]) -> dict[str, Any]:
-    """Mask sensitive fields in a connection for display."""
-    sensitive_keys = {
-        "password",
-        "key",
-        "token",
-        "secret",
-        "credential",
-        "service_role_key",
-        "anon_key",
-        "api_key",
-        "access_key_id",
-        "secret_access_key",
-    }
-
-    masked = connection.copy()
-    for key in masked:
-        if any(s in key.lower() for s in sensitive_keys):
-            # Check if it's an env var reference
-            if isinstance(masked[key], str) and masked[key].startswith("${"):
-                # Keep the env var reference
-                continue
-            else:
-                # Mask the actual value
-                masked[key] = "***MASKED***"
-    return masked
 
 
 def suppress_noisy_loggers():
@@ -107,7 +61,9 @@ def list_connections(args: list) -> None:
 
     # Create session for logging
     session_id = f"connections_{int(time.time() * 1000)}"
-    session = SessionContext(session_id=session_id, base_logs_dir=Path("logs"), allowed_events=["*"])
+    # Use filesystem contract to determine logs directory
+    logs_dir = get_logs_directory_for_cli()
+    session = SessionContext(session_id=session_id, base_logs_dir=logs_dir, allowed_events=["*"])
     set_current_session(session)
     session.setup_logging(level=logging.INFO, enable_debug=False)
 
@@ -152,6 +108,7 @@ def list_connections(args: list) -> None:
 
         parser = argparse.ArgumentParser(description="List connections", add_help=False)
         parser.add_argument("--json", action="store_true", help="Output in JSON format")
+        parser.add_argument("--mcp", action="store_true", help="Output in MCP-compatible format (flat array)")
 
         try:
             parsed_args, _ = parser.parse_known_args(args)
@@ -172,28 +129,53 @@ def list_connections(args: list) -> None:
             connections = load_connections_yaml(substitute_env=True)
 
             if parsed_args.json:
-                # JSON output - mask sensitive values
-                output = {}
-                for family, aliases in connections.items():
-                    output[family] = {}
-                    for alias, config in aliases.items():
-                        masked_config = mask_connection_for_display(config)
-                        # Get raw config for env var checking
-                        raw_config = raw_connections.get(family, {}).get(alias, {})
-                        # Add env var status
-                        env_vars = extract_env_vars(raw_config)
-                        env_status = {}
-                        for var in env_vars:
-                            env_status[var] = check_env_var_set(var)
+                # JSON output - mask sensitive values using spec-aware detection
+                if parsed_args.mcp:
+                    # MCP format: flat array with reference field
+                    connections_array = []
+                    for family, aliases in connections.items():
+                        for alias, config in aliases.items():
+                            # Pass family for spec-aware masking
+                            masked_config = mask_connection_for_display(config, family=family)
+                            connections_array.append(
+                                {
+                                    "family": family,
+                                    "alias": alias,
+                                    "reference": f"@{family}.{alias}",
+                                    "config": masked_config,
+                                }
+                            )
 
-                        output[family][alias] = {
-                            "config": masked_config,
-                            "env_vars": env_status,
-                            "is_default": config.get("default", False),
-                        }
+                    final_output = {
+                        "connections": connections_array,
+                        "count": len(connections_array),
+                        "status": "success",
+                    }
+                else:
+                    # Standard CLI format: nested dict with env vars and session
+                    output = {}
+                    for family, aliases in connections.items():
+                        output[family] = {}
+                        for alias, config in aliases.items():
+                            # Pass family for spec-aware masking
+                            masked_config = mask_connection_for_display(config, family=family)
+                            # Get raw config for env var checking
+                            raw_config = raw_connections.get(family, {}).get(alias, {})
+                            # Add env var status
+                            env_vars = extract_env_vars(raw_config)
+                            env_status = {}
+                            for var in env_vars:
+                                env_status[var] = check_env_var_set(var)
 
-                # Add session_id to JSON output
-                final_output = {"session_id": session_id, "connections": output}
+                            output[family][alias] = {
+                                "config": masked_config,
+                                "env_vars": env_status,
+                                "is_default": config.get("default", False),
+                            }
+
+                    # Add session_id to JSON output
+                    final_output = {"session_id": session_id, "connections": output}
+
                 print(json.dumps(final_output, indent=2))
                 log_event(
                     "connections_list_complete",
@@ -450,7 +432,9 @@ def doctor_connections(args: list) -> None:
 
     # Create session for logging
     session_id = f"connections_{int(time.time() * 1000)}"
-    session = SessionContext(session_id=session_id, base_logs_dir=Path("logs"), allowed_events=["*"])
+    # Use filesystem contract to determine logs directory
+    logs_dir = get_logs_directory_for_cli()
+    session = SessionContext(session_id=session_id, base_logs_dir=logs_dir, allowed_events=["*"])
     set_current_session(session)
     session.setup_logging(level=logging.INFO, enable_debug=False)
 
@@ -504,11 +488,30 @@ def doctor_connections(args: list) -> None:
         parser.add_argument("--json", action="store_true", help="Output in JSON format")
         parser.add_argument("--family", help="Test only connections for this family")
         parser.add_argument("--alias", help="Test only this specific connection")
+        parser.add_argument("--connection-id", help="Test specific connection by reference (e.g., @mysql.test)")
 
         try:
             parsed_args, _ = parser.parse_known_args(args)
         except SystemExit:
             return
+
+        # Handle --connection-id by parsing it into --family and --alias
+        if parsed_args.connection_id:
+            from osiris.core.config import parse_connection_ref
+
+            try:
+                connection_ref = parsed_args.connection_id
+                if not connection_ref.startswith("@"):
+                    connection_ref = f"@{connection_ref}"
+                family, alias = parse_connection_ref(connection_ref)
+                parsed_args.family = family
+                parsed_args.alias = alias
+            except Exception as e:
+                if parsed_args.json:
+                    print(json.dumps({"error": f"Invalid connection ID: {str(e)}"}, indent=2))
+                else:
+                    console.print(f"[red]Error: Invalid connection ID: {str(e)}[/red]")
+                return
 
         # Print session ID
         if not parsed_args.json:

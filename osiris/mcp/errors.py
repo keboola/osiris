@@ -6,8 +6,7 @@ Provides structured error handling with consistent format across all tools.
 
 import re
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
-
+from typing import Any
 
 # Deterministic error code mappings
 ERROR_CODES = {
@@ -22,32 +21,27 @@ ERROR_CODES = {
     "yaml parse error": "OML010",
     "oml parse error": "OML010",
     "intent is required": "OML020",
-
     # Semantic errors (SEMANTIC/*)
     "unknown tool": "SEM001",
     "invalid connection": "SEM002",
     "invalid component": "SEM003",
     "circular dependency": "SEM004",
     "duplicate name": "SEM005",
-
     # Discovery errors (DISCOVERY/*)
     "connection not found": "DISC001",
     "source unreachable": "DISC002",
     "permission denied": "DISC003",
     "invalid schema": "DISC005",
-
     # Lint errors (LINT/*)
     "naming convention": "LINT001",
     "deprecated feature": "LINT002",
     "performance warning": "LINT003",
-
     # Policy errors (POLICY/*)
     "consent required": "POL001",
     "payload too large": "POL002",
     "rate limit exceeded": "POL003",
     "unauthorized": "POL004",
     "forbidden operation": "POL005",
-
     # Connection/CLI-bridge errors (SEMANTIC/E_CONN_*)
     # Longer patterns first for priority matching
     "missing environment variable": "E_CONN_SECRET_MISSING",
@@ -72,11 +66,12 @@ ERROR_CODES = {
 
 class ErrorFamily(Enum):
     """Error family classification."""
-    SCHEMA = "SCHEMA"      # Schema validation errors
+
+    SCHEMA = "SCHEMA"  # Schema validation errors
     SEMANTIC = "SEMANTIC"  # Semantic/logic errors
     DISCOVERY = "DISCOVERY"  # Discovery-related errors
-    LINT = "LINT"          # Linting/style errors
-    POLICY = "POLICY"      # Policy/permission errors
+    LINT = "LINT"  # Linting/style errors
+    POLICY = "POLICY"  # Policy/permission errors
 
 
 class OsirisError(Exception):
@@ -86,8 +81,8 @@ class OsirisError(Exception):
         self,
         family: ErrorFamily,
         message: str,
-        path: Optional[Union[str, List[str]]] = None,
-        suggest: Optional[str] = None
+        path: str | list[str] | None = None,
+        suggest: str | None = None,
     ):
         """
         Initialize an Osiris error.
@@ -104,13 +99,9 @@ class OsirisError(Exception):
         self.suggest = suggest
         super().__init__(message)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert error to dictionary format."""
-        result = {
-            "code": f"{self.family.value}/{self._generate_code()}",
-            "message": self.message,
-            "path": self.path
-        }
+        result = {"code": f"{self.family.value}/{self._generate_code()}", "message": self.message, "path": self.path}
         if self.suggest:
             result["suggest"] = self.suggest
         return result
@@ -126,7 +117,8 @@ class OsirisError(Exception):
                 return code
 
         # Generate unique code for unknown errors using hash
-        import hashlib
+        import hashlib  # noqa: PLC0415  # Lazy import for performance
+
         msg_hash = hashlib.sha256(self.message.encode()).hexdigest()[:3].upper()
 
         # Family-specific prefixes for unknown errors
@@ -146,64 +138,58 @@ class OsirisError(Exception):
 class SchemaError(OsirisError):
     """Schema validation error."""
 
-    def __init__(self, message: str, path: Optional[Union[str, List[str]]] = None, suggest: Optional[str] = None):
+    def __init__(self, message: str, path: str | list[str] | None = None, suggest: str | None = None):
         super().__init__(ErrorFamily.SCHEMA, message, path, suggest)
 
 
 class SemanticError(OsirisError):
     """Semantic/logic error."""
 
-    def __init__(self, message: str, path: Optional[Union[str, List[str]]] = None, suggest: Optional[str] = None):
+    def __init__(self, message: str, path: str | list[str] | None = None, suggest: str | None = None):
         super().__init__(ErrorFamily.SEMANTIC, message, path, suggest)
 
 
 class DiscoveryError(OsirisError):
     """Discovery-related error."""
 
-    def __init__(self, message: str, path: Optional[Union[str, List[str]]] = None, suggest: Optional[str] = None):
+    def __init__(self, message: str, path: str | list[str] | None = None, suggest: str | None = None):
         super().__init__(ErrorFamily.DISCOVERY, message, path, suggest)
 
 
 class LintError(OsirisError):
     """Linting/style error."""
 
-    def __init__(self, message: str, path: Optional[Union[str, List[str]]] = None, suggest: Optional[str] = None):
+    def __init__(self, message: str, path: str | list[str] | None = None, suggest: str | None = None):
         super().__init__(ErrorFamily.LINT, message, path, suggest)
 
 
 class PolicyError(OsirisError):
     """Policy/permission error."""
 
-    def __init__(self, message: str, path: Optional[Union[str, List[str]]] = None, suggest: Optional[str] = None):
+    def __init__(self, message: str, path: str | list[str] | None = None, suggest: str | None = None):
         super().__init__(ErrorFamily.POLICY, message, path, suggest)
 
 
 class OsirisErrorHandler:
     """Handler for formatting and managing errors."""
 
-    def format_error(self, error: OsirisError) -> Dict[str, Any]:
+    def format_error(self, error: OsirisError) -> dict[str, Any]:
         """Format an OsirisError for response."""
-        return {
-            "error": error.to_dict(),
-            "success": False
-        }
+        return {"error": error.to_dict(), "success": False}
 
-    def format_unexpected_error(self, message: str) -> Dict[str, Any]:
+    def format_unexpected_error(self, message: str) -> dict[str, Any]:
         """Format an unexpected error."""
         return {
             "error": {
                 "code": "INTERNAL/UNEXPECTED",
                 "message": f"An unexpected error occurred: {message}",
                 "path": [],
-                "suggest": "Please report this issue if it persists"
+                "suggest": "Please report this issue if it persists",
             },
-            "success": False
+            "success": False,
         }
 
-    def format_validation_diagnostics(
-        self,
-        diagnostics: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    def format_validation_diagnostics(self, diagnostics: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         Format validation diagnostics in ADR-0019 compatible format.
 
@@ -220,12 +206,12 @@ class OsirisErrorHandler:
                 "line": diag.get("line", 0),
                 "column": diag.get("column", 0),
                 "message": diag.get("message", "Unknown error"),
-                "id": self._generate_diagnostic_id(diag, i)
+                "id": self._generate_diagnostic_id(diag, i),
             }
             formatted.append(formatted_diag)
         return formatted
 
-    def _generate_diagnostic_id(self, diagnostic: Dict[str, Any], index: int) -> str:
+    def _generate_diagnostic_id(self, diagnostic: dict[str, Any], index: int) -> str:
         """Generate deterministic diagnostic ID."""
         diag_type = diagnostic.get("type", "error")
         line = diagnostic.get("line", 0)
@@ -252,24 +238,15 @@ def _redact_secrets_from_message(message: str) -> str:
         Sanitized message with secrets redacted
     """
     # Redact DSN/URL with credentials: scheme://user:password@host/path -> scheme://***@host/path
-    message = re.sub(
-        r'(\w+://)[^:/@\s]+:[^@\s]+@([^/\s]+)',
-        r'\1***@\2',
-        message
-    )
+    message = re.sub(r"(\w+://)[^:/@\s]+:[^@\s]+@([^/\s]+)", r"\1***@\2", message)
 
     # Redact password= or token= parameters (handles both & and ; separators)
-    message = re.sub(
-        r'(password|token|secret|key)=[^\s&;]+',
-        r'\1=***',
-        message,
-        flags=re.IGNORECASE
-    )
+    message = re.sub(r"(password|token|secret|key)=[^\s&;]+", r"\1=***", message, flags=re.IGNORECASE)
 
     return message
 
 
-def map_cli_error_to_mcp(exc_or_msg: Union[Exception, str]) -> OsirisError:
+def map_cli_error_to_mcp(exc_or_msg: Exception | str) -> OsirisError:
     """
     Map CLI subprocess output or exception to structured OsirisError.
 
@@ -308,17 +285,19 @@ def map_cli_error_to_mcp(exc_or_msg: Union[Exception, str]) -> OsirisError:
     if any(pattern in message_lower for pattern in ["oml parse", "yaml parse", "missing required field"]):
         family = ErrorFamily.SCHEMA
     # Policy errors (check before auth to avoid conflict)
-    elif any(pattern in message_lower for pattern in ["consent required", "rate limit", "forbidden"]):
-        family = ErrorFamily.POLICY
-    # Unauthorized (must check full word, not just "auth")
-    elif re.search(r'\bunauthorized\b', message_lower):
+    elif any(pattern in message_lower for pattern in ["consent required", "rate limit", "forbidden"]) or re.search(
+        r"\bunauthorized\b", message_lower
+    ):
         family = ErrorFamily.POLICY
     # Timeout errors (DISCOVERY)
     elif any(pattern in message_lower for pattern in ["timeout", "timed out"]):
         family = ErrorFamily.DISCOVERY
         suggest = "Check network connectivity and increase timeout if needed"
     # Authentication errors (SEMANTIC) - check after policy checks
-    elif any(pattern in message_lower for pattern in ["authentication failed", "invalid password", "invalid credentials", "auth error"]):
+    elif any(
+        pattern in message_lower
+        for pattern in ["authentication failed", "invalid password", "invalid credentials", "auth error"]
+    ):
         family = ErrorFamily.SEMANTIC
         suggest = "Verify credentials in osiris_connections.yaml and environment"
     # Secret/environment errors (SEMANTIC)
@@ -339,9 +318,4 @@ def map_cli_error_to_mcp(exc_or_msg: Union[Exception, str]) -> OsirisError:
         suggest = "Check network connectivity and firewall rules"
 
     # Build OsirisError
-    return OsirisError(
-        family=family,
-        message=normalized,
-        path=[],
-        suggest=suggest
-    )
+    return OsirisError(family=family, message=normalized, path=[], suggest=suggest)

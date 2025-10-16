@@ -2,13 +2,12 @@
 Test MCP OML tools (schema.get, validate, save).
 """
 
-import json
-import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
-from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from osiris.mcp.tools.oml import OMLTools
+import pytest
+
 from osiris.mcp.errors import OsirisError
+from osiris.mcp.tools.oml import OMLTools
 
 
 class TestOMLTools:
@@ -48,10 +47,7 @@ steps:
       connection: @mysql.default
       query: SELECT * FROM users
 """
-        result = await oml_tools.validate({
-            "oml_content": valid_oml,
-            "strict": True
-        })
+        result = await oml_tools.validate({"oml_content": valid_oml, "strict": True})
 
         assert result["status"] == "success"
         assert result["valid"] is True
@@ -66,9 +62,7 @@ version: 0.1.0
 name: test
   bad_indent
 """
-        result = await oml_tools.validate({
-            "oml_content": invalid_yaml
-        })
+        result = await oml_tools.validate({"oml_content": invalid_yaml})
 
         assert result["status"] == "success"
         assert result["valid"] is False
@@ -82,19 +76,11 @@ name: test
         incomplete_oml = """
 name: test_pipeline
 """
-        result = await oml_tools.validate({
-            "oml_content": incomplete_oml
-        })
+        result = await oml_tools.validate({"oml_content": incomplete_oml})
 
         assert result["valid"] is False
-        assert any(
-            "Missing required field: version" in d["message"]
-            for d in result["diagnostics"]
-        )
-        assert any(
-            "Missing required field: steps" in d["message"]
-            for d in result["diagnostics"]
-        )
+        assert any("Missing required field: version" in d["message"] for d in result["diagnostics"])
+        assert any("Missing required field: steps" in d["message"] for d in result["diagnostics"])
 
     @pytest.mark.asyncio
     async def test_validate_oml_no_content(self, oml_tools):
@@ -110,11 +96,9 @@ name: test_pipeline
         """Test saving OML draft."""
         oml_tools.resolver.write_resource = AsyncMock(return_value=True)
 
-        result = await oml_tools.save({
-            "oml_content": "version: 0.1.0\nname: test",
-            "session_id": "test_session",
-            "filename": "test.yaml"
-        })
+        result = await oml_tools.save(
+            {"oml_content": "version: 0.1.0\nname: test", "session_id": "test_session", "filename": "test.yaml"}
+        )
 
         assert result["status"] == "success"
         assert result["saved"] is True
@@ -130,13 +114,10 @@ name: test_pipeline
         """Test saving OML with auto-generated filename."""
         oml_tools.resolver.write_resource = AsyncMock(return_value=True)
 
-        with patch('osiris.mcp.tools.oml.datetime') as mock_datetime:
+        with patch("osiris.mcp.tools.oml.datetime") as mock_datetime:
             mock_datetime.now.return_value.strftime.return_value = "20251014_120000"
 
-            result = await oml_tools.save({
-                "oml_content": "version: 0.1.0",
-                "session_id": "sess123"
-            })
+            result = await oml_tools.save({"oml_content": "version: 0.1.0", "session_id": "sess123"})
 
             assert result["saved"] is True
             assert result["filename"] == "sess123_20251014_120000.yaml"
@@ -146,9 +127,7 @@ name: test_pipeline
     async def test_save_oml_missing_content(self, oml_tools):
         """Test saving without OML content."""
         with pytest.raises(OsirisError) as exc_info:
-            await oml_tools.save({
-                "session_id": "test"
-            })
+            await oml_tools.save({"session_id": "test"})
 
         assert exc_info.value.family.value == "SCHEMA"
         assert "oml_content is required" in str(exc_info.value)
@@ -157,9 +136,7 @@ name: test_pipeline
     async def test_save_oml_missing_session_id(self, oml_tools):
         """Test saving without session_id."""
         with pytest.raises(OsirisError) as exc_info:
-            await oml_tools.save({
-                "oml_content": "test"
-            })
+            await oml_tools.save({"oml_content": "test"})
 
         assert exc_info.value.family.value == "SCHEMA"
         assert "session_id is required" in str(exc_info.value)

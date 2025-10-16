@@ -476,7 +476,9 @@ def run_command(args: list[str]):
 
     # Temporary session (we'll create proper one after knowing pipeline_slug)
     session_id = f"run_{int(time.time() * 1000)}"
-    session = SessionContext(session_id=session_id, base_logs_dir=Path("run_logs"))
+    # Use filesystem contract to determine logs directory
+    temp_logs_dir = fs_config.resolve_path(fs_config.run_logs_dir)
+    session = SessionContext(session_id=session_id, base_logs_dir=temp_logs_dir)
     set_current_session(session)
 
     # Log loaded env files (masked paths)

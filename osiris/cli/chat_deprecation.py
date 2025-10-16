@@ -5,7 +5,6 @@ Per ADR-0036, the chat interface is deprecated in favor of MCP.
 """
 
 import json
-import sys
 
 
 def handle_chat_deprecation(json_output: bool = False) -> int:
@@ -22,7 +21,7 @@ def handle_chat_deprecation(json_output: bool = False) -> int:
         error_response = {
             "error": "deprecated",
             "message": "chat command deprecated. Use 'osiris mcp' or Claude Desktop MCP integration",
-            "migration": "docs/migration/chat-to-mcp.md"
+            "migration": "docs/migration/chat-to-mcp.md",
         }
         print(json.dumps(error_response))
     else:

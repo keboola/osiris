@@ -6,12 +6,11 @@ Maps Osiris URIs to actual resources and handles resource operations.
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+
+from mcp import types
 from pydantic import AnyUrl
 
-import mcp.types as types
-
-from osiris.mcp.errors import OsirisError, ErrorFamily
+from osiris.mcp.errors import ErrorFamily, OsirisError
 
 
 class ResourceResolver:
@@ -19,30 +18,40 @@ class ResourceResolver:
     Resolver for Osiris MCP resources.
 
     All resources are under the osiris://mcp/ namespace:
-    - osiris://mcp/schemas/...  -> data/schemas/ (read-only)
-    - osiris://mcp/prompts/...  -> data/prompts/ (read-only)
-    - osiris://mcp/usecases/... -> data/usecases/ (read-only)
-    - osiris://mcp/discovery/... -> state/discovery/cache/ (runtime)
-    - osiris://mcp/drafts/...    -> state/drafts/ (runtime)
-    - osiris://mcp/memory/...    -> state/memory/ (runtime)
+    - osiris://mcp/schemas/...  -> data/schemas/ (read-only, from package)
+    - osiris://mcp/prompts/...  -> data/prompts/ (read-only, from package)
+    - osiris://mcp/usecases/... -> data/usecases/ (read-only, from package)
+    - osiris://mcp/discovery/... -> cache/ (runtime, from config)
+    - osiris://mcp/drafts/...    -> cache/ (runtime, from config)
+    - osiris://mcp/memory/...    -> memory/ (runtime, from config)
     """
 
-    def __init__(self, base_dir: Optional[Path] = None):
+    def __init__(self, config=None):
         """
         Initialize the resource resolver.
 
         Args:
-            base_dir: Base directory for MCP resources
+            config: MCPConfig instance (if None, will load from osiris.yaml)
         """
-        self.base_dir = base_dir or Path(__file__).parent
-        self.data_dir = self.base_dir / "data"
-        self.state_dir = self.base_dir / "state"
+        # Import here to avoid circular dependency
+        if config is None:
+            from osiris.mcp.config import get_config  # noqa: PLC0415  # Lazy import
+
+            config = get_config()
+
+        # Read-only data directory (schemas, prompts, usecases) - from package
+        self.data_dir = Path(__file__).parent / "data"
+
+        # Runtime state directories - from config (filesystem contract)
+        self.cache_dir = config.cache_dir  # For discovery and drafts
+        self.memory_dir = config.memory_dir  # For memory capture
 
         # Ensure directories exist
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.memory_dir.mkdir(parents=True, exist_ok=True)
 
-    def _parse_uri(self, uri: str) -> Tuple[str, Path]:
+    def _parse_uri(self, uri: str) -> tuple[str, Path]:
         """
         Parse an Osiris URI and return the resource type and path.
 
@@ -57,14 +66,11 @@ class ResourceResolver:
         """
         if not uri.startswith("osiris://mcp/"):
             raise OsirisError(
-                ErrorFamily.SEMANTIC,
-                f"Invalid URI scheme: {uri}",
-                path=["uri"],
-                suggest="Use osiris://mcp/... URIs"
+                ErrorFamily.SEMANTIC, f"Invalid URI scheme: {uri}", path=["uri"], suggest="Use osiris://mcp/... URIs"
             )
 
         # Remove prefix and split
-        path_part = uri[len("osiris://mcp/"):]
+        path_part = uri[len("osiris://mcp/") :]
         parts = path_part.split("/", 1)
 
         if len(parts) < 2:
@@ -72,7 +78,7 @@ class ResourceResolver:
                 ErrorFamily.SEMANTIC,
                 f"Invalid URI format: {uri}",
                 path=["uri"],
-                suggest="Use format osiris://mcp/<type>/<path>"
+                suggest="Use format osiris://mcp/<type>/<path>",
             )
 
         resource_type = parts[0]
@@ -97,20 +103,23 @@ class ResourceResolver:
 
         # Map resource types to directories
         if resource_type in ["schemas", "prompts", "usecases"]:
-            # Read-only data resources
+            # Read-only data resources (from package)
             return self.data_dir / resource_type / relative_path
-        elif resource_type in ["discovery", "drafts", "memory"]:
-            # Runtime state resources
-            return self.state_dir / resource_type / relative_path
+        elif resource_type in ["discovery", "drafts"]:
+            # Runtime cache resources (from config)
+            return self.cache_dir / relative_path
+        elif resource_type == "memory":
+            # Memory resources (from config)
+            return self.memory_dir / relative_path
         else:
             raise OsirisError(
                 ErrorFamily.SEMANTIC,
                 f"Unknown resource type: {resource_type}",
                 path=["uri", "type"],
-                suggest="Valid types: schemas, prompts, usecases, discovery, drafts, memory"
+                suggest="Valid types: schemas, prompts, usecases, discovery, drafts, memory",
             )
 
-    async def list_resources(self) -> List[types.Resource]:
+    async def list_resources(self) -> list[types.Resource]:
         """
         List all available resources.
 
@@ -125,7 +134,7 @@ class ResourceResolver:
                 uri=AnyUrl("osiris://mcp/schemas/oml/v0.1.0.json"),
                 name="OML v0.1.0 Schema",
                 description="JSON Schema for OML pipeline format version 0.1.0",
-                mimeType="application/json"
+                mimeType="application/json",
             )
         )
 
@@ -135,7 +144,7 @@ class ResourceResolver:
                 uri=AnyUrl("osiris://mcp/prompts/oml_authoring_guide.md"),
                 name="OML Authoring Guide",
                 description="Guide for authoring OML pipelines",
-                mimeType="text/markdown"
+                mimeType="text/markdown",
             )
         )
 
@@ -145,7 +154,7 @@ class ResourceResolver:
                 uri=AnyUrl("osiris://mcp/usecases/catalog.yaml"),
                 name="Use Case Catalog",
                 description="Catalog of OML pipeline use cases and templates",
-                mimeType="application/x-yaml"
+                mimeType="application/x-yaml",
             )
         )
 
@@ -180,7 +189,7 @@ class ResourceResolver:
                 ErrorFamily.SEMANTIC,
                 f"Resource not found: {uri}",
                 path=["uri"],
-                suggest="Check the resource URI or run discovery first"
+                suggest="Check the resource URI or run discovery first",
             )
 
         # Read the file
@@ -193,17 +202,15 @@ class ResourceResolver:
                 with open(file_path) as f:
                     text = f.read()
 
-            return types.ReadResourceResult(
-                contents=[types.TextContent(type="text", text=text)]
-            )
+            return types.ReadResourceResult(contents=[types.TextContent(type="text", text=text)])
 
-        except (IOError, json.JSONDecodeError) as e:
+        except (OSError, json.JSONDecodeError) as e:
             raise OsirisError(
                 ErrorFamily.SEMANTIC,
                 f"Failed to read resource: {str(e)}",
                 path=["uri"],
-                suggest="Check resource permissions and format"
-            )
+                suggest="Check resource permissions and format",
+            ) from e
 
     async def _generate_discovery_artifact(self, uri: str) -> types.ReadResourceResult:
         """
@@ -222,7 +229,7 @@ class ResourceResolver:
                 ErrorFamily.SEMANTIC,
                 f"Invalid discovery URI format: {uri}",
                 path=["uri"],
-                suggest="Use format osiris://mcp/discovery/<id>/<artifact>.json"
+                suggest="Use format osiris://mcp/discovery/<id>/<artifact>.json",
             )
 
         discovery_id = parts[3]
@@ -236,29 +243,21 @@ class ResourceResolver:
                 "connection": "unknown",
                 "database": "unknown",
                 "tables_count": 0,
-                "total_rows": 0
+                "total_rows": 0,
             }
         elif artifact_name == "tables":
-            content = {
-                "discovery_id": discovery_id,
-                "tables": []
-            }
+            content = {"discovery_id": discovery_id, "tables": []}
         elif artifact_name == "samples":
-            content = {
-                "discovery_id": discovery_id,
-                "samples": {}
-            }
+            content = {"discovery_id": discovery_id, "samples": {}}
         else:
             raise OsirisError(
                 ErrorFamily.SEMANTIC,
                 f"Unknown discovery artifact: {artifact_name}",
                 path=["uri", "artifact"],
-                suggest="Valid artifacts: overview, tables, samples"
+                suggest="Valid artifacts: overview, tables, samples",
             )
 
-        return types.ReadResourceResult(
-            contents=[types.TextContent(type="text", text=json.dumps(content, indent=2))]
-        )
+        return types.ReadResourceResult(contents=[types.TextContent(type="text", text=json.dumps(content, indent=2))])
 
     async def write_resource(self, uri: str, content: str) -> bool:
         """
@@ -282,7 +281,7 @@ class ResourceResolver:
                 ErrorFamily.POLICY,
                 f"Cannot write to read-only resource type: {resource_type}",
                 path=["uri", "type"],
-                suggest="Only discovery, drafts, and memory resources are writable"
+                suggest="Only discovery, drafts, and memory resources are writable",
             )
 
         # Get physical path and ensure parent directory exists
@@ -294,13 +293,13 @@ class ResourceResolver:
             with open(file_path, "w") as f:
                 f.write(content)
             return True
-        except IOError as e:
+        except OSError as e:
             raise OsirisError(
                 ErrorFamily.SEMANTIC,
                 f"Failed to write resource: {str(e)}",
                 path=["uri"],
-                suggest="Check file permissions and disk space"
-            )
+                suggest="Check file permissions and disk space",
+            ) from e
 
     def validate_uri(self, uri: str) -> bool:
         """
