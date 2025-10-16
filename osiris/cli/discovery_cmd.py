@@ -28,7 +28,7 @@ def discovery_run(
     samples: int = 10,
     json_output: bool = False,
     session_id: str | None = None,
-    logs_dir: str = "logs",
+    logs_dir: str | None = None,
 ):
     """Run database schema discovery on a connection.
 
@@ -37,18 +37,32 @@ def discovery_run(
         samples: Number of sample rows to retrieve (default: 10)
         json_output: Whether to output JSON instead of rich formatting
         session_id: Optional session ID for logging
-        logs_dir: Directory for session logs
+        logs_dir: Optional directory for session logs (defaults to filesystem contract)
 
     Returns:
         Exit code (0 for success, non-zero for errors)
     """
+    # Respect filesystem contract - get logs_dir from osiris.yaml if not specified
+    if logs_dir is None:
+        try:
+            from osiris.core.config import load_config
+            config = load_config("osiris.yaml")
+            filesystem = config.get("filesystem", {})
+            base_path = Path(filesystem.get("base_path", "."))
+            logs_dir = str(base_path / filesystem.get("run_logs_dir", "logs"))
+        except Exception:
+            # Fallback to relative logs if config not found
+            logs_dir = "logs"
+
     # Create session context
     if session_id is None:
         session_id = f"discovery_{int(time.time() * 1000)}"
 
     session = SessionContext(session_id=session_id, base_logs_dir=Path(logs_dir), allowed_events=["*"])
     set_current_session(session)
-    session.setup_logging(level=logging.INFO)
+    # In JSON mode, suppress console logging to avoid polluting JSON output
+    log_level = logging.WARNING if json_output else logging.INFO
+    session.setup_logging(level=log_level)
 
     start_time = time.time()
 
@@ -61,26 +75,29 @@ def discovery_run(
     )
 
     try:
-        # Parse connection reference
+        # Parse connection reference (@family.alias format)
         if not connection_id.startswith("@"):
             console.print(f"[red]Error: Connection ID must start with @ (got: {connection_id})[/red]")
             session.log_event("discovery_error", error="invalid_connection_format", connection_id=connection_id)
             return 2
 
-        # Load connections and resolve
-        connections = load_connections_yaml()
-        resolved = resolve_connection(connection_id, connections)
+        # Parse @family.alias format
+        parts = connection_id[1:].split(".", 1)
+        if len(parts) != 2:
+            console.print(f"[red]Error: Invalid format '{connection_id}'. Expected @family.alias[/red]")
+            session.log_event("discovery_error", error="invalid_connection_format", connection_id=connection_id)
+            return 2
 
-        if not resolved:
-            console.print(f"[red]Error: Connection '{connection_id}' not found[/red]")
-            console.print("[dim]Available connections:[/dim]")
-            for family, aliases in connections.items():
-                for alias in aliases:
-                    console.print(f"  @{family}.{alias}")
-            session.log_event("discovery_error", error="connection_not_found", connection_id=connection_id)
+        family, alias = parts
+
+        # Resolve connection using correct API
+        try:
+            config = resolve_connection(family, alias)
+        except (ValueError, Exception) as e:
+            console.print(f"[red]Error: {e}[/red]")
+            session.log_event("discovery_error", error=str(e), connection_id=connection_id)
             return 1
 
-        family, alias, config = resolved
         component_name = f"{family}.extractor"
 
         # Get component from registry
@@ -128,7 +145,11 @@ def discovery_run(
             console.print(f"[dim]Component: {component_name}[/dim]")
             console.print(f"[dim]Samples per table: {samples}[/dim]\n")
 
-        tables = discovery.discover_all_tables(sample_size=samples)
+        # Note: discover_all_tables doesn't take sample_size, it uses progressive discovery
+        # We'll need to call discover_table for each table with specific sample size
+        import asyncio
+        tables_dict = asyncio.run(discovery.discover_all_tables(max_tables=100))
+        tables = list(tables_dict.values())
 
         duration_ms = int((time.time() - start_time) * 1000)
 
@@ -151,16 +172,15 @@ def discovery_run(
                     "row_count": table.row_count,
                     "columns": [
                         {
-                            "name": col.name,
-                            "type": col.type,
-                            "nullable": col.nullable,
+                            "name": col_name,
+                            "type": table.column_types.get(col_name, "unknown"),
                         }
-                        for col in table.columns
+                        for col_name in table.columns
                     ],
                 }
-                if table.samples:
-                    # Convert samples to JSON-serializable format
-                    table_dict["samples"] = table.samples.to_dict(orient="records")
+                if table.sample_data:
+                    # Sample data is already a list of dicts
+                    table_dict["sample_data"] = table.sample_data
 
                 tables_data.append(table_dict)
 
@@ -189,7 +209,7 @@ def discovery_run(
                 summary.add_column("Sample Rows", style="magenta", justify="right")
 
                 for table in tables:
-                    sample_count = len(table.samples) if table.samples is not None else 0
+                    sample_count = len(table.sample_data) if table.sample_data else 0
                     summary.add_row(
                         table.name,
                         str(table.row_count) if table.row_count is not None else "?",
@@ -202,9 +222,10 @@ def discovery_run(
                 # Detail for each table
                 for table in tables:
                     console.print(f"\n[bold]{table.name}[/bold] ({len(table.columns)} columns)")
-                    for col in table.columns:
-                        nullable = " (nullable)" if col.nullable else ""
-                        console.print(f"  • [cyan]{col.name}[/cyan]: {col.type}{nullable}")
+                    for col_name in table.columns:
+                        col_type = table.column_types.get(col_name, "unknown")
+                        is_pk = " [PRIMARY KEY]" if col_name in table.primary_keys else ""
+                        console.print(f"  • [cyan]{col_name}[/cyan]: {col_type}{is_pk}")
 
             console.print(f"\n[dim]Session: {session_id}[/dim]")
             console.print(f"[dim]Duration: {duration_ms}ms[/dim]")
