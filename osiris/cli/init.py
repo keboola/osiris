@@ -31,11 +31,23 @@ def init_command(args: list, json_output: bool = False) -> None:
     """Initialize a new Osiris project with Filesystem Contract v1 structure.
 
     Creates:
-    - osiris.yaml with filesystem contract config
+    - osiris.yaml with filesystem contract config (including MCP paths)
     - Directory structure (pipelines/, build/, aiop/, run_logs/, .osiris/)
     - .gitignore (from Appendix C)
     - .env.example and osiris_connections.example.yaml stubs
     - Optional git init + initial commit
+
+    Filesystem Contract Config:
+    - filesystem.base_path: Set to absolute path of project directory
+    - filesystem.mcp_logs_dir: Set to ".osiris/mcp/logs" (relative to base_path)
+
+    Verification:
+        >>> # Verify filesystem config was written correctly
+        >>> osiris init /path/to/project
+        >>> yq '.filesystem.base_path' /path/to/project/osiris.yaml
+        "/path/to/project"
+        >>> yq '.filesystem.mcp_logs_dir' /path/to/project/osiris.yaml
+        ".osiris/mcp/logs"
 
     Args:
         args: Command line arguments
