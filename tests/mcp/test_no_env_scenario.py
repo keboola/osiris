@@ -124,13 +124,13 @@ class TestNoEnvScenario:
                     {"connection_id": "@mysql.default", "component_id": "mysql.extractor", "samples": 10}
                 )
 
-                # Verify CLI was called
+                # Verify CLI was called (note: --component-id NOT passed, derived from connection family)
                 mock_cli.assert_called_once()
                 call_args = mock_cli.call_args[0][0]
                 assert call_args[0:3] == ["mcp", "discovery", "run"]
                 assert "--connection-id" in call_args
-                assert "--component-id" in call_args
                 assert "--samples" in call_args
+                # component_id is derived from connection family in CLI, not passed as flag
 
                 # Verify result
                 assert result["status"] == "success"
