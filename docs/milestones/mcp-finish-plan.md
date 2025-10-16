@@ -10,7 +10,7 @@
 
 This plan completes the MCP server implementation to achieve production readiness by enforcing the CLI-first security model mandated by ADR-0036. The current implementation (~60% complete, 114 tests passing) has a **critical security violation** where MCP tools directly access secrets. This plan addresses all gaps identified in `docs/milestones/mcp-audit.md`.
 
-**Total Estimated Effort**: 12.5-15.5 days (2.5-3 weeks)
+**Total Estimated Effort**: 12.5–15.5 days (2.5–3 weeks)
 **Priority**: =4 CRITICAL - Security violation blocks production use
 
 ---
@@ -38,19 +38,18 @@ Implement CLI-first adapter architecture to eliminate all secret access from MCP
 
 - **File**: `osiris/cli/mcp_cmd.py` (UPDATE - add ~500 lines)
   - Add router for 10 new subcommands under `osiris mcp <tool>`
+  - MCP router must only delegate to existing CLI functions. If MCP needs a different JSON shape, add a `--mcp` switch to the existing CLI command. No new business logic lives in MCP; only wrappers and shared helpers are allowed.
   - Each subcommand must output `--json` format matching tool schemas
   - Implement argument parsing for each tool
 
-#### 1.3 Individual CLI Subcommands
+#### 1.3 CLI Delegation Pattern
 
-- **Files**: Create or update in `osiris/cli/mcp_subcommands/` (NEW directory)
-  - `connections_cmds.py`: `list()`, `doctor(connection_id)`
-  - `discovery_cmds.py`: `run(connection_id, component_id, samples)`
-  - `oml_cmds.py`: `schema()`, `validate(pipeline)`, `save(pipeline)`
-  - `guide_cmds.py`: `start(context_file)`
-  - `memory_cmds.py`: `capture(session_id, consent)`
-  - `usecases_cmds.py`: `list(category)`
-  - `components_cmds.py`: `list()`
+- **Approach**: Add `--mcp` switch to existing CLI commands (if needed) and have MCP wrappers call them
+- **Files**: Extend existing CLI modules or create thin wrappers in `osiris/cli/mcp_subcommands/`
+  - Connections: Delegate to existing `osiris connections` commands
+  - Discovery: Delegate to existing `osiris discovery` commands
+  - OML: Delegate to existing `osiris oml` commands or add `--mcp` switch
+  - Guide, Memory, Usecases, Components: Delegate to existing commands or shared helpers
 
 #### 1.4 Tool Refactoring for Delegation
 
@@ -161,10 +160,16 @@ Implement CLI-first adapter architecture to eliminate all secret access from MCP
 
 #### CLI Design Rules & Acceptance Checklist
 
-MCP commands must reuse existing CLI logic (e.g., osiris connections list) via internal delegation or shared helper functions — not separate reimplementation.
-If MCP needs a different output shape, extend the existing command with a --mcp flag or use a thin adapter that transforms already masked JSON.
+MCP commands must reuse existing CLI logic (e.g., `osiris connections list`, `osiris discovery request`) via internal delegation or shared helper functions — not separate reimplementation.
+If MCP needs a different output shape, extend the existing command with a `--mcp` flag or use a thin adapter that transforms already masked JSON.
 
 All new `osiris mcp …` subcommands must follow consistent design and UX rules.
+
+**MCP Tool to CLI Mapping** (Discovery Example):
+- MCP tool name: `discovery_request`
+- MCP wrapper command: `osiris mcp discovery request --json`
+- Primary CLI command: `osiris discovery request`
+- Pattern: MCP wraps the existing CLI command; CLI is primary, MCP is the wrapper
 
 **CLI Design Rules**
 
@@ -190,13 +195,17 @@ All new `osiris mcp …` subcommands must follow consistent design and UX rules.
 
 - [ ] `osiris/mcp/cli_bridge.py` exists and all functions implemented
 - [ ] All 10 CLI subcommands executable: `osiris mcp <tool> <action> --json`
+- [ ] MCP commands are only wrappers over existing CLI commands (no re-implementation)
+- [ ] `osiris mcp --help` does not start the server, and `osiris mcp <subcommand> --help` shows subcommand-specific options
+- [ ] `osiris mcp connections doctor` accepts `--connection-id @family.alias`, maps internally to family/alias, and performs a real connectivity test (not just lint)
 - [ ] Zero imports of `resolve_connection()` or `load_connections_yaml()` in `osiris/mcp/tools/*.py`
 - [ ] `pytest tests/mcp/test_no_env_scenario.py` passes with no env vars
 - [ ] `osiris mcp run --selftest` completes in <2s and exercises delegated tools
+- [ ] `osiris mcp run --selftest` passes in <2s from any CWD; server and selftest resolve paths using filesystem.base_path from osiris.yaml
 - [ ] Logs appear in `<base_path>/.osiris/mcp/logs/` not `~/.osiris_audit/`
 - [ ] CI check added: Fail on forbidden imports in MCP tools
 - [ ] Run-anywhere behavior verified: selftest & server work from any CWD
-- [ ] `osiris mcp clients` outputs correct Claude Desktop snippet with `osiris.py mcp run`
+- [ ] `osiris mcp clients --json` outputs a Claude Desktop snippet that launches osiris.py mcp run via `/bin/bash -lc 'cd <base_path> && exec <venv_python> <base_path>/osiris.py mcp run'` with no secrets in env, and includes only OSIRIS_HOME and PYTHONPATH when explicitly requested
 
 ---
 
@@ -248,6 +257,12 @@ Complete all missing features to achieve full parity with ADR-0036 specification
   - Require explicit consent flag
   - Store in `<base_path>/.osiris/mcp/logs/memory/sessions/`
 
+#### 2.6 Legacy Session Logs Alignment
+
+- **Task**: Align legacy 'ephemeral session' logs with the filesystem contract
+  - Either write under `<base_path>/.osiris/mcp/logs/…` or declare a dedicated `filesystem.legacy_logs_dir` in `osiris.yaml`
+  - **Acceptance**: Running `osiris connections list` writes to the configured directory (no `testing_env/logs` unless configured)
+
 ### Test Coverage Requirements
 
 #### Integration Tests
@@ -287,6 +302,7 @@ Complete all missing features to achieve full parity with ADR-0036 specification
 - Telemetry & Audit: 1 day
 - Resource & Cache: 0.5 days
 - Memory Management: 0.5 days
+- Legacy Logs Alignment: 0.25 days
 - Integration Testing: 1-1.5 days
 - Performance Testing: 0.5 days
 
@@ -313,7 +329,8 @@ MCP clients (e.g., Claude Desktop) gain read-only access to AIOP artifacts gener
 - [ ] Integration test passes: full OML authoring workflow
 - [ ] Selftest verifies all tools and aliases in <2s
 - [ ] Performance overhead <50ms per tool call (p95)
-- [ ] All secret masking is now spec-driven — both osiris connections list and osiris mcp connections list use the unified helper that reads secrets: and x-secret: paths from component specs via ComponentRegistry, with fallback to common secret names only for unknown families. No hard-coded key lists remain, and masking results are identical across CLI and MCP outputs.
+- [ ] Secret masking is spec-aware: both CLI and MCP use component specs (secrets / x-secret) via the Component Registry to determine which fields to redact; fallback to common names is allowed, and env-var placeholders like ${VAR} remain unmodified
+- [ ] Legacy logs write to filesystem contract paths (configured directory, not hardcoded `testing_env/logs`)
 
 ---
 
@@ -530,7 +547,7 @@ Complete documentation, ensure smooth migration path, and prepare for v0.5.0 rel
 | **F1.1**  | `osiris/mcp/cli_bridge.py`                       | Create CLI bridge with `run_cli_json()`       | `test_cli_bridge.py`              | 8h     | 1     |
 | **F1.2**  | `osiris/cli/mcp_cmd.py`                          | Add router for 10 subcommands                 | `test_cli_subcommands.py`         | 6h     | 1     |
 | **F1.3**  | `osiris/cli/mcp_subcommands/connections_cmds.py` | Implement list, doctor commands               | `test_cli_subcommands.py`         | 4h     | 1     |
-| **F1.4**  | `osiris/cli/mcp_subcommands/discovery_cmds.py`   | Implement discovery run command               | `test_cli_subcommands.py`         | 4h     | 1     |
+| **F1.4**  | `osiris/cli/mcp_subcommands/discovery_cmds.py`   | Delegate to `osiris discovery request` (MCP tool: discovery_request, wrapper: `osiris mcp discovery request --json`) | `test_cli_subcommands.py`         | 4h     | 1     |
 | **F1.5**  | `osiris/cli/mcp_subcommands/oml_cmds.py`         | Implement schema, validate, save              | `test_cli_subcommands.py`         | 4h     | 1     |
 | **F1.6**  | `osiris/cli/mcp_subcommands/guide_cmds.py`       | Implement guide start command                 | `test_cli_subcommands.py`         | 2h     | 1     |
 | **F1.7**  | `osiris/cli/mcp_subcommands/memory_cmds.py`      | Implement memory capture command              | `test_cli_subcommands.py`         | 2h     | 1     |
@@ -711,6 +728,14 @@ python osiris.py mcp run --selftest
 ls -la "$(yq '.filesystem.base_path' osiris.yaml)/.osiris/mcp/logs"
 ```
 
+#### Help Safety and Subcommand Help
+
+```bash
+# Help safety and subcommand help
+osiris mcp --help | rg -i 'usage'            # does not start server
+osiris mcp connections --help | rg -i 'usage'  # shows connections-specific flags
+```
+
 #### CLI Clients Output (Section 2)
 
 ```bash
@@ -750,7 +775,7 @@ python osiris.py mcp tools --json | jq '.tools | length'
 ```bash
 # Test each new CLI command
 osiris discovery request --help
-osiris oml schema --json | jq '.schema.version'
+osiris oml schema --json | jq '.version'
 osiris guide start --context /tmp/ctx.json --json
 osiris memory capture --session test123 --consent --json
 osiris usecases list --json | jq '.[].name'
