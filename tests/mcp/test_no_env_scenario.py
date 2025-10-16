@@ -6,10 +6,10 @@ without requiring any environment variables or secrets in the MCP process.
 """
 
 import os
-import pytest
 from pathlib import Path
-from unittest.mock import patch, Mock
-import json
+from unittest.mock import patch
+
+import pytest
 
 from osiris.mcp.tools.connections import ConnectionsTools
 from osiris.mcp.tools.discovery import DiscoveryTools
@@ -26,7 +26,7 @@ class TestNoEnvScenario:
         try:
             # Remove all potential environment variables
             for key in list(os.environ.keys()):
-                if key.startswith('OSIRIS_') or key.startswith('MYSQL_') or key.startswith('SUPABASE_'):
+                if key.startswith("OSIRIS_") or key.startswith("MYSQL_") or key.startswith("SUPABASE_"):
                     del os.environ[key]
 
             # Mock the CLI delegation
@@ -36,15 +36,15 @@ class TestNoEnvScenario:
                         "family": "mysql",
                         "alias": "default",
                         "reference": "@mysql.default",
-                        "config": {"host": "localhost", "database": "test"}
+                        "config": {"host": "localhost", "database": "test"},
                     }
                 ],
                 "count": 1,
                 "status": "success",
-                "_meta": {"correlation_id": "test-123", "duration_ms": 10}
+                "_meta": {"correlation_id": "test-123", "duration_ms": 10},
             }
 
-            with patch('osiris.mcp.tools.connections.run_cli_json', return_value=mock_result) as mock_cli:
+            with patch("osiris.mcp.tools.connections.run_cli_json", return_value=mock_result) as mock_cli:
                 tools = ConnectionsTools()
                 result = await tools.list({})
 
@@ -68,7 +68,7 @@ class TestNoEnvScenario:
         try:
             # Clear environment
             for key in list(os.environ.keys()):
-                if key.startswith('OSIRIS_') or key.startswith('MYSQL_') or key.startswith('SUPABASE_'):
+                if key.startswith("OSIRIS_") or key.startswith("MYSQL_") or key.startswith("SUPABASE_"):
                     del os.environ[key]
 
             # Mock CLI result
@@ -77,14 +77,12 @@ class TestNoEnvScenario:
                 "family": "mysql",
                 "alias": "default",
                 "health": "healthy",
-                "diagnostics": [
-                    {"check": "config_exists", "status": "passed", "message": "Found"}
-                ],
+                "diagnostics": [{"check": "config_exists", "status": "passed", "message": "Found"}],
                 "status": "success",
-                "_meta": {"correlation_id": "test-456", "duration_ms": 15}
+                "_meta": {"correlation_id": "test-456", "duration_ms": 15},
             }
 
-            with patch('osiris.mcp.tools.connections.run_cli_json', return_value=mock_result) as mock_cli:
+            with patch("osiris.mcp.tools.connections.run_cli_json", return_value=mock_result) as mock_cli:
                 tools = ConnectionsTools()
                 result = await tools.doctor({"connection_id": "@mysql.default"})
 
@@ -109,28 +107,22 @@ class TestNoEnvScenario:
         try:
             # Clear environment
             for key in list(os.environ.keys()):
-                if key.startswith('OSIRIS_') or key.startswith('MYSQL_') or key.startswith('SUPABASE_'):
+                if key.startswith("OSIRIS_") or key.startswith("MYSQL_") or key.startswith("SUPABASE_"):
                     del os.environ[key]
 
             # Mock CLI result
             mock_result = {
                 "discovery_id": "disc_12345",
                 "status": "success",
-                "summary": {
-                    "connection_id": "@mysql.default",
-                    "database_type": "mysql",
-                    "total_tables": 5
-                },
-                "_meta": {"correlation_id": "test-789", "duration_ms": 500}
+                "summary": {"connection_id": "@mysql.default", "database_type": "mysql", "total_tables": 5},
+                "_meta": {"correlation_id": "test-789", "duration_ms": 500},
             }
 
-            with patch('osiris.mcp.tools.discovery.run_cli_json', return_value=mock_result) as mock_cli:
+            with patch("osiris.mcp.tools.discovery.run_cli_json", return_value=mock_result) as mock_cli:
                 tools = DiscoveryTools()
-                result = await tools.request({
-                    "connection_id": "@mysql.default",
-                    "component_id": "mysql.extractor",
-                    "samples": 10
-                })
+                result = await tools.request(
+                    {"connection_id": "@mysql.default", "component_id": "mysql.extractor", "samples": 10}
+                )
 
                 # Verify CLI was called
                 mock_cli.assert_called_once()
@@ -183,17 +175,19 @@ class TestNoEnvScenario:
 
         # Create a test config file
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text("""
+        config_file.write_text(
+            """
 version: '2.0'
 filesystem:
   base_path: "/test/base/path"
   mcp_logs_dir: ".osiris/mcp/logs"
-""")
+"""
+        )
 
         # Set environment variable (should be ignored in favor of config)
         env_backup = os.environ.copy()
         try:
-            os.environ['OSIRIS_HOME'] = "/wrong/path"
+            os.environ["OSIRIS_HOME"] = "/wrong/path"
 
             # Load config
             fs_config = MCPFilesystemConfig.from_config(str(config_file))
@@ -215,7 +209,7 @@ filesystem:
 
         env_backup = os.environ.copy()
         try:
-            os.environ['OSIRIS_HOME'] = str(tmp_path)
+            os.environ["OSIRIS_HOME"] = str(tmp_path)
 
             # Load config (will fall back to env)
             fs_config = MCPFilesystemConfig.from_config(str(nonexistent_config))
@@ -245,11 +239,11 @@ class TestCLIDelegationIntegrity:
                 "duration_ms": 42.5,
                 "bytes_in": 100,
                 "bytes_out": 200,
-                "cli_command": "mcp connections list"
-            }
+                "cli_command": "mcp connections list",
+            },
         }
 
-        with patch('osiris.mcp.tools.connections.run_cli_json', return_value=mock_result):
+        with patch("osiris.mcp.tools.connections.run_cli_json", return_value=mock_result):
             tools = ConnectionsTools()
             result = await tools.list({})
 
@@ -262,17 +256,17 @@ class TestCLIDelegationIntegrity:
     @pytest.mark.asyncio
     async def test_cli_delegation_handles_errors_correctly(self):
         """Test that CLI errors are properly propagated."""
-        from osiris.mcp.errors import OsirisError, ErrorFamily
+        from osiris.mcp.errors import ErrorFamily, OsirisError
 
         # Simulate CLI error
         error = OsirisError(
             ErrorFamily.SEMANTIC,  # CLI errors map to SEMANTIC by default
             "connection_id is required",
             path=["connection_id"],
-            suggest="Provide a valid connection ID"
+            suggest="Provide a valid connection ID",
         )
 
-        with patch('osiris.mcp.tools.connections.run_cli_json', side_effect=error):
+        with patch("osiris.mcp.tools.connections.run_cli_json", side_effect=error):
             tools = ConnectionsTools()
 
             with pytest.raises(OsirisError) as exc_info:

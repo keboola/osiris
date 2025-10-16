@@ -2,12 +2,12 @@
 Test MCP connections tools.
 """
 
-import json
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-from osiris.mcp.tools.connections import ConnectionsTools
+import pytest
+
 from osiris.mcp.errors import OsirisError
+from osiris.mcp.tools.connections import ConnectionsTools
 
 
 class TestConnectionsTools:
@@ -33,25 +33,22 @@ class TestConnectionsTools:
                         "port": 3306,
                         "database": "test",
                         "username": "user",
-                        "password": "${MYSQL_PASSWORD}"
-                    }
+                        "password": "${MYSQL_PASSWORD}",
+                    },
                 },
                 {
                     "family": "supabase",
                     "alias": "prod",
                     "reference": "@supabase.prod",
-                    "config": {
-                        "url": "${SUPABASE_URL}",
-                        "key": "${SUPABASE_KEY}"
-                    }
-                }
+                    "config": {"url": "${SUPABASE_URL}", "key": "${SUPABASE_KEY}"},
+                },
             ],
             "count": 2,
             "status": "success",
-            "_meta": {"correlation_id": "test-123", "duration_ms": 10}
+            "_meta": {"correlation_id": "test-123", "duration_ms": 10},
         }
 
-        with patch('osiris.mcp.tools.connections.run_cli_json', return_value=mock_result):
+        with patch("osiris.mcp.tools.connections.run_cli_json", return_value=mock_result):
             result = await connections_tools.list({})
 
             assert result["status"] == "success"
@@ -80,25 +77,15 @@ class TestConnectionsTools:
             "alias": "default",
             "health": "healthy",
             "diagnostics": [
-                {
-                    "check": "config_exists",
-                    "status": "passed",
-                    "message": "Connection configuration found"
-                },
-                {
-                    "check": "resolution",
-                    "status": "passed",
-                    "message": "Connection resolved successfully"
-                }
+                {"check": "config_exists", "status": "passed", "message": "Connection configuration found"},
+                {"check": "resolution", "status": "passed", "message": "Connection resolved successfully"},
             ],
             "status": "success",
-            "_meta": {"correlation_id": "test-456", "duration_ms": 15}
+            "_meta": {"correlation_id": "test-456", "duration_ms": 15},
         }
 
-        with patch('osiris.mcp.tools.connections.run_cli_json', return_value=mock_result):
-            result = await connections_tools.doctor({
-                "connection_id": "@mysql.default"
-            })
+        with patch("osiris.mcp.tools.connections.run_cli_json", return_value=mock_result):
+            result = await connections_tools.doctor({"connection_id": "@mysql.default"})
 
             assert result["status"] == "success"
             assert result["health"] == "healthy"
@@ -107,10 +94,7 @@ class TestConnectionsTools:
             assert len(result["diagnostics"]) > 0
 
             # Check for passed diagnostics
-            config_check = next(
-                d for d in result["diagnostics"]
-                if d["check"] == "config_exists"
-            )
+            config_check = next(d for d in result["diagnostics"] if d["check"] == "config_exists")
             assert config_check["status"] == "passed"
 
     @pytest.mark.asyncio
@@ -126,24 +110,19 @@ class TestConnectionsTools:
                     "check": "alias_exists",
                     "status": "failed",
                     "message": "Connection alias 'nonexistent' not found in family 'mysql'",
-                    "severity": "error"
+                    "severity": "error",
                 }
             ],
             "status": "success",
-            "_meta": {"correlation_id": "test-789", "duration_ms": 5}
+            "_meta": {"correlation_id": "test-789", "duration_ms": 5},
         }
 
-        with patch('osiris.mcp.tools.connections.run_cli_json', return_value=mock_result):
-            result = await connections_tools.doctor({
-                "connection_id": "@mysql.nonexistent"
-            })
+        with patch("osiris.mcp.tools.connections.run_cli_json", return_value=mock_result):
+            result = await connections_tools.doctor({"connection_id": "@mysql.nonexistent"})
 
             assert result["status"] == "success"
             assert result["health"] == "unhealthy"
-            assert any(
-                d["check"] == "alias_exists" and d["status"] == "failed"
-                for d in result["diagnostics"]
-            )
+            assert any(d["check"] == "alias_exists" and d["status"] == "failed" for d in result["diagnostics"])
 
     @pytest.mark.asyncio
     async def test_connections_doctor_no_connection_id(self, connections_tools):

@@ -3,9 +3,9 @@ MCP tools for component management.
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
-from osiris.mcp.errors import OsirisError, ErrorFamily
+from osiris.mcp.errors import ErrorFamily, OsirisError
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ class ComponentsTools:
         if self._registry is None:
             try:
                 from osiris.components.registry import ComponentRegistry
+
                 self._registry = ComponentRegistry()
             except Exception as e:
                 logger.error(f"Failed to initialize component registry: {e}")
@@ -29,11 +30,11 @@ class ComponentsTools:
                     ErrorFamily.SEMANTIC,
                     f"Failed to initialize component registry: {str(e)}",
                     path=["registry"],
-                    suggest="Check component specs directory"
+                    suggest="Check component specs directory",
                 )
         return self._registry
 
-    async def list(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def list(self, args: dict[str, Any]) -> dict[str, Any]:
         """
         List available pipeline components.
 
@@ -65,17 +66,13 @@ class ComponentsTools:
                     schema = spec["config_schema"]
                     component["required_fields"] = schema.get("required", [])
                     component["optional_fields"] = [
-                        k for k in schema.get("properties", {}).keys()
-                        if k not in schema.get("required", [])
+                        k for k in schema.get("properties", {}) if k not in schema.get("required", [])
                     ]
 
                 # Add examples if available
                 if "examples" in spec:
                     component["examples"] = [
-                        {
-                            "description": ex.get("description", ""),
-                            "config": ex.get("config", {})
-                        }
+                        {"description": ex.get("description", ""), "config": ex.get("config", {})}
                         for ex in spec["examples"][:2]  # Limit to 2 examples
                     ]
 
@@ -88,14 +85,9 @@ class ComponentsTools:
             others = [c for c in components if c not in extractors + writers + processors]
 
             return {
-                "components": {
-                    "extractors": extractors,
-                    "writers": writers,
-                    "processors": processors,
-                    "other": others
-                },
+                "components": {"extractors": extractors, "writers": writers, "processors": processors, "other": others},
                 "total_count": len(components),
-                "status": "success"
+                "status": "success",
             }
 
         except Exception as e:
@@ -104,5 +96,5 @@ class ComponentsTools:
                 ErrorFamily.SEMANTIC,
                 f"Failed to list components: {str(e)}",
                 path=["components"],
-                suggest="Check component specs directory"
+                suggest="Check component specs directory",
             )

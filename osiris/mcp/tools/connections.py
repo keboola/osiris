@@ -6,10 +6,10 @@ that secrets are never accessed directly from the MCP process.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from osiris.mcp.cli_bridge import run_cli_json
-from osiris.mcp.errors import OsirisError, ErrorFamily
+from osiris.mcp.errors import ErrorFamily, OsirisError
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class ConnectionsTools:
         # No caching - delegate everything to CLI
         pass
 
-    async def list(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def list(self, args: dict[str, Any]) -> dict[str, Any]:
         """
         List all configured database connections via CLI delegation.
 
@@ -48,10 +48,10 @@ class ConnectionsTools:
                 ErrorFamily.SEMANTIC,
                 f"Failed to list connections: {str(e)}",
                 path=["connections"],
-                suggest="Check CLI bridge and osiris_connections.yaml file"
+                suggest="Check CLI bridge and osiris_connections.yaml file",
             )
 
-    async def doctor(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def doctor(self, args: dict[str, Any]) -> dict[str, Any]:
         """
         Diagnose connection issues via CLI delegation.
 
@@ -67,7 +67,7 @@ class ConnectionsTools:
                 ErrorFamily.SCHEMA,
                 "connection_id is required",
                 path=["connection_id"],
-                suggest="Provide a connection reference like @mysql.default"
+                suggest="Provide a connection reference like @mysql.default",
             )
 
         try:
@@ -76,10 +76,7 @@ class ConnectionsTools:
                 connection_id = f"@{connection_id}"
 
             # Delegate to CLI: osiris mcp connections doctor --connection-id @mysql.default --json
-            result = await run_cli_json([
-                "mcp", "connections", "doctor",
-                "--connection-id", connection_id
-            ])
+            result = await run_cli_json(["mcp", "connections", "doctor", "--connection-id", connection_id])
 
             # CLI already returns the correct format
             return result
@@ -93,5 +90,5 @@ class ConnectionsTools:
                 ErrorFamily.SEMANTIC,
                 f"Failed to diagnose connection: {str(e)}",
                 path=["connection_id"],
-                suggest="Check the connection reference format and CLI bridge"
+                suggest="Check the connection reference format and CLI bridge",
             )

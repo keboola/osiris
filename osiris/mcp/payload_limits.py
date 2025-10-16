@@ -5,11 +5,10 @@ Provides utilities for checking and enforcing payload size limits.
 """
 
 import json
-import sys
-from typing import Any, Dict, Union
+from typing import Any
 
 from osiris.mcp.config import get_config
-from osiris.mcp.errors import OsirisError, ErrorFamily
+from osiris.mcp.errors import ErrorFamily, OsirisError
 
 
 class PayloadLimitError(OsirisError):
@@ -34,13 +33,13 @@ class PayloadLimitError(OsirisError):
             ErrorFamily.POLICY,
             message,
             path=[context, "size"],
-            suggest=f"Reduce {context} size or request data in smaller chunks"
+            suggest=f"Reduce {context} size or request data in smaller chunks",
         )
 
     @staticmethod
     def _format_bytes(size: int) -> str:
         """Format byte size in human-readable format."""
-        for unit in ['B', 'KB', 'MB', 'GB']:
+        for unit in ["B", "KB", "MB", "GB"]:
             if size < 1024.0:
                 return f"{size:.1f}{unit}"
             size /= 1024.0
@@ -94,19 +93,19 @@ class PayloadLimiter:
             Size in bytes
         """
         if isinstance(data, str):
-            return len(data.encode('utf-8'))
+            return len(data.encode("utf-8"))
         elif isinstance(data, bytes):
             return len(data)
         elif isinstance(data, (dict, list)):
             # Serialize to JSON and measure
-            json_str = json.dumps(data, separators=(',', ':'))
-            return len(json_str.encode('utf-8'))
+            json_str = json.dumps(data, separators=(",", ":"))
+            return len(json_str.encode("utf-8"))
         else:
             # Try to convert to string and measure
             str_data = str(data)
-            return len(str_data.encode('utf-8'))
+            return len(str_data.encode("utf-8"))
 
-    def truncate_if_needed(self, data: Union[str, Dict, list], context: str = "data") -> tuple[Any, bool]:
+    def truncate_if_needed(self, data: str | dict | list, context: str = "data") -> tuple[Any, bool]:
         """
         Truncate data if it exceeds limits.
 
@@ -138,11 +137,13 @@ class PayloadLimiter:
             for item in data:
                 item_size = self.calculate_size(item) + 1  # +1 for comma
                 if current_size + item_size > self.limit_bytes * 0.9:  # Leave 10% buffer
-                    truncated.append({
-                        "__truncated__": True,
-                        "remaining_items": len(data) - len(truncated),
-                        "total_size": PayloadLimitError._format_bytes(size)
-                    })
+                    truncated.append(
+                        {
+                            "__truncated__": True,
+                            "remaining_items": len(data) - len(truncated),
+                            "total_size": PayloadLimitError._format_bytes(size),
+                        }
+                    )
                     break
                 truncated.append(item)
                 current_size += item_size
@@ -163,7 +164,7 @@ class PayloadLimiter:
                 if current_size + item_size > self.limit_bytes * 0.9:  # Leave 10% buffer
                     truncated["__truncated__"] = {
                         "remaining_keys": len(keys) - len(truncated),
-                        "total_size": PayloadLimitError._format_bytes(size)
+                        "total_size": PayloadLimitError._format_bytes(size),
                     }
                     break
                 truncated[key] = data[key]
@@ -176,7 +177,7 @@ class PayloadLimiter:
             str_data = str(data)
             return self.truncate_if_needed(str_data, context)
 
-    def check_request(self, request: Dict[str, Any]) -> int:
+    def check_request(self, request: dict[str, Any]) -> int:
         """
         Check if request payload is within limits.
 

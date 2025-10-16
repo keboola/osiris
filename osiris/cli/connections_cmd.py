@@ -4,7 +4,6 @@ import argparse
 import json
 import logging
 import os
-import re
 import time
 from pathlib import Path
 from typing import Any
@@ -17,7 +16,6 @@ from supabase import create_client
 from osiris.cli.helpers.connection_helpers import (
     check_env_var_set,
     extract_env_vars,
-    get_connection_env_status,
     mask_connection_for_display,
 )
 from osiris.cli.helpers.session_helpers import get_logs_directory_for_cli
@@ -139,17 +137,19 @@ def list_connections(args: list) -> None:
                         for alias, config in aliases.items():
                             # Pass family for spec-aware masking
                             masked_config = mask_connection_for_display(config, family=family)
-                            connections_array.append({
-                                "family": family,
-                                "alias": alias,
-                                "reference": f"@{family}.{alias}",
-                                "config": masked_config
-                            })
+                            connections_array.append(
+                                {
+                                    "family": family,
+                                    "alias": alias,
+                                    "reference": f"@{family}.{alias}",
+                                    "config": masked_config,
+                                }
+                            )
 
                     final_output = {
                         "connections": connections_array,
                         "count": len(connections_array),
-                        "status": "success"
+                        "status": "success",
                     }
                 else:
                     # Standard CLI format: nested dict with env vars and session
@@ -498,6 +498,7 @@ def doctor_connections(args: list) -> None:
         # Handle --connection-id by parsing it into --family and --alias
         if parsed_args.connection_id:
             from osiris.core.config import parse_connection_ref
+
             try:
                 connection_ref = parsed_args.connection_id
                 if not connection_ref.startswith("@"):

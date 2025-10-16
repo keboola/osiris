@@ -228,6 +228,7 @@ def main():
     elif args.command == "mcp":
         # MCP server command - dispatch to mcp_cmd module
         from .mcp_cmd import main as mcp_main
+
         mcp_main(command_args)
     elif args.help or not args.command:
         if json_output:

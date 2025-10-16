@@ -6,7 +6,6 @@ and uses config-driven paths instead of hardcoded directories.
 """
 
 import os
-import pytest
 from pathlib import Path
 from unittest.mock import patch
 
@@ -20,12 +19,14 @@ class TestFilesystemContractCompliance:
         """Test that MCPConfig reads filesystem config from osiris.yaml."""
         # Create test config
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text(f"""
+        config_file.write_text(
+            f"""
 version: '2.0'
 filesystem:
   base_path: "{tmp_path}"
   mcp_logs_dir: ".osiris/mcp/logs"
-""")
+"""
+        )
 
         # Load filesystem config
         fs_config = MCPFilesystemConfig.from_config(str(config_file))
@@ -46,12 +47,14 @@ filesystem:
         """Test that MCP logs are written to configured location."""
         # Create config
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text(f"""
+        config_file.write_text(
+            f"""
 version: '2.0'
 filesystem:
   base_path: "{tmp_path}"
   mcp_logs_dir: ".osiris/mcp/logs"
-""")
+"""
+        )
 
         fs_config = MCPFilesystemConfig.from_config(str(config_file))
         mcp_config = MCPConfig(fs_config=fs_config)
@@ -90,17 +93,19 @@ filesystem:
     def test_config_precedence_yaml_over_env(self, tmp_path):
         """Test that osiris.yaml takes precedence over environment variables."""
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text(f"""
+        config_file.write_text(
+            f"""
 version: '2.0'
 filesystem:
   base_path: "{tmp_path}/from_config"
   mcp_logs_dir: ".osiris/mcp/logs"
-""")
+"""
+        )
 
         env_backup = os.environ.copy()
         try:
             # Set environment variable
-            os.environ['OSIRIS_HOME'] = str(tmp_path / "from_env")
+            os.environ["OSIRIS_HOME"] = str(tmp_path / "from_env")
 
             # Load config
             fs_config = MCPFilesystemConfig.from_config(str(config_file))
@@ -116,12 +121,14 @@ filesystem:
     def test_empty_base_path_uses_config_directory(self, tmp_path):
         """Test that empty base_path uses config file's directory."""
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text("""
+        config_file.write_text(
+            """
 version: '2.0'
 filesystem:
   base_path: ""
   mcp_logs_dir: ".osiris/mcp/logs"
-""")
+"""
+        )
 
         fs_config = MCPFilesystemConfig.from_config(str(config_file))
 
@@ -131,12 +138,14 @@ filesystem:
     def test_mcp_logs_dir_relative_to_base_path(self, tmp_path):
         """Test that mcp_logs_dir is resolved relative to base_path."""
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text(f"""
+        config_file.write_text(
+            f"""
 version: '2.0'
 filesystem:
   base_path: "{tmp_path}"
   mcp_logs_dir: "custom/mcp/logs"
-""")
+"""
+        )
 
         fs_config = MCPFilesystemConfig.from_config(str(config_file))
 
@@ -165,7 +174,8 @@ filesystem:
         """Test full integration of MCPConfig with filesystem contract."""
         # Create realistic config
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text(f"""
+        config_file.write_text(
+            f"""
 version: '2.0'
 filesystem:
   base_path: "{tmp_path}"
@@ -173,7 +183,8 @@ filesystem:
   sessions_dir: ".osiris/sessions"
   cache_dir: ".osiris/cache"
   index_dir: ".osiris/index"
-""")
+"""
+        )
 
         # Load configs
         fs_config = MCPFilesystemConfig.from_config(str(config_file))
@@ -203,7 +214,7 @@ class TestConfigFallbacks:
         """Test fallback to OSIRIS_HOME when config is missing."""
         env_backup = os.environ.copy()
         try:
-            os.environ['OSIRIS_HOME'] = str(tmp_path)
+            os.environ["OSIRIS_HOME"] = str(tmp_path)
 
             # Load config with non-existent file
             fs_config = MCPFilesystemConfig.from_config("nonexistent.yaml")
@@ -221,10 +232,10 @@ class TestConfigFallbacks:
         try:
             # Clear all relevant env vars
             for key in list(os.environ.keys()):
-                if key.startswith('OSIRIS_'):
+                if key.startswith("OSIRIS_"):
                     del os.environ[key]
 
-            with patch('pathlib.Path.cwd', return_value=tmp_path):
+            with patch("pathlib.Path.cwd", return_value=tmp_path):
                 # Load config with non-existent file and no env vars
                 fs_config = MCPFilesystemConfig.from_config("nonexistent.yaml")
 
@@ -239,7 +250,7 @@ class TestConfigFallbacks:
         """Test that environment variable override logs a warning."""
         env_backup = os.environ.copy()
         try:
-            os.environ['OSIRIS_MCP_LOGS_DIR'] = str(tmp_path / "override")
+            os.environ["OSIRIS_MCP_LOGS_DIR"] = str(tmp_path / "override")
 
             # Load config
             fs_config = MCPFilesystemConfig.from_config("nonexistent.yaml")
@@ -274,11 +285,13 @@ class TestConfigValidation:
     def test_handles_missing_filesystem_section(self, tmp_path):
         """Test handling of config without filesystem section."""
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text("""
+        config_file.write_text(
+            """
 version: '2.0'
 logging:
   level: INFO
-""")
+"""
+        )
 
         # Should not crash
         fs_config = MCPFilesystemConfig.from_config(str(config_file))

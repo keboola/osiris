@@ -8,9 +8,9 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class AuditLogger:
     """Audit logger for MCP tool invocations."""
 
-    def __init__(self, log_dir: Optional[Path] = None):
+    def __init__(self, log_dir: Path | None = None):
         """
         Initialize the audit logger.
 
@@ -29,7 +29,7 @@ class AuditLogger:
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
         # Create audit log file with daily rotation
-        today = datetime.now(timezone.utc).strftime("%Y%m%d")
+        today = datetime.now(UTC).strftime("%Y%m%d")
         self.log_file = self.log_dir / f"mcp_audit_{today}.jsonl"
 
         # Session tracking
@@ -39,6 +39,7 @@ class AuditLogger:
     def _generate_session_id(self) -> str:
         """Generate a unique session ID."""
         import uuid
+
         return f"mcp_{uuid.uuid4().hex[:12]}"
 
     def make_correlation_id(self) -> str:
@@ -53,7 +54,7 @@ class AuditLogger:
         correlation_id: str = None,
         # Support old test API
         tool_name: str = None,
-        arguments: Dict[str, Any] = None
+        arguments: dict[str, Any] = None,
     ) -> str:
         """
         Log a tool invocation.
@@ -84,7 +85,7 @@ class AuditLogger:
             "tool_name": tool,  # Test expects this
             "correlation_id": correlation_id,
             "bytes_in": params_bytes or 0,
-            "arguments": arguments or {}  # Test expects this
+            "arguments": arguments or {},  # Test expects this
         }
 
         # Write to audit log
@@ -105,7 +106,7 @@ class AuditLogger:
         event_id: str = None,
         success: bool = None,
         payload_bytes: int = None,
-        result: Any = None
+        result: Any = None,
     ) -> None:
         """
         Log the result of a tool invocation.
@@ -129,7 +130,7 @@ class AuditLogger:
             "correlation_id": correlation_id or "",
             "duration_ms": duration_ms or 0,
             "bytes_out": result_bytes or 0,
-            "result": result  # Test expects this
+            "result": result,  # Test expects this
         }
 
         await self._write_event(event)
@@ -142,7 +143,7 @@ class AuditLogger:
         correlation_id: str = None,
         # Test compat
         event_id: str = None,
-        error: str = None
+        error: str = None,
     ) -> None:
         """
         Log a tool error.
@@ -166,17 +167,12 @@ class AuditLogger:
             "correlation_id": correlation_id or "",
             "duration_ms": duration_ms or 0,
             "error_code": error_code or "UNKNOWN",
-            "error": error  # Test expects this
+            "error": error,  # Test expects this
         }
 
         await self._write_event(event)
 
-    async def log_resource_access(
-        self,
-        resource_uri: str,
-        operation: str,
-        success: bool
-    ):
+    async def log_resource_access(self, resource_uri: str, operation: str, success: bool):
         """
         Log resource access.
 
@@ -188,16 +184,16 @@ class AuditLogger:
         event = {
             "event": "resource_access",
             "session_id": self.session_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "timestamp_ms": int(time.time() * 1000),
             "resource_uri": resource_uri,
             "operation": operation,
-            "status": "ok" if success else "error"
+            "status": "ok" if success else "error",
         }
 
         await self._write_event(event)
 
-    def _sanitize_arguments(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    def _sanitize_arguments(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         Sanitize arguments to remove sensitive data.
 
@@ -221,10 +217,7 @@ class AuditLogger:
                 sanitized[key] = self._sanitize_arguments(value)
             elif isinstance(value, list):
                 # Sanitize list items if they're dicts
-                sanitized[key] = [
-                    self._sanitize_arguments(item) if isinstance(item, dict) else item
-                    for item in value
-                ]
+                sanitized[key] = [self._sanitize_arguments(item) if isinstance(item, dict) else item for item in value]
             else:
                 sanitized[key] = value
 
@@ -257,7 +250,7 @@ class AuditLogger:
 
         return "***"
 
-    async def _write_event(self, event: Dict[str, Any]):
+    async def _write_event(self, event: dict[str, Any]):
         """Write an event to the audit log."""
         try:
             # Append to JSONL file
@@ -267,10 +260,6 @@ class AuditLogger:
         except Exception as e:
             logger.error(f"Failed to write audit event: {e}")
 
-    def get_session_summary(self) -> Dict[str, Any]:
+    def get_session_summary(self) -> dict[str, Any]:
         """Get a summary of the current session."""
-        return {
-            "session_id": self.session_id,
-            "tool_calls": self.tool_call_counter,
-            "audit_file": str(self.log_file)
-        }
+        return {"session_id": self.session_id, "tool_calls": self.tool_call_counter, "audit_file": str(self.log_file)}

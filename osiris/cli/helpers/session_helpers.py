@@ -22,7 +22,7 @@ def get_logs_directory_for_cli() -> Path:
         >>> get_logs_directory_for_cli()
         Path('/Users/padak/data/logs')
     """
-    from osiris.core.fs_config import load_osiris_config
+    from osiris.core.fs_config import load_osiris_config  # noqa: PLC0415  # Lazy import for CLI performance
 
     try:
         # Load filesystem contract configuration

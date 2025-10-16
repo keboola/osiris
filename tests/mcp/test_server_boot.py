@@ -4,9 +4,9 @@ Test MCP server bootstrap and stdio communication.
 
 import asyncio
 import json
-import subprocess
 import sys
 import time
+
 import pytest
 
 
@@ -19,10 +19,12 @@ class TestServerBoot:
         """Test server handshake via stdio with Content-Length framing."""
         # Start server as subprocess
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "osiris.cli.mcp_entrypoint",
+            sys.executable,
+            "-m",
+            "osiris.cli.mcp_entrypoint",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL
+            stderr=asyncio.subprocess.DEVNULL,
         )
 
         try:
@@ -33,20 +35,17 @@ class TestServerBoot:
                 "params": {
                     "protocolVersion": "2024-11-05",
                     "capabilities": {},
-                    "clientInfo": {
-                        "name": "test-client",
-                        "version": "1.0.0"
-                    }
+                    "clientInfo": {"name": "test-client", "version": "1.0.0"},
                 },
-                "id": 1
+                "id": 1,
             }
 
             # Send with Content-Length framing
             request_str = json.dumps(request)
-            request_bytes = request_str.encode('utf-8')
+            request_bytes = request_str.encode("utf-8")
             header = f"Content-Length: {len(request_bytes)}\r\n\r\n"
 
-            proc.stdin.write(header.encode('utf-8'))
+            proc.stdin.write(header.encode("utf-8"))
             proc.stdin.write(request_bytes)
             await proc.stdin.drain()
 
@@ -62,15 +61,12 @@ class TestServerBoot:
             await proc.stdout.readline()
 
             # Read content
-            response_bytes = await asyncio.wait_for(
-                proc.stdout.read(content_length),
-                timeout=2.0
-            )
+            response_bytes = await asyncio.wait_for(proc.stdout.read(content_length), timeout=2.0)
 
             elapsed = time.time() - start_time
 
             # Parse and verify response
-            response = json.loads(response_bytes.decode('utf-8'))
+            response = json.loads(response_bytes.decode("utf-8"))
 
             assert "result" in response
             assert response["id"] == 1
@@ -94,22 +90,19 @@ class TestServerBoot:
         from mcp.client.session import ClientSession
         from mcp.client.stdio import StdioServerParameters, stdio_client
 
-        server_params = StdioServerParameters(
-            command=sys.executable,
-            args=["-m", "osiris.cli.mcp_entrypoint"]
-        )
+        server_params = StdioServerParameters(command=sys.executable, args=["-m", "osiris.cli.mcp_entrypoint"])
 
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
 
                 # Verify capabilities
-                assert hasattr(session, 'server_info')
+                assert hasattr(session, "server_info")
 
                 # List tools to verify capability
                 tools = await session.list_tools()
                 assert tools is not None
-                assert hasattr(tools, 'tools')
+                assert hasattr(tools, "tools")
                 assert len(tools.tools) > 0
 
     def test_server_version(self):

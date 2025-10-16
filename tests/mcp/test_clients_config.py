@@ -5,7 +5,6 @@ Verifies that build_claude_clients_snippet produces the correct JSON structure
 for Claude Desktop configuration with proper bash wrapper, transport, and paths.
 """
 
-import pytest
 
 from osiris.mcp.clients_config import build_claude_clients_snippet
 
@@ -16,8 +15,7 @@ class TestBuildClaudeClientsSnippet:
     def test_absolute_base_path(self):
         """Test with absolute base_path produces correct structure."""
         config = build_claude_clients_snippet(
-            base_path="/Users/me/osiris",
-            venv_python="/Users/me/osiris/.venv/bin/python"
+            base_path="/Users/me/osiris", venv_python="/Users/me/osiris/.venv/bin/python"
         )
 
         # Verify top-level structure
@@ -32,7 +30,7 @@ class TestBuildClaudeClientsSnippet:
         # Verify args contain bash wrapper with absolute paths
         assert server_config["args"] == [
             "-lc",
-            "cd /Users/me/osiris && exec /Users/me/osiris/.venv/bin/python -m osiris.cli.mcp_entrypoint"
+            "cd /Users/me/osiris && exec /Users/me/osiris/.venv/bin/python -m osiris.cli.mcp_entrypoint",
         ]
 
         # Verify transport
@@ -45,8 +43,7 @@ class TestBuildClaudeClientsSnippet:
     def test_venv_python_path_with_spaces(self):
         """Test that paths with spaces are handled correctly in bash args."""
         config = build_claude_clients_snippet(
-            base_path="/Users/me/my project/osiris",
-            venv_python="/Users/me/my project/osiris/.venv/bin/python"
+            base_path="/Users/me/my project/osiris", venv_python="/Users/me/my project/osiris/.venv/bin/python"
         )
 
         server_config = config["mcpServers"]["osiris"]
@@ -54,7 +51,7 @@ class TestBuildClaudeClientsSnippet:
         # Verify paths with spaces are included in args (bash -lc will handle quoting)
         expected_args = [
             "-lc",
-            "cd /Users/me/my project/osiris && exec /Users/me/my project/osiris/.venv/bin/python -m osiris.cli.mcp_entrypoint"
+            "cd /Users/me/my project/osiris && exec /Users/me/my project/osiris/.venv/bin/python -m osiris.cli.mcp_entrypoint",
         ]
         assert server_config["args"] == expected_args
 
@@ -64,10 +61,7 @@ class TestBuildClaudeClientsSnippet:
 
     def test_transport_is_stdio(self):
         """Test that transport type is always stdio."""
-        config = build_claude_clients_snippet(
-            base_path="/any/path",
-            venv_python="/any/path/.venv/bin/python"
-        )
+        config = build_claude_clients_snippet(base_path="/any/path", venv_python="/any/path/.venv/bin/python")
 
         server_config = config["mcpServers"]["osiris"]
         assert server_config["transport"]["type"] == "stdio"
@@ -76,10 +70,7 @@ class TestBuildClaudeClientsSnippet:
 
     def test_command_is_bash(self):
         """Test that command is always /bin/bash."""
-        config = build_claude_clients_snippet(
-            base_path="/any/path",
-            venv_python="/any/path/.venv/bin/python"
-        )
+        config = build_claude_clients_snippet(base_path="/any/path", venv_python="/any/path/.venv/bin/python")
 
         server_config = config["mcpServers"]["osiris"]
         assert server_config["command"] == "/bin/bash"
@@ -87,8 +78,7 @@ class TestBuildClaudeClientsSnippet:
     def test_bash_args_structure(self):
         """Test that bash args follow correct structure: [-lc, '<command>']."""
         config = build_claude_clients_snippet(
-            base_path="/home/user/osiris",
-            venv_python="/home/user/osiris/.venv/bin/python"
+            base_path="/home/user/osiris", venv_python="/home/user/osiris/.venv/bin/python"
         )
 
         server_config = config["mcpServers"]["osiris"]
@@ -110,10 +100,7 @@ class TestBuildClaudeClientsSnippet:
     def test_osiris_home_is_base_path_plus_testing_env(self):
         """Test that OSIRIS_HOME is always base_path/testing_env."""
         base_path = "/opt/osiris"
-        config = build_claude_clients_snippet(
-            base_path=base_path,
-            venv_python="/opt/osiris/.venv/bin/python"
-        )
+        config = build_claude_clients_snippet(base_path=base_path, venv_python="/opt/osiris/.venv/bin/python")
 
         server_config = config["mcpServers"]["osiris"]
         assert server_config["env"]["OSIRIS_HOME"] == f"{base_path}/testing_env"
@@ -121,25 +108,16 @@ class TestBuildClaudeClientsSnippet:
     def test_pythonpath_is_base_path(self):
         """Test that PYTHONPATH is set to base_path."""
         base_path = "/var/lib/osiris"
-        config = build_claude_clients_snippet(
-            base_path=base_path,
-            venv_python="/var/lib/osiris/.venv/bin/python"
-        )
+        config = build_claude_clients_snippet(base_path=base_path, venv_python="/var/lib/osiris/.venv/bin/python")
 
         server_config = config["mcpServers"]["osiris"]
         assert server_config["env"]["PYTHONPATH"] == base_path
 
     def test_pure_function_no_side_effects(self):
         """Test that function is pure - same inputs produce same outputs."""
-        config1 = build_claude_clients_snippet(
-            base_path="/Users/test",
-            venv_python="/Users/test/.venv/bin/python"
-        )
+        config1 = build_claude_clients_snippet(base_path="/Users/test", venv_python="/Users/test/.venv/bin/python")
 
-        config2 = build_claude_clients_snippet(
-            base_path="/Users/test",
-            venv_python="/Users/test/.venv/bin/python"
-        )
+        config2 = build_claude_clients_snippet(base_path="/Users/test", venv_python="/Users/test/.venv/bin/python")
 
         # Both calls should produce identical results
         assert config1 == config2
@@ -149,8 +127,7 @@ class TestBuildClaudeClientsSnippet:
         import json
 
         config = build_claude_clients_snippet(
-            base_path="/Users/me/osiris",
-            venv_python="/Users/me/osiris/.venv/bin/python"
+            base_path="/Users/me/osiris", venv_python="/Users/me/osiris/.venv/bin/python"
         )
 
         # Should not raise exception
@@ -164,10 +141,7 @@ class TestBuildClaudeClientsSnippet:
 
     def test_minimal_env_vars(self):
         """Test that only required env vars are set (OSIRIS_HOME, PYTHONPATH)."""
-        config = build_claude_clients_snippet(
-            base_path="/home/osiris",
-            venv_python="/home/osiris/.venv/bin/python"
-        )
+        config = build_claude_clients_snippet(base_path="/home/osiris", venv_python="/home/osiris/.venv/bin/python")
 
         server_config = config["mcpServers"]["osiris"]
         env_vars = server_config["env"]
@@ -189,10 +163,7 @@ class TestBuildClaudeClientsSnippet:
         ]
 
         for base_path, venv_python in test_cases:
-            config = build_claude_clients_snippet(
-                base_path=base_path,
-                venv_python=venv_python
-            )
+            config = build_claude_clients_snippet(base_path=base_path, venv_python=venv_python)
 
             server_config = config["mcpServers"]["osiris"]
 
@@ -207,8 +178,7 @@ class TestBuildClaudeClientsSnippet:
     def test_exec_prefix_in_bash_command(self):
         """Test that exec is used in bash command for proper signal handling."""
         config = build_claude_clients_snippet(
-            base_path="/Users/me/osiris",
-            venv_python="/Users/me/osiris/.venv/bin/python"
+            base_path="/Users/me/osiris", venv_python="/Users/me/osiris/.venv/bin/python"
         )
 
         server_config = config["mcpServers"]["osiris"]

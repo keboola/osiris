@@ -7,9 +7,9 @@ Emits structured telemetry events for observability and monitoring.
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class TelemetryEmitter:
     """Emits telemetry events for MCP operations."""
 
-    def __init__(self, enabled: bool = True, output_dir: Optional[Path] = None):
+    def __init__(self, enabled: bool = True, output_dir: Path | None = None):
         """
         Initialize telemetry emitter.
 
@@ -31,22 +31,17 @@ class TelemetryEmitter:
         if self.enabled:
             self.output_dir.mkdir(parents=True, exist_ok=True)
             # Create daily telemetry file
-            today = datetime.now(timezone.utc).strftime("%Y%m%d")
+            today = datetime.now(UTC).strftime("%Y%m%d")
             self.telemetry_file = self.output_dir / f"mcp_telemetry_{today}.jsonl"
 
         # Session tracking
         self.session_id = self._generate_session_id()
-        self.metrics = {
-            "tool_calls": 0,
-            "total_bytes_in": 0,
-            "total_bytes_out": 0,
-            "total_duration_ms": 0,
-            "errors": 0
-        }
+        self.metrics = {"tool_calls": 0, "total_bytes_in": 0, "total_bytes_out": 0, "total_duration_ms": 0, "errors": 0}
 
     def _generate_session_id(self) -> str:
         """Generate a unique session ID."""
         import uuid
+
         return f"tel_{uuid.uuid4().hex[:12]}"
 
     def emit_tool_call(
@@ -56,8 +51,8 @@ class TelemetryEmitter:
         duration_ms: int,
         bytes_in: int,
         bytes_out: int,
-        error: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        error: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ):
         """
         Emit a tool call telemetry event.
@@ -86,13 +81,13 @@ class TelemetryEmitter:
         event = {
             "event": "tool_call",
             "session_id": self.session_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "timestamp_ms": int(time.time() * 1000),
             "tool": tool,
             "status": status,
             "duration_ms": duration_ms,
             "bytes_in": bytes_in,
-            "bytes_out": bytes_out
+            "bytes_out": bytes_out,
         }
 
         if error:
@@ -125,10 +120,10 @@ class TelemetryEmitter:
         event = {
             "event": "server_start",
             "session_id": self.session_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "timestamp_ms": int(time.time() * 1000),
             "version": version,
-            "protocol_version": protocol_version
+            "protocol_version": protocol_version,
         }
 
         try:
@@ -137,7 +132,7 @@ class TelemetryEmitter:
         except Exception as e:
             logger.error(f"Failed to write server start event: {e}")
 
-    def emit_server_stop(self, reason: Optional[str] = None):
+    def emit_server_stop(self, reason: str | None = None):
         """
         Emit server stop event with session summary.
 
@@ -150,10 +145,10 @@ class TelemetryEmitter:
         event = {
             "event": "server_stop",
             "session_id": self.session_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "timestamp_ms": int(time.time() * 1000),
             "reason": reason or "normal",
-            "metrics": self.metrics
+            "metrics": self.metrics,
         }
 
         try:
@@ -162,7 +157,7 @@ class TelemetryEmitter:
         except Exception as e:
             logger.error(f"Failed to write server stop event: {e}")
 
-    def emit_handshake(self, duration_ms: int, success: bool, client_info: Optional[Dict[str, Any]] = None):
+    def emit_handshake(self, duration_ms: int, success: bool, client_info: dict[str, Any] | None = None):
         """
         Emit handshake event.
 
@@ -177,10 +172,10 @@ class TelemetryEmitter:
         event = {
             "event": "handshake",
             "session_id": self.session_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "timestamp_ms": int(time.time() * 1000),
             "duration_ms": duration_ms,
-            "success": success
+            "success": success,
         }
 
         if client_info:
@@ -192,26 +187,26 @@ class TelemetryEmitter:
         except Exception as e:
             logger.error(f"Failed to write handshake event: {e}")
 
-    def get_session_summary(self) -> Dict[str, Any]:
+    def get_session_summary(self) -> dict[str, Any]:
         """Get summary of current telemetry session."""
         return {
             "session_id": self.session_id,
             "metrics": self.metrics,
             "telemetry_file": str(self.telemetry_file) if self.enabled else None,
-            "enabled": self.enabled
+            "enabled": self.enabled,
         }
 
 
 # Global telemetry instance (can be configured at startup)
-_telemetry: Optional[TelemetryEmitter] = None
+_telemetry: TelemetryEmitter | None = None
 
 
-def get_telemetry() -> Optional[TelemetryEmitter]:
+def get_telemetry() -> TelemetryEmitter | None:
     """Get the global telemetry instance."""
     return _telemetry
 
 
-def init_telemetry(enabled: bool = True, output_dir: Optional[Path] = None) -> TelemetryEmitter:
+def init_telemetry(enabled: bool = True, output_dir: Path | None = None) -> TelemetryEmitter:
     """
     Initialize global telemetry.
 

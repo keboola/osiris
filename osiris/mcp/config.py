@@ -7,7 +7,7 @@ Centralizes configuration and tunable parameters with filesystem contract suppor
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
 
@@ -140,7 +140,7 @@ class MCPConfig:
     DEFAULT_AUDIT_DIR = Path.home() / ".osiris_audit"
     DEFAULT_TELEMETRY_DIR = Path.home() / ".osiris_telemetry"
 
-    def __init__(self, fs_config: Optional[MCPFilesystemConfig] = None):
+    def __init__(self, fs_config: MCPFilesystemConfig | None = None):
         """
         Initialize configuration with defaults and environment overrides.
 
@@ -153,12 +153,7 @@ class MCPConfig:
         self.fs_config = fs_config
 
         # Payload limit (can be overridden by environment)
-        self.payload_limit_mb = int(
-            os.environ.get(
-                "OSIRIS_MCP_PAYLOAD_LIMIT_MB",
-                self.DEFAULT_PAYLOAD_LIMIT_MB
-            )
-        )
+        self.payload_limit_mb = int(os.environ.get("OSIRIS_MCP_PAYLOAD_LIMIT_MB", self.DEFAULT_PAYLOAD_LIMIT_MB))
 
         # Validate payload limit
         if self.payload_limit_mb < self.MIN_PAYLOAD_LIMIT_MB:
@@ -170,49 +165,26 @@ class MCPConfig:
         self.payload_limit_bytes = self.payload_limit_mb * 1024 * 1024
 
         # Timeouts
-        self.handshake_timeout = float(
-            os.environ.get(
-                "OSIRIS_MCP_HANDSHAKE_TIMEOUT",
-                self.DEFAULT_HANDSHAKE_TIMEOUT
-            )
-        )
-        self.tool_timeout = float(
-            os.environ.get(
-                "OSIRIS_MCP_TOOL_TIMEOUT",
-                self.DEFAULT_TOOL_TIMEOUT
-            )
-        )
-        self.resource_timeout = float(
-            os.environ.get(
-                "OSIRIS_MCP_RESOURCE_TIMEOUT",
-                self.DEFAULT_RESOURCE_TIMEOUT
-            )
-        )
+        self.handshake_timeout = float(os.environ.get("OSIRIS_MCP_HANDSHAKE_TIMEOUT", self.DEFAULT_HANDSHAKE_TIMEOUT))
+        self.tool_timeout = float(os.environ.get("OSIRIS_MCP_TOOL_TIMEOUT", self.DEFAULT_TOOL_TIMEOUT))
+        self.resource_timeout = float(os.environ.get("OSIRIS_MCP_RESOURCE_TIMEOUT", self.DEFAULT_RESOURCE_TIMEOUT))
 
         # Cache configuration
         self.discovery_cache_ttl_hours = int(
-            os.environ.get(
-                "OSIRIS_MCP_CACHE_TTL_HOURS",
-                self.DEFAULT_DISCOVERY_CACHE_TTL_HOURS
-            )
+            os.environ.get("OSIRIS_MCP_CACHE_TTL_HOURS", self.DEFAULT_DISCOVERY_CACHE_TTL_HOURS)
         )
 
         # Memory retention
         self.memory_retention_days = int(
-            os.environ.get(
-                "OSIRIS_MCP_MEMORY_RETENTION_DAYS",
-                self.DEFAULT_MEMORY_RETENTION_DAYS
-            )
+            os.environ.get("OSIRIS_MCP_MEMORY_RETENTION_DAYS", self.DEFAULT_MEMORY_RETENTION_DAYS)
         )
 
         # Telemetry
         self.telemetry_enabled = os.environ.get(
-            "OSIRIS_MCP_TELEMETRY_ENABLED",
-            str(self.TELEMETRY_ENABLED_DEFAULT)
+            "OSIRIS_MCP_TELEMETRY_ENABLED", str(self.TELEMETRY_ENABLED_DEFAULT)
         ).lower() in ("true", "1", "yes", "on")
 
         # Directories - use filesystem config
-        base_path = fs_config.base_path
         self.cache_dir = fs_config.mcp_logs_dir / "cache"
         self.memory_dir = fs_config.mcp_logs_dir / "memory"
         self.audit_dir = fs_config.mcp_logs_dir / "audit"
@@ -225,7 +197,7 @@ class MCPConfig:
         # Ensure directories exist
         fs_config.ensure_directories()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert configuration to dictionary."""
         return {
             "protocol_version": self.PROTOCOL_VERSION,
@@ -245,8 +217,8 @@ class MCPConfig:
                 "cache": str(self.cache_dir),
                 "memory": str(self.memory_dir),
                 "audit": str(self.audit_dir),
-                "telemetry": str(self.telemetry_dir)
-            }
+                "telemetry": str(self.telemetry_dir),
+            },
         }
 
     @classmethod
@@ -256,7 +228,7 @@ class MCPConfig:
 
 
 # Global configuration instance
-_config: Optional[MCPConfig] = None
+_config: MCPConfig | None = None
 
 
 def get_config() -> MCPConfig:

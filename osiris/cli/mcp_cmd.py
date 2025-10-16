@@ -32,7 +32,7 @@ def find_repo_root():
 
     # Walk up the directory tree looking for a directory containing 'osiris' package
     for parent in current.parents:
-        if (parent / 'osiris').is_dir():
+        if (parent / "osiris").is_dir():
             return parent.resolve()
 
     # Fallback to grandparent (2 levels up from this file)
@@ -63,37 +63,37 @@ def get_repo_info():
     venv_path = None
     venv_python = sys.executable  # Default to current Python
 
-    if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix):
+    if hasattr(sys, "real_prefix") or (hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix):
         # We're in a virtual environment
         venv_path = Path(sys.prefix).resolve()
-        venv_python = str(venv_path / 'bin' / 'python')
+        venv_python = str(venv_path / "bin" / "python")
     else:
         # Check common venv locations
-        for venv_name in ['.venv', 'venv', 'env']:
+        for venv_name in [".venv", "venv", "env"]:
             candidate = repo_root / venv_name
-            if candidate.exists() and (candidate / 'bin' / 'python').exists():
+            if candidate.exists() and (candidate / "bin" / "python").exists():
                 venv_path = candidate.resolve()
-                venv_python = str(venv_path / 'bin' / 'python')
+                venv_python = str(venv_path / "bin" / "python")
                 break
 
     # Resolve OSIRIS_HOME with proper precedence
-    osiris_home_env = os.environ.get('OSIRIS_HOME', '').strip()
+    osiris_home_env = os.environ.get("OSIRIS_HOME", "").strip()
     if osiris_home_env:
         osiris_home = Path(osiris_home_env).resolve()
     else:
-        osiris_home = (repo_root / 'testing_env').resolve()
+        osiris_home = (repo_root / "testing_env").resolve()
 
     # Resolve OSIRIS_LOGS_DIR (suggest if not set)
-    osiris_logs_dir = os.environ.get('OSIRIS_LOGS_DIR', '').strip()
+    osiris_logs_dir = os.environ.get("OSIRIS_LOGS_DIR", "").strip()
     if not osiris_logs_dir:
-        osiris_logs_dir = str(osiris_home / 'logs')
+        osiris_logs_dir = str(osiris_home / "logs")
 
     return {
-        'repo_root': str(repo_root),
-        'venv_path': str(venv_path) if venv_path else None,
-        'venv_python': venv_python,
-        'osiris_home': str(osiris_home),
-        'osiris_logs_dir': osiris_logs_dir,
+        "repo_root": str(repo_root),
+        "venv_path": str(venv_path) if venv_path else None,
+        "venv_python": venv_python,
+        "osiris_home": str(osiris_home),
+        "osiris_logs_dir": osiris_logs_dir,
     }
 
 
@@ -137,17 +137,17 @@ def cmd_run(args):
     ensure_pythonpath()
 
     # Build command to run mcp_entrypoint
-    cmd = [sys.executable, '-m', 'osiris.cli.mcp_entrypoint']
+    cmd = [sys.executable, "-m", "osiris.cli.mcp_entrypoint"]
 
     # Add flags if provided
-    if '--selftest' in args:
-        cmd.append('--selftest')
-    if '--debug' in args:
-        cmd.append('--debug')
+    if "--selftest" in args:
+        cmd.append("--selftest")
+    if "--debug" in args:
+        cmd.append("--debug")
 
     # Run the server
     try:
-        result = subprocess.run(cmd)
+        result = subprocess.run(cmd, check=False)
         sys.exit(result.returncode)
     except KeyboardInterrupt:
         console.print("\n[yellow]MCP server interrupted by user[/yellow]")
@@ -159,15 +159,12 @@ def cmd_run(args):
 
 def cmd_clients(args):
     """Show Claude Desktop configuration snippet."""
-    from osiris.mcp.clients_config import build_claude_clients_snippet
+    from osiris.mcp.clients_config import build_claude_clients_snippet  # noqa: PLC0415  # Lazy import for CLI performance
 
     info = get_repo_info()
 
     # Build config snippet using dedicated module
-    config = build_claude_clients_snippet(
-        base_path=info['repo_root'],
-        venv_python=info['venv_python']
-    )
+    config = build_claude_clients_snippet(base_path=info["repo_root"], venv_python=info["venv_python"])
 
     console.print()
     console.print("[bold green]Claude Desktop Configuration[/bold green]")
@@ -197,8 +194,9 @@ def cmd_tools(args):
 
     # Import the server to get tool list
     try:
-        from osiris.mcp.server import OsirisMCPServer
-        import asyncio
+        import asyncio  # noqa: PLC0415  # Lazy import for CLI performance
+
+        from osiris.mcp.server import OsirisMCPServer  # noqa: PLC0415  # Lazy import for CLI performance
 
         # Create a temporary server instance to get tool list
         server = OsirisMCPServer(debug=False)
@@ -217,7 +215,7 @@ def cmd_tools(args):
         # Group tools by family (based on prefix before underscore)
         families = {}
         for tool in tools:
-            family = tool.name.split('_')[0] if '_' in tool.name else 'other'
+            family = tool.name.split("_")[0] if "_" in tool.name else "other"
             if family not in families:
                 families[family] = []
             families[family].append(tool)
@@ -245,20 +243,20 @@ def cmd_tools(args):
         sys.exit(1)
 
 
-def cmd_connections(args):
+def cmd_connections(args):  # noqa: PLR0915  # MCP CLI router, handles multiple subcommands
     """Handle connections subcommands."""
     ensure_pythonpath()
 
-    parser = argparse.ArgumentParser(prog='osiris mcp connections', add_help=False)
-    parser.add_argument('action', nargs='?', help='Action: list or doctor')
-    parser.add_argument('--connection-id', help='Connection ID for doctor command')
-    parser.add_argument('--json', action='store_true', help='Output JSON')
-    parser.add_argument('--help', '-h', action='store_true')
+    parser = argparse.ArgumentParser(prog="osiris mcp connections", add_help=False)
+    parser.add_argument("action", nargs="?", help="Action: list or doctor")
+    parser.add_argument("--connection-id", help="Connection ID for doctor command")
+    parser.add_argument("--json", action="store_true", help="Output JSON")
+    parser.add_argument("--help", "-h", action="store_true")
 
     parsed_args = parser.parse_args(args)
 
     # Handle action-specific help
-    if parsed_args.help and parsed_args.action == 'list':
+    if parsed_args.help and parsed_args.action == "list":
         console.print("\n[bold]osiris mcp connections list[/bold] - List all configured connections")
         console.print("\n[cyan]Usage:[/cyan]")
         console.print("  osiris mcp connections list [--json]")
@@ -273,7 +271,7 @@ def cmd_connections(args):
         console.print()
         return
 
-    if parsed_args.help and parsed_args.action == 'doctor':
+    if parsed_args.help and parsed_args.action == "doctor":
         console.print("\n[bold]osiris mcp connections doctor[/bold] - Diagnose connection configuration")
         console.print("\n[cyan]Usage:[/cyan]")
         console.print("  osiris mcp connections doctor --connection-id <connection_id> [--json]")
@@ -307,12 +305,12 @@ def cmd_connections(args):
         return
 
     # Delegate to existing CLI commands
-    from osiris.cli.connections_cmd import list_connections, doctor_connections
+    from osiris.cli.connections_cmd import doctor_connections, list_connections  # noqa: PLC0415  # Lazy import for CLI performance
 
-    if parsed_args.action == 'list':
+    if parsed_args.action == "list":
         # Call with --json and --mcp flags
         list_connections(["--json", "--mcp"])
-    elif parsed_args.action == 'doctor':
+    elif parsed_args.action == "doctor":
         if not parsed_args.connection_id:
             console.print("[red]Error: --connection-id required for doctor command[/red]")
             sys.exit(2)
@@ -327,18 +325,18 @@ def cmd_discovery(args):
     """Handle discovery subcommands."""
     ensure_pythonpath()
 
-    parser = argparse.ArgumentParser(prog='osiris mcp discovery', add_help=False)
-    parser.add_argument('action', nargs='?', help='Action: run')
-    parser.add_argument('connection_id', nargs='?', help='Connection reference (positional)')
-    parser.add_argument('--connection-id', dest='connection_id_flag', help='Connection reference (flag, deprecated)')
-    parser.add_argument('--samples', type=int, default=10, help='Number of samples')
-    parser.add_argument('--json', action='store_true', help='Output JSON')
-    parser.add_argument('--help', '-h', action='store_true')
+    parser = argparse.ArgumentParser(prog="osiris mcp discovery", add_help=False)
+    parser.add_argument("action", nargs="?", help="Action: run")
+    parser.add_argument("connection_id", nargs="?", help="Connection reference (positional)")
+    parser.add_argument("--connection-id", dest="connection_id_flag", help="Connection reference (flag, deprecated)")
+    parser.add_argument("--samples", type=int, default=10, help="Number of samples")
+    parser.add_argument("--json", action="store_true", help="Output JSON")
+    parser.add_argument("--help", "-h", action="store_true")
 
     parsed_args = parser.parse_args(args)
 
     # Action-specific help
-    if parsed_args.help and parsed_args.action == 'run':
+    if parsed_args.help and parsed_args.action == "run":
         console.print("\n[bold]osiris mcp discovery run[/bold] - Discover database schema")
         console.print("\n[cyan]Usage:[/cyan]")
         console.print("  osiris mcp discovery run <connection_id> [--samples N] [--json]")
@@ -364,7 +362,7 @@ def cmd_discovery(args):
         return
 
     # Delegate to CLI discovery command
-    if parsed_args.action == 'run':
+    if parsed_args.action == "run":
         # Resolve connection_id from positional or flag
         connection_id = parsed_args.connection_id or parsed_args.connection_id_flag
 
@@ -374,7 +372,7 @@ def cmd_discovery(args):
             sys.exit(2)
 
         # Import and delegate to existing CLI command
-        from osiris.cli.discovery_cmd import discovery_run
+        from osiris.cli.discovery_cmd import discovery_run  # noqa: PLC0415  # Lazy import for CLI performance
 
         exit_code = discovery_run(
             connection_id=connection_id,
@@ -393,12 +391,12 @@ def cmd_oml(args):
     """Handle OML subcommands."""
     ensure_pythonpath()
 
-    parser = argparse.ArgumentParser(prog='osiris mcp oml', add_help=False)
-    parser.add_argument('action', nargs='?', help='Action: schema, validate, or save')
-    parser.add_argument('--pipeline', help='Pipeline file path (for validate)')
-    parser.add_argument('--session-id', help='Session ID (for save)')
-    parser.add_argument('--json', action='store_true', help='Output JSON')
-    parser.add_argument('--help', '-h', action='store_true')
+    parser = argparse.ArgumentParser(prog="osiris mcp oml", add_help=False)
+    parser.add_argument("action", nargs="?", help="Action: schema, validate, or save")
+    parser.add_argument("--pipeline", help="Pipeline file path (for validate)")
+    parser.add_argument("--session-id", help="Session ID (for save)")
+    parser.add_argument("--json", action="store_true", help="Output JSON")
+    parser.add_argument("--help", "-h", action="store_true")
 
     parsed_args = parser.parse_args(args)
 
@@ -415,7 +413,7 @@ def cmd_oml(args):
         console.print()
         return
 
-    if parsed_args.action == 'schema':
+    if parsed_args.action == "schema":
         # Return OML JSON schema
         schema = {
             "version": "0.1.0",
@@ -425,19 +423,9 @@ def cmd_oml(args):
                 "type": "object",
                 "required": ["version", "name", "steps"],
                 "properties": {
-                    "version": {
-                        "type": "string",
-                        "enum": ["0.1.0"],
-                        "description": "OML schema version"
-                    },
-                    "name": {
-                        "type": "string",
-                        "description": "Pipeline name"
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "Pipeline description"
-                    },
+                    "version": {"type": "string", "enum": ["0.1.0"], "description": "OML schema version"},
+                    "name": {"type": "string", "description": "Pipeline name"},
+                    "description": {"type": "string", "description": "Pipeline description"},
                     "steps": {
                         "type": "array",
                         "description": "Pipeline steps",
@@ -449,27 +437,25 @@ def cmd_oml(args):
                                 "name": {"type": "string"},
                                 "component": {"type": "string"},
                                 "config": {"type": "object"},
-                                "depends_on": {
-                                    "type": "array",
-                                    "items": {"type": "string"}
-                                }
-                            }
-                        }
-                    }
-                }
+                                "depends_on": {"type": "array", "items": {"type": "string"}},
+                            },
+                        },
+                    },
+                },
             },
-            "status": "success"
+            "status": "success",
         }
         print(json.dumps(schema, indent=2))
-    elif parsed_args.action == 'validate':
+    elif parsed_args.action == "validate":
         if not parsed_args.pipeline:
             console.print("[red]Error: --pipeline required for validate[/red]")
             sys.exit(2)
         # Delegate to existing oml validate command
-        from osiris.cli.oml_validate import validate_oml_command
+        from osiris.cli.oml_validate import validate_oml_command  # noqa: PLC0415  # Lazy import for CLI performance
+
         # Call the existing function with correct parameters
         validate_oml_command(parsed_args.pipeline, json_output=True, verbose=False)
-    elif parsed_args.action == 'save':
+    elif parsed_args.action == "save":
         console.print("[yellow]Save command requires pipeline data via stdin (stub)[/yellow]")
         sys.exit(1)
     else:
@@ -481,16 +467,16 @@ def cmd_guide(args):
     """Handle guide subcommands."""
     ensure_pythonpath()
 
-    parser = argparse.ArgumentParser(prog='osiris mcp guide', add_help=False)
-    parser.add_argument('action', nargs='?', help='Action: start')
-    parser.add_argument('--context-file', required=False, help='Context file path')
-    parser.add_argument('--json', action='store_true', help='Output JSON')
-    parser.add_argument('--help', '-h', action='store_true')
+    parser = argparse.ArgumentParser(prog="osiris mcp guide", add_help=False)
+    parser.add_argument("action", nargs="?", help="Action: start")
+    parser.add_argument("--context-file", required=False, help="Context file path")
+    parser.add_argument("--json", action="store_true", help="Output JSON")
+    parser.add_argument("--help", "-h", action="store_true")
 
     parsed_args = parser.parse_args(args)
 
     # Action-specific help
-    if parsed_args.help and parsed_args.action == 'start':
+    if parsed_args.help and parsed_args.action == "start":
         console.print("\n[bold]osiris mcp guide start[/bold] - Get guided OML authoring steps")
         console.print("\n[cyan]Usage:[/cyan]")
         console.print("  osiris mcp guide start [--context-file PATH] [--json]")
@@ -514,8 +500,8 @@ def cmd_guide(args):
         return
 
     # Delegate to CLI guide command
-    if parsed_args.action == 'start':
-        from osiris.cli.guide_cmd import guide_start
+    if parsed_args.action == "start":
+        from osiris.cli.guide_cmd import guide_start  # noqa: PLC0415  # Lazy import for CLI performance
 
         exit_code = guide_start(
             context_file=parsed_args.context_file,
@@ -533,17 +519,17 @@ def cmd_memory(args):
     """Handle memory subcommands."""
     ensure_pythonpath()
 
-    parser = argparse.ArgumentParser(prog='osiris mcp memory', add_help=False)
-    parser.add_argument('action', nargs='?', help='Action: capture')
-    parser.add_argument('--session-id', required=False, help='Session ID')
-    parser.add_argument('--consent', action='store_true', help='User consent flag')
-    parser.add_argument('--json', action='store_true', help='Output JSON')
-    parser.add_argument('--help', '-h', action='store_true')
+    parser = argparse.ArgumentParser(prog="osiris mcp memory", add_help=False)
+    parser.add_argument("action", nargs="?", help="Action: capture")
+    parser.add_argument("--session-id", required=False, help="Session ID")
+    parser.add_argument("--consent", action="store_true", help="User consent flag")
+    parser.add_argument("--json", action="store_true", help="Output JSON")
+    parser.add_argument("--help", "-h", action="store_true")
 
     parsed_args = parser.parse_args(args)
 
     # Action-specific help
-    if parsed_args.help and parsed_args.action == 'capture':
+    if parsed_args.help and parsed_args.action == "capture":
         console.print("\n[bold]osiris mcp memory capture[/bold] - Capture session memory")
         console.print("\n[cyan]Usage:[/cyan]")
         console.print("  osiris mcp memory capture --session-id <id> --consent [--json]")
@@ -569,8 +555,8 @@ def cmd_memory(args):
         return
 
     # Delegate to CLI memory command
-    if parsed_args.action == 'capture':
-        from osiris.cli.memory_cmd import memory_capture
+    if parsed_args.action == "capture":
+        from osiris.cli.memory_cmd import memory_capture  # noqa: PLC0415  # Lazy import for CLI performance
 
         exit_code = memory_capture(
             session_id=parsed_args.session_id,
@@ -589,10 +575,10 @@ def cmd_components(args):
     """Handle components subcommands."""
     ensure_pythonpath()
 
-    parser = argparse.ArgumentParser(prog='osiris mcp components', add_help=False)
-    parser.add_argument('action', nargs='?', help='Action: list')
-    parser.add_argument('--json', action='store_true', help='Output JSON')
-    parser.add_argument('--help', '-h', action='store_true')
+    parser = argparse.ArgumentParser(prog="osiris mcp components", add_help=False)
+    parser.add_argument("action", nargs="?", help="Action: list")
+    parser.add_argument("--json", action="store_true", help="Output JSON")
+    parser.add_argument("--help", "-h", action="store_true")
 
     parsed_args = parser.parse_args(args)
 
@@ -606,9 +592,9 @@ def cmd_components(args):
         return
 
     # Delegate to existing CLI command
-    from osiris.cli.components_cmd import list_components
+    from osiris.cli.components_cmd import list_components  # noqa: PLC0415  # Lazy import for CLI performance
 
-    if parsed_args.action == 'list':
+    if parsed_args.action == "list":
         # Call existing function with as_json parameter
         list_components(as_json=True)  # MCP always wants JSON
     else:
@@ -620,16 +606,16 @@ def cmd_usecases(args):
     """Handle usecases subcommands."""
     ensure_pythonpath()
 
-    parser = argparse.ArgumentParser(prog='osiris mcp usecases', add_help=False)
-    parser.add_argument('action', nargs='?', help='Action: list')
-    parser.add_argument('--category', help='Filter by category')
-    parser.add_argument('--json', action='store_true', help='Output JSON')
-    parser.add_argument('--help', '-h', action='store_true')
+    parser = argparse.ArgumentParser(prog="osiris mcp usecases", add_help=False)
+    parser.add_argument("action", nargs="?", help="Action: list")
+    parser.add_argument("--category", help="Filter by category")
+    parser.add_argument("--json", action="store_true", help="Output JSON")
+    parser.add_argument("--help", "-h", action="store_true")
 
     parsed_args = parser.parse_args(args)
 
     # Action-specific help
-    if parsed_args.help and parsed_args.action == 'list':
+    if parsed_args.help and parsed_args.action == "list":
         console.print("\n[bold]osiris mcp usecases list[/bold] - List OML use case templates")
         console.print("\n[cyan]Usage:[/cyan]")
         console.print("  osiris mcp usecases list [--category <cat>] [--json]")
@@ -654,8 +640,8 @@ def cmd_usecases(args):
         return
 
     # Delegate to CLI usecases command
-    if parsed_args.action == 'list':
-        from osiris.cli.usecases_cmd import list_usecases
+    if parsed_args.action == "list":
+        from osiris.cli.usecases_cmd import list_usecases  # noqa: PLC0415  # Lazy import for CLI performance
 
         exit_code = list_usecases(
             category=parsed_args.category,
@@ -680,13 +666,9 @@ def main(argv=None):
         argv = sys.argv[1:]
 
     # Parse arguments
-    parser = argparse.ArgumentParser(
-        prog='osiris mcp',
-        description='MCP Server Management',
-        add_help=False
-    )
-    parser.add_argument('subcommand', nargs='?', help='Subcommand to run (run|clients|tools)')
-    parser.add_argument('--help', '-h', action='store_true', help='Show help')
+    parser = argparse.ArgumentParser(prog="osiris mcp", description="MCP Server Management", add_help=False)
+    parser.add_argument("subcommand", nargs="?", help="Subcommand to run (run|clients|tools)")
+    parser.add_argument("--help", "-h", action="store_true", help="Show help")
 
     # Parse known args to handle subcommand-specific flags
     try:
@@ -703,35 +685,37 @@ def main(argv=None):
 
     # If --help is present with a subcommand, pass it to the subcommand
     if args.help:
-        remaining.insert(0, '--help')
+        remaining.insert(0, "--help")
 
     # Dispatch to subcommand
-    if args.subcommand == 'run':
+    if args.subcommand == "run":
         cmd_run(remaining)
-    elif args.subcommand == 'clients':
+    elif args.subcommand == "clients":
         cmd_clients(remaining)
-    elif args.subcommand == 'tools':
+    elif args.subcommand == "tools":
         cmd_tools(remaining)
-    elif args.subcommand == 'connections':
+    elif args.subcommand == "connections":
         cmd_connections(remaining)
-    elif args.subcommand == 'discovery':
+    elif args.subcommand == "discovery":
         cmd_discovery(remaining)
-    elif args.subcommand == 'oml':
+    elif args.subcommand == "oml":
         cmd_oml(remaining)
-    elif args.subcommand == 'guide':
+    elif args.subcommand == "guide":
         cmd_guide(remaining)
-    elif args.subcommand == 'memory':
+    elif args.subcommand == "memory":
         cmd_memory(remaining)
-    elif args.subcommand == 'components':
+    elif args.subcommand == "components":
         cmd_components(remaining)
-    elif args.subcommand == 'usecases':
+    elif args.subcommand == "usecases":
         cmd_usecases(remaining)
     else:
         console.print(f"[red]Unknown subcommand: {args.subcommand}[/red]")
-        console.print("Available: run, clients, tools, connections, discovery, oml, guide, memory, components, usecases")
+        console.print(
+            "Available: run, clients, tools, connections, discovery, oml, guide, memory, components, usecases"
+        )
         console.print("Use 'osiris mcp --help' for detailed help.")
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

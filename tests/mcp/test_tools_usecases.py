@@ -2,8 +2,8 @@
 Test usecases.list tool for OML use case templates.
 """
 
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from osiris.mcp.tools.usecases import UsecasesTools
 
@@ -98,22 +98,12 @@ class TestUsecasesTools:
         usecase_descriptions = [uc["description"].lower() for uc in result["usecases"]]
 
         # Check for common ETL patterns
-        common_patterns = [
-            "mysql",
-            "postgres",
-            "migration",
-            "replication",
-            "csv",
-            "batch",
-            "incremental",
-            "transform"
-        ]
+        common_patterns = ["mysql", "postgres", "migration", "replication", "csv", "batch", "incremental", "transform"]
 
         # At least some common patterns should be present
         found_patterns = 0
         for pattern in common_patterns:
-            if any(pattern in name for name in usecase_names) or \
-               any(pattern in desc for desc in usecase_descriptions):
+            if any(pattern in name for name in usecase_names) or any(pattern in desc for desc in usecase_descriptions):
                 found_patterns += 1
 
         assert found_patterns > 0 or len(result["usecases"]) > 0
@@ -122,10 +112,7 @@ class TestUsecasesTools:
     async def test_usecase_filtering_support(self, usecases_tools):
         """Test if use cases support filtering (future enhancement)."""
         # Test with filter parameters (may not be implemented yet)
-        result = await usecases_tools.list({
-            "category": "migration",
-            "complexity": "simple"
-        })
+        result = await usecases_tools.list({"category": "migration", "complexity": "simple"})
 
         # Should still return success even if filtering not implemented
         assert result["status"] == "success"
@@ -159,8 +146,7 @@ class TestUsecasesTools:
         for usecase in result["usecases"]:
             if "template_uri" in usecase:
                 # Should use osiris:// URI scheme
-                assert usecase["template_uri"].startswith("osiris://") or \
-                       "/" in usecase["template_uri"]
+                assert usecase["template_uri"].startswith("osiris://") or "/" in usecase["template_uri"]
                 has_resources = True
             if "documentation_uri" in usecase:
                 has_resources = True

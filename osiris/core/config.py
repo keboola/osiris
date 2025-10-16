@@ -54,7 +54,9 @@ def load_config(config_path: str = ".osiris.yaml") -> dict[str, Any]:
     return config or {}
 
 
-def create_sample_config(config_path: str = "osiris.yaml", no_comments: bool = False, to_stdout: bool = False, base_path: str = "") -> str:
+def create_sample_config(
+    config_path: str = "osiris.yaml", no_comments: bool = False, to_stdout: bool = False, base_path: str = ""
+) -> str:
     """Create a sample configuration file with Filesystem Contract v1.
 
     Args:
@@ -492,7 +494,7 @@ def load_connections_yaml(substitute_env: bool = True) -> dict[str, Any]:
     search_paths = []
 
     # 1. Check OSIRIS_HOME first (highest priority)
-    osiris_home = os.environ.get('OSIRIS_HOME', '').strip()
+    osiris_home = os.environ.get("OSIRIS_HOME", "").strip()
     if osiris_home:
         search_paths.append(Path(osiris_home) / "osiris_connections.yaml")
 

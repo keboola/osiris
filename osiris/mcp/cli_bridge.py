@@ -20,9 +20,9 @@ import sys
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from osiris.mcp.errors import OsirisError, ErrorFamily
+from osiris.mcp.errors import ErrorFamily, OsirisError
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ def generate_correlation_id() -> str:
     return str(uuid.uuid4())
 
 
-def track_metrics(start_time: float, bytes_in: int, bytes_out: int) -> Dict[str, Any]:
+def track_metrics(start_time: float, bytes_in: int, bytes_out: int) -> dict[str, Any]:
     """
     Track metrics for CLI operation.
 
@@ -54,15 +54,11 @@ def track_metrics(start_time: float, bytes_in: int, bytes_out: int) -> Dict[str,
         "duration_ms": round(duration_ms, 2),
         "bytes_in": bytes_in,
         "bytes_out": bytes_out,
-        "overhead_ms": round(duration_ms - (bytes_out / 1_000_000), 2)  # Rough estimate
+        "overhead_ms": round(duration_ms - (bytes_out / 1_000_000), 2),  # Rough estimate
     }
 
 
-def map_cli_error_to_mcp(
-    exit_code: int,
-    stderr: str,
-    cmd: List[str]
-) -> OsirisError:
+def map_cli_error_to_mcp(exit_code: int, stderr: str, cmd: list[str]) -> OsirisError:
     """
     Map CLI error to MCP-compatible OsirisError.
 
@@ -78,21 +74,21 @@ def map_cli_error_to_mcp(
     # Only use families that exist: SCHEMA, SEMANTIC, DISCOVERY, LINT, POLICY
     error_family_map = {
         1: ErrorFamily.SEMANTIC,  # General error
-        2: ErrorFamily.SCHEMA,    # Argument/validation error
-        3: ErrorFamily.DISCOVERY, # Discovery operation failed
-        4: ErrorFamily.POLICY,    # Policy/validation error
+        2: ErrorFamily.SCHEMA,  # Argument/validation error
+        3: ErrorFamily.DISCOVERY,  # Discovery operation failed
+        4: ErrorFamily.POLICY,  # Policy/validation error
         5: ErrorFamily.SEMANTIC,  # Execution error
         124: ErrorFamily.DISCOVERY,  # Timeout (use DISCOVERY for timeouts)
-        127: ErrorFamily.SEMANTIC, # Command not found
-        130: ErrorFamily.SEMANTIC, # SIGINT
-        137: ErrorFamily.SEMANTIC, # SIGKILL
-        143: ErrorFamily.SEMANTIC, # SIGTERM
+        127: ErrorFamily.SEMANTIC,  # Command not found
+        130: ErrorFamily.SEMANTIC,  # SIGINT
+        137: ErrorFamily.SEMANTIC,  # SIGKILL
+        143: ErrorFamily.SEMANTIC,  # SIGTERM
     }
 
     family = error_family_map.get(exit_code, ErrorFamily.SEMANTIC)
 
     # Extract error message from stderr
-    error_lines = stderr.strip().split('\n')
+    error_lines = stderr.strip().split("\n")
     error_message = error_lines[-1] if error_lines else "CLI command failed"
 
     # Build suggestion based on error
@@ -108,13 +104,13 @@ def map_cli_error_to_mcp(
 
     # Note: OsirisError doesn't support context parameter
     # We include relevant info in the message instead
-    full_message = f"{error_message} (exit code: {exit_code}, command: {' '.join(cmd[:3])}...)"
+    f"{error_message} (exit code: {exit_code}, command: {' '.join(cmd[:3])}...)"
 
     return OsirisError(
         family=family,
         message=error_message,  # Keep message clean, don't include context
         path=["cli_bridge", "run_cli_json"],
-        suggest=suggest
+        suggest=suggest,
     )
 
 
@@ -176,10 +172,8 @@ def ensure_base_path() -> Path:
 
 
 async def run_cli_json(
-    args: List[str],
-    timeout_s: float = 30.0,
-    correlation_id: Optional[str] = None
-) -> Dict[str, Any]:
+    args: list[str], timeout_s: float = 30.0, correlation_id: str | None = None
+) -> dict[str, Any]:
     """
     Execute Osiris CLI command and return parsed JSON result.
 
@@ -225,11 +219,11 @@ async def run_cli_json(
         # Execute command with timeout
         result = subprocess.run(
             cmd,
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
             timeout=timeout_s,
             cwd=str(base_path),
-            env=os.environ.copy()  # Inherit environment (secrets available here)
+            env=os.environ.copy(),  # Inherit environment (secrets available here)
         )
 
         # Track metrics
@@ -256,7 +250,7 @@ async def run_cli_json(
                 ErrorFamily.SEMANTIC,
                 f"CLI returned invalid JSON: {str(e)}",
                 path=["cli_bridge", "json_parse"],
-                suggest="Check CLI output format. Ensure --json flag is working correctly."
+                suggest="Check CLI output format. Ensure --json flag is working correctly.",
             )
             raise error
 
@@ -266,7 +260,7 @@ async def run_cli_json(
             "duration_ms": metrics["duration_ms"],
             "bytes_in": metrics["bytes_in"],
             "bytes_out": metrics["bytes_out"],
-            "cli_command": " ".join(args)
+            "cli_command": " ".join(args),
         }
 
         return response
@@ -281,7 +275,7 @@ async def run_cli_json(
             ErrorFamily.DISCOVERY,  # Use DISCOVERY for timeouts
             f"CLI command timed out after {timeout_s}s",
             path=["cli_bridge", "timeout"],
-            suggest=f"Increase timeout (current: {timeout_s}s) or investigate blocking operations."
+            suggest=f"Increase timeout (current: {timeout_s}s) or investigate blocking operations.",
         )
 
     except FileNotFoundError as e:
@@ -290,7 +284,7 @@ async def run_cli_json(
             ErrorFamily.SEMANTIC,  # Use SEMANTIC for execution errors
             "Osiris CLI not found",
             path=["cli_bridge", "command_not_found"],
-            suggest="Ensure osiris.py exists in repository root or Osiris is properly installed."
+            suggest="Ensure osiris.py exists in repository root or Osiris is properly installed.",
         )
 
     except Exception as e:
@@ -299,5 +293,5 @@ async def run_cli_json(
             ErrorFamily.SEMANTIC,  # Use SEMANTIC for unexpected errors
             f"CLI bridge error: {str(e)}",
             path=["cli_bridge", "unexpected"],
-            suggest="Check logs for details. This may indicate a system-level issue."
+            suggest="Check logs for details. This may indicate a system-level issue.",
         )

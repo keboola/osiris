@@ -20,7 +20,6 @@ Verifies that `osiris init` properly writes:
 - Backward compatibility (doesn't overwrite existing values)
 """
 
-import tempfile
 from pathlib import Path
 
 import pytest

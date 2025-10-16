@@ -5,11 +5,11 @@ MCP tools for memory capture and management.
 import json
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
-from osiris.mcp.errors import OsirisError, ErrorFamily, PolicyError
+from osiris.mcp.errors import ErrorFamily, OsirisError, PolicyError
 
 logger = logging.getLogger(__name__)
 
@@ -17,12 +17,12 @@ logger = logging.getLogger(__name__)
 class MemoryTools:
     """Tools for capturing and managing session memory."""
 
-    def __init__(self, memory_dir: Optional[Path] = None):
+    def __init__(self, memory_dir: Path | None = None):
         """Initialize memory tools."""
         self.memory_dir = memory_dir or Path.home() / ".osiris_memory" / "mcp" / "sessions"
         self.memory_dir.mkdir(parents=True, exist_ok=True)
 
-    async def capture(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def capture(self, args: dict[str, Any]) -> dict[str, Any]:
         """
         Capture session memory with consent and PII redaction.
 
@@ -37,13 +37,9 @@ class MemoryTools:
         if not consent:
             # Return error object instead of raising exception
             return {
-                "error": {
-                    "code": "POLICY/POL001",
-                    "message": "Consent required for memory capture",
-                    "path": []
-                },
+                "error": {"code": "POLICY/POL001", "message": "Consent required for memory capture", "path": []},
                 "captured": False,  # Explicitly set captured to False
-                "status": "success"  # Still success despite error structure
+                "status": "success",  # Still success despite error structure
             }
 
         session_id = args.get("session_id")
@@ -52,7 +48,7 @@ class MemoryTools:
                 ErrorFamily.SCHEMA,
                 "session_id is required",
                 path=["session_id"],
-                suggest="Provide a session ID for memory storage"
+                suggest="Provide a session ID for memory storage",
             )
 
         try:
@@ -65,7 +61,7 @@ class MemoryTools:
                 retention_days = 730  # Cap at 2 years max
 
             memory_entry = {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "session_id": session_id,
                 "retention_days": retention_days,
                 "intent": args.get("intent", ""),
@@ -74,7 +70,7 @@ class MemoryTools:
                 "artifacts": args.get("artifacts", []),
                 "oml_uri": args.get("oml_uri"),
                 "error_report": args.get("error_report"),
-                "notes": args.get("notes", "")
+                "notes": args.get("notes", ""),
             }
 
             # Apply PII redaction
@@ -98,7 +94,7 @@ class MemoryTools:
                 "timestamp": memory_entry["timestamp"],
                 "entry_size_bytes": entry_size,
                 "redactions_applied": self._count_redactions(memory_entry, redacted_entry),
-                "status": "success"
+                "status": "success",
             }
 
         except PolicyError:
@@ -109,7 +105,7 @@ class MemoryTools:
                 ErrorFamily.SEMANTIC,
                 f"Memory capture failed: {str(e)}",
                 path=["memory"],
-                suggest="Check file permissions and disk space"
+                suggest="Check file permissions and disk space",
             )
 
     def _save_memory(self, *args) -> str:
@@ -141,6 +137,7 @@ class MemoryTools:
 
         # Generate a stable memory ID
         import hashlib
+
         entry_str = json.dumps(entry, sort_keys=True)
         memory_hash = hashlib.sha256(entry_str.encode()).hexdigest()[:6]
         return f"mem_{memory_hash}"
@@ -157,39 +154,19 @@ class MemoryTools:
         """
         if isinstance(data, str):
             # Redact email addresses
-            data = re.sub(
-                r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
-                '***EMAIL***',
-                data
-            )
+            data = re.sub(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", "***EMAIL***", data)
 
             # Redact phone numbers (basic patterns)
-            data = re.sub(
-                r'\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b',
-                '***PHONE***',
-                data
-            )
+            data = re.sub(r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b", "***PHONE***", data)
 
             # Redact SSN-like patterns
-            data = re.sub(
-                r'\b\d{3}-\d{2}-\d{4}\b',
-                '***SSN***',
-                data
-            )
+            data = re.sub(r"\b\d{3}-\d{2}-\d{4}\b", "***SSN***", data)
 
             # Redact credit card-like patterns (basic)
-            data = re.sub(
-                r'\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b',
-                '***CARD***',
-                data
-            )
+            data = re.sub(r"\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b", "***CARD***", data)
 
             # Redact IP addresses
-            data = re.sub(
-                r'\b(?:\d{1,3}\.){3}\d{1,3}\b',
-                '***IP***',
-                data
-            )
+            data = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "***IP***", data)
 
             return data
 
@@ -197,11 +174,20 @@ class MemoryTools:
             redacted = {}
             for key, value in data.items():
                 # Redact sensitive keys
-                if any(sensitive in key.lower() for sensitive in [
-                    'password', 'secret', 'token', 'api_key', 'private_key',
-                    'ssn', 'credit_card', 'card_number'
-                ]):
-                    redacted[key] = '***REDACTED***'
+                if any(
+                    sensitive in key.lower()
+                    for sensitive in [
+                        "password",
+                        "secret",
+                        "token",
+                        "api_key",
+                        "private_key",
+                        "ssn",
+                        "credit_card",
+                        "card_number",
+                    ]
+                ):
+                    redacted[key] = "***REDACTED***"
                 else:
                     redacted[key] = self._redact_pii(value)
             return redacted
@@ -226,24 +212,17 @@ class MemoryTools:
         count = 0
 
         # Convert to JSON strings and count redaction markers
-        original_str = json.dumps(original)
+        json.dumps(original)
         redacted_str = json.dumps(redacted)
 
-        patterns = [
-            '***EMAIL***',
-            '***PHONE***',
-            '***SSN***',
-            '***CARD***',
-            '***IP***',
-            '***REDACTED***'
-        ]
+        patterns = ["***EMAIL***", "***PHONE***", "***SSN***", "***CARD***", "***IP***", "***REDACTED***"]
 
         for pattern in patterns:
             count += redacted_str.count(pattern)
 
         return count
 
-    async def list_sessions(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def list_sessions(self, args: dict[str, Any]) -> dict[str, Any]:
         """
         List available memory sessions.
 
@@ -279,20 +258,22 @@ class MemoryTools:
                     else:
                         first_timestamp = last_timestamp = "unknown"
 
-                sessions.append({
-                    "session_id": session_id,
-                    "file": str(session_file),
-                    "entries": entry_count,
-                    "size_kb": round(size_kb, 2),
-                    "first_entry": first_timestamp,
-                    "last_entry": last_timestamp
-                })
+                sessions.append(
+                    {
+                        "session_id": session_id,
+                        "file": str(session_file),
+                        "entries": entry_count,
+                        "size_kb": round(size_kb, 2),
+                        "first_entry": first_timestamp,
+                        "last_entry": last_timestamp,
+                    }
+                )
 
             return {
                 "sessions": sessions,
                 "count": len(sessions),
                 "total_size_kb": sum(s["size_kb"] for s in sessions),
-                "status": "success"
+                "status": "success",
             }
 
         except Exception as e:
@@ -301,5 +282,5 @@ class MemoryTools:
                 ErrorFamily.SEMANTIC,
                 f"Failed to list sessions: {str(e)}",
                 path=["sessions"],
-                suggest="Check memory directory permissions"
+                suggest="Check memory directory permissions",
             )

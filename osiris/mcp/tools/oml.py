@@ -2,16 +2,13 @@
 MCP tools for OML (Osiris Mapping Language) operations.
 """
 
-import json
 import logging
-import os
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any
 
 import yaml
 
-from osiris.mcp.errors import OsirisError, ErrorFamily, OsirisErrorHandler
+from osiris.mcp.errors import ErrorFamily, OsirisError, OsirisErrorHandler
 from osiris.mcp.resolver import ResourceResolver
 
 logger = logging.getLogger(__name__)
@@ -25,7 +22,7 @@ class OMLTools:
         self.resolver = resolver or ResourceResolver()
         self.error_handler = OsirisErrorHandler()
 
-    async def get_schema(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def get_schema(self, params: dict[str, Any]) -> dict[str, Any]:
         """
         Get the OML v0.1.0 JSON schema.
 
@@ -37,7 +34,7 @@ class OMLTools:
         """
         return await self.schema_get(params)
 
-    async def schema_get(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def schema_get(self, args: dict[str, Any]) -> dict[str, Any]:
         """
         Get the OML v0.1.0 JSON schema.
 
@@ -62,19 +59,9 @@ class OMLTools:
                     "type": "object",
                     "required": ["version", "name", "steps"],
                     "properties": {
-                        "version": {
-                            "type": "string",
-                            "enum": ["0.1.0"],
-                            "description": "OML schema version"
-                        },
-                        "name": {
-                            "type": "string",
-                            "description": "Pipeline name"
-                        },
-                        "description": {
-                            "type": "string",
-                            "description": "Pipeline description"
-                        },
+                        "version": {"type": "string", "enum": ["0.1.0"], "description": "OML schema version"},
+                        "name": {"type": "string", "description": "Pipeline name"},
+                        "description": {"type": "string", "description": "Pipeline description"},
                         "steps": {
                             "type": "array",
                             "description": "Pipeline steps",
@@ -86,17 +73,14 @@ class OMLTools:
                                     "name": {"type": "string"},
                                     "component": {"type": "string"},
                                     "config": {"type": "object"},
-                                    "depends_on": {
-                                        "type": "array",
-                                        "items": {"type": "string"}
-                                    }
-                                }
-                            }
-                        }
-                    }
+                                    "depends_on": {"type": "array", "items": {"type": "string"}},
+                                },
+                            },
+                        },
+                    },
                 },
                 "status": "success",
-                "schema_uri": schema_uri
+                "schema_uri": schema_uri,
             }
 
         except Exception as e:
@@ -105,10 +89,10 @@ class OMLTools:
                 ErrorFamily.SEMANTIC,
                 f"Failed to get OML schema: {str(e)}",
                 path=["schema"],
-                suggest="Check schema resources"
+                suggest="Check schema resources",
             )
 
-    async def validate(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def validate(self, args: dict[str, Any]) -> dict[str, Any]:
         """
         Validate an OML pipeline definition.
 
@@ -126,7 +110,7 @@ class OMLTools:
                 ErrorFamily.SCHEMA,
                 "oml_content is required",
                 path=["oml_content"],
-                suggest="Provide OML YAML content to validate"
+                suggest="Provide OML YAML content to validate",
             )
 
         try:
@@ -135,20 +119,23 @@ class OMLTools:
                 # This is the test case for invalid YAML
                 return {
                     "valid": False,
-                    "diagnostics": [{
-                        "type": "error",
-                        "line": 3,
-                        "column": 2,
-                        "message": "YAML parse error: bad indentation",
-                        "id": "OML001_0_0"
-                    }],
-                    "status": "success"
+                    "diagnostics": [
+                        {
+                            "type": "error",
+                            "line": 3,
+                            "column": 2,
+                            "message": "YAML parse error: bad indentation",
+                            "id": "OML001_0_0",
+                        }
+                    ],
+                    "status": "success",
                 }
 
             # Pre-process YAML to handle @ symbols in connection references
             # This is a common pattern in OML files
             import re
-            preprocessed = re.sub(r'(@[\w\.]+)(?=\s|$)', r'"\1"', oml_content)
+
+            preprocessed = re.sub(r"(@[\w\.]+)(?=\s|$)", r'"\1"', oml_content)
 
             # Parse YAML
             try:
@@ -160,20 +147,22 @@ class OMLTools:
                 # Extract line and column from problem_mark if available
                 line = 0
                 column = 0
-                if hasattr(e, 'problem_mark') and e.problem_mark:
+                if hasattr(e, "problem_mark") and e.problem_mark:
                     line = e.problem_mark.line
                     column = e.problem_mark.column
 
                 return {
                     "valid": False,
-                    "diagnostics": [{
-                        "type": "error",
-                        "line": line,
-                        "column": column,
-                        "message": f"YAML parse error: {str(e)}",
-                        "id": "OML001_0_0"
-                    }],
-                    "status": "success"
+                    "diagnostics": [
+                        {
+                            "type": "error",
+                            "line": line,
+                            "column": column,
+                            "message": f"YAML parse error: {str(e)}",
+                            "id": "OML001_0_0",
+                        }
+                    ],
+                    "status": "success",
                 }
 
             # Validate using the actual OML validator if available
@@ -189,8 +178,8 @@ class OMLTools:
                 "summary": {
                     "errors": len([d for d in diagnostics if d.get("type") == "error"]),
                     "warnings": len([d for d in diagnostics if d.get("type") == "warning"]),
-                    "info": len([d for d in diagnostics if d.get("type") == "info"])
-                }
+                    "info": len([d for d in diagnostics if d.get("type") == "info"]),
+                },
             }
 
         except Exception as e:
@@ -199,10 +188,10 @@ class OMLTools:
                 ErrorFamily.SEMANTIC,
                 f"Validation failed: {str(e)}",
                 path=["validation"],
-                suggest="Check OML syntax and structure"
+                suggest="Check OML syntax and structure",
             )
 
-    async def save(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def save(self, args: dict[str, Any]) -> dict[str, Any]:
         """
         Save an OML pipeline draft.
 
@@ -221,7 +210,7 @@ class OMLTools:
                 ErrorFamily.SCHEMA,
                 "oml_content is required",
                 path=["oml_content"],
-                suggest="Provide OML content to save"
+                suggest="Provide OML content to save",
             )
 
         if not session_id:
@@ -229,13 +218,13 @@ class OMLTools:
                 ErrorFamily.SCHEMA,
                 "session_id is required",
                 path=["session_id"],
-                suggest="Provide a session ID for the draft"
+                suggest="Provide a session ID for the draft",
             )
 
         try:
             # Determine filename
             if not filename:
-                timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+                timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
                 filename = f"{session_id}_{timestamp}.yaml"
 
             # Create URI for the draft
@@ -250,15 +239,12 @@ class OMLTools:
                     "uri": draft_uri,
                     "filename": filename,
                     "session_id": session_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "status": "success"
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "status": "success",
                 }
             else:
                 raise OsirisError(
-                    ErrorFamily.SEMANTIC,
-                    "Failed to save draft",
-                    path=["save"],
-                    suggest="Check file permissions"
+                    ErrorFamily.SEMANTIC, "Failed to save draft", path=["save"], suggest="Check file permissions"
                 )
 
         except OsirisError:
@@ -266,13 +252,10 @@ class OMLTools:
         except Exception as e:
             logger.error(f"Save failed: {e}")
             raise OsirisError(
-                ErrorFamily.SEMANTIC,
-                f"Save failed: {str(e)}",
-                path=["save"],
-                suggest="Check file system permissions"
+                ErrorFamily.SEMANTIC, f"Save failed: {str(e)}", path=["save"], suggest="Check file system permissions"
             )
 
-    async def _validate_oml(self, oml_data: Dict[str, Any], strict: bool) -> List[Dict[str, Any]]:
+    async def _validate_oml(self, oml_data: dict[str, Any], strict: bool) -> list[dict[str, Any]]:
         """
         Perform actual OML validation.
 
@@ -287,87 +270,67 @@ class OMLTools:
 
         # Basic structure validation
         if "version" not in oml_data:
-            diagnostics.append({
-                "type": "error",
-                "line": 1,
-                "column": 0,
-                "message": "Missing required field: version"
-            })
+            diagnostics.append({"type": "error", "line": 1, "column": 0, "message": "Missing required field: version"})
         elif str(oml_data["version"]) not in ["0.1.0", "1.0", "0.1"]:
             # Accept common version formats for backward compatibility
-            diagnostics.append({
-                "type": "error",
-                "line": 1,
-                "column": 0,
-                "message": f"Invalid version: {oml_data['version']}, expected 0.1.0"
-            })
+            diagnostics.append(
+                {
+                    "type": "error",
+                    "line": 1,
+                    "column": 0,
+                    "message": f"Invalid version: {oml_data['version']}, expected 0.1.0",
+                }
+            )
 
         if "name" not in oml_data:
-            diagnostics.append({
-                "type": "error",
-                "line": 1,
-                "column": 0,
-                "message": "Missing required field: name"
-            })
+            diagnostics.append({"type": "error", "line": 1, "column": 0, "message": "Missing required field: name"})
 
         if "steps" not in oml_data:
-            diagnostics.append({
-                "type": "error",
-                "line": 1,
-                "column": 0,
-                "message": "Missing required field: steps"
-            })
+            diagnostics.append({"type": "error", "line": 1, "column": 0, "message": "Missing required field: steps"})
         elif not isinstance(oml_data["steps"], list):
-            diagnostics.append({
-                "type": "error",
-                "line": 1,
-                "column": 0,
-                "message": "Field 'steps' must be an array"
-            })
+            diagnostics.append({"type": "error", "line": 1, "column": 0, "message": "Field 'steps' must be an array"})
         elif len(oml_data["steps"]) == 0:
-            diagnostics.append({
-                "type": "warning",
-                "line": 1,
-                "column": 0,
-                "message": "Pipeline has no steps"
-            })
+            diagnostics.append({"type": "warning", "line": 1, "column": 0, "message": "Pipeline has no steps"})
 
         # Validate steps
         if isinstance(oml_data.get("steps"), list):
             for i, step in enumerate(oml_data["steps"]):
                 if not isinstance(step, dict):
-                    diagnostics.append({
-                        "type": "error",
-                        "line": i + 5,  # Approximate line number
-                        "column": 0,
-                        "message": f"Step {i} must be an object"
-                    })
+                    diagnostics.append(
+                        {
+                            "type": "error",
+                            "line": i + 5,  # Approximate line number
+                            "column": 0,
+                            "message": f"Step {i} must be an object",
+                        }
+                    )
                     continue
 
                 # Check required step fields (id is optional in lenient mode)
                 if "id" not in step and strict and oml_data.get("version") not in ["1.0", "0.1"]:
-                    diagnostics.append({
-                        "type": "error",
-                        "line": i + 5,
-                        "column": 0,
-                        "message": f"Step {i} missing required field: id"
-                    })
+                    diagnostics.append(
+                        {"type": "error", "line": i + 5, "column": 0, "message": f"Step {i} missing required field: id"}
+                    )
 
                 if "component" not in step:
-                    diagnostics.append({
-                        "type": "error",
-                        "line": i + 5,
-                        "column": 0,
-                        "message": f"Step {i} missing required field: component"
-                    })
+                    diagnostics.append(
+                        {
+                            "type": "error",
+                            "line": i + 5,
+                            "column": 0,
+                            "message": f"Step {i} missing required field: component",
+                        }
+                    )
 
                 if "config" not in step:
-                    diagnostics.append({
-                        "type": "error",
-                        "line": i + 5,
-                        "column": 0,
-                        "message": f"Step {i} missing required field: config"
-                    })
+                    diagnostics.append(
+                        {
+                            "type": "error",
+                            "line": i + 5,
+                            "column": 0,
+                            "message": f"Step {i} missing required field: config",
+                        }
+                    )
 
         # Try to use the actual OML validator if available
         try:

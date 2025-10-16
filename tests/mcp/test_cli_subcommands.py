@@ -6,9 +6,7 @@ Verifies JSON output schemas, argument parsing, and error handling.
 """
 
 import json
-import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock, Mock
+from unittest.mock import MagicMock, patch
 
 from osiris.cli.discovery_cmd import discovery_run
 from osiris.cli.guide_cmd import guide_start
@@ -23,96 +21,77 @@ class TestDiscoveryCommand:
         """Test discovery command correctly parses @family.alias format."""
         # This is tested more thoroughly via integration tests
         # Here we just verify that correct parsing happens
-        with patch('osiris.cli.discovery_cmd.SessionContext'):
-            with patch('osiris.cli.discovery_cmd.resolve_connection') as mock_resolve:
-                mock_resolve.return_value = {'host': 'localhost'}
+        with patch("osiris.cli.discovery_cmd.SessionContext"):
+            with patch("osiris.cli.discovery_cmd.resolve_connection") as mock_resolve:
+                mock_resolve.return_value = {"host": "localhost"}
 
-                with patch('osiris.cli.discovery_cmd.get_registry') as mock_registry:
+                with patch("osiris.cli.discovery_cmd.get_registry") as mock_registry:
                     mock_registry.return_value.get_component.return_value = None
 
                     # Call discovery - it will fail at component check but that's OK
                     discovery_run(connection_id="@mysql.test", json_output=True)
 
                     # Verify resolve_connection was called with parsed family/alias
-                    mock_resolve.assert_called_once_with('mysql', 'test')
+                    mock_resolve.assert_called_once_with("mysql", "test")
 
-    @patch('osiris.cli.discovery_cmd.SessionContext')
+    @patch("osiris.cli.discovery_cmd.SessionContext")
     def test_discovery_run_invalid_format(self, mock_session):
         """Test discovery with invalid connection ID format."""
-        exit_code = discovery_run(
-            connection_id="invalid-no-at",
-            json_output=True
-        )
+        exit_code = discovery_run(connection_id="invalid-no-at", json_output=True)
 
         # Just verify the exit code - the function returns early
         assert exit_code == 2
 
-    @patch('osiris.cli.discovery_cmd.SessionContext')
+    @patch("osiris.cli.discovery_cmd.SessionContext")
     def test_discovery_run_missing_dot(self, mock_session):
         """Test discovery with missing dot separator."""
-        exit_code = discovery_run(
-            connection_id="@mysqlinvalid",
-            json_output=True
-        )
+        exit_code = discovery_run(connection_id="@mysqlinvalid", json_output=True)
 
         # Verify the exit code
         assert exit_code == 2
 
-    @patch('osiris.cli.discovery_cmd.resolve_connection')
-    @patch('osiris.cli.discovery_cmd.SessionContext')
+    @patch("osiris.cli.discovery_cmd.resolve_connection")
+    @patch("osiris.cli.discovery_cmd.SessionContext")
     def test_discovery_run_connection_not_found(self, mock_session, mock_resolve):
         """Test discovery with non-existent connection."""
         mock_resolve.side_effect = ValueError("Connection alias 'notfound' not found")
 
-        exit_code = discovery_run(
-            connection_id="@mysql.notfound",
-            json_output=True
-        )
+        exit_code = discovery_run(connection_id="@mysql.notfound", json_output=True)
 
         # Verify error exit code
         assert exit_code == 1
 
-    @patch('osiris.cli.discovery_cmd.resolve_connection')
-    @patch('osiris.cli.discovery_cmd.get_registry')
-    @patch('osiris.cli.discovery_cmd.SessionContext')
-    def test_discovery_run_component_not_found(
-        self, mock_session, mock_registry, mock_resolve
-    ):
+    @patch("osiris.cli.discovery_cmd.resolve_connection")
+    @patch("osiris.cli.discovery_cmd.get_registry")
+    @patch("osiris.cli.discovery_cmd.SessionContext")
+    def test_discovery_run_component_not_found(self, mock_session, mock_registry, mock_resolve):
         """Test discovery when component doesn't exist."""
-        mock_resolve.return_value = {'host': 'localhost'}
+        mock_resolve.return_value = {"host": "localhost"}
         mock_registry.return_value.get_component.return_value = None
 
-        exit_code = discovery_run(
-            connection_id="@mysql.test",
-            json_output=True
-        )
+        exit_code = discovery_run(connection_id="@mysql.test", json_output=True)
 
         # Verify error exit code
         assert exit_code == 1
 
-    @patch('osiris.core.config.load_config')
-    @patch('osiris.cli.discovery_cmd.SessionContext')
+    @patch("osiris.core.config.load_config")
+    @patch("osiris.cli.discovery_cmd.SessionContext")
     def test_discovery_run_respects_filesystem_contract(self, mock_session, mock_load_config):
         """Test that discovery respects filesystem contract for logs."""
-        mock_config = {
-            'filesystem': {
-                'base_path': '/test/path',
-                'run_logs_dir': 'custom_logs'
-            }
-        }
+        mock_config = {"filesystem": {"base_path": "/test/path", "run_logs_dir": "custom_logs"}}
         mock_load_config.return_value = mock_config
 
         # Mock session creation to verify logs_dir
         mock_session_instance = MagicMock()
         mock_session.return_value = mock_session_instance
 
-        with patch('osiris.cli.discovery_cmd.resolve_connection', side_effect=ValueError("test")):
+        with patch("osiris.cli.discovery_cmd.resolve_connection", side_effect=ValueError("test")):
             discovery_run(connection_id="@mysql.test", json_output=True)
 
         # Verify SessionContext was called with correct base_logs_dir
         mock_session.assert_called_once()
         call_args = mock_session.call_args
-        assert str(call_args[1]['base_logs_dir']) == '/test/path/custom_logs'
+        assert str(call_args[1]["base_logs_dir"]) == "/test/path/custom_logs"
 
 
 class TestGuideCommand:
@@ -165,11 +144,7 @@ class TestMemoryCommand:
 
     def test_memory_capture_missing_consent(self, capsys):
         """Test memory capture without consent flag."""
-        exit_code = memory_capture(
-            session_id="test123",
-            consent=False,
-            json_output=True
-        )
+        exit_code = memory_capture(session_id="test123", consent=False, json_output=True)
 
         assert exit_code == 1
 
@@ -180,11 +155,7 @@ class TestMemoryCommand:
 
     def test_memory_capture_missing_session_id(self, capsys):
         """Test memory capture without session ID."""
-        exit_code = memory_capture(
-            session_id=None,
-            consent=True,
-            json_output=True
-        )
+        exit_code = memory_capture(session_id=None, consent=True, json_output=True)
 
         assert exit_code == 2
 
@@ -195,11 +166,7 @@ class TestMemoryCommand:
 
     def test_memory_capture_success(self, capsys):
         """Test successful memory capture."""
-        exit_code = memory_capture(
-            session_id="test_session_123",
-            consent=True,
-            json_output=True
-        )
+        exit_code = memory_capture(session_id="test_session_123", consent=True, json_output=True)
 
         assert exit_code == 0
 
@@ -212,11 +179,7 @@ class TestMemoryCommand:
 
     def test_memory_capture_human_output(self, capsys):
         """Test memory capture with human-friendly output."""
-        exit_code = memory_capture(
-            session_id="test123",
-            consent=True,
-            json_output=False
-        )
+        exit_code = memory_capture(session_id="test123", consent=True, json_output=False)
 
         assert exit_code == 0
 
@@ -300,11 +263,11 @@ class TestJSONSchemaCompliance:
         # - Invalid format returns 2
         # - Not found returns 1
         # - Success returns 0
-        with patch('osiris.cli.discovery_cmd.SessionContext'):
+        with patch("osiris.cli.discovery_cmd.SessionContext"):
             code = discovery_run(connection_id="invalid", json_output=True)
             assert code == 2  # Invalid format
 
-            with patch('osiris.cli.discovery_cmd.resolve_connection', side_effect=ValueError("test")):
+            with patch("osiris.cli.discovery_cmd.resolve_connection", side_effect=ValueError("test")):
                 code = discovery_run(connection_id="@mysql.test", json_output=True)
                 assert code == 1  # Connection not found
 
@@ -360,13 +323,13 @@ class TestErrorCodes:
 
     def test_discovery_error_codes(self):
         """Test discovery command exit codes."""
-        with patch('osiris.cli.discovery_cmd.SessionContext'):
+        with patch("osiris.cli.discovery_cmd.SessionContext"):
             # Invalid format: exit code 2
             code = discovery_run(connection_id="invalid", json_output=True)
             assert code == 2
 
             # Connection not found: exit code 1
-            with patch('osiris.cli.discovery_cmd.resolve_connection', side_effect=ValueError("not found")):
+            with patch("osiris.cli.discovery_cmd.resolve_connection", side_effect=ValueError("not found")):
                 code = discovery_run(connection_id="@mysql.test", json_output=True)
                 assert code == 1
 

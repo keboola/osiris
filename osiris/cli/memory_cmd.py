@@ -5,7 +5,6 @@ This is a minimal stub implementation for MCP Phase 1.
 """
 
 import json
-import sys
 
 from rich.console import Console
 

@@ -41,17 +41,9 @@ def build_claude_clients_snippet(base_path: str, venv_python: str) -> dict:
         "mcpServers": {
             "osiris": {
                 "command": "/bin/bash",
-                "args": [
-                    "-lc",
-                    f"cd {base_path} && exec {venv_python} -m osiris.cli.mcp_entrypoint"
-                ],
-                "transport": {
-                    "type": "stdio"
-                },
-                "env": {
-                    "OSIRIS_HOME": osiris_home,
-                    "PYTHONPATH": base_path
-                }
+                "args": ["-lc", f"cd {base_path} && exec {venv_python} -m osiris.cli.mcp_entrypoint"],
+                "transport": {"type": "stdio"},
+                "env": {"OSIRIS_HOME": osiris_home, "PYTHONPATH": base_path},
             }
         }
     }

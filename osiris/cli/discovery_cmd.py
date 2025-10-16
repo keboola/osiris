@@ -6,16 +6,14 @@ or delegated to from MCP commands.
 
 import json
 import logging
-import sys
 import time
-import uuid
 from pathlib import Path
 
 from rich.console import Console
 from rich.table import Table
 
 from osiris.components.registry import get_registry
-from osiris.core.config import load_connections_yaml, resolve_connection
+from osiris.core.config import resolve_connection
 from osiris.core.discovery import ProgressiveDiscovery
 from osiris.core.session_logging import SessionContext, set_current_session
 
@@ -23,7 +21,7 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 
-def discovery_run(
+def discovery_run(  # noqa: PLR0915  # CLI router function, naturally verbose
     connection_id: str,
     samples: int = 10,
     json_output: bool = False,
@@ -45,7 +43,8 @@ def discovery_run(
     # Respect filesystem contract - get logs_dir from osiris.yaml if not specified
     if logs_dir is None:
         try:
-            from osiris.core.config import load_config
+            from osiris.core.config import load_config  # noqa: PLC0415  # Lazy import for CLI performance
+
             config = load_config("osiris.yaml")
             filesystem = config.get("filesystem", {})
             base_path = Path(filesystem.get("base_path", "."))
@@ -110,8 +109,8 @@ def discovery_run(
             return 1
 
         # Create extractor instance
-        from osiris.connectors.mysql import MySQLExtractor
-        from osiris.connectors.supabase import SupabaseExtractor
+        from osiris.connectors.mysql import MySQLExtractor  # noqa: PLC0415  # Lazy import for CLI performance
+        from osiris.connectors.supabase import SupabaseExtractor  # noqa: PLC0415  # Lazy import for CLI performance
 
         extractor_map = {
             "mysql": MySQLExtractor,
@@ -147,7 +146,8 @@ def discovery_run(
 
         # Note: discover_all_tables doesn't take sample_size, it uses progressive discovery
         # We'll need to call discover_table for each table with specific sample size
-        import asyncio
+        import asyncio  # noqa: PLC0415  # Lazy import for CLI performance
+
         tables_dict = asyncio.run(discovery.discover_all_tables(max_tables=100))
         tables = list(tables_dict.values())
 

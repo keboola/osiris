@@ -2,8 +2,8 @@
 Test guide.start tool for OML authoring guidance.
 """
 
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from osiris.mcp.tools.guide import GuideTools
 
@@ -19,9 +19,7 @@ class TestGuideTools:
     @pytest.mark.asyncio
     async def test_guide_start_basic(self, guide_tools):
         """Test basic guide start."""
-        result = await guide_tools.start({
-            "intent": "I want to copy data from MySQL to PostgreSQL"
-        })
+        result = await guide_tools.start({"intent": "I want to copy data from MySQL to PostgreSQL"})
 
         assert result["status"] == "success"
         assert "next_steps" in result
@@ -31,10 +29,9 @@ class TestGuideTools:
     @pytest.mark.asyncio
     async def test_guide_with_connections(self, guide_tools):
         """Test guide with known connections."""
-        result = await guide_tools.start({
-            "intent": "Extract customer data",
-            "known_connections": ["@mysql.prod", "@postgres.warehouse"]
-        })
+        result = await guide_tools.start(
+            {"intent": "Extract customer data", "known_connections": ["@mysql.prod", "@postgres.warehouse"]}
+        )
 
         assert result["status"] == "success"
         assert "next_steps" in result
@@ -46,41 +43,32 @@ class TestGuideTools:
     @pytest.mark.asyncio
     async def test_guide_with_discovery(self, guide_tools):
         """Test guide when discovery has been performed."""
-        result = await guide_tools.start({
-            "intent": "Build ETL pipeline",
-            "known_connections": ["@mysql.source"],
-            "has_discovery": True
-        })
+        result = await guide_tools.start(
+            {"intent": "Build ETL pipeline", "known_connections": ["@mysql.source"], "has_discovery": True}
+        )
 
         assert result["status"] == "success"
         # Should acknowledge discovery and suggest next steps
-        assert "discovery" in str(result).lower() or \
-               "schema" in str(result).lower() or \
-               len(result["next_steps"]) > 0
+        assert "discovery" in str(result).lower() or "schema" in str(result).lower() or len(result["next_steps"]) > 0
 
     @pytest.mark.asyncio
     async def test_guide_with_previous_oml(self, guide_tools):
         """Test guide with previous OML draft."""
-        result = await guide_tools.start({
-            "intent": "Fix validation errors",
-            "has_previous_oml": True,
-            "has_error_report": True
-        })
+        result = await guide_tools.start(
+            {"intent": "Fix validation errors", "has_previous_oml": True, "has_error_report": True}
+        )
 
         assert result["status"] == "success"
         assert "next_steps" in result
 
         # Should suggest validation or error fixing
         result_text = str(result).lower()
-        assert "validat" in result_text or "error" in result_text or \
-               "fix" in result_text
+        assert "validat" in result_text or "error" in result_text or "fix" in result_text
 
     @pytest.mark.asyncio
     async def test_guide_empty_intent(self, guide_tools):
         """Test guide with empty intent."""
-        result = await guide_tools.start({
-            "intent": ""
-        })
+        result = await guide_tools.start({"intent": ""})
 
         assert result["status"] == "success"
         assert "next_steps" in result
@@ -90,13 +78,15 @@ class TestGuideTools:
     @pytest.mark.asyncio
     async def test_guide_complex_scenario(self, guide_tools):
         """Test guide with complex scenario."""
-        result = await guide_tools.start({
-            "intent": "Migrate all customer and order data with transformations",
-            "known_connections": ["@mysql.legacy", "@postgres.modern"],
-            "has_discovery": True,
-            "has_previous_oml": True,
-            "has_error_report": False
-        })
+        result = await guide_tools.start(
+            {
+                "intent": "Migrate all customer and order data with transformations",
+                "known_connections": ["@mysql.legacy", "@postgres.modern"],
+                "has_discovery": True,
+                "has_previous_oml": True,
+                "has_error_report": False,
+            }
+        )
 
         assert result["status"] == "success"
         assert "next_steps" in result
@@ -113,24 +103,17 @@ class TestGuideTools:
     async def test_guide_prioritizes_steps(self, guide_tools):
         """Test guide prioritizes steps appropriately."""
         # No connections - should suggest connection setup
-        result1 = await guide_tools.start({
-            "intent": "Build pipeline",
-            "known_connections": []
-        })
+        result1 = await guide_tools.start({"intent": "Build pipeline", "known_connections": []})
 
         # Has connections but no discovery - should suggest discovery
-        result2 = await guide_tools.start({
-            "intent": "Build pipeline",
-            "known_connections": ["@mysql.db"],
-            "has_discovery": False
-        })
+        result2 = await guide_tools.start(
+            {"intent": "Build pipeline", "known_connections": ["@mysql.db"], "has_discovery": False}
+        )
 
         # Has everything - should suggest OML creation
-        result3 = await guide_tools.start({
-            "intent": "Build pipeline",
-            "known_connections": ["@mysql.db"],
-            "has_discovery": True
-        })
+        result3 = await guide_tools.start(
+            {"intent": "Build pipeline", "known_connections": ["@mysql.db"], "has_discovery": True}
+        )
 
         # All should succeed
         assert all(r["status"] == "success" for r in [result1, result2, result3])

@@ -2,13 +2,14 @@
 Test MCP discovery tools.
 """
 
-import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from osiris.mcp.tools.discovery import DiscoveryTools
+import pytest
+
 from osiris.mcp.cache import DiscoveryCache
 from osiris.mcp.errors import OsirisError
+from osiris.mcp.tools.discovery import DiscoveryTools
 
 
 class TestDiscoveryTools:
@@ -25,23 +26,22 @@ class TestDiscoveryTools:
         """Test discovery with cache hit."""
         cached_data = {
             "discovery_id": "disc_abc123",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "database": "test_db",
             "tables": ["users", "orders"],
-            "summary": {
-                "tables_count": 2,
-                "total_rows": 1000
-            }
+            "summary": {"tables_count": 2, "total_rows": 1000},
         }
 
         discovery_tools.cache.get = AsyncMock(return_value=cached_data)
 
-        result = await discovery_tools.request({
-            "connection_id": "@mysql.default",
-            "component_id": "mysql.extractor",
-            "samples": 5,
-            "idempotency_key": "test_key"
-        })
+        result = await discovery_tools.request(
+            {
+                "connection_id": "@mysql.default",
+                "component_id": "mysql.extractor",
+                "samples": 5,
+                "idempotency_key": "test_key",
+            }
+        )
 
         assert result["status"] == "success"
         assert result["cached"] is True
@@ -49,9 +49,7 @@ class TestDiscoveryTools:
         assert "artifacts" in result
 
         # Verify cache was checked
-        discovery_tools.cache.get.assert_called_once_with(
-            "@mysql.default", "mysql.extractor", 5, "test_key"
-        )
+        discovery_tools.cache.get.assert_called_once_with("@mysql.default", "mysql.extractor", 5, "test_key")
 
     @pytest.mark.asyncio
     async def test_discovery_request_cache_miss(self, discovery_tools):
@@ -70,17 +68,15 @@ class TestDiscoveryTools:
                 "connection_id": "@mysql.default",
                 "database_type": "mysql",
                 "total_tables": 5,
-                "tables_discovered": ["users", "orders"]
+                "tables_discovered": ["users", "orders"],
             },
-            "_meta": {"correlation_id": "test-789", "duration_ms": 500}
+            "_meta": {"correlation_id": "test-789", "duration_ms": 500},
         }
 
-        with patch('osiris.mcp.tools.discovery.run_cli_json', return_value=mock_cli_result):
-            result = await discovery_tools.request({
-                "connection_id": "@mysql.default",
-                "component_id": "mysql.extractor",
-                "samples": 0
-            })
+        with patch("osiris.mcp.tools.discovery.run_cli_json", return_value=mock_cli_result):
+            result = await discovery_tools.request(
+                {"connection_id": "@mysql.default", "component_id": "mysql.extractor", "samples": 0}
+            )
 
             assert result["status"] == "success"
             assert "discovery_id" in result
@@ -90,9 +86,7 @@ class TestDiscoveryTools:
     async def test_discovery_request_missing_connection_id(self, discovery_tools):
         """Test discovery request without connection_id."""
         with pytest.raises(OsirisError) as exc_info:
-            await discovery_tools.request({
-                "component_id": "mysql.extractor"
-            })
+            await discovery_tools.request({"component_id": "mysql.extractor"})
 
         assert exc_info.value.family.value == "SCHEMA"
         assert "connection_id is required" in str(exc_info.value)
@@ -101,9 +95,7 @@ class TestDiscoveryTools:
     async def test_discovery_request_missing_component_id(self, discovery_tools):
         """Test discovery request without component_id."""
         with pytest.raises(OsirisError) as exc_info:
-            await discovery_tools.request({
-                "connection_id": "@mysql.default"
-            })
+            await discovery_tools.request({"connection_id": "@mysql.default"})
 
         assert exc_info.value.family.value == "SCHEMA"
         assert "component_id is required" in str(exc_info.value)

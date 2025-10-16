@@ -166,9 +166,7 @@ def _is_secret_key(key_name: str, secret_fields: set[str]) -> bool:
             parts = key_lower.split("_")
             if secret in parts or any(part.endswith(secret) for part in parts):
                 # Additional check: exclude known non-secrets
-                if "primary" in key_lower and secret == "key":
-                    return False
-                return True
+                return not ("primary" in key_lower and secret == "key")  # nosec B105  # Comparing field name pattern, not password
 
     return False
 

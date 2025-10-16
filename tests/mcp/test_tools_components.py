@@ -2,8 +2,9 @@
 Test MCP components tools.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from osiris.mcp.tools.components import ComponentsTools
 
@@ -26,72 +27,53 @@ class TestComponentsTools:
                 "version": "1.0.0",
                 "description": "Extract data from MySQL",
                 "tags": ["database", "sql", "extractor"],
-                "capabilities": {
-                    "modes": ["read"],
-                    "features": ["batch"]
-                },
+                "capabilities": {"modes": ["read"], "features": ["batch"]},
                 "config_schema": {
                     "type": "object",
                     "required": ["connection", "query"],
                     "properties": {
                         "connection": {"type": "string"},
                         "query": {"type": "string"},
-                        "timeout": {"type": "integer", "default": 30}
-                    }
+                        "timeout": {"type": "integer", "default": 30},
+                    },
                 },
                 "examples": [
                     {
                         "description": "Extract all users",
-                        "config": {
-                            "connection": "@mysql.default",
-                            "query": "SELECT * FROM users"
-                        }
+                        "config": {"connection": "@mysql.default", "query": "SELECT * FROM users"},
                     }
-                ]
+                ],
             },
             "supabase.writer": {
                 "name": "supabase.writer",
                 "version": "1.0.0",
                 "description": "Write data to Supabase",
                 "tags": ["database", "postgresql", "writer"],
-                "capabilities": {
-                    "modes": ["write"],
-                    "features": ["batch", "upsert"]
-                },
+                "capabilities": {"modes": ["write"], "features": ["batch", "upsert"]},
                 "config_schema": {
                     "type": "object",
                     "required": ["connection", "table"],
                     "properties": {
                         "connection": {"type": "string"},
                         "table": {"type": "string"},
-                        "mode": {"type": "string", "default": "append"}
-                    }
-                }
+                        "mode": {"type": "string", "default": "append"},
+                    },
+                },
             },
             "duckdb.processor": {
                 "name": "duckdb.processor",
                 "version": "1.0.0",
                 "description": "Process data with DuckDB",
                 "tags": ["sql", "processor", "transform"],
-                "capabilities": {
-                    "modes": ["transform"],
-                    "features": ["sql", "analytics"]
-                },
-                "config_schema": {
-                    "type": "object",
-                    "required": ["query"],
-                    "properties": {
-                        "query": {"type": "string"}
-                    }
-                }
-            }
+                "capabilities": {"modes": ["transform"], "features": ["sql", "analytics"]},
+                "config_schema": {"type": "object", "required": ["query"], "properties": {"query": {"type": "string"}}},
+            },
         }
 
         mock_registry = MagicMock()
         mock_registry.load_specs.return_value = mock_specs
 
-        with patch.object(components_tools, '_get_registry',
-                         return_value=mock_registry):
+        with patch.object(components_tools, "_get_registry", return_value=mock_registry):
             result = await components_tools.list({})
 
             assert result["status"] == "success"
@@ -124,8 +106,7 @@ class TestComponentsTools:
         mock_registry = MagicMock()
         mock_registry.load_specs.return_value = {}
 
-        with patch.object(components_tools, '_get_registry',
-                         return_value=mock_registry):
+        with patch.object(components_tools, "_get_registry", return_value=mock_registry):
             result = await components_tools.list({})
 
             assert result["status"] == "success"
@@ -145,18 +126,14 @@ class TestComponentsTools:
                 "description": "Custom component",
                 "tags": ["custom"],
                 "capabilities": {},
-                "config_schema": {
-                    "type": "object",
-                    "properties": {}
-                }
+                "config_schema": {"type": "object", "properties": {}},
             }
         }
 
         mock_registry = MagicMock()
         mock_registry.load_specs.return_value = mock_specs
 
-        with patch.object(components_tools, '_get_registry',
-                         return_value=mock_registry):
+        with patch.object(components_tools, "_get_registry", return_value=mock_registry):
             result = await components_tools.list({})
 
             assert result["total_count"] == 1
