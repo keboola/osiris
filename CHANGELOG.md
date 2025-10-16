@@ -7,6 +7,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### MCP Phase 1 (CLI-First Security Architecture)
+
+**Status**: ✅ Complete (2025-10-16)
+**Branch**: `feat/mcp-server-phase1-cli-bridge`
+**Goal**: Eliminate all secret access from MCP server process via CLI-first delegation pattern
+
+- **Security Architecture**
+  - Zero secret access in MCP process - all privileged operations delegate to CLI subprocesses
+  - CLI bridge pattern (`run_cli_json()`) for subprocess delegation with isolated environments
+  - Spec-aware secret masking using ComponentRegistry `x-secret` declarations from component specs
+  - Shared helper modules (`osiris/cli/helpers/`) eliminate code duplication between CLI and MCP commands
+  - Single source of truth for secret detection via component specifications
+
+- **MCP Tools Implementation** (10 tools across 7 domains)
+  - `osiris mcp connections list/doctor` - Connection management with spec-aware masking
+  - `osiris mcp discovery list-schemas/request` - Schema discovery delegation
+  - `osiris mcp oml validate/schema/save` - OML validation and persistence
+  - `osiris mcp guide start` - Guide management
+  - `osiris mcp memory capture` - Memory operations
+  - `osiris mcp components list/show` - Component registry access
+  - `osiris mcp usecases list` - Use case templates
+  - All tools return JSON with `--json` flag for MCP protocol compliance
+
+- **Filesystem Contract Compliance**
+  - Config-driven paths via `osiris.yaml` filesystem configuration
+  - `osiris init` automatically sets `base_path` to current directory's absolute path
+  - MCP logs written to `<base_path>/.osiris/mcp/logs/` (not hardcoded `~/.osiris_audit/`)
+  - Directory structure: logs/, audit/, cache/, telemetry/
+  - No hardcoded home directory paths anywhere in MCP codebase
+
+- **CI/CD Security Guards** (`.github/workflows/mcp-phase1-guards.yml`)
+  - Forbidden import detection - blocks `resolve_connection`, `load_dotenv` in MCP process
+  - Config validation - enforces filesystem contract compliance
+  - Fast selftest (`<2s`) with no network dependencies
+  - Run-anywhere verification - works from any CWD using config-based paths
+
+- **Testing & Quality**
+  - 989+ tests passing (157 MCP-specific tests)
+  - `tests/mcp/test_no_env_scenario.py` - Validates zero secret access in MCP process
+  - `tests/mcp/test_cli_subcommands.py` - Comprehensive CLI subcommand coverage
+  - `tests/mcp/test_tools_connections.py` - MCP tool delegation tests
+  - `tests/cli/test_init_writes_mcp_logs_dir.py` - Filesystem contract validation
+  - Cross-platform verified (macOS, Linux CI)
+
+- **New Files**
+  - `osiris/cli/helpers/connection_helpers.py` - Shared spec-aware secret masking
+  - `osiris/cli/mcp_subcommands/*.py` - 7 MCP subcommand modules
+  - `.github/workflows/mcp-phase1-guards.yml` - CI security enforcement
+  - `scripts/test-ci-guards.sh` - Local CI guard testing
+  - `docs/milestones/mcp-phase1-completion.md` - Phase 1 completion documentation
+
+### Changed
+
+- **Connection Secret Masking** - Now spec-aware using ComponentRegistry
+  - Automatically detects secret fields from component `x-secret` declarations
+  - Falls back to common secret names for unknown families
+  - Same masking logic in both `osiris connections` and `osiris mcp connections` commands
+  - Future-proof: Adding `x-secret: [/new_field]` to a spec automatically masks that field
+
+- **Init Command** - Auto-configures `base_path`
+  - `osiris init` sets `filesystem.base_path` to absolute path of current directory
+  - Ensures predictable artifact isolation without manual configuration
+  - Example: Running in `testing_env/` creates `base_path: "/Users/padak/github/osiris/testing_env"`
+
+### Security
+
+- **MCP Process Isolation** - Production-ready security boundary
+  - MCP server never accesses environment variables, secrets, or connection files
+  - All credential operations run in isolated CLI subprocesses
+  - Verified by `test_no_env_scenario.py` (runs with all env vars unset)
+  - CI guards prevent accidental security regressions
+
+### Documentation
+
+- **CLAUDE.md** - Added comprehensive MCP development section
+  - CLI-first architecture patterns
+  - Code reuse requirements (no duplication)
+  - Spec-aware masking implementation
+  - Testing and verification procedures
+
+- **ADR-0036** - MCP Interface CLI-First Architecture
+  - Security model rationale
+  - Implementation guidelines
+  - Phase 1 completion notes
+
+**Next Phase**: Phase 2 (Functional Parity & Completeness) - Telemetry, audit logging, resource URIs, memory management
+
 ## [0.4.0] - 2025-10-09
 
 **Major Release: Filesystem Contract v1 Complete**
