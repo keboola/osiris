@@ -68,15 +68,14 @@ class DiscoveryTools:
                         "artifacts": self._get_artifact_uris(cached_result.get("discovery_id")),
                     }
 
-            # Delegate to CLI: osiris mcp discovery run --connection-id @mysql.default --component-id mysql.extractor --samples 10 --json
+            # Delegate to CLI: osiris mcp discovery run --connection-id @mysql.default --samples 10
+            # Note: component_id is derived from connection family in CLI, not passed explicitly
             cli_args = [
                 "mcp",
                 "discovery",
                 "run",
                 "--connection-id",
                 connection_id,
-                "--component-id",
-                component_id,
                 "--samples",
                 str(samples),
             ]
