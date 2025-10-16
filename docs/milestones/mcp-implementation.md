@@ -204,21 +204,25 @@ python osiris.py mcp tools --json | jq '.tools | length'
 These CLI commands need to be added to support MCP tool delegation:
 
 - [ ] **`osiris discovery request`** (NEW)
+
   - `osiris discovery request --connection <id> --component <id> [--samples N] --json`
   - Returns discovered schema and sample data
   - Currently discovery is component-specific, needs unified interface
 
 - [ ] **`osiris oml schema`** (NEW)
+
   - `osiris oml schema --json`
   - Returns OML v0.1.0 JSON schema
   - Currently schema is only available via MCP
 
 - [ ] **`osiris guide start`** (NEW)
+
   - `osiris guide start --context <file> --json`
   - Returns guidance for next steps
   - Context file contains current state
 
 - [ ] **`osiris memory capture`** (NEW)
+
   - `osiris memory capture --session <id> [--consent] --json`
   - Captures and returns session memory
   - Requires consent flag for PII handling
@@ -233,7 +237,7 @@ These CLI commands need to be added to support MCP tool delegation:
 ```bash
 # Test each new command
 osiris discovery request --help
-osiris oml schema --json | jq '.schema.version'
+osiris oml schema --json | jq '.version'
 osiris guide start --context /tmp/ctx.json --json
 osiris memory capture --session test123 --consent --json
 osiris usecases list --json | jq '.[].name'
@@ -246,12 +250,14 @@ osiris usecases list --json | jq '.[].name'
 ### Core test files needed
 
 - [ ] **`tests/mcp/test_cli_bridge.py`**
+
   - Test `run_cli_json()` with mock subprocess
   - Test timeout handling
   - Test error code mapping
   - Test config path resolution
 
 - [ ] **`tests/mcp/test_no_env_scenario.py`**
+
   - Run MCP server with no environment variables
   - Verify CLI delegation works without secrets
   - Test that connections are resolved by CLI layer
