@@ -81,13 +81,15 @@ class DiscoveryCache:
         if cache_key in self._memory_cache:
             entry = self._memory_cache[cache_key]
             if not self._is_expired(entry):
-                return entry["data"]
+                return entry  # Return full entry including TTL metadata
             else:
                 # Remove expired entry
                 del self._memory_cache[cache_key]
 
-        # Check disk cache
-        cache_file = self.cache_dir / f"{cache_key}.json"
+        # Check disk cache using discovery_id (same as write path at line 160)
+        # Generate discovery_id for disk lookup (not cache_key!)
+        discovery_id = generate_discovery_id(connection_id, component_id, samples)
+        cache_file = self.cache_dir / f"{discovery_id}.json"
         if cache_file.exists():
             try:
                 with open(cache_file) as f:
@@ -96,7 +98,7 @@ class DiscoveryCache:
                 if not self._is_expired(entry):
                     # Load into memory cache
                     self._memory_cache[cache_key] = entry
-                    return entry["data"]
+                    return entry  # Return full entry including TTL metadata
                 else:
                     # Remove expired file
                     cache_file.unlink()

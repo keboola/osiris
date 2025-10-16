@@ -523,6 +523,8 @@ def cmd_memory(args):
     parser.add_argument("action", nargs="?", help="Action: capture")
     parser.add_argument("--session-id", required=False, help="Session ID")
     parser.add_argument("--consent", action="store_true", help="User consent flag")
+    parser.add_argument("--events", required=False, help="JSON string of events to capture")
+    parser.add_argument("--retention-days", type=int, default=365, help="Memory retention days (default: 365)")
     parser.add_argument("--json", action="store_true", help="Output JSON")
     parser.add_argument("--help", "-h", action="store_true")
 
@@ -562,6 +564,8 @@ def cmd_memory(args):
             session_id=parsed_args.session_id,
             consent=parsed_args.consent,
             json_output=parsed_args.json,
+            events=parsed_args.events,
+            retention_days=parsed_args.retention_days,
         )
         sys.exit(exit_code)
     else:

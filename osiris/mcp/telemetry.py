@@ -6,6 +6,7 @@ Emits structured telemetry events for observability and monitoring.
 
 import json
 import logging
+import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -27,6 +28,7 @@ class TelemetryEmitter:
         """
         self.enabled = enabled
         self.output_dir = output_dir or Path.home() / ".osiris_telemetry"
+        self._metrics_lock = threading.Lock()
 
         if self.enabled:
             self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -69,13 +71,14 @@ class TelemetryEmitter:
         if not self.enabled:
             return
 
-        # Update metrics
-        self.metrics["tool_calls"] += 1
-        self.metrics["total_bytes_in"] += bytes_in
-        self.metrics["total_bytes_out"] += bytes_out
-        self.metrics["total_duration_ms"] += duration_ms
-        if status == "error":
-            self.metrics["errors"] += 1
+        # Update metrics (protected by lock to prevent race conditions)
+        with self._metrics_lock:
+            self.metrics["tool_calls"] += 1
+            self.metrics["total_bytes_in"] += bytes_in
+            self.metrics["total_bytes_out"] += bytes_out
+            self.metrics["total_duration_ms"] += duration_ms
+            if status == "error":
+                self.metrics["errors"] += 1
 
         # Create event
         event = {
@@ -142,13 +145,16 @@ class TelemetryEmitter:
         if not self.enabled:
             return
 
+        with self._metrics_lock:
+            metrics_copy = self.metrics.copy()
+
         event = {
             "event": "server_stop",
             "session_id": self.session_id,
             "timestamp": datetime.now(UTC).isoformat(),
             "timestamp_ms": int(time.time() * 1000),
             "reason": reason or "normal",
-            "metrics": self.metrics,
+            "metrics": metrics_copy,
         }
 
         try:
@@ -189,9 +195,11 @@ class TelemetryEmitter:
 
     def get_session_summary(self) -> dict[str, Any]:
         """Get summary of current telemetry session."""
+        with self._metrics_lock:
+            metrics_copy = self.metrics.copy()
         return {
             "session_id": self.session_id,
-            "metrics": self.metrics,
+            "metrics": metrics_copy,
             "telemetry_file": str(self.telemetry_file) if self.enabled else None,
             "enabled": self.enabled,
         }
@@ -199,6 +207,7 @@ class TelemetryEmitter:
 
 # Global telemetry instance (can be configured at startup)
 _telemetry: TelemetryEmitter | None = None
+_telemetry_lock = threading.Lock()
 
 
 def get_telemetry() -> TelemetryEmitter | None:
@@ -218,5 +227,7 @@ def init_telemetry(enabled: bool = True, output_dir: Path | None = None) -> Tele
         Telemetry emitter instance
     """
     global _telemetry
-    _telemetry = TelemetryEmitter(enabled, output_dir)
+    with _telemetry_lock:
+        if _telemetry is None:
+            _telemetry = TelemetryEmitter(enabled, output_dir)
     return _telemetry

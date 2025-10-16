@@ -36,6 +36,9 @@ class AuditLogger:
         self.session_id = self._generate_session_id()
         self.tool_call_counter = 0
 
+        # Create lock for concurrent write protection
+        self._write_lock = asyncio.Lock()
+
     def _generate_session_id(self) -> str:
         """Generate a unique session ID."""
         import uuid  # noqa: PLC0415  # Lazy import for performance
@@ -254,7 +257,7 @@ class AuditLogger:
         """Write an event to the audit log."""
         try:
             # Append to JSONL file
-            async with asyncio.Lock():
+            async with self._write_lock:
                 with open(self.log_file, "a") as f:
                     f.write(json.dumps(event) + "\n")
         except Exception as e:

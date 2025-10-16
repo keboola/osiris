@@ -93,19 +93,40 @@ class TestMemoryTools:
 
     @pytest.mark.asyncio
     async def test_memory_capture_persistence(self, memory_tools):
-        """Test memory is persisted correctly."""
-        with patch.object(memory_tools, "_save_memory", return_value="mem_abc123") as mock_save:
+        """Test memory is persisted correctly via CLI delegation."""
+        # Mock the CLI bridge to verify delegation occurs
+        with patch("osiris.mcp.cli_bridge.run_cli_json") as mock_cli:
+            # Return a successful response
+            mock_cli.return_value = {
+                "status": "success",
+                "captured": True,
+                "memory_id": "mem_abc123",
+                "session_id": "persist_test",
+                "memory_uri": "osiris://mcp/memory/sessions/persist_test.jsonl",
+                "retention_days": 365,
+                "timestamp": "2025-10-16T14:00:00+00:00",
+                "entry_size_bytes": 100,
+            }
+
             result = await memory_tools.capture(
                 {"consent": True, "session_id": "persist_test", "intent": "Test persistence"}
             )
 
-            # Verify save was called
-            mock_save.assert_called_once()
-            call_args = mock_save.call_args[0][0]
+            # Verify CLI was called (security model: MCP delegates to CLI)
+            mock_cli.assert_called_once()
+            call_args = mock_cli.call_args[0][0]
 
-            assert call_args["session_id"] == "persist_test"
-            assert call_args["intent"] == "Test persistence"
-            assert "timestamp" in call_args
+            # Verify correct CLI command structure
+            assert "mcp" in call_args
+            assert "memory" in call_args
+            assert "capture" in call_args
+            assert "--session-id" in call_args
+            assert "persist_test" in call_args
+            assert "--consent" in call_args
+
+            # Verify result structure
+            assert result["memory_id"] == "mem_abc123"
+            assert result["session_id"] == "persist_test"
 
     @pytest.mark.asyncio
     async def test_memory_capture_invalid_retention(self, memory_tools):

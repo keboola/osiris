@@ -672,9 +672,10 @@ class SupabaseWriterDriver(Driver):
                     )
 
                 last_exc = None
-                for ipv4 in ipv4_addresses:
+                for idx, ipv4 in enumerate(ipv4_addresses):
+                    conn = None  # Initialize to None
                     try:
-                        logger.info(f"Attempting psycopg2 connection to {host} via IPv4: {ipv4}")
+                        logger.info(f"Attempting psycopg2 connection via IPv4 (attempt {idx+1}/{len(ipv4_addresses)})")
                         conn = psycopg2.connect(
                             hostaddr=ipv4,
                             port=port,
@@ -683,11 +684,17 @@ class SupabaseWriterDriver(Driver):
                             dbname=dbname,
                             sslmode="require",
                         )
-                        logger.info(f"Successfully connected to {host} via IPv4: {ipv4}")
+                        logger.debug("Connection successful")
                         return conn
                     except Exception as exc:
+                        # CRITICAL: Close failed connection before continuing
+                        if conn:
+                            try:
+                                conn.close()
+                            except Exception:
+                                pass  # Connection may not be fully initialized
                         last_exc = exc
-                        logger.warning(f"Failed to connect to {ipv4}: {exc}")
+                        logger.warning(f"Connection attempt {idx+1} failed, trying next IP")
                         continue
 
                 raise RuntimeError(
@@ -741,9 +748,10 @@ class SupabaseWriterDriver(Driver):
             )
 
         last_exc = None
-        for ipv4 in ipv4_addresses:
+        for idx, ipv4 in enumerate(ipv4_addresses):
+            conn = None  # Initialize to None
             try:
-                logger.info(f"Attempting psycopg2 connection to {host} via IPv4: {ipv4}")
+                logger.info(f"Attempting psycopg2 connection via IPv4 (attempt {idx+1}/{len(ipv4_addresses)})")
                 conn = psycopg2.connect(
                     hostaddr=ipv4,
                     port=port,
@@ -752,11 +760,17 @@ class SupabaseWriterDriver(Driver):
                     dbname=database,
                     sslmode="require",
                 )
-                logger.info(f"Successfully connected to {host} via IPv4: {ipv4}")
+                logger.debug("Connection successful")
                 return conn
             except Exception as exc:
+                # CRITICAL: Close failed connection before continuing
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass  # Connection may not be fully initialized
                 last_exc = exc
-                logger.warning(f"Failed to connect to {ipv4}: {exc}")
+                logger.warning(f"Connection attempt {idx+1} failed, trying next IP")
                 continue
 
         raise RuntimeError(

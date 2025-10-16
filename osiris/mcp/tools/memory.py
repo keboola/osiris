@@ -5,7 +5,6 @@ MCP tools for memory capture and management.
 import json
 import logging
 import re
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -19,12 +18,19 @@ class MemoryTools:
 
     def __init__(self, memory_dir: Path | None = None):
         """Initialize memory tools."""
-        self.memory_dir = memory_dir or Path.home() / ".osiris_memory" / "mcp" / "sessions"
+        if memory_dir is None:
+            from osiris.mcp.config import get_config  # noqa: PLC0415  # Lazy import for performance
+
+            config = get_config()
+            memory_dir = config.memory_dir
+        self.memory_dir = memory_dir
         self.memory_dir.mkdir(parents=True, exist_ok=True)
 
     async def capture(self, args: dict[str, Any]) -> dict[str, Any]:
         """
         Capture session memory with consent and PII redaction.
+
+        Delegates to CLI subprocess for filesystem access (CLI-first security model).
 
         Args:
             args: Tool arguments including consent, session_id, content
@@ -52,50 +58,47 @@ class MemoryTools:
             )
 
         try:
-            # Prepare memory entry
-            # Ensure retention_days is valid (positive and within limits)
+            # Prepare events data
             retention_days = args.get("retention_days", 365)
             if retention_days < 0:
                 retention_days = 365  # Default to 365 if negative
             elif retention_days > 730:
                 retention_days = 730  # Cap at 2 years max
 
-            memory_entry = {
-                "timestamp": datetime.now(UTC).isoformat(),
-                "session_id": session_id,
-                "retention_days": retention_days,
-                "intent": args.get("intent", ""),
-                "actor_trace": args.get("actor_trace", []),
-                "decisions": args.get("decisions", []),
-                "artifacts": args.get("artifacts", []),
-                "oml_uri": args.get("oml_uri"),
-                "error_report": args.get("error_report"),
-                "notes": args.get("notes", ""),
-            }
+            # Build events list from args
+            events = [
+                {
+                    "intent": args.get("intent", ""),
+                    "actor_trace": args.get("actor_trace", []),
+                    "decisions": args.get("decisions", []),
+                    "artifacts": args.get("artifacts", []),
+                    "oml_uri": args.get("oml_uri"),
+                    "error_report": args.get("error_report"),
+                    "notes": args.get("notes", ""),
+                }
+            ]
 
-            # Apply PII redaction
-            redacted_entry = self._redact_pii(memory_entry)
+            # Delegate to CLI subprocess (MCP process should NOT write files)
+            from osiris.mcp.cli_bridge import run_cli_json  # noqa: PLC0415  # Lazy import for performance
 
-            # Generate memory URI
-            memory_uri = f"osiris://mcp/memory/sessions/{session_id}.jsonl"
+            result = await run_cli_json(
+                [
+                    "mcp",
+                    "memory",
+                    "capture",
+                    "--session-id",
+                    session_id,
+                    "--consent",
+                    "--events",
+                    json.dumps(events),
+                    "--retention-days",
+                    str(retention_days),
+                    "--json",
+                ]
+            )
 
-            # Save memory using internal method (for testing)
-            memory_id = self._save_memory(redacted_entry)
-
-            # Calculate entry size
-            entry_size = len(json.dumps(redacted_entry))
-
-            return {
-                "captured": True,
-                "memory_id": memory_id,
-                "memory_uri": memory_uri,
-                "retention_days": memory_entry.get("retention_days", 365),
-                "session_id": session_id,
-                "timestamp": memory_entry["timestamp"],
-                "entry_size_bytes": entry_size,
-                "redactions_applied": self._count_redactions(memory_entry, redacted_entry),
-                "status": "success",
-            }
+            # CLI returns the result in proper format
+            return result
 
         except PolicyError:
             raise

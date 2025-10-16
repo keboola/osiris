@@ -174,8 +174,9 @@ class TestMemoryCommand:
         output = json.loads(captured.out)
         assert output["status"] == "success"
         assert output["session_id"] == "test_session_123"
-        assert output["consent_provided"] is True
-        assert output["memory_captured"] is True
+        assert output["captured"] is True
+        assert "memory_id" in output
+        assert "memory_uri" in output
 
     def test_memory_capture_human_output(self, capsys):
         """Test memory capture with human-friendly output."""
@@ -295,7 +296,7 @@ class TestJSONSchemaCompliance:
         captured = capsys.readouterr()
         output = json.loads(captured.out)
 
-        required_fields = ["status", "session_id", "consent_provided", "memory_captured"]
+        required_fields = ["status", "session_id", "captured", "memory_id", "memory_uri"]
         for field in required_fields:
             assert field in output, f"Missing required field: {field}"
 

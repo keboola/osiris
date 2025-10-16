@@ -125,3 +125,46 @@ class TestMySQLExtractorDriver:
 
         # Verify engine disposed even with empty result
         mock_engine.dispose.assert_called_once()
+
+    @patch("osiris.drivers.mysql_extractor_driver.sa.create_engine")
+    def test_connection_error_masking(self, mock_create_engine):
+        """Test that connection errors don't leak credentials."""
+        # Setup mock to raise connection error
+        mock_engine = MagicMock()
+        mock_create_engine.return_value = mock_engine
+
+        # Simulate connection failure
+        import sqlalchemy as sa
+
+        mock_engine.connect.side_effect = sa.exc.OperationalError(
+            "Access denied for user 'test_user'@'localhost' (using password: YES)",
+            None,
+            None,
+        )
+
+        # Create driver and run
+        driver = MySQLExtractorDriver()
+
+        with pytest.raises(RuntimeError) as exc_info:
+            driver.run(
+                step_id="test-extract",
+                config={
+                    "query": "SELECT * FROM users",
+                    "resolved_connection": {
+                        "host": "localhost",
+                        "port": 3306,
+                        "database": "test_db",
+                        "user": "test_user",
+                        "password": "super_secret_password123",  # pragma: allowlist secret
+                    },
+                },
+            )
+
+        # Verify error message doesn't contain connection details or password
+        error_msg = str(exc_info.value)
+        assert "super_secret_password123" not in error_msg, "Password leaked in error message!"
+        assert "test_user@localhost" not in error_msg, "Connection details leaked in error message!"
+        assert "MySQL connection failed for step test-extract" in error_msg
+
+        # Verify engine disposed
+        mock_engine.dispose.assert_called_once()

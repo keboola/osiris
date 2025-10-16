@@ -14,11 +14,7 @@ Design Principles:
 import hashlib
 
 
-def generate_discovery_id(
-    connection_id: str,
-    component_id: str,
-    samples: int
-) -> str:
+def generate_discovery_id(connection_id: str, component_id: str, samples: int) -> str:
     """
     Generate deterministic discovery ID.
 
@@ -52,12 +48,7 @@ def generate_discovery_id(
     return f"disc_{key_hash}"
 
 
-def generate_cache_key(
-    connection_id: str,
-    component_id: str,
-    samples: int,
-    idempotency_key: str | None = None
-) -> str:
+def generate_cache_key(connection_id: str, component_id: str, samples: int, idempotency_key: str | None = None) -> str:
     """
     Generate MCP cache key for request deduplication.
 

@@ -35,12 +35,16 @@ class TestCacheTTL:
         # Set cache entry
         discovery_id = await cache.set("conn1", "comp1", 5, test_data, "key1")
 
-        # Get cached entry
+        # Get cached entry (returns full entry including TTL metadata)
         result = await cache.get("conn1", "comp1", 5, "key1")
 
         assert result is not None
-        assert result["database"] == "test"
-        assert result["tables"] == ["users", "orders"]
+        assert result["data"]["database"] == "test"
+        assert result["data"]["tables"] == ["users", "orders"]
+        # Verify TTL metadata is present (CACHE-002 fix)
+        assert "expires_at" in result
+        assert "ttl_seconds" in result
+        assert "discovery_id" in result
 
     @pytest.mark.asyncio
     async def test_cache_ttl_expiry(self, cache):
