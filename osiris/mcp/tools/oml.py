@@ -58,6 +58,7 @@ class OMLTools:
                 "version": "0.1.0",
                 "schema": {
                     "$schema": "http://json-schema.org/draft-07/schema#",
+                    "version": "0.1.0",
                     "type": "object",
                     "required": ["version", "name", "steps"],
                     "properties": {

@@ -104,6 +104,7 @@ def parse_main_args():
             "test",
             "components",
             "connections",
+            "discovery",
             "oml",
             "mcp",
             "dump-prompts",
@@ -208,6 +209,8 @@ def main():
         components_command(command_args)
     elif args.command == "connections":
         connections_command(command_args)
+    elif args.command == "discovery":
+        discovery_command(command_args)
     elif args.command == "oml":
         oml_command(command_args)
     elif args.command == "compile":
@@ -1249,6 +1252,103 @@ def connections_command(args: list) -> None:
         console.print(f"❌ Unknown subcommand: {subcommand}")
         console.print("Available subcommands: list, doctor")
         console.print("Use 'osiris connections --help' for detailed help.")
+
+
+def discovery_command(args: list) -> None:
+    """Run database schema discovery."""
+
+    def show_discovery_help():
+        """Show discovery command help."""
+        if json_output:
+            help_data = {
+                "command": "discovery",
+                "description": "Discover database schema and sample data",
+                "subcommands": {
+                    "run": {
+                        "description": "Run discovery on a connection",
+                        "required": ["connection_id"],
+                        "options": {
+                            "--samples N": "Number of sample rows (default: 10)",
+                            "--json": "Output in JSON format",
+                        },
+                    }
+                },
+            }
+            print(json.dumps(help_data, indent=2))
+        else:
+            console.print()
+            console.print("[bold green]osiris discovery - Database Schema Discovery[/bold green]")
+            console.print("🔍 Discover database schemas and sample data")
+            console.print()
+            console.print("[bold]Usage:[/bold] osiris discovery run <connection_id> [OPTIONS]")
+            console.print()
+            console.print("[bold blue]Arguments[/bold blue]")
+            console.print("  [cyan]connection_id[/cyan]   Connection reference (e.g., @mysql.main)")
+            console.print()
+            console.print("[bold blue]Options[/bold blue]")
+            console.print("  [cyan]--samples N[/cyan]      Number of sample rows per table (default: 10)")
+            console.print("  [cyan]--json[/cyan]           Output in JSON format")
+            console.print()
+            console.print("[bold blue]Examples[/bold blue]")
+            console.print("  [green]osiris discovery run @mysql.main[/green]")
+            console.print("  [green]osiris discovery run @supabase.db --samples 100[/green]")
+            console.print("  [green]osiris discovery run @mysql.main --json[/green]")
+            console.print()
+
+    if not args or args[0] in ["--help", "-h"]:
+        show_discovery_help()
+        return
+
+    # Import the discovery function
+    try:
+        from .discovery_cmd import discovery_run
+    except ImportError as e:
+        console.print(f"❌ Failed to import discovery module: {e}")
+        sys.exit(1)
+
+    # Parse arguments
+    subcommand = args[0] if args else None
+
+    if subcommand == "run":
+        # Parse run-specific arguments
+        if len(args) < 2:
+            console.print("[red]Error: connection_id required[/red]")
+            console.print("Usage: osiris discovery run <connection_id> [--samples N] [--json]")
+            sys.exit(2)
+
+        connection_id = args[1]
+        samples = 10
+        use_json = json_output
+
+        # Parse options
+        i = 2
+        while i < len(args):
+            if args[i] == "--samples" and i + 1 < len(args):
+                try:
+                    samples = int(args[i + 1])
+                    i += 2
+                except ValueError:
+                    console.print(f"[red]Error: Invalid samples value '{args[i+1]}'[/red]")
+                    sys.exit(2)
+            elif args[i] == "--json":
+                use_json = True
+                i += 1
+            else:
+                console.print(f"[yellow]Warning: Unknown option '{args[i]}'[/yellow]")
+                i += 1
+
+        # Run discovery
+        exit_code = discovery_run(
+            connection_id=connection_id,
+            samples=samples,
+            json_output=use_json,
+        )
+        sys.exit(exit_code)
+    else:
+        console.print(f"❌ Unknown subcommand: {subcommand}")
+        console.print("Available subcommands: run")
+        console.print("Use 'osiris discovery --help' for detailed help.")
+        sys.exit(1)
 
 
 def logs_command(args: list) -> None:

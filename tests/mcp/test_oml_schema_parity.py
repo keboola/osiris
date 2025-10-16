@@ -19,16 +19,29 @@ class TestOMLSchemaParity:
 
     @pytest.mark.asyncio
     async def test_schema_version_matches(self, oml_tools):
-        """Test MCP schema version matches core OML version."""
+        """Test MCP schema version matches core OML version.
+
+        Verifies both top-level version AND schema.version are present and match.
+        This ensures jq '.version' and jq '.schema.version' both work.
+        """
         result = await oml_tools.get_schema({})
 
         assert result["status"] == "success"
+
+        # Test top-level version field (for jq '.version')
         assert result["version"] == "0.1.0"
+
+        # Test nested schema.version field (for jq '.schema.version')
+        assert result["schema"]["version"] == "0.1.0"
+
+        # Verify both versions match
+        assert result["version"] == result["schema"]["version"]
 
         # Verify against core OML schema if available
         try:
             from osiris.core.oml import OML_SCHEMA_VERSION
             assert result["version"] == OML_SCHEMA_VERSION
+            assert result["schema"]["version"] == OML_SCHEMA_VERSION
         except ImportError:
             # Core OML module not available in test environment
             pass
@@ -40,6 +53,7 @@ class TestOMLSchemaParity:
 
         schema = result["schema"]
         assert schema["$schema"] == "http://json-schema.org/draft-07/schema#"
+        assert schema["version"] == "0.1.0"  # Schema version field
         assert schema["type"] == "object"
         assert "properties" in schema
         assert "required" in schema

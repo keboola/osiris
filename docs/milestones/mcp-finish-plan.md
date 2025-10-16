@@ -87,11 +87,13 @@ Implement CLI-first adapter architecture to eliminate all secret access from MCP
 #### 1.6 Additional Infrastructure & Verification
 
 - **File**: `tests/cli/test_init_writes_mcp_logs_dir.py` (NEW - ~100 lines)
+
   - Test that `osiris init` writes required MCP config keys
   - Verify absolute `base_path` is generated
   - Verify `filesystem.mcp_logs_dir` is added to config
 
 - **File**: `osiris/mcp/clients_config.py` (NEW/UPDATE - ~150 lines)
+
   - Implement `osiris mcp clients` command behavior
   - Output Claude Desktop snippet with `osiris.py mcp run`
   - Command: `/bin/bash`, args: `["-lc", "cd <base_path> && exec <venv_python> <base_path>/osiris.py mcp run"]`
@@ -159,9 +161,13 @@ Implement CLI-first adapter architecture to eliminate all secret access from MCP
 
 #### CLI Design Rules & Acceptance Checklist
 
+MCP commands must reuse existing CLI logic (e.g., osiris connections list) via internal delegation or shared helper functions — not separate reimplementation.
+If MCP needs a different output shape, extend the existing command with a --mcp flag or use a thin adapter that transforms already masked JSON.
+
 All new `osiris mcp …` subcommands must follow consistent design and UX rules.
 
 **CLI Design Rules**
+
 - Structure: `osiris mcp <domain> <verb> [args]`
 - Domains: `connections`, `components`, `discovery`, `oml`, `guide`, `memory`, `usecases`, `aiop`
 - Default output: human-friendly Rich formatting
@@ -172,6 +178,7 @@ All new `osiris mcp …` subcommands must follow consistent design and UX rules.
 - Logging: no stdout logs in `--json` mode
 
 **Acceptance Checklist**
+
 - [ ] `--help` works without side effects
 - [ ] Human output uses Rich (matches existing Osiris UX)
 - [ ] `--json` validatable by `jq`
@@ -306,6 +313,7 @@ MCP clients (e.g., Claude Desktop) gain read-only access to AIOP artifacts gener
 - [ ] Integration test passes: full OML authoring workflow
 - [ ] Selftest verifies all tools and aliases in <2s
 - [ ] Performance overhead <50ms per tool call (p95)
+- [ ] All secret masking is now spec-driven — both osiris connections list and osiris mcp connections list use the unified helper that reads secrets: and x-secret: paths from component specs via ComponentRegistry, with fallback to common secret names only for unknown families. No hard-coded key lists remain, and masking results are identical across CLI and MCP outputs.
 
 ---
 
@@ -536,9 +544,9 @@ Complete documentation, ensure smooth migration path, and prepare for v0.5.0 rel
 | **F1.15** | `tests/mcp/test_cli_bridge.py`                   | Test CLI bridge component                     | -                                 | 4h     | 1     |
 | **F1.16** | `tests/mcp/test_no_env_scenario.py`              | Test without environment vars                 | -                                 | 3h     | 1     |
 | **F1.17** | CI: Add forbidden import check                   | Fail on `resolve_connection` imports          | -                                 | 2h     | 1     |
-| **F1.18** | `tests/cli/test_init_writes_mcp_logs_dir.py`    | Test `osiris init` writes MCP config keys     | -                                 | 2h     | 1     |
+| **F1.18** | `tests/cli/test_init_writes_mcp_logs_dir.py`     | Test `osiris init` writes MCP config keys     | -                                 | 2h     | 1     |
 | **F1.19** | CI: Add config verification guards               | Verify config format and clients output       | -                                 | 2h     | 1     |
-| **F1.20** | `osiris/mcp/clients_config.py`                   | Implement `osiris mcp clients` behavior       | `test_mcp_clients_snippet.py`    | 3h     | 1     |
+| **F1.20** | `osiris/mcp/clients_config.py`                   | Implement `osiris mcp clients` behavior       | `test_mcp_clients_snippet.py`     | 3h     | 1     |
 | **F2.1**  | All `osiris/mcp/tools/*.py`                      | Add correlation_id, duration_ms fields        | Existing tool tests               | 4h     | 2     |
 | **F2.2**  | `osiris/mcp/telemetry.py`                        | Write to filesystem contract paths            | `test_telemetry.py`               | 4h     | 2     |
 | **F2.3**  | `osiris/mcp/audit.py`                            | Structured audit with CLI details             | `test_audit_events.py`            | 6h     | 2     |
@@ -694,6 +702,7 @@ Before declaring v0.5.0 ready:
 ### Phase 1 Verification
 
 #### Config-first Paths (Section 1)
+
 ```bash
 # Verify osiris init writes config keys
 osiris init
@@ -703,6 +712,7 @@ ls -la "$(yq '.filesystem.base_path' osiris.yaml)/.osiris/mcp/logs"
 ```
 
 #### CLI Clients Output (Section 2)
+
 ```bash
 # Verify osiris mcp clients output
 python osiris.py mcp clients --json | jq .
@@ -710,12 +720,14 @@ python osiris.py mcp clients --json | jq .
 ```
 
 #### Run-Anywhere Behavior (Section 3)
+
 ```bash
 # Test from any CWD
 (cd /tmp && python /abs/path/osiris/osiris.py mcp run --selftest)
 ```
 
 #### Test Verification (Section 4)
+
 ```bash
 # Run new tests
 pytest -q tests/cli/test_init_writes_mcp_logs_dir.py
@@ -724,6 +736,7 @@ pytest -q tests/mcp/test_server_uses_config_paths.py
 ```
 
 #### Tool Count Verification (Section 6)
+
 ```bash
 # Verify final tool names and schemas
 python osiris.py mcp tools --json | jq '.tools | length'
@@ -733,6 +746,7 @@ python osiris.py mcp tools --json | jq '.tools | length'
 ### Phase 2 Verification
 
 #### CLI Commands Testing (Section 10)
+
 ```bash
 # Test each new CLI command
 osiris discovery request --help
@@ -743,6 +757,7 @@ osiris usecases list --json | jq '.[].name'
 ```
 
 #### CLI Bridge Testing (Section 11)
+
 ```bash
 # Run bridge tests
 pytest tests/mcp/test_cli_bridge.py -v
