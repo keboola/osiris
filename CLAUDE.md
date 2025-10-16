@@ -454,6 +454,52 @@ Advanced users can customize LLM system prompts: `python osiris.py dump-prompts 
 - Use `make commit-wip` to skip Ruff/Bandit for work-in-progress commits
 - CI enforces strict checks: Ruff (no fix), Black --check, isort --check, Bandit
 
+**Proactive Lint Suppression - Write Tests Right First Time**:
+
+Add `# noqa` comments immediately when writing code that intentionally violates lint rules. This prevents CI failures and documents intent.
+
+**Common Patterns to Suppress Immediately**:
+
+```python
+# 1. Lazy imports for performance (CLI modules, MCP tools)
+def my_command():
+    import yaml  # noqa: PLC0415  # Lazy import for CLI performance
+    from osiris.core.config import load_config  # noqa: PLC0415, I001  # Lazy import
+
+# 2. Imports after setup code (required order)
+setup_environment()
+from osiris.mcp.server import Server  # noqa: E402  # Must import after setup
+
+# 3. Hardcoded test values (not actual secrets)
+def test_connection():
+    config = {"password": "test123"}  # pragma: allowlist secret
+    conn_str = "mysql://user:pass@localhost"  # nosec B105  # Test fixture, not real password
+
+# 4. Complex CLI router functions (naturally verbose)
+def handle_command(args):  # noqa: PLR0915  # CLI router, naturally verbose
+    # 60+ lines of argument parsing and delegation
+
+# 5. Known false positives
+if "primary" in key and secret == "key":  # nosec B105  # Comparing field name pattern
+    pass
+```
+
+**When to Add Suppressions**:
+- ✅ **While writing code** - If you know the pattern is intentional (lazy imports, test data)
+- ✅ **After first lint run** - If Ruff/Bandit flags legitimate code
+- ❌ **Don't suppress** - Real bugs, actual complexity that should be refactored
+
+**Common Suppression Codes**:
+- `PLC0415` - Import not at top-level (lazy imports)
+- `I001` - Import block not sorted (lazy imports in functions)
+- `E402` - Module import not at top of file (required initialization order)
+- `PLR0915` - Too many statements (>50 lines in function)
+- `B105` - Hardcoded password string (false positives on field name comparisons)
+- `pragma: allowlist secret` - detect-secrets suppression for test data
+- `nosec B105` - Bandit suppression for password false positives
+
+**Pro Tip**: Run `ruff check --output-format=concise .` locally before committing to catch issues early!
+
 **Updating secrets baseline**:
 Only run `detect-secrets scan > .secrets.baseline` when:
 - Adding test files with new dummy credentials
