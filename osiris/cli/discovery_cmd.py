@@ -249,10 +249,15 @@ def discovery_run(  # noqa: PLR0915  # CLI router function, naturally verbose
                 "timestamp": datetime.now(UTC).isoformat(),
             }
 
-            # Save artifacts to cache
-            overview_path = cache_dir / f"{discovery_id}_overview.json"
-            tables_path = cache_dir / f"{discovery_id}_tables.json"
-            samples_path = cache_dir / f"{discovery_id}_samples.json"
+            # Save artifacts to cache - create nested directory structure to match URI scheme
+            # URIs use osiris://mcp/discovery/<id>/<artifact>.json format
+            # Resolver expects cache_dir/<id>/<artifact>.json
+            discovery_artifact_dir = cache_dir / discovery_id
+            discovery_artifact_dir.mkdir(parents=True, exist_ok=True)
+
+            overview_path = discovery_artifact_dir / "overview.json"
+            tables_path = discovery_artifact_dir / "tables.json"
+            samples_path = discovery_artifact_dir / "samples.json"
 
             with open(overview_path, "w") as f:
                 json.dump(overview_data, f, indent=2)

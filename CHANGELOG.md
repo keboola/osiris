@@ -46,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Run-anywhere verification - works from any CWD using config-based paths
 
 - **Testing & Quality**
-  - 989+ tests passing (157 MCP-specific tests)
+  - 1177+ tests passing (194 MCP-specific tests)
   - `tests/mcp/test_no_env_scenario.py` - Validates zero secret access in MCP process
   - `tests/mcp/test_cli_subcommands.py` - Comprehensive CLI subcommand coverage
   - `tests/mcp/test_tools_connections.py` - MCP tool delegation tests
@@ -59,6 +59,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `.github/workflows/mcp-phase1-guards.yml` - CI security enforcement
   - `scripts/test-ci-guards.sh` - Local CI guard testing
   - `docs/milestones/mcp-phase1-completion.md` - Phase 1 completion documentation
+
+- **Resource URI System** (2025-10-16)
+  - Discovery artifacts with stable IDs and resource URIs
+    - `discovery_id` field in discovery JSON output for deterministic caching
+    - Nested directory structure: `<cache_dir>/<discovery_id>/overview.json|tables.json|samples.json`
+    - Resource URIs: `osiris://mcp/discovery/<id>/<artifact>.json` resolve to actual files
+    - JSON sanitization for datetime/Timestamp objects in discovery output
+  - Memory capture path structure compliance
+    - Memory captures saved to `<memory_dir>/sessions/<session_id>.jsonl`
+    - Resource URIs: `osiris://mcp/memory/sessions/<id>.jsonl` resolve correctly
+    - `list_sessions()` updated to scan correct subdirectory
+  - ResourceResolver config integration
+    - Resolver uses `MCPConfig` for runtime paths (not hardcoded package directory)
+    - Discovery/drafts → `config.cache_dir`, Memory → `config.memory_dir`
+    - Prevents permission errors in production deployments (read-only package directories)
+  - All MCP resource URIs now functional and accessible via MCP protocol
 
 ### Changed
 

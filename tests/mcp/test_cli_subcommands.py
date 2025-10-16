@@ -74,7 +74,7 @@ class TestDiscoveryCommand:
         # Verify error exit code
         assert exit_code == 1
 
-    @patch("osiris.core.config.load_config")
+    @patch("osiris.cli.discovery_cmd.load_config")
     @patch("osiris.cli.discovery_cmd.SessionContext")
     def test_discovery_run_respects_filesystem_contract(self, mock_session, mock_load_config):
         """Test that discovery respects filesystem contract for logs."""

@@ -130,8 +130,13 @@ class MemoryTools:
             session_id = args[0]
             entry = args[1]
 
-        # Save to JSONL file
-        memory_file = self.memory_dir / f"{session_id}.jsonl"
+        # Save to JSONL file - use sessions/ subdirectory to match URI scheme
+        # URIs use osiris://mcp/memory/sessions/<session_id>.jsonl format
+        # Resolver expects memory_dir/sessions/<session_id>.jsonl
+        sessions_dir = self.memory_dir / "sessions"
+        sessions_dir.mkdir(parents=True, exist_ok=True)
+
+        memory_file = sessions_dir / f"{session_id}.jsonl"
         with open(memory_file, "a") as f:
             f.write(json.dumps(entry) + "\n")
 
@@ -235,8 +240,13 @@ class MemoryTools:
         try:
             sessions = []
 
-            # Scan memory directory for session files
-            for session_file in self.memory_dir.glob("*.jsonl"):
+            # Scan memory directory for session files (in sessions/ subdirectory)
+            sessions_dir = self.memory_dir / "sessions"
+            if not sessions_dir.exists():
+                # Return empty list if sessions directory doesn't exist yet
+                return {"sessions": [], "count": 0, "total_size_kb": 0.0, "status": "success"}
+
+            for session_file in sessions_dir.glob("*.jsonl"):
                 session_id = session_file.stem
 
                 # Get file stats
