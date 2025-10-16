@@ -159,7 +159,7 @@ def cmd_run(args):
 
 def cmd_clients(args):
     """Show Claude Desktop configuration snippet."""
-    from osiris.mcp.clients_config import build_claude_clients_snippet  # noqa: PLC0415  # Lazy import for CLI performance
+    from osiris.mcp.clients_config import build_claude_clients_snippet  # noqa: PLC0415, I001  # Lazy import
 
     info = get_repo_info()
 
@@ -305,7 +305,7 @@ def cmd_connections(args):  # noqa: PLR0915  # MCP CLI router, handles multiple 
         return
 
     # Delegate to existing CLI commands
-    from osiris.cli.connections_cmd import doctor_connections, list_connections  # noqa: PLC0415  # Lazy import for CLI performance
+    from osiris.cli.connections_cmd import doctor_connections, list_connections  # noqa: PLC0415, I001  # Lazy import
 
     if parsed_args.action == "list":
         # Call with --json and --mcp flags
