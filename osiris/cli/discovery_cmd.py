@@ -15,7 +15,7 @@ from rich.console import Console
 from rich.table import Table
 
 from osiris.components.registry import get_registry
-from osiris.core.config import resolve_connection
+from osiris.core.config import load_config, resolve_connection
 from osiris.core.discovery import ProgressiveDiscovery
 from osiris.core.session_logging import SessionContext, set_current_session
 
@@ -47,9 +47,7 @@ def sanitize_for_json(obj):
 
     Handles datetime, Timestamp, and other non-JSON types.
     """
-    if isinstance(obj, (datetime,)):
-        return obj.isoformat()
-    elif hasattr(obj, "isoformat"):  # Handles pandas Timestamp and other datetime-like objects
+    if isinstance(obj, (datetime,)) or hasattr(obj, "isoformat"):  # Handles datetime and pandas Timestamp
         return obj.isoformat()
     elif isinstance(obj, dict):
         return {k: sanitize_for_json(v) for k, v in obj.items()}
@@ -81,8 +79,6 @@ def discovery_run(  # noqa: PLR0915  # CLI router function, naturally verbose
     # Respect filesystem contract - get logs_dir from osiris.yaml if not specified
     if logs_dir is None:
         try:
-            from osiris.core.config import load_config  # noqa: PLC0415  # Lazy import for CLI performance
-
             config = load_config("osiris.yaml")
             filesystem = config.get("filesystem", {})
             base_path = Path(filesystem.get("base_path", "."))
@@ -227,8 +223,6 @@ def discovery_run(  # noqa: PLR0915  # CLI router function, naturally verbose
 
             # Determine cache directory from config (filesystem contract)
             try:
-                from osiris.core.config import load_config  # noqa: PLC0415  # Already imported above but keep for clarity
-
                 config = load_config("osiris.yaml")
                 filesystem = config.get("filesystem", {})
                 base_path = Path(filesystem.get("base_path", "."))
