@@ -285,7 +285,9 @@ def map_cli_error_to_mcp(exc_or_msg: Exception | str) -> OsirisError:
     if any(pattern in message_lower for pattern in ["oml parse", "yaml parse", "missing required field"]):
         family = ErrorFamily.SCHEMA
     # Policy errors (check before auth to avoid conflict)
-    elif any(pattern in message_lower for pattern in ["consent required", "rate limit", "forbidden"]) or re.search(r"\bunauthorized\b", message_lower):
+    elif any(pattern in message_lower for pattern in ["consent required", "rate limit", "forbidden"]) or re.search(
+        r"\bunauthorized\b", message_lower
+    ):
         family = ErrorFamily.POLICY
     # Timeout errors (DISCOVERY)
     elif any(pattern in message_lower for pattern in ["timeout", "timed out"]):

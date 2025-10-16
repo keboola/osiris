@@ -199,7 +199,7 @@ class OsirisMCPServer:
         """Execute a tool call."""
         try:
             # Log the tool call
-            await self.audit.log_tool_call(name, arguments)
+            await self.audit.log_tool_call(tool_name=name, arguments=arguments)
 
             # Resolve aliases
             actual_name = self.tool_aliases.get(name, name)
@@ -285,10 +285,12 @@ class OsirisMCPServer:
         # Initialize low-level server
         self.server = Server(self.server_name)
 
-        # Initialize components
-        self.audit = AuditLogger()
-        self.cache = DiscoveryCache()
-        self.resolver = ResourceResolver()
+        # Initialize components with config-driven paths (filesystem contract compliance)
+        self.audit = AuditLogger(log_dir=self.config.audit_dir)
+        self.cache = DiscoveryCache(
+            cache_dir=self.config.cache_dir, default_ttl_hours=self.config.discovery_cache_ttl_hours
+        )
+        self.resolver = ResourceResolver()  # Uses module-relative paths (data/, state/)
         self.error_handler = OsirisErrorHandler()
 
         # Initialize tool handlers
@@ -307,7 +309,7 @@ class OsirisMCPServer:
         self.discovery_tools = DiscoveryTools(self.cache)
         self.oml_tools = OMLTools(self.resolver)
         self.guide_tools = GuideTools()
-        self.memory_tools = MemoryTools()
+        self.memory_tools = MemoryTools(memory_dir=self.config.memory_dir)
         self.usecases_tools = UsecasesTools()
 
         # Register handlers

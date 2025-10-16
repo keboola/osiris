@@ -21,7 +21,9 @@ def test_chat_command_deprecated():
 
 def test_chat_command_deprecated_json():
     """Test that chat command returns deprecation error in JSON format."""
-    result = subprocess.run([sys.executable, "osiris.py", "chat", "--json"], check=False, capture_output=True, text=True)
+    result = subprocess.run(
+        [sys.executable, "osiris.py", "chat", "--json"], check=False, capture_output=True, text=True
+    )
 
     # Should exit with error
     assert result.returncode == 1
@@ -57,7 +59,9 @@ def test_help_no_chat():
 
 def test_help_json_no_chat():
     """Test that JSON help output does not list chat as available command."""
-    result = subprocess.run([sys.executable, "osiris.py", "--help", "--json"], check=False, capture_output=True, text=True)
+    result = subprocess.run(
+        [sys.executable, "osiris.py", "--help", "--json"], check=False, capture_output=True, text=True
+    )
 
     # Should succeed
     assert result.returncode == 0

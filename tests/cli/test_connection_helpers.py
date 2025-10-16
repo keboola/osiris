@@ -1,6 +1,5 @@
 """Tests for CLI connection helper functions with spec-aware secret masking."""
 
-
 from osiris.cli.helpers.connection_helpers import (
     COMMON_SECRET_NAMES,
     _extract_field_from_pointer,

@@ -171,9 +171,7 @@ def ensure_base_path() -> Path:
     return Path.cwd().resolve()
 
 
-async def run_cli_json(
-    args: list[str], timeout_s: float = 30.0, correlation_id: str | None = None
-) -> dict[str, Any]:
+async def run_cli_json(args: list[str], timeout_s: float = 30.0, correlation_id: str | None = None) -> dict[str, Any]:
     """
     Execute Osiris CLI command and return parsed JSON result.
 
@@ -219,7 +217,8 @@ async def run_cli_json(
         # Execute command with timeout
         result = subprocess.run(
             cmd,
-            check=False, capture_output=True,
+            check=False,
+            capture_output=True,
             text=True,
             timeout=timeout_s,
             cwd=str(base_path),

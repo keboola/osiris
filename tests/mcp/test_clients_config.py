@@ -5,7 +5,6 @@ Verifies that build_claude_clients_snippet produces the correct JSON structure
 for Claude Desktop configuration with proper bash wrapper, transport, and paths.
 """
 
-
 from osiris.mcp.clients_config import build_claude_clients_snippet
 
 

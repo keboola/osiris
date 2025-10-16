@@ -2,7 +2,6 @@
 Test guide.start tool for OML authoring guidance.
 """
 
-
 import pytest
 
 from osiris.mcp.tools.guide import GuideTools

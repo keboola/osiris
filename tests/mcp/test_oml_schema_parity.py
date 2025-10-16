@@ -2,7 +2,6 @@
 Test OML schema parity between MCP and core implementation.
 """
 
-
 import pytest
 
 from osiris.mcp.tools.oml import OMLTools

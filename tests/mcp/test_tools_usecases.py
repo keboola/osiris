@@ -2,7 +2,6 @@
 Test usecases.list tool for OML use case templates.
 """
 
-
 import pytest
 
 from osiris.mcp.tools.usecases import UsecasesTools
