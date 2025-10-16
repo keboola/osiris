@@ -13,7 +13,7 @@ from rich.console import Console
 console = Console()
 
 
-def memory_capture(
+def memory_capture(  # noqa: PLR0915  # CLI command, naturally verbose
     session_id: str | None = None,
     consent: bool = False,
     json_output: bool = False,

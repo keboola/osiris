@@ -1,5 +1,6 @@
 """Supabase writer driver for runtime execution."""
 
+import contextlib
 import logging
 import os
 import secrets
@@ -689,10 +690,8 @@ class SupabaseWriterDriver(Driver):
                     except Exception as exc:
                         # CRITICAL: Close failed connection before continuing
                         if conn:
-                            try:
-                                conn.close()
-                            except Exception:
-                                pass  # Connection may not be fully initialized
+                            with contextlib.suppress(Exception):
+                                conn.close()  # Connection may not be fully initialized
                         last_exc = exc
                         logger.warning(f"Connection attempt {idx+1} failed, trying next IP")
                         continue
@@ -765,10 +764,8 @@ class SupabaseWriterDriver(Driver):
             except Exception as exc:
                 # CRITICAL: Close failed connection before continuing
                 if conn:
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass  # Connection may not be fully initialized
+                    with contextlib.suppress(Exception):
+                        conn.close()  # Connection may not be fully initialized
                 last_exc = exc
                 logger.warning(f"Connection attempt {idx+1} failed, trying next IP")
                 continue
