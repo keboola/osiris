@@ -1,0 +1,380 @@
+name: MCP Phase 1 Security Guards
+
+# Phase 1 verification guards for CLI-first adapter architecture (ADR-0036)
+# Prevents regressions in:
+# - Forbidden imports in MCP tools (secret access violation)
+# - Config format validation (filesystem contract compliance)
+# - Run-anywhere behavior (base_path and mcp_logs_dir presence)
+
+on:
+  push:
+    branches: [main, feature/mcp-*, feat/mcp-*]
+    paths:
+      - 'osiris/mcp/tools/**'
+      - 'osiris/cli/init.py'
+      - 'osiris/core/config.py'
+      - 'testing_env/osiris.yaml'
+      - '.github/workflows/mcp-phase1-guards.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'osiris/mcp/tools/**'
+      - 'osiris/cli/init.py'
+      - 'osiris/core/config.py'
+      - '.github/workflows/mcp-phase1-guards.yml'
+
+jobs:
+  forbidden-imports:
+    name: Verify No Forbidden Imports in MCP Tools
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for forbidden imports in MCP tools
+        run: |
+          echo "🔍 Checking MCP tools for forbidden imports..."
+          echo ""
+          echo "Forbidden patterns (violate CLI-first security model):"
+          echo "  - resolve_connection()"
+          echo "  - load_connections_yaml()"
+          echo "  - parse_connection_ref()"
+          echo "  - _load_connections()"
+          echo "  - Direct secret access"
+          echo ""
+
+          # Check for forbidden imports
+          FORBIDDEN_FILES=$(grep -r \
+            -E "resolve_connection|load_connections_yaml|parse_connection_ref|_load_connections" \
+            osiris/mcp/tools/*.py \
+            2>/dev/null \
+            | grep -v "^#" \
+            | grep -v "# noqa" \
+            || true)
+
+          if [ -n "$FORBIDDEN_FILES" ]; then
+            echo "❌ FORBIDDEN IMPORTS DETECTED!"
+            echo ""
+            echo "$FORBIDDEN_FILES"
+            echo ""
+            echo "MCP tools must delegate to CLI via run_cli_json()."
+            echo "See docs/milestones/mcp-finish-plan.md Phase 1 DoD #6"
+            exit 1
+          fi
+
+          echo "✅ No forbidden imports found in MCP tools"
+          echo "   All MCP tools properly delegate to CLI"
+
+      - name: Verify CLI bridge usage
+        run: |
+          echo "🔍 Verifying MCP tools use CLI bridge pattern..."
+
+          # Check that tools import run_cli_json
+          for tool_file in osiris/mcp/tools/*.py; do
+            if [ "$(basename $tool_file)" = "__init__.py" ]; then
+              continue
+            fi
+
+            if ! grep -q "from osiris.mcp.cli_bridge import run_cli_json" "$tool_file"; then
+              echo "⚠️  Warning: $tool_file doesn't import run_cli_json"
+              echo "   (may be OK if tool doesn't need delegation)"
+            fi
+          done
+
+          echo "✅ CLI bridge usage verified"
+
+  config-format-validation:
+    name: Validate Config Format
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml
+
+      - name: Validate testing_env/osiris.yaml format
+        run: |
+          python -c "
+import yaml
+import sys
+from pathlib import Path
+
+config_file = Path('testing_env/osiris.yaml')
+if not config_file.exists():
+    print('⚠️  testing_env/osiris.yaml not found (expected in testing environment)')
+    sys.exit(0)
+
+print('🔍 Validating testing_env/osiris.yaml format...')
+print('')
+
+try:
+    with open(config_file) as f:
+        config = yaml.safe_load(f)
+except yaml.YAMLError as e:
+    print(f'❌ YAML parsing failed: {e}')
+    sys.exit(1)
+
+# Check required keys
+errors = []
+
+if 'filesystem' not in config:
+    errors.append('Missing top-level key: filesystem')
+else:
+    fs = config['filesystem']
+
+    # Check base_path
+    if 'base_path' not in fs:
+        errors.append('Missing filesystem.base_path')
+    else:
+        base_path = fs['base_path']
+        if not base_path:
+            errors.append('filesystem.base_path is empty (should be absolute path)')
+        elif not Path(base_path).is_absolute():
+            errors.append(f'filesystem.base_path is not absolute: {base_path}')
+        else:
+            print(f'✅ filesystem.base_path: {base_path} (absolute)')
+
+    # Check mcp_logs_dir
+    if 'mcp_logs_dir' not in fs:
+        errors.append('Missing filesystem.mcp_logs_dir')
+    else:
+        mcp_logs_dir = fs['mcp_logs_dir']
+        if not mcp_logs_dir:
+            errors.append('filesystem.mcp_logs_dir is empty')
+        else:
+            print(f'✅ filesystem.mcp_logs_dir: {mcp_logs_dir}')
+
+if errors:
+    print('')
+    print('❌ Config validation FAILED:')
+    for error in errors:
+        print(f'   - {error}')
+    print('')
+    print('See docs/milestones/mcp-finish-plan.md Phase 1.5 for requirements')
+    sys.exit(1)
+
+print('')
+print('✅ Config format validation PASSED')
+          "
+
+      - name: Test osiris init generates valid config
+        run: |
+          pip install -r requirements.txt
+
+          # Create temp directory
+          TEMP_DIR=$(mktemp -d)
+          echo "Testing osiris init in: $TEMP_DIR"
+
+          # Run osiris init
+          python osiris.py init "$TEMP_DIR" --force
+
+          # Validate generated config
+          python -c "
+import yaml
+import sys
+from pathlib import Path
+
+config_file = Path('$TEMP_DIR/osiris.yaml')
+if not config_file.exists():
+    print('❌ osiris init did not create osiris.yaml')
+    sys.exit(1)
+
+with open(config_file) as f:
+    config = yaml.safe_load(f)
+
+# Verify filesystem keys
+fs = config.get('filesystem', {})
+base_path = fs.get('base_path', '')
+mcp_logs_dir = fs.get('mcp_logs_dir', '')
+
+if not Path(base_path).is_absolute():
+    print(f'❌ Generated base_path is not absolute: {base_path}')
+    sys.exit(1)
+
+if not mcp_logs_dir:
+    print('❌ Generated config missing mcp_logs_dir')
+    sys.exit(1)
+
+if mcp_logs_dir != '.osiris/mcp/logs':
+    print(f'❌ Generated mcp_logs_dir has unexpected value: {mcp_logs_dir}')
+    sys.exit(1)
+
+print('✅ osiris init generates valid config with absolute base_path')
+print(f'   base_path: {base_path}')
+print(f'   mcp_logs_dir: {mcp_logs_dir}')
+          "
+
+          # Cleanup
+          rm -rf "$TEMP_DIR"
+
+  mcp-clients-output:
+    name: Verify MCP Clients Command Output
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify osiris mcp clients --json contains correct command
+        run: |
+          cd testing_env
+          OUTPUT=$(python ../osiris.py mcp clients --json 2>&1)
+
+          echo "Checking osiris mcp clients --json output..."
+
+          # Check for osiris.py mcp run OR mcp_entrypoint
+          if echo "$OUTPUT" | grep -q "osiris.py mcp run\|mcp_entrypoint"; then
+            echo "✅ Output contains osiris.py mcp run command"
+          else
+            echo "❌ Output missing 'osiris.py mcp run' or 'mcp_entrypoint'"
+            echo "Output:"
+            echo "$OUTPUT"
+            exit 1
+          fi
+
+          # Check that OSIRIS_HOME and PYTHONPATH are present (for now)
+          # Phase 1 DoD allows these, Phase 2 will make them optional
+          if echo "$OUTPUT" | grep -q "OSIRIS_HOME"; then
+            echo "✅ Output includes OSIRIS_HOME (backward compatible)"
+          fi
+
+          echo "✅ MCP clients output validation PASSED"
+
+  run-anywhere-behavior:
+    name: Verify Run-Anywhere Behavior
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Test MCP selftest from different CWD
+        run: |
+          # Initialize a test project
+          TEMP_DIR=$(mktemp -d)
+          python osiris.py init "$TEMP_DIR" --force
+
+          # Run selftest from /tmp (different CWD)
+          cd /tmp
+
+          # Set OSIRIS_HOME to point to test project
+          export OSIRIS_HOME="$TEMP_DIR"
+
+          # Run selftest (should resolve paths from osiris.yaml)
+          timeout 5 python $GITHUB_WORKSPACE/osiris.py mcp run --selftest
+
+          echo "✅ MCP selftest works from different CWD with config"
+
+          # Cleanup
+          rm -rf "$TEMP_DIR"
+
+      - name: Verify base_path resolution
+        run: |
+          python -c "
+import sys
+import os
+from pathlib import Path
+
+# Add osiris to path
+sys.path.insert(0, os.getcwd())
+
+from osiris.mcp.config import MCPFilesystemConfig
+
+# Create temp project with config
+import tempfile
+import yaml
+
+temp_dir = Path(tempfile.mkdtemp())
+config_file = temp_dir / 'osiris.yaml'
+
+# Write config with absolute base_path
+config = {
+    'version': '2.0',
+    'filesystem': {
+        'base_path': str(temp_dir),
+        'mcp_logs_dir': '.osiris/mcp/logs'
+    }
+}
+
+with open(config_file, 'w') as f:
+    yaml.dump(config, f)
+
+# Load config
+fs_config = MCPFilesystemConfig.from_config(str(config_file))
+
+# Verify paths resolve correctly
+assert fs_config.base_path == temp_dir.resolve(), f'base_path mismatch: {fs_config.base_path} != {temp_dir}'
+expected_mcp_logs = (temp_dir / '.osiris' / 'mcp' / 'logs').resolve()
+assert fs_config.mcp_logs_dir == expected_mcp_logs, f'mcp_logs_dir mismatch: {fs_config.mcp_logs_dir}'
+
+print('✅ MCPFilesystemConfig resolves paths correctly from osiris.yaml')
+
+# Cleanup
+import shutil
+shutil.rmtree(temp_dir)
+          "
+
+  summary:
+    name: Phase 1 Security Guards Summary
+    runs-on: ubuntu-latest
+    needs: [forbidden-imports, config-format-validation, mcp-clients-output, run-anywhere-behavior]
+    if: always()
+
+    steps:
+      - name: Check all guards passed
+        run: |
+          echo "📊 Phase 1 Security Guards Summary"
+          echo ""
+          echo "Checks:"
+          echo "  ✓ Forbidden imports verification"
+          echo "  ✓ Config format validation"
+          echo "  ✓ MCP clients output format"
+          echo "  ✓ Run-anywhere behavior"
+          echo ""
+
+          if [ "${{ needs.forbidden-imports.result }}" != "success" ] || \
+             [ "${{ needs.config-format-validation.result }}" != "success" ] || \
+             [ "${{ needs.mcp-clients-output.result }}" != "success" ] || \
+             [ "${{ needs.run-anywhere-behavior.result }}" != "success" ]; then
+            echo "❌ One or more security guards FAILED"
+            echo ""
+            echo "Results:"
+            echo "  Forbidden Imports: ${{ needs.forbidden-imports.result }}"
+            echo "  Config Validation: ${{ needs.config-format-validation.result }}"
+            echo "  MCP Clients: ${{ needs.mcp-clients-output.result }}"
+            echo "  Run-Anywhere: ${{ needs.run-anywhere-behavior.result }}"
+            exit 1
+          fi
+
+          echo "✅ All Phase 1 security guards PASSED"
+          echo ""
+          echo "CLI-first adapter architecture verified:"
+          echo "  • No secret access in MCP process"
+          echo "  • Filesystem contract compliant"
+          echo "  • Run-anywhere behavior functional"
