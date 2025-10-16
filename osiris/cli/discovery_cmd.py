@@ -4,7 +4,6 @@ Provides standalone discovery functionality that can be used directly
 or delegated to from MCP commands.
 """
 
-import hashlib
 import json
 import logging
 import time
@@ -17,28 +16,11 @@ from rich.table import Table
 from osiris.components.registry import get_registry
 from osiris.core.config import load_config, resolve_connection
 from osiris.core.discovery import ProgressiveDiscovery
+from osiris.core.identifiers import generate_discovery_id
 from osiris.core.session_logging import SessionContext, set_current_session
 
 console = Console()
 logger = logging.getLogger(__name__)
-
-
-def generate_discovery_id(connection_id: str, family: str, samples: int) -> str:
-    """
-    Generate deterministic discovery ID.
-
-    Args:
-        connection_id: Connection reference (e.g., @mysql.main)
-        family: Database family (mysql, supabase, etc.)
-        samples: Number of samples requested
-
-    Returns:
-        Stable discovery ID (e.g., disc_a1b2c3d4e5f6g7h8)
-    """
-    key_parts = [connection_id, family, str(samples)]
-    key_string = "|".join(key_parts)
-    key_hash = hashlib.sha256(key_string.encode()).hexdigest()[:16]
-    return f"disc_{key_hash}"
 
 
 def sanitize_for_json(obj):
@@ -199,7 +181,7 @@ def discovery_run(  # noqa: PLR0915  # CLI router function, naturally verbose
         # Output results
         if json_output:
             # Generate deterministic discovery ID for caching
-            discovery_id = generate_discovery_id(connection_id, family, samples)
+            discovery_id = generate_discovery_id(connection_id, component_name, samples)
 
             # JSON output for MCP/programmatic use
             tables_data = []

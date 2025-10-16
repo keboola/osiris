@@ -2,33 +2,57 @@
 
 **Status:** Active
 **Detection Method:** Systematic agent-based code analysis + Codex review
-**Scope:** MCP server, CLI bridge, caching layer, secret masking
-**Total Issues Found:** 27 (4 Critical, 4 High, 8 Medium, 11 Low/Documentation)
+**Scope:** MCP server, CLI bridge, caching layer, secret masking, error handling, state management, configuration
+**Total Issues Found:** 62 (7 Critical, 13 High, 22 Medium, 20 Low/Documentation)
 
 ---
 
 ## Executive Summary
 
-A systematic review of the Osiris MCP implementation revealed **27 architectural inconsistencies**, with **4 critical bugs** that block core functionality. The issues span five categories:
+A systematic review of the Osiris codebase revealed **62 architectural inconsistencies**, with **7 critical bugs** including race conditions, cache corruption, and validation failures. The issues span eight categories:
 
-1. **ID/Key Generation Mismatches** - Different parts of the system generate identifiers using incompatible algorithms
-2. **Parameter Propagation Failures** - Required parameters are lost when crossing layer boundaries (MCP → CLI → Core)
-3. **Cache Consistency Issues** - Storage and retrieval use different paths, keys, and metadata formats
-4. **URI/Path Structure Gaps** - Documentation claims incorrect filesystem paths (no code bugs)
-5. **Secret Masking Inconsistencies** - Credentials leak through logs and error messages
+1. **ID/Key Generation Mismatches** (4 bugs) - Different parts generate identifiers using incompatible algorithms
+2. **Parameter Propagation Failures** (6 bugs) - Required parameters lost when crossing layer boundaries
+3. **Cache Consistency Issues** (7 bugs) - Storage and retrieval use different paths, keys, metadata formats
+4. **URI/Path Structure Gaps** (5 bugs) - Documentation claims incorrect paths (documentation-only)
+5. **Secret Masking Inconsistencies** (5 bugs) - Credentials leak through logs and error messages
+6. **Error Handling Issues** (12 bugs) - Silent failures, missing exception chaining, dead code
+7. **State Management Issues** (15 bugs) - Race conditions, memory leaks, global state unprotected
+8. **Configuration Bugs** (8 bugs) - Missing validation, hardcoded paths, silent failures
 
-The **root cause** is architectural drift: MCP and CLI systems evolved independently with incompatible designs for caching, ID generation, and parameter handling.
+The **root cause** is architectural drift: systems evolved independently with incompatible designs, plus missing concurrency protection and insufficient input validation.
+
+---
+
+## Additional Findings (2025-10-16 Detection Passes)
+
+In addition to the original 27 bugs, three systematic detection passes identified **35 additional issues**:
+
+- **Error Handling:** 12 bugs (1 critical, 6 high, 5 medium) - See `ERROR_HANDLING_BUGS_2025-10-16.md`
+- **State Management:** 15 bugs (2 critical, 5 high, 8 medium) - See `STATE_MANAGEMENT_BUGS_2025-10-16.md`
+- **Configuration:** 8 bugs (2 high, 3 medium, 3 low) - See `CONFIGURATION_BUGS_2025-10-16.md`
+
+**Detection Method:** Parallel agent-based analysis (5.4 bugs/minute ROI)
+
+### Quick Reference to New Critical Bugs
+
+**ERR-001 (CRITICAL):** E2B status validation fails silently - `e2b_adapter.py:474`
+**STATE-001 (CRITICAL):** Audit logger race condition corrupts logs - `audit.py:257`
+**STATE-002 (CRITICAL):** Telemetry metrics race condition causes lost updates - `telemetry.py:73`
+
+Full details in respective detailed reports.
 
 ---
 
 ## Critical Bugs (Fix Immediately)
 
-### BUG-001: Discovery ID Generation Mismatch + Idempotency Key File Overwrite
+### BUG-001: Discovery ID Generation Mismatch + Idempotency Key File Overwrite ✅ FIXED
 
 **Severity:** CRITICAL
 **Category:** ID/Key Generation + Cache Consistency
 **Reported By:** Codex + Agent Analysis
 **Impact:** Cache corruption, stale data served to users, idempotency guarantees broken
+**Status:** ✅ **FIXED** - See `BUG-001-FIX-SUMMARY.md` for details
 
 #### Problem Statement
 
@@ -630,7 +654,18 @@ After fixes are applied:
 
 ## References
 
+### Primary Documents
+- **This file:** Consolidated bug report (62 total bugs)
+- **BUG-001-FIX-SUMMARY.md:** Discovery ID fix verification (✅ fixed, 194/194 tests passing)
+- **PARAMETER_PROPAGATION_ANALYSIS.md:** Detailed parameter flow analysis (6 bugs)
+- **AGENT_SEARCH_GUIDE.md:** Reusable detection methodology
+
+### Detailed Category Reports
+- **ERROR_HANDLING_BUGS_2025-10-16.md:** 12 error handling issues
+- **STATE_MANAGEMENT_BUGS_2025-10-16.md:** 15 state management issues
+- **CONFIGURATION_BUGS_2025-10-16.md:** 8 configuration issues
+
+### Related Documentation
 - Original Codex review finding (BUG-001)
-- Agent detection reports: `/tmp/agent_reports/` (if saved)
 - MCP Phase 1 documentation: `docs/milestones/mcp-finish-plan.md`
 - Architecture decisions: `docs/adr/0036-mcp-interface.md`

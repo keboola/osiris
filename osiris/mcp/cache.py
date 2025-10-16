@@ -4,11 +4,12 @@ Cache management for Osiris MCP server.
 Handles TTL-based caching for discovery artifacts.
 """
 
-import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+from osiris.core.identifiers import generate_cache_key, generate_discovery_id
 
 
 class DiscoveryCache:
@@ -38,7 +39,10 @@ class DiscoveryCache:
         self, connection_id: str, component_id: str, samples: int = 0, idempotency_key: str | None = None
     ) -> str:
         """
-        Generate a deterministic cache key.
+        Generate a deterministic cache key for request deduplication.
+
+        This uses the unified generate_cache_key() function to ensure consistency
+        with the rest of the system.
 
         Args:
             connection_id: Database connection ID
@@ -48,15 +52,13 @@ class DiscoveryCache:
 
         Returns:
             Cache key string
+
+        Note:
+            The cache key is distinct from discovery_id:
+            - cache_key: Includes idempotency_key for request-level caching
+            - discovery_id: Excludes idempotency_key, identifies artifacts only
         """
-        # Create deterministic key components
-        key_parts = [connection_id, component_id, str(samples), idempotency_key or ""]
-
-        # Generate hash for consistent key
-        key_string = "|".join(key_parts)
-        key_hash = hashlib.sha256(key_string.encode()).hexdigest()[:16]
-
-        return f"disc_{key_hash}"
+        return generate_cache_key(connection_id, component_id, samples, idempotency_key)
 
     async def get(
         self, connection_id: str, component_id: str, samples: int = 0, idempotency_key: str | None = None
@@ -127,14 +129,19 @@ class DiscoveryCache:
         Returns:
             Discovery ID for referencing cached data
         """
+        # Generate cache key for lookup (includes idempotency_key)
         cache_key = self._generate_cache_key(connection_id, component_id, samples, idempotency_key)
+
+        # Generate discovery ID for artifacts (excludes idempotency_key)
+        discovery_id = generate_discovery_id(connection_id, component_id, samples)
 
         ttl = ttl or self.default_ttl
         expiry_time = datetime.now(UTC) + ttl
 
         # Create cache entry
         entry = {
-            "discovery_id": cache_key,
+            "discovery_id": discovery_id,  # Artifact ID (stable across idempotency_keys)
+            "cache_key": cache_key,  # Cache lookup key (includes idempotency_key)
             "connection_id": connection_id,
             "component_id": component_id,
             "samples": samples,
@@ -145,15 +152,16 @@ class DiscoveryCache:
             "ttl_seconds": int(ttl.total_seconds()),
         }
 
-        # Save to memory cache
+        # Save to memory cache (indexed by cache_key for request deduplication)
         self._memory_cache[cache_key] = entry
 
-        # Save to disk
-        cache_file = self.cache_dir / f"{cache_key}.json"
+        # Save to disk (one file per discovery_id to avoid artifact duplication)
+        # Multiple cache_keys with different idempotency_keys share the same discovery_id file
+        cache_file = self.cache_dir / f"{discovery_id}.json"
         with open(cache_file, "w") as f:
             json.dump(entry, f, indent=2)
 
-        return cache_key
+        return discovery_id  # Return discovery_id for artifact URI construction
 
     def _is_expired(self, entry: dict[str, Any]) -> bool:
         """Check if a cache entry is expired."""
