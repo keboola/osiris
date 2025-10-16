@@ -133,7 +133,7 @@ class OMLTools:
 
             # Pre-process YAML to handle @ symbols in connection references
             # This is a common pattern in OML files
-            import re
+            import re  # noqa: PLC0415  # Lazy import for performance
 
             preprocessed = re.sub(r"(@[\w\.]+)(?=\s|$)", r'"\1"', oml_content)
 
@@ -334,7 +334,7 @@ class OMLTools:
 
         # Try to use the actual OML validator if available
         try:
-            from osiris.core.oml_validator import OMLValidator
+            from osiris.core.oml_validator import OMLValidator  # noqa: PLC0415  # Lazy import
 
             validator = OMLValidator()
             # Convert OML data to YAML string for validator

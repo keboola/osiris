@@ -140,7 +140,7 @@ def ensure_base_path() -> Path:
 
     # Try to load from osiris.yaml
     try:
-        import yaml
+        import yaml  # noqa: PLC0415  # Lazy import for performance
 
         # Look for osiris.yaml in current directory or OSIRIS_HOME
         config_paths = [

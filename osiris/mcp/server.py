@@ -292,7 +292,7 @@ class OsirisMCPServer:
         self.error_handler = OsirisErrorHandler()
 
         # Initialize tool handlers
-        from osiris.mcp.tools import (
+        from osiris.mcp.tools import (  # noqa: PLC0415  # Lazy import for performance
             ComponentsTools,
             ConnectionsTools,
             DiscoveryTools,
@@ -409,7 +409,7 @@ class OsirisMCPServer:
 
 def main():
     """Entry point for the MCP server."""
-    import sys
+    import sys  # noqa: PLC0415  # Lazy import for performance
 
     # Set up logging
     logging.basicConfig(

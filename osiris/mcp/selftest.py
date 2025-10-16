@@ -122,7 +122,7 @@ async def run_selftest() -> bool:
 
     except Exception as e:
         print(f"❌ Self-test failed with error: {e}")
-        import traceback
+        import traceback  # noqa: PLC0415  # Lazy import for performance
 
         traceback.print_exc()
         return False

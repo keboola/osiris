@@ -136,7 +136,7 @@ class MemoryTools:
             f.write(json.dumps(entry) + "\n")
 
         # Generate a stable memory ID
-        import hashlib
+        import hashlib  # noqa: PLC0415  # Lazy import for performance
 
         entry_str = json.dumps(entry, sort_keys=True)
         memory_hash = hashlib.sha256(entry_str.encode()).hexdigest()[:6]

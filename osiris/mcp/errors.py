@@ -117,7 +117,7 @@ class OsirisError(Exception):
                 return code
 
         # Generate unique code for unknown errors using hash
-        import hashlib
+        import hashlib  # noqa: PLC0415  # Lazy import for performance
 
         msg_hash = hashlib.sha256(self.message.encode()).hexdigest()[:3].upper()
 

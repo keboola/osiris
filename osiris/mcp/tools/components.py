@@ -21,7 +21,7 @@ class ComponentsTools:
         """Get or create component registry."""
         if self._registry is None:
             try:
-                from osiris.components.registry import ComponentRegistry
+                from osiris.components.registry import ComponentRegistry  # noqa: PLC0415  # Lazy import
 
                 self._registry = ComponentRegistry()
             except Exception as e:

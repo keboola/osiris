@@ -73,7 +73,7 @@ def setup_environment():
 # Setup environment before importing osiris modules
 repo_root, osiris_home = setup_environment()
 
-from osiris.mcp.server import OsirisMCPServer
+from osiris.mcp.server import OsirisMCPServer  # noqa: E402  # Must import after setup_environment()
 
 
 def setup_logging(debug: bool = False):

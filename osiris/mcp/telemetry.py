@@ -40,7 +40,7 @@ class TelemetryEmitter:
 
     def _generate_session_id(self) -> str:
         """Generate a unique session ID."""
-        import uuid
+        import uuid  # noqa: PLC0415  # Lazy import for performance
 
         return f"tel_{uuid.uuid4().hex[:12]}"
 
