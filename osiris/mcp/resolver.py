@@ -18,28 +18,38 @@ class ResourceResolver:
     Resolver for Osiris MCP resources.
 
     All resources are under the osiris://mcp/ namespace:
-    - osiris://mcp/schemas/...  -> data/schemas/ (read-only)
-    - osiris://mcp/prompts/...  -> data/prompts/ (read-only)
-    - osiris://mcp/usecases/... -> data/usecases/ (read-only)
-    - osiris://mcp/discovery/... -> state/discovery/cache/ (runtime)
-    - osiris://mcp/drafts/...    -> state/drafts/ (runtime)
-    - osiris://mcp/memory/...    -> state/memory/ (runtime)
+    - osiris://mcp/schemas/...  -> data/schemas/ (read-only, from package)
+    - osiris://mcp/prompts/...  -> data/prompts/ (read-only, from package)
+    - osiris://mcp/usecases/... -> data/usecases/ (read-only, from package)
+    - osiris://mcp/discovery/... -> cache/ (runtime, from config)
+    - osiris://mcp/drafts/...    -> cache/ (runtime, from config)
+    - osiris://mcp/memory/...    -> memory/ (runtime, from config)
     """
 
-    def __init__(self, base_dir: Path | None = None):
+    def __init__(self, config=None):
         """
         Initialize the resource resolver.
 
         Args:
-            base_dir: Base directory for MCP resources
+            config: MCPConfig instance (if None, will load from osiris.yaml)
         """
-        self.base_dir = base_dir or Path(__file__).parent
-        self.data_dir = self.base_dir / "data"
-        self.state_dir = self.base_dir / "state"
+        # Import here to avoid circular dependency
+        if config is None:
+            from osiris.mcp.config import get_config  # noqa: PLC0415  # Lazy import
+
+            config = get_config()
+
+        # Read-only data directory (schemas, prompts, usecases) - from package
+        self.data_dir = Path(__file__).parent / "data"
+
+        # Runtime state directories - from config (filesystem contract)
+        self.cache_dir = config.cache_dir  # For discovery and drafts
+        self.memory_dir = config.memory_dir  # For memory capture
 
         # Ensure directories exist
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.memory_dir.mkdir(parents=True, exist_ok=True)
 
     def _parse_uri(self, uri: str) -> tuple[str, Path]:
         """
@@ -93,11 +103,14 @@ class ResourceResolver:
 
         # Map resource types to directories
         if resource_type in ["schemas", "prompts", "usecases"]:
-            # Read-only data resources
+            # Read-only data resources (from package)
             return self.data_dir / resource_type / relative_path
-        elif resource_type in ["discovery", "drafts", "memory"]:
-            # Runtime state resources
-            return self.state_dir / resource_type / relative_path
+        elif resource_type in ["discovery", "drafts"]:
+            # Runtime cache resources (from config)
+            return self.cache_dir / relative_path
+        elif resource_type == "memory":
+            # Memory resources (from config)
+            return self.memory_dir / relative_path
         else:
             raise OsirisError(
                 ErrorFamily.SEMANTIC,

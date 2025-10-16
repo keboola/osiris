@@ -4,9 +4,11 @@ Provides standalone discovery functionality that can be used directly
 or delegated to from MCP commands.
 """
 
+import hashlib
 import json
 import logging
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 from rich.console import Console
@@ -19,6 +21,42 @@ from osiris.core.session_logging import SessionContext, set_current_session
 
 console = Console()
 logger = logging.getLogger(__name__)
+
+
+def generate_discovery_id(connection_id: str, family: str, samples: int) -> str:
+    """
+    Generate deterministic discovery ID.
+
+    Args:
+        connection_id: Connection reference (e.g., @mysql.main)
+        family: Database family (mysql, supabase, etc.)
+        samples: Number of samples requested
+
+    Returns:
+        Stable discovery ID (e.g., disc_a1b2c3d4e5f6g7h8)
+    """
+    key_parts = [connection_id, family, str(samples)]
+    key_string = "|".join(key_parts)
+    key_hash = hashlib.sha256(key_string.encode()).hexdigest()[:16]
+    return f"disc_{key_hash}"
+
+
+def sanitize_for_json(obj):
+    """
+    Convert objects to JSON-serializable formats.
+
+    Handles datetime, Timestamp, and other non-JSON types.
+    """
+    if isinstance(obj, (datetime,)):
+        return obj.isoformat()
+    elif hasattr(obj, "isoformat"):  # Handles pandas Timestamp and other datetime-like objects
+        return obj.isoformat()
+    elif isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(item) for item in obj]
+    else:
+        return obj
 
 
 def discovery_run(  # noqa: PLR0915  # CLI router function, naturally verbose
@@ -164,6 +202,9 @@ def discovery_run(  # noqa: PLR0915  # CLI router function, naturally verbose
 
         # Output results
         if json_output:
+            # Generate deterministic discovery ID for caching
+            discovery_id = generate_discovery_id(connection_id, family, samples)
+
             # JSON output for MCP/programmatic use
             tables_data = []
             for table in tables:
@@ -179,12 +220,70 @@ def discovery_run(  # noqa: PLR0915  # CLI router function, naturally verbose
                     ],
                 }
                 if table.sample_data:
-                    # Sample data is already a list of dicts
-                    table_dict["sample_data"] = table.sample_data
+                    # Sample data is already a list of dicts, but may contain non-JSON types
+                    table_dict["sample_data"] = sanitize_for_json(table.sample_data)
 
                 tables_data.append(table_dict)
 
+            # Determine cache directory from config (filesystem contract)
+            try:
+                from osiris.core.config import load_config  # noqa: PLC0415  # Already imported above but keep for clarity
+
+                config = load_config("osiris.yaml")
+                filesystem = config.get("filesystem", {})
+                base_path = Path(filesystem.get("base_path", "."))
+                mcp_logs_dir = filesystem.get("mcp_logs_dir", ".osiris/mcp/logs")
+                cache_dir = base_path / mcp_logs_dir / "cache"
+            except Exception:
+                # Fallback to default location
+                cache_dir = Path(".osiris/mcp/logs/cache")
+
+            # Create cache directory
+            cache_dir.mkdir(parents=True, exist_ok=True)
+
+            # Save discovery artifacts for resource URIs
+            overview_data = {
+                "discovery_id": discovery_id,
+                "connection_id": connection_id,
+                "family": family,
+                "alias": alias,
+                "component": component_name,
+                "tables_found": len(tables),
+                "samples": samples,
+                "duration_ms": duration_ms,
+                "session_id": session_id,
+                "timestamp": datetime.now(UTC).isoformat(),
+            }
+
+            # Save artifacts to cache
+            overview_path = cache_dir / f"{discovery_id}_overview.json"
+            tables_path = cache_dir / f"{discovery_id}_tables.json"
+            samples_path = cache_dir / f"{discovery_id}_samples.json"
+
+            with open(overview_path, "w") as f:
+                json.dump(overview_data, f, indent=2)
+
+            with open(tables_path, "w") as f:
+                json.dump({"tables": tables_data, "count": len(tables_data)}, f, indent=2)
+
+            # Extract just sample data for samples artifact
+            samples_data = []
+            for table in tables:
+                if table.sample_data:
+                    samples_data.append(
+                        {
+                            "table": table.name,
+                            "rows": sanitize_for_json(table.sample_data),
+                            "count": len(table.sample_data),
+                        }
+                    )
+
+            with open(samples_path, "w") as f:
+                json.dump({"samples": samples_data, "tables_with_samples": len(samples_data)}, f, indent=2)
+
+            # Build result with discovery_id and artifacts
             result = {
+                "discovery_id": discovery_id,
                 "connection_id": connection_id,
                 "family": family,
                 "alias": alias,
@@ -194,6 +293,11 @@ def discovery_run(  # noqa: PLR0915  # CLI router function, naturally verbose
                 "duration_ms": duration_ms,
                 "session_id": session_id,
                 "status": "success",
+                "artifacts": {
+                    "overview": f"osiris://mcp/discovery/{discovery_id}/overview.json",
+                    "tables": f"osiris://mcp/discovery/{discovery_id}/tables.json",
+                    "samples": f"osiris://mcp/discovery/{discovery_id}/samples.json",
+                },
             }
             print(json.dumps(result, indent=2))
         else:

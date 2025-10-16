@@ -290,7 +290,7 @@ class OsirisMCPServer:
         self.cache = DiscoveryCache(
             cache_dir=self.config.cache_dir, default_ttl_hours=self.config.discovery_cache_ttl_hours
         )
-        self.resolver = ResourceResolver()  # Uses module-relative paths (data/, state/)
+        self.resolver = ResourceResolver(config=self.config)  # Uses config paths for runtime resources
         self.error_handler = OsirisErrorHandler()
 
         # Initialize tool handlers
