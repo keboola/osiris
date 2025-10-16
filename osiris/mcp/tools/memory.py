@@ -106,7 +106,7 @@ class MemoryTools:
                 f"Memory capture failed: {str(e)}",
                 path=["memory"],
                 suggest="Check file permissions and disk space",
-            )
+            ) from e
 
     def _save_memory(self, *args) -> str:
         """
@@ -283,4 +283,4 @@ class MemoryTools:
                 f"Failed to list sessions: {str(e)}",
                 path=["sessions"],
                 suggest="Check memory directory permissions",
-            )
+            ) from e

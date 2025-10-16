@@ -80,7 +80,7 @@ class GuideTools:
                 f"Failed to generate guidance: {str(e)}",
                 path=["guide"],
                 suggest="Try providing more context about your goal",
-            )
+            ) from e
 
     def _determine_next_step(
         self,

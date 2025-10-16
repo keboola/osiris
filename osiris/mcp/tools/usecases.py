@@ -81,7 +81,7 @@ class UsecasesTools:
                 f"Failed to list use cases: {str(e)}",
                 path=["usecases"],
                 suggest="Check use cases catalog file",
-            )
+            ) from e
 
     def _load_usecases_catalog(self) -> builtins.list[dict[str, Any]]:
         """Load the use cases catalog."""
@@ -267,4 +267,4 @@ class UsecasesTools:
                 f"Failed to get template: {str(e)}",
                 path=["template"],
                 suggest="Check use case ID",
-            )
+            ) from e

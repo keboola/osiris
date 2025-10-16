@@ -246,13 +246,12 @@ async def run_cli_json(
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse CLI JSON output: {e}")
             logger.error(f"STDOUT: {result.stdout[:500]}")
-            error = OsirisError(
+            raise OsirisError(
                 ErrorFamily.SEMANTIC,
                 f"CLI returned invalid JSON: {str(e)}",
                 path=["cli_bridge", "json_parse"],
                 suggest="Check CLI output format. Ensure --json flag is working correctly.",
-            )
-            raise error
+            ) from e
 
         # Add metadata to response
         response["_meta"] = {
@@ -269,14 +268,14 @@ async def run_cli_json(
         # Re-raise OsirisError as-is (already properly formatted)
         raise
 
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as e:
         logger.error(f"CLI command timed out after {timeout_s}s")
         raise OsirisError(
             ErrorFamily.DISCOVERY,  # Use DISCOVERY for timeouts
             f"CLI command timed out after {timeout_s}s",
             path=["cli_bridge", "timeout"],
             suggest=f"Increase timeout (current: {timeout_s}s) or investigate blocking operations.",
-        )
+        ) from e
 
     except FileNotFoundError as e:
         logger.error(f"CLI command not found: {e}")
@@ -285,7 +284,7 @@ async def run_cli_json(
             "Osiris CLI not found",
             path=["cli_bridge", "command_not_found"],
             suggest="Ensure osiris.py exists in repository root or Osiris is properly installed.",
-        )
+        ) from e
 
     except Exception as e:
         logger.error(f"Unexpected error in CLI bridge: {e}")
@@ -294,4 +293,4 @@ async def run_cli_json(
             f"CLI bridge error: {str(e)}",
             path=["cli_bridge", "unexpected"],
             suggest="Check logs for details. This may indicate a system-level issue.",
-        )
+        ) from e

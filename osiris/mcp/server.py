@@ -246,7 +246,7 @@ class OsirisMCPServer:
                 else:
                     raise OsirisError(
                         ErrorFamily.POLICY, str(e), path=["payload"], suggest="Request smaller data or use pagination"
-                    )
+                    ) from e
 
             return [types.TextContent(type="text", text=result_json)]
 

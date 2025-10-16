@@ -31,7 +31,7 @@ class ComponentsTools:
                     f"Failed to initialize component registry: {str(e)}",
                     path=["registry"],
                     suggest="Check component specs directory",
-                )
+                ) from e
         return self._registry
 
     async def list(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -97,4 +97,4 @@ class ComponentsTools:
                 f"Failed to list components: {str(e)}",
                 path=["components"],
                 suggest="Check component specs directory",
-            )
+            ) from e

@@ -99,7 +99,7 @@ class DiscoveryTools:
                 f"Discovery failed: {str(e)}",
                 path=["discovery"],
                 suggest="Check connection, component configuration, and CLI bridge",
-            )
+            ) from e
 
     def _get_artifact_uris(self, discovery_id: str) -> dict[str, str]:
         """Get URIs for discovery artifacts."""

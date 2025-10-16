@@ -197,7 +197,7 @@ class ResourceResolver:
                 f"Failed to read resource: {str(e)}",
                 path=["uri"],
                 suggest="Check resource permissions and format",
-            )
+            ) from e
 
     async def _generate_discovery_artifact(self, uri: str) -> types.ReadResourceResult:
         """
@@ -286,7 +286,7 @@ class ResourceResolver:
                 f"Failed to write resource: {str(e)}",
                 path=["uri"],
                 suggest="Check file permissions and disk space",
-            )
+            ) from e
 
     def validate_uri(self, uri: str) -> bool:
         """

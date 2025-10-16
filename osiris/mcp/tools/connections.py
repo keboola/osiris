@@ -49,7 +49,7 @@ class ConnectionsTools:
                 f"Failed to list connections: {str(e)}",
                 path=["connections"],
                 suggest="Check CLI bridge and osiris_connections.yaml file",
-            )
+            ) from e
 
     async def doctor(self, args: dict[str, Any]) -> dict[str, Any]:
         """
@@ -91,4 +91,4 @@ class ConnectionsTools:
                 f"Failed to diagnose connection: {str(e)}",
                 path=["connection_id"],
                 suggest="Check the connection reference format and CLI bridge",
-            )
+            ) from e

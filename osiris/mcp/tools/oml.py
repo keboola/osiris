@@ -90,7 +90,7 @@ class OMLTools:
                 f"Failed to get OML schema: {str(e)}",
                 path=["schema"],
                 suggest="Check schema resources",
-            )
+            ) from e
 
     async def validate(self, args: dict[str, Any]) -> dict[str, Any]:
         """
@@ -189,7 +189,7 @@ class OMLTools:
                 f"Validation failed: {str(e)}",
                 path=["validation"],
                 suggest="Check OML syntax and structure",
-            )
+            ) from e
 
     async def save(self, args: dict[str, Any]) -> dict[str, Any]:
         """
@@ -253,7 +253,7 @@ class OMLTools:
             logger.error(f"Save failed: {e}")
             raise OsirisError(
                 ErrorFamily.SEMANTIC, f"Save failed: {str(e)}", path=["save"], suggest="Check file system permissions"
-            )
+            ) from e
 
     async def _validate_oml(self, oml_data: dict[str, Any], strict: bool) -> list[dict[str, Any]]:
         """
