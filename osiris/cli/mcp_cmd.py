@@ -159,27 +159,15 @@ def cmd_run(args):
 
 def cmd_clients(args):
     """Show Claude Desktop configuration snippet."""
+    from osiris.mcp.clients_config import build_claude_clients_snippet
+
     info = get_repo_info()
 
-    # Build config snippet with bash wrapper for proper shell environment
-    config = {
-        "mcpServers": {
-            "osiris": {
-                "command": "/bin/bash",
-                "args": [
-                    "-lc",
-                    f"cd {info['repo_root']} && exec {info['venv_python']} -m osiris.cli.mcp_entrypoint"
-                ],
-                "transport": {
-                    "type": "stdio"
-                },
-                "env": {
-                    "OSIRIS_HOME": info['osiris_home'],
-                    "PYTHONPATH": info['repo_root']
-                }
-            }
-        }
-    }
+    # Build config snippet using dedicated module
+    config = build_claude_clients_snippet(
+        base_path=info['repo_root'],
+        venv_python=info['venv_python']
+    )
 
     console.print()
     console.print("[bold green]Claude Desktop Configuration[/bold green]")
