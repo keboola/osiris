@@ -4,12 +4,14 @@ MCP tools for OML use case management.
 
 import builtins
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from osiris.mcp.errors import ErrorFamily, OsirisError
+from osiris.mcp.metrics_helper import add_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +19,10 @@ logger = logging.getLogger(__name__)
 class UsecasesTools:
     """Tools for managing OML use case templates."""
 
-    def __init__(self, usecases_dir: Path | None = None):
+    def __init__(self, usecases_dir: Path | None = None, audit_logger=None):
         """Initialize usecases tools."""
         self.usecases_dir = usecases_dir or Path(__file__).parent.parent / "data" / "usecases"
+        self.audit = audit_logger
 
     async def list(self, args: dict[str, Any]) -> dict[str, Any]:
         """
@@ -31,6 +34,9 @@ class UsecasesTools:
         Returns:
             Dictionary with use case information
         """
+        start_time = time.time()
+        correlation_id = self.audit.make_correlation_id() if self.audit else "unknown"
+
         try:
             # Load use cases catalog
             usecases = self._load_usecases_catalog()
@@ -66,13 +72,15 @@ class UsecasesTools:
                     categories[category] = []
                 categories[category].append(usecase)
 
-            return {
+            result = {
                 "usecases": formatted_usecases,
                 "by_category": categories,
                 "total_count": len(formatted_usecases),
                 "categories": list(categories.keys()),
                 "status": "success",
             }
+
+            return add_metrics(result, correlation_id, start_time, args)
 
         except Exception as e:
             logger.error(f"Failed to list use cases: {e}")
@@ -224,6 +232,9 @@ class UsecasesTools:
         Returns:
             Dictionary with template details
         """
+        start_time = time.time()
+        correlation_id = self.audit.make_correlation_id() if self.audit else "unknown"
+
         usecase_id = args.get("usecase_id")
         if not usecase_id:
             raise OsirisError(
@@ -251,12 +262,14 @@ class UsecasesTools:
             if "example" in usecase:
                 oml_template = yaml.dump(usecase["example"], default_flow_style=False)
 
-            return {
+            result = {
                 "usecase": usecase,
                 "oml_template": oml_template,
                 "snippet_uri": f"osiris://mcp/usecases/{usecase_id}.yaml",
                 "status": "success",
             }
+
+            return add_metrics(result, correlation_id, start_time, args)
 
         except OsirisError:
             raise

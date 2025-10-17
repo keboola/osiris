@@ -14,6 +14,10 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Payload truncation limits (2-4 KB)
+MAX_PAYLOAD_PREVIEW_BYTES = 4096
+MIN_PAYLOAD_PREVIEW_BYTES = 2048
+
 
 class TelemetryEmitter:
     """Emits telemetry events for MCP operations."""
@@ -24,10 +28,12 @@ class TelemetryEmitter:
 
         Args:
             enabled: Whether telemetry is enabled
-            output_dir: Directory for telemetry output (defaults to .osiris_telemetry/)
+            output_dir: Directory for telemetry output (from MCPFilesystemConfig)
         """
         self.enabled = enabled
-        self.output_dir = output_dir or Path.home() / ".osiris_telemetry"
+        if output_dir is None:
+            raise ValueError("output_dir is required (no Path.home() usage allowed)")
+        self.output_dir = output_dir
         self._metrics_lock = threading.Lock()
 
         if self.enabled:
@@ -45,6 +51,55 @@ class TelemetryEmitter:
         import uuid  # noqa: PLC0415  # Lazy import for performance
 
         return f"tel_{uuid.uuid4().hex[:12]}"
+
+    def _truncate_payload(self, payload: Any) -> str:
+        """
+        Truncate payload to 2-4 KB for telemetry storage.
+
+        Args:
+            payload: Payload to truncate (any JSON-serializable type)
+
+        Returns:
+            Truncated JSON string representation
+        """
+        try:
+            # Convert to JSON string
+            payload_str = json.dumps(payload)
+            payload_bytes = len(payload_str.encode("utf-8"))
+
+            # If within limits, return as-is
+            if payload_bytes <= MAX_PAYLOAD_PREVIEW_BYTES:
+                return payload_str
+
+            # Truncate to minimum size
+            truncated = payload_str[:MIN_PAYLOAD_PREVIEW_BYTES]
+            return f"{truncated}... [TRUNCATED: {payload_bytes} bytes total]"
+        except Exception as e:
+            logger.warning(f"Failed to truncate payload: {e}")
+            return "[PAYLOAD TRUNCATION FAILED]"
+
+    def _redact_secrets(self, data: Any) -> Any:
+        """
+        Redact secrets from data using spec-aware helper.
+
+        Args:
+            data: Data to redact (dict, list, or primitive)
+
+        Returns:
+            Copy of data with secrets redacted
+        """
+        from osiris.cli.helpers.connection_helpers import (  # noqa: PLC0415  # Lazy import
+            mask_connection_for_display,
+        )
+
+        if isinstance(data, dict):
+            # Use spec-aware masking for dict data
+            return mask_connection_for_display(data)
+        elif isinstance(data, list):
+            return [self._redact_secrets(item) for item in data]
+        else:
+            # Primitives pass through
+            return data
 
     def emit_tool_call(
         self,
@@ -221,7 +276,7 @@ def init_telemetry(enabled: bool = True, output_dir: Path | None = None) -> Tele
 
     Args:
         enabled: Whether to enable telemetry
-        output_dir: Directory for telemetry output
+        output_dir: Directory for telemetry output (required, no Path.home() fallback)
 
     Returns:
         Telemetry emitter instance
@@ -229,5 +284,7 @@ def init_telemetry(enabled: bool = True, output_dir: Path | None = None) -> Tele
     global _telemetry
     with _telemetry_lock:
         if _telemetry is None:
+            if output_dir is None:
+                raise ValueError("output_dir is required for telemetry initialization")
             _telemetry = TelemetryEmitter(enabled, output_dir)
     return _telemetry

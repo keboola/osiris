@@ -6,11 +6,13 @@ that secrets are never accessed directly from the MCP process.
 """
 
 import logging
+import time
 from typing import Any
 
 from osiris.mcp.cache import DiscoveryCache
 from osiris.mcp.cli_bridge import run_cli_json
 from osiris.mcp.errors import ErrorFamily, OsirisError
+from osiris.mcp.metrics_helper import add_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +20,10 @@ logger = logging.getLogger(__name__)
 class DiscoveryTools:
     """Tools for database discovery operations via CLI delegation."""
 
-    def __init__(self, cache: DiscoveryCache | None = None):
+    def __init__(self, cache: DiscoveryCache | None = None, audit_logger=None):
         """Initialize discovery tools."""
         self.cache = cache or DiscoveryCache()
+        self.audit = audit_logger
 
     async def request(self, args: dict[str, Any]) -> dict[str, Any]:
         """
@@ -32,6 +35,9 @@ class DiscoveryTools:
         Returns:
             Dictionary with discovery results
         """
+        start_time = time.time()
+        correlation_id = self.audit.make_correlation_id() if self.audit else "unknown"
+
         connection_id = args.get("connection_id")
         component_id = args.get("component_id")
         samples = args.get("samples", 0)
@@ -61,12 +67,13 @@ class DiscoveryTools:
 
                 if cached_result:
                     logger.info(f"Discovery cache hit for {connection_id}/{component_id}")
-                    return {
+                    result = {
                         "discovery_id": cached_result.get("discovery_id"),
                         "cached": True,
                         "status": "success",
                         "artifacts": self._get_artifact_uris(cached_result.get("discovery_id")),
                     }
+                    return add_metrics(result, correlation_id, start_time, args)
 
             # Delegate to CLI: osiris mcp discovery run --connection-id @mysql.default --samples 10
             # Note: component_id is derived from connection family in CLI, not passed explicitly
@@ -86,8 +93,8 @@ class DiscoveryTools:
             if idempotency_key and result.get("discovery_id"):
                 await self.cache.set(connection_id, component_id, samples, result, idempotency_key)
 
-            # CLI already returns the correct format
-            return result
+            # Add metrics and return
+            return add_metrics(result, correlation_id, start_time, args)
 
         except OsirisError:
             # Re-raise OsirisError as-is

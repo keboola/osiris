@@ -3,12 +3,14 @@ MCP tools for OML (Osiris Mapping Language) operations.
 """
 
 import logging
+import time
 from datetime import UTC, datetime
 from typing import Any
 
 import yaml
 
 from osiris.mcp.errors import ErrorFamily, OsirisError, OsirisErrorHandler
+from osiris.mcp.metrics_helper import add_metrics
 from osiris.mcp.resolver import ResourceResolver
 
 logger = logging.getLogger(__name__)
@@ -17,10 +19,11 @@ logger = logging.getLogger(__name__)
 class OMLTools:
     """Tools for OML validation, saving, and schema operations."""
 
-    def __init__(self, resolver: ResourceResolver = None):
+    def __init__(self, resolver: ResourceResolver = None, audit_logger=None):
         """Initialize OML tools."""
         self.resolver = resolver or ResourceResolver()
         self.error_handler = OsirisErrorHandler()
+        self.audit = audit_logger
 
     async def get_schema(self, params: dict[str, Any]) -> dict[str, Any]:
         """
@@ -44,6 +47,9 @@ class OMLTools:
         Returns:
             Dictionary with schema information
         """
+        start_time = time.time()
+        correlation_id = self.audit.make_correlation_id() if self.audit else "unknown"
+
         try:
             # Get schema from resources
             schema_uri = "osiris://mcp/schemas/oml/v0.1.0.json"
@@ -51,7 +57,7 @@ class OMLTools:
             # For now, return the URI and basic schema structure
             # In production, this would load the actual schema file
             # Return format that satisfies both spec and tests
-            return {
+            result = {
                 "version": "0.1.0",
                 "schema": {
                     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -83,6 +89,8 @@ class OMLTools:
                 "schema_uri": schema_uri,
             }
 
+            return add_metrics(result, correlation_id, start_time, args)
+
         except Exception as e:
             logger.error(f"Failed to get OML schema: {e}")
             raise OsirisError(
@@ -102,6 +110,9 @@ class OMLTools:
         Returns:
             Dictionary with validation results
         """
+        start_time = time.time()
+        correlation_id = self.audit.make_correlation_id() if self.audit else "unknown"
+
         oml_content = args.get("oml_content")
         strict = args.get("strict", True)
 
@@ -171,7 +182,7 @@ class OMLTools:
             # Format diagnostics in ADR-0019 compatible format
             formatted_diagnostics = self.error_handler.format_validation_diagnostics(diagnostics)
 
-            return {
+            result = {
                 "valid": len([d for d in diagnostics if d.get("type") == "error"]) == 0,
                 "diagnostics": formatted_diagnostics,
                 "status": "success",
@@ -181,6 +192,8 @@ class OMLTools:
                     "info": len([d for d in diagnostics if d.get("type") == "info"]),
                 },
             }
+
+            return add_metrics(result, correlation_id, start_time, args)
 
         except Exception as e:
             logger.error(f"Validation failed: {e}")
@@ -201,6 +214,9 @@ class OMLTools:
         Returns:
             Dictionary with save results
         """
+        start_time = time.time()
+        correlation_id = self.audit.make_correlation_id() if self.audit else "unknown"
+
         oml_content = args.get("oml_content")
         session_id = args.get("session_id")
         filename = args.get("filename")
@@ -234,7 +250,7 @@ class OMLTools:
             success = await self.resolver.write_resource(draft_uri, oml_content)
 
             if success:
-                return {
+                result = {
                     "saved": True,
                     "uri": draft_uri,
                     "filename": filename,
@@ -242,6 +258,7 @@ class OMLTools:
                     "timestamp": datetime.now(UTC).isoformat(),
                     "status": "success",
                 }
+                return add_metrics(result, correlation_id, start_time, args)
             else:
                 raise OsirisError(
                     ErrorFamily.SEMANTIC, "Failed to save draft", path=["save"], suggest="Check file permissions"

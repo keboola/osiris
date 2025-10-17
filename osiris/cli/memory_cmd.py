@@ -76,7 +76,12 @@ def memory_capture(  # noqa: PLR0915  # CLI command, naturally verbose
         sessions_dir = memory_dir / "sessions"
         sessions_dir.mkdir(parents=True, exist_ok=True)
 
-        # Prepare memory entry
+        # Prepare memory entry (with PII redaction)
+        from osiris.mcp.tools.memory import MemoryTools  # noqa: PLC0415  # Lazy import
+
+        tools = MemoryTools(memory_dir=memory_dir)
+
+        # Build entry
         memory_entry = {
             "timestamp": datetime.now(UTC).isoformat(),
             "session_id": session_id,
@@ -84,23 +89,26 @@ def memory_capture(  # noqa: PLR0915  # CLI command, naturally verbose
             "events": events_data,
         }
 
+        # Apply PII redaction (CRITICAL: must happen before saving)
+        redacted_entry = tools._redact_pii(memory_entry)
+
         # Save to JSONL file
         memory_file = sessions_dir / f"{session_id}.jsonl"
         with open(memory_file, "a") as f:
-            f.write(json.dumps(memory_entry) + "\n")
+            f.write(json.dumps(redacted_entry) + "\n")
 
         # Generate memory URI
         memory_uri = f"osiris://mcp/memory/sessions/{session_id}.jsonl"
 
-        # Generate memory_id (deterministic based on entry content)
+        # Generate memory_id (deterministic based on REDACTED entry content)
         import hashlib  # noqa: PLC0415  # Lazy import for performance
 
-        entry_str = json.dumps(memory_entry, sort_keys=True)
+        entry_str = json.dumps(redacted_entry, sort_keys=True)
         memory_hash = hashlib.sha256(entry_str.encode()).hexdigest()[:6]
         memory_id = f"mem_{memory_hash}"
 
-        # Calculate entry size
-        entry_size = len(json.dumps(memory_entry))
+        # Calculate entry size (after redaction)
+        entry_size = len(json.dumps(redacted_entry))
 
         if json_output:
             result = {

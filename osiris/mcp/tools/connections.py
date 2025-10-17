@@ -6,10 +6,12 @@ that secrets are never accessed directly from the MCP process.
 """
 
 import logging
+import time
 from typing import Any
 
 from osiris.mcp.cli_bridge import run_cli_json
 from osiris.mcp.errors import ErrorFamily, OsirisError
+from osiris.mcp.metrics_helper import add_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +19,10 @@ logger = logging.getLogger(__name__)
 class ConnectionsTools:
     """Tools for managing database connections via CLI delegation."""
 
-    def __init__(self):
+    def __init__(self, audit_logger=None):
         """Initialize connections tools."""
         # No caching - delegate everything to CLI
-        pass
+        self.audit = audit_logger
 
     async def list(self, args: dict[str, Any]) -> dict[str, Any]:
         """
@@ -32,12 +34,15 @@ class ConnectionsTools:
         Returns:
             Dictionary with connection information
         """
+        start_time = time.time()
+        correlation_id = self.audit.make_correlation_id() if self.audit else "unknown"
+
         try:
             # Delegate to CLI: osiris mcp connections list --json
             result = await run_cli_json(["mcp", "connections", "list"])
 
-            # CLI already returns the correct format
-            return result
+            # Add metrics to response
+            return add_metrics(result, correlation_id, start_time, args)
 
         except OsirisError:
             # Re-raise OsirisError as-is
@@ -61,6 +66,9 @@ class ConnectionsTools:
         Returns:
             Dictionary with diagnostic information
         """
+        start_time = time.time()
+        correlation_id = self.audit.make_correlation_id() if self.audit else "unknown"
+
         connection_id = args.get("connection_id")
         if not connection_id:
             raise OsirisError(
@@ -78,8 +86,8 @@ class ConnectionsTools:
             # Delegate to CLI: osiris mcp connections doctor --connection-id @mysql.default --json
             result = await run_cli_json(["mcp", "connections", "doctor", "--connection-id", connection_id])
 
-            # CLI already returns the correct format
-            return result
+            # Add metrics to response
+            return add_metrics(result, correlation_id, start_time, args)
 
         except OsirisError:
             # Re-raise OsirisError as-is

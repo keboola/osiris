@@ -3,9 +3,11 @@ MCP tools for component management.
 """
 
 import logging
+import time
 from typing import Any
 
 from osiris.mcp.errors import ErrorFamily, OsirisError
+from osiris.mcp.metrics_helper import add_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -13,9 +15,10 @@ logger = logging.getLogger(__name__)
 class ComponentsTools:
     """Tools for managing pipeline components."""
 
-    def __init__(self):
+    def __init__(self, audit_logger=None):
         """Initialize components tools."""
         self._registry = None
+        self.audit = audit_logger
 
     def _get_registry(self):
         """Get or create component registry."""
@@ -44,6 +47,9 @@ class ComponentsTools:
         Returns:
             Dictionary with component information
         """
+        start_time = time.time()
+        correlation_id = self.audit.make_correlation_id() if self.audit else "unknown"
+
         try:
             registry = self._get_registry()
 
@@ -84,11 +90,13 @@ class ComponentsTools:
             processors = [c for c in components if "processor" in c["name"]]
             others = [c for c in components if c not in extractors + writers + processors]
 
-            return {
+            result = {
                 "components": {"extractors": extractors, "writers": writers, "processors": processors, "other": others},
                 "total_count": len(components),
                 "status": "success",
             }
+
+            return add_metrics(result, correlation_id, start_time, args)
 
         except Exception as e:
             logger.error(f"Error listing components: {e}")

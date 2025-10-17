@@ -25,10 +25,17 @@ class DiscoveryCache:
         Initialize the discovery cache.
 
         Args:
-            cache_dir: Directory for cache storage
+            cache_dir: Directory for cache storage (should come from MCPFilesystemConfig)
             default_ttl_hours: Default TTL in hours
         """
-        self.cache_dir = cache_dir or Path.home() / ".osiris_cache" / "mcp" / "discovery"
+        if cache_dir is None:
+            # Load from config to ensure compliance with filesystem contract
+            from osiris.mcp.config import get_config  # noqa: PLC0415  # Lazy import to avoid circular dependency
+
+            config = get_config()
+            cache_dir = config.cache_dir
+
+        self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.default_ttl = timedelta(hours=default_ttl_hours)
 
@@ -225,3 +232,42 @@ class DiscoveryCache:
             Osiris URI for the artifact
         """
         return f"osiris://mcp/discovery/{discovery_id}/{artifact_type}.json"
+
+    async def invalidate_connection(self, connection_id: str) -> int:
+        """
+        Invalidate all cache entries for a specific connection.
+
+        This is useful after successful connection doctor tests to ensure
+        fresh discovery when the connection is used again.
+
+        Args:
+            connection_id: Connection ID to invalidate (e.g., "mysql.default")
+
+        Returns:
+            Number of unique discovery entries invalidated
+        """
+        # Track discovery IDs to avoid double-counting (memory + disk)
+        invalidated_discovery_ids: set[str] = set()
+
+        # Clear from memory cache
+        keys_to_remove = [key for key, entry in self._memory_cache.items() if entry.get("connection_id") == connection_id]
+        for key in keys_to_remove:
+            entry = self._memory_cache[key]
+            if "discovery_id" in entry:
+                invalidated_discovery_ids.add(entry["discovery_id"])
+            del self._memory_cache[key]
+
+        # Clear from disk cache
+        for cache_file in self.cache_dir.glob("disc_*.json"):
+            try:
+                with open(cache_file) as f:
+                    entry = json.load(f)
+                if entry.get("connection_id") == connection_id:
+                    if "discovery_id" in entry:
+                        invalidated_discovery_ids.add(entry["discovery_id"])
+                    cache_file.unlink()
+            except (OSError, json.JSONDecodeError):
+                # Remove corrupted files
+                cache_file.unlink(missing_ok=True)
+
+        return len(invalidated_discovery_ids)

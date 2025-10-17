@@ -23,9 +23,11 @@ class AuditLogger:
         Initialize the audit logger.
 
         Args:
-            log_dir: Directory for audit logs. Defaults to .osiris_audit/
+            log_dir: Directory for audit logs (from MCPFilesystemConfig, required)
         """
-        self.log_dir = log_dir or Path.home() / ".osiris_audit"
+        if log_dir is None:
+            raise ValueError("log_dir is required (no Path.home() usage allowed)")
+        self.log_dir = log_dir
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
         # Create audit log file with daily rotation
@@ -198,7 +200,7 @@ class AuditLogger:
 
     def _sanitize_arguments(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
-        Sanitize arguments to remove sensitive data.
+        Sanitize arguments to remove sensitive data using spec-aware masking.
 
         Args:
             arguments: Original arguments
@@ -206,52 +208,12 @@ class AuditLogger:
         Returns:
             Sanitized arguments
         """
-        sanitized = {}
+        from osiris.cli.helpers.connection_helpers import (  # noqa: PLC0415  # Lazy import
+            mask_connection_for_display,
+        )
 
-        for key, value in arguments.items():
-            # Redact known sensitive fields
-            if key in ["password", "secret", "token", "api_key", "private_key"]:
-                sanitized[key] = "***REDACTED***"
-            elif key == "connection_string" and isinstance(value, str):
-                # Redact connection strings
-                sanitized[key] = self._redact_connection_string(value)
-            elif isinstance(value, dict):
-                # Recursively sanitize nested dicts
-                sanitized[key] = self._sanitize_arguments(value)
-            elif isinstance(value, list):
-                # Sanitize list items if they're dicts
-                sanitized[key] = [self._sanitize_arguments(item) if isinstance(item, dict) else item for item in value]
-            else:
-                sanitized[key] = value
-
-        return sanitized
-
-    def _redact_connection_string(self, conn_str: str) -> str:
-        """
-        Redact sensitive parts of a connection string.
-
-        Args:
-            conn_str: Original connection string
-
-        Returns:
-            Redacted connection string
-        """
-        import re  # noqa: PLC0415  # Lazy import for performance
-
-        # Pattern for DSN-style connection strings
-        dsn_pattern = r"(.*://)(.*?)(@.*)"
-        match = re.match(dsn_pattern, conn_str)
-
-        if match:
-            scheme = match.group(1)
-            host_part = match.group(3)
-            return f"{scheme}***{host_part}"
-
-        # If not a DSN, return partially redacted
-        if len(conn_str) > 10:
-            return f"{conn_str[:5]}***{conn_str[-5:]}"
-
-        return "***"
+        # Use spec-aware masking from shared helpers
+        return mask_connection_for_display(arguments)
 
     async def _write_event(self, event: dict[str, Any]):
         """Write an event to the audit log."""

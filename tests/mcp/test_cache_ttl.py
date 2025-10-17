@@ -169,3 +169,82 @@ class TestCacheTTL:
 
         uri = cache.get_discovery_uri("disc_456", "tables")
         assert uri == "osiris://mcp/discovery/disc_456/tables.json"
+
+    @pytest.mark.asyncio
+    async def test_cache_invalidate_connection(self, cache):
+        """Test cache invalidation by connection ID."""
+        # Create cache entries for multiple connections
+        await cache.set("mysql.default", "extractor", 5, {"data": "mysql"})
+        await cache.set("mysql.default", "extractor", 10, {"data": "mysql2"})
+        await cache.set("supabase.main", "writer", 0, {"data": "supabase"})
+
+        # Verify entries exist
+        assert await cache.get("mysql.default", "extractor", 5) is not None
+        assert await cache.get("mysql.default", "extractor", 10) is not None
+        assert await cache.get("supabase.main", "writer", 0) is not None
+
+        # Invalidate mysql.default connection
+        count = await cache.invalidate_connection("mysql.default")
+
+        # Should have invalidated 2 entries
+        assert count == 2
+
+        # MySQL entries should be gone
+        assert await cache.get("mysql.default", "extractor", 5) is None
+        assert await cache.get("mysql.default", "extractor", 10) is None
+
+        # Supabase entry should still exist
+        assert await cache.get("supabase.main", "writer", 0) is not None
+
+    @pytest.mark.asyncio
+    async def test_cache_uses_config_path(self, temp_cache_dir):
+        """Test cache uses config-driven path from MCPFilesystemConfig."""
+        # Create cache without passing cache_dir (should load from config)
+        cache_with_config = DiscoveryCache()
+
+        # Cache dir should be set from config, not Path.home()
+        assert cache_with_config.cache_dir is not None
+        assert "Path.home()" not in str(cache_with_config.cache_dir)
+
+        # Test with explicit cache_dir
+        cache_explicit = DiscoveryCache(cache_dir=temp_cache_dir)
+        assert cache_explicit.cache_dir == temp_cache_dir
+
+    @pytest.mark.asyncio
+    async def test_cache_invalidate_connection_disk_persistence(self, cache, temp_cache_dir):
+        """Test cache invalidation removes files from disk."""
+        # Create cache entries that persist to disk
+        discovery_id_1 = await cache.set("mysql.test", "extractor", 5, {"data": "test1"})
+        discovery_id_2 = await cache.set("mysql.test", "extractor", 10, {"data": "test2"})
+        discovery_id_3 = await cache.set("postgres.main", "writer", 0, {"data": "pg"})
+
+        # Verify files exist on disk
+        assert (temp_cache_dir / f"{discovery_id_1}.json").exists()
+        assert (temp_cache_dir / f"{discovery_id_2}.json").exists()
+        assert (temp_cache_dir / f"{discovery_id_3}.json").exists()
+
+        # Invalidate mysql.test connection
+        count = await cache.invalidate_connection("mysql.test")
+        assert count == 2
+
+        # MySQL cache files should be deleted
+        assert not (temp_cache_dir / f"{discovery_id_1}.json").exists()
+        assert not (temp_cache_dir / f"{discovery_id_2}.json").exists()
+
+        # Postgres cache file should still exist
+        assert (temp_cache_dir / f"{discovery_id_3}.json").exists()
+
+    @pytest.mark.asyncio
+    async def test_cache_invalidate_nonexistent_connection(self, cache):
+        """Test invalidating a connection that doesn't exist returns 0."""
+        # Create some cache entries
+        await cache.set("mysql.default", "extractor", 5, {"data": "test"})
+
+        # Invalidate non-existent connection
+        count = await cache.invalidate_connection("nonexistent.connection")
+
+        # Should return 0
+        assert count == 0
+
+        # Original entry should still exist
+        assert await cache.get("mysql.default", "extractor", 5) is not None

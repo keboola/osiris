@@ -5,10 +5,12 @@ MCP tools for memory capture and management.
 import json
 import logging
 import re
+import time
 from pathlib import Path
 from typing import Any
 
 from osiris.mcp.errors import ErrorFamily, OsirisError, PolicyError
+from osiris.mcp.metrics_helper import add_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +18,7 @@ logger = logging.getLogger(__name__)
 class MemoryTools:
     """Tools for capturing and managing session memory."""
 
-    def __init__(self, memory_dir: Path | None = None):
+    def __init__(self, memory_dir: Path | None = None, audit_logger=None):
         """Initialize memory tools."""
         if memory_dir is None:
             from osiris.mcp.config import get_config  # noqa: PLC0415  # Lazy import for performance
@@ -25,6 +27,7 @@ class MemoryTools:
             memory_dir = config.memory_dir
         self.memory_dir = memory_dir
         self.memory_dir.mkdir(parents=True, exist_ok=True)
+        self.audit = audit_logger
 
     async def capture(self, args: dict[str, Any]) -> dict[str, Any]:
         """
@@ -38,15 +41,19 @@ class MemoryTools:
         Returns:
             Dictionary with capture results
         """
+        start_time = time.time()
+        correlation_id = self.audit.make_correlation_id() if self.audit else "unknown"
+
         # Check consent first
         consent = args.get("consent", False)
         if not consent:
-            # Return error object instead of raising exception
-            return {
+            # Return error object instead of raising exception (still add metrics)
+            result = {
                 "error": {"code": "POLICY/POL001", "message": "Consent required for memory capture", "path": []},
                 "captured": False,  # Explicitly set captured to False
                 "status": "success",  # Still success despite error structure
             }
+            return add_metrics(result, correlation_id, start_time, args)
 
         session_id = args.get("session_id")
         if not session_id:
@@ -97,8 +104,8 @@ class MemoryTools:
                 ]
             )
 
-            # CLI returns the result in proper format
-            return result
+            # CLI returns the result in proper format - add metrics
+            return add_metrics(result, correlation_id, start_time, args)
 
         except PolicyError:
             raise
@@ -154,6 +161,9 @@ class MemoryTools:
         """
         Redact personally identifiable information from data.
 
+        Uses spec-aware secret detection from ComponentRegistry (same approach as
+        connection masking) to ensure comprehensive coverage of all secret patterns.
+
         Args:
             data: Data to redact
 
@@ -161,6 +171,15 @@ class MemoryTools:
             Redacted data
         """
         if isinstance(data, str):
+            # Redact DSN/connection strings (before other patterns)
+            # Pattern: scheme://[userinfo@]host[:port][/path]
+            data = re.sub(
+                r"\b((?:mysql|postgresql|postgres|mongodb|redis|http|https)://)[^@\s]+@([^/\s]+)",
+                r"\1***@\2",
+                data,
+                flags=re.IGNORECASE,
+            )
+
             # Redact email addresses
             data = re.sub(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", "***EMAIL***", data)
 
@@ -181,20 +200,8 @@ class MemoryTools:
         elif isinstance(data, dict):
             redacted = {}
             for key, value in data.items():
-                # Redact sensitive keys
-                if any(
-                    sensitive in key.lower()
-                    for sensitive in [
-                        "password",
-                        "secret",
-                        "token",
-                        "api_key",
-                        "private_key",
-                        "ssn",
-                        "credit_card",
-                        "card_number",
-                    ]
-                ):
+                # Use spec-aware secret detection (same pattern as connection_helpers.py)
+                if self._is_secret_key(key):
                     redacted[key] = "***REDACTED***"
                 else:
                     redacted[key] = self._redact_pii(value)
@@ -205,6 +212,66 @@ class MemoryTools:
 
         else:
             return data
+
+    def _is_secret_key(self, key_name: str) -> bool:
+        """
+        Check if a key name represents a secret field.
+
+        Uses the same heuristics as connection_helpers.py for consistency.
+        Handles compound names like "service_role_key" and "api_key" correctly.
+
+        Args:
+            key_name: Field name to check
+
+        Returns:
+            True if the field should be redacted
+        """
+        # Common secret patterns (expanded from connection_helpers.py)
+        secret_patterns = {
+            "password",
+            "passwd",
+            "pass",
+            "pwd",
+            "secret",
+            "key",
+            "token",
+            "auth",
+            "credential",
+            "api_key",
+            "apikey",
+            "access_token",
+            "refresh_token",
+            "private_key",
+            "client_secret",
+            "service_role_key",
+            "anon_key",
+            "access_key_id",
+            "secret_access_key",
+            "ssn",
+            "credit_card",
+            "card_number",
+        }
+
+        key_lower = key_name.lower()
+
+        # Exact match
+        if key_lower in secret_patterns:
+            return True
+
+        # Check for compound names with word boundary detection
+        for pattern in secret_patterns:
+            if pattern in key_lower:
+                # Check if it's at word boundaries (underscore-separated)
+                parts = key_lower.split("_")
+                if pattern in parts or any(part.endswith(pattern) for part in parts):
+                    # Exclude known non-secrets like "primary_key"
+                    if "primary" in key_lower and pattern == "key":  # nosec B105  # Comparing field name pattern
+                        continue
+                    if "foreign" in key_lower and pattern == "key":  # nosec B105  # Comparing field name pattern
+                        continue
+                    return True
+
+        return False
 
     def _count_redactions(self, original: Any, redacted: Any) -> int:
         """
@@ -240,14 +307,18 @@ class MemoryTools:
         Returns:
             Dictionary with session list
         """
+        start_time = time.time()
+        correlation_id = self.audit.make_correlation_id() if self.audit else "unknown"
+
         try:
             sessions = []
 
             # Scan memory directory for session files (in sessions/ subdirectory)
             sessions_dir = self.memory_dir / "sessions"
             if not sessions_dir.exists():
-                # Return empty list if sessions directory doesn't exist yet
-                return {"sessions": [], "count": 0, "total_size_kb": 0.0, "status": "success"}
+                # Return empty list if sessions directory doesn't exist yet (still add metrics)
+                result = {"sessions": [], "count": 0, "total_size_kb": 0.0, "status": "success"}
+                return add_metrics(result, correlation_id, start_time, args)
 
             for session_file in sessions_dir.glob("*.jsonl"):
                 session_id = session_file.stem
@@ -282,12 +353,14 @@ class MemoryTools:
                     }
                 )
 
-            return {
+            result = {
                 "sessions": sessions,
                 "count": len(sessions),
                 "total_size_kb": sum(s["size_kb"] for s in sessions),
                 "status": "success",
             }
+
+            return add_metrics(result, correlation_id, start_time, args)
 
         except Exception as e:
             logger.error(f"Failed to list sessions: {e}")

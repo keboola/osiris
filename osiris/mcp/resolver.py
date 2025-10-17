@@ -24,6 +24,7 @@ class ResourceResolver:
     - osiris://mcp/discovery/... -> cache/ (runtime, from config)
     - osiris://mcp/drafts/...    -> cache/ (runtime, from config)
     - osiris://mcp/memory/...    -> memory/ (runtime, from config)
+    - osiris://mcp/aiop/...      -> aiop/ (runtime, from config, read-only via tools)
     """
 
     def __init__(self, config=None):

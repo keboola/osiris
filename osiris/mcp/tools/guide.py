@@ -3,9 +3,11 @@ MCP tools for guided OML authoring.
 """
 
 import logging
+import time
 from typing import Any
 
 from osiris.mcp.errors import ErrorFamily, OsirisError
+from osiris.mcp.metrics_helper import add_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -13,9 +15,9 @@ logger = logging.getLogger(__name__)
 class GuideTools:
     """Tools for providing guided next steps in OML authoring."""
 
-    def __init__(self):
+    def __init__(self, audit_logger=None):
         """Initialize guide tools."""
-        pass
+        self.audit = audit_logger
 
     async def start(self, args: dict[str, Any]) -> dict[str, Any]:
         """
@@ -27,6 +29,9 @@ class GuideTools:
         Returns:
             Dictionary with guidance information
         """
+        start_time = time.time()
+        correlation_id = self.audit.make_correlation_id() if self.audit else "unknown"
+
         intent = args.get("intent", "")
         known_connections = args.get("known_connections", [])
         has_discovery = args.get("has_discovery", False)
@@ -34,12 +39,13 @@ class GuideTools:
         has_error_report = args.get("has_error_report", False)
 
         if not intent:
-            # Return error object with suggested first step
-            return {
+            # Return error object with suggested first step (still add metrics)
+            result = {
                 "error": {"code": "SCHEMA/OML020", "message": "intent is required", "path": ["intent"]},
                 "next_steps": [{"tool": "connections.list", "params": {}}],
                 "status": "success",  # Still success despite error structure
             }
+            return add_metrics(result, correlation_id, start_time, args)
 
         try:
             # Determine the next logical step based on context
@@ -58,7 +64,7 @@ class GuideTools:
             # Add recommendations for backward compatibility
             recommendations = self._get_tips_for_step(next_step)
 
-            return {
+            result = {
                 "objective": objective,
                 "next_step": next_step,
                 "next_steps": next_steps,
@@ -72,6 +78,8 @@ class GuideTools:
                 "recommendations": recommendations,
                 "status": "success",
             }
+
+            return add_metrics(result, correlation_id, start_time, args)
 
         except Exception as e:
             logger.error(f"Guide generation failed: {e}")

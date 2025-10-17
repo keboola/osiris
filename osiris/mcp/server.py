@@ -190,6 +190,27 @@ class OsirisMCPServer:
                     "required": ["consent", "session_id", "intent"],
                 },
             ),
+            # AIOP tools
+            types.Tool(
+                name="aiop_list",
+                description="List AIOP runs (read-only)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "pipeline": {"type": "string", "description": "Filter by pipeline slug"},
+                        "profile": {"type": "string", "description": "Filter by profile name"},
+                    },
+                },
+            ),
+            types.Tool(
+                name="aiop_show",
+                description="Show AIOP summary for a specific run (read-only)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {"run_id": {"type": "string", "description": "Run ID to show"}},
+                    "required": ["run_id"],
+                },
+            ),
         ]
 
         # Note: Aliases are handled in _call_tool, not registered as separate tools
@@ -225,6 +246,10 @@ class OsirisMCPServer:
                 result = await self._handle_guide_start(arguments)
             elif actual_name == "memory_capture":
                 result = await self._handle_memory_capture(arguments)
+            elif actual_name == "aiop_list":
+                result = await self._handle_aiop_list(arguments)
+            elif actual_name == "aiop_show":
+                result = await self._handle_aiop_show(arguments)
             else:
                 raise OsirisError(
                     ErrorFamily.SEMANTIC,
@@ -295,6 +320,7 @@ class OsirisMCPServer:
 
         # Initialize tool handlers
         from osiris.mcp.tools import (  # noqa: PLC0415  # Lazy import for performance
+            AIOPTools,
             ComponentsTools,
             ConnectionsTools,
             DiscoveryTools,
@@ -304,13 +330,14 @@ class OsirisMCPServer:
             UsecasesTools,
         )
 
-        self.connections_tools = ConnectionsTools()
-        self.components_tools = ComponentsTools()
-        self.discovery_tools = DiscoveryTools(self.cache)
-        self.oml_tools = OMLTools(self.resolver)
-        self.guide_tools = GuideTools()
-        self.memory_tools = MemoryTools(memory_dir=self.config.memory_dir)
-        self.usecases_tools = UsecasesTools()
+        self.connections_tools = ConnectionsTools(audit_logger=self.audit)
+        self.components_tools = ComponentsTools(audit_logger=self.audit)
+        self.discovery_tools = DiscoveryTools(self.cache, audit_logger=self.audit)
+        self.oml_tools = OMLTools(self.resolver, audit_logger=self.audit)
+        self.guide_tools = GuideTools(audit_logger=self.audit)
+        self.memory_tools = MemoryTools(memory_dir=self.config.memory_dir, audit_logger=self.audit)
+        self.usecases_tools = UsecasesTools(audit_logger=self.audit)
+        self.aiop_tools = AIOPTools(audit_logger=self.audit)
 
         # Register handlers
         self._register_handlers()
@@ -382,6 +409,14 @@ class OsirisMCPServer:
     async def _handle_memory_capture(self, args: dict[str, Any]) -> dict:
         """Handle memory.capture tool."""
         return await self.memory_tools.capture(args)
+
+    async def _handle_aiop_list(self, args: dict[str, Any]) -> dict:
+        """Handle aiop_list tool."""
+        return await self.aiop_tools.list(args)
+
+    async def _handle_aiop_show(self, args: dict[str, Any]) -> dict:
+        """Handle aiop_show tool."""
+        return await self.aiop_tools.show(args)
 
     async def run(self):
         """Run the MCP server with stdio transport."""

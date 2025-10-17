@@ -118,6 +118,7 @@ def show_help():
     console.print("  [cyan]memory[/cyan] capture          - Capture session memory")
     console.print("  [cyan]components[/cyan] list         - List pipeline components")
     console.print("  [cyan]usecases[/cyan] list           - List OML use case templates")
+    console.print("  [cyan]aiop[/cyan] list|show          - Read AIOP artifacts")
     console.print()
     console.print("[bold blue]Options[/bold blue]")
     console.print("  [cyan]--json[/cyan]      Output machine-readable JSON (all tool commands)")
@@ -129,6 +130,7 @@ def show_help():
     console.print("  [green]osiris mcp connections list --json[/green]    # List connections as JSON")
     console.print("  [green]osiris mcp discovery run --json[/green]       # Run discovery with JSON output")
     console.print("  [green]osiris mcp oml schema --json[/green]          # Get OML schema")
+    console.print("  [green]osiris mcp aiop list --json[/green]           # List AIOP runs")
     console.print()
 
 
@@ -659,6 +661,89 @@ def cmd_usecases(args):
         sys.exit(1)
 
 
+def cmd_aiop(args):
+    """Handle AIOP subcommands."""
+    ensure_pythonpath()
+
+    parser = argparse.ArgumentParser(prog="osiris mcp aiop", add_help=False)
+    parser.add_argument("action", nargs="?", help="Action: list or show")
+    parser.add_argument("--run", help="Run ID for show command")
+    parser.add_argument("--pipeline", help="Filter by pipeline slug (for list)")
+    parser.add_argument("--profile", help="Filter by profile name (for list)")
+    parser.add_argument("--json", action="store_true", help="Output JSON")
+    parser.add_argument("--help", "-h", action="store_true")
+
+    parsed_args = parser.parse_args(args)
+
+    # Action-specific help
+    if parsed_args.help and parsed_args.action == "list":
+        console.print("\n[bold]osiris mcp aiop list[/bold] - List AIOP runs")
+        console.print("\n[cyan]Usage:[/cyan]")
+        console.print("  osiris mcp aiop list [--pipeline SLUG] [--profile NAME] [--json]")
+        console.print("\n[cyan]Options:[/cyan]")
+        console.print("  --pipeline SLUG  Filter by pipeline slug")
+        console.print("  --profile NAME   Filter by profile name")
+        console.print("  --json           Output in JSON format")
+        console.print("\n[cyan]Examples:[/cyan]")
+        console.print("  osiris mcp aiop list")
+        console.print("  osiris mcp aiop list --pipeline orders_etl")
+        console.print("  osiris mcp aiop list --profile prod --json")
+        console.print()
+        return
+
+    if parsed_args.help and parsed_args.action == "show":
+        console.print("\n[bold]osiris mcp aiop show[/bold] - Show AIOP summary")
+        console.print("\n[cyan]Usage:[/cyan]")
+        console.print("  osiris mcp aiop show --run RUN_ID [--json]")
+        console.print("\n[cyan]Options:[/cyan]")
+        console.print("  --run RUN_ID  Run ID to show")
+        console.print("  --json        Output in JSON format")
+        console.print("\n[cyan]Examples:[/cyan]")
+        console.print("  osiris mcp aiop show --run 2025-10-08T10-30-00Z_01J9Z8")
+        console.print("  osiris mcp aiop show --run <run_id> --json")
+        console.print()
+        return
+
+    # General aiop help
+    if parsed_args.help or not parsed_args.action:
+        console.print("\n[bold]osiris mcp aiop[/bold] - AIOP artifact management")
+        console.print("\n[cyan]Actions:[/cyan]")
+        console.print("  list - List all AIOP runs")
+        console.print("  show - Show AIOP summary for a specific run")
+        console.print("\n[cyan]Get detailed help:[/cyan]")
+        console.print("  osiris mcp aiop list --help")
+        console.print("  osiris mcp aiop show --help")
+        console.print()
+        return
+
+    # Delegate to existing CLI commands in logs.py
+    if parsed_args.action == "list":
+        from osiris.cli.logs import aiop_list  # noqa: PLC0415  # Lazy import for CLI performance
+
+        # Build args for aiop_list
+        list_args = ["--json"]  # MCP always wants JSON
+        if parsed_args.pipeline:
+            list_args.extend(["--pipeline", parsed_args.pipeline])
+        if parsed_args.profile:
+            list_args.extend(["--profile", parsed_args.profile])
+        aiop_list(list_args)
+    elif parsed_args.action == "show":
+        if not parsed_args.run:
+            console.print("[red]Error: --run required for show command[/red]")
+            sys.exit(2)
+
+        from osiris.cli.logs import aiop_show  # noqa: PLC0415  # Lazy import for CLI performance
+
+        # Build args for aiop_show
+        show_args = ["--run", parsed_args.run, "--json"]
+        aiop_show(show_args)
+    else:
+        console.print(f"[red]Unknown action: {parsed_args.action}[/red]")
+        console.print("Available actions: list, show")
+        console.print("Use 'osiris mcp aiop --help' for detailed help.")
+        sys.exit(1)
+
+
 def main(argv=None):
     """
     Main entry point for osiris mcp command.
@@ -712,10 +797,12 @@ def main(argv=None):
         cmd_components(remaining)
     elif args.subcommand == "usecases":
         cmd_usecases(remaining)
+    elif args.subcommand == "aiop":
+        cmd_aiop(remaining)
     else:
         console.print(f"[red]Unknown subcommand: {args.subcommand}[/red]")
         console.print(
-            "Available: run, clients, tools, connections, discovery, oml, guide, memory, components, usecases"
+            "Available: run, clients, tools, connections, discovery, oml, guide, memory, components, usecases, aiop"
         )
         console.print("Use 'osiris mcp --help' for detailed help.")
         sys.exit(1)

@@ -96,17 +96,17 @@ class TestAuditEvents:
         assert audit_logger.session_id == session_id
         assert id1 != id2  # Different correlation IDs
 
-    def test_audit_daily_rotation(self):
+    def test_audit_daily_rotation(self, tmp_path):
         """Test audit logs rotate daily."""
         from datetime import datetime
 
         # Create logger with specific date
         with patch("osiris.mcp.audit.datetime") as mock_datetime:
             mock_datetime.now.return_value = datetime(2024, 1, 1, tzinfo=UTC)
-            audit1 = AuditLogger()
+            audit1 = AuditLogger(log_dir=tmp_path / "audit1")
             assert "20240101" in str(audit1.log_file)
 
             # Next day
             mock_datetime.now.return_value = datetime(2024, 1, 2, tzinfo=UTC)
-            audit2 = AuditLogger()
+            audit2 = AuditLogger(log_dir=tmp_path / "audit2")
             assert "20240102" in str(audit2.log_file)
