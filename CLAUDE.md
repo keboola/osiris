@@ -7,18 +7,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Osiris MVP is an **LLM-first conversational ETL pipeline generator**. It uses AI conversation to understand user intent, discover database schemas, generate SQL, and create YAML pipelines. This is an **agentic AI system** that replaces traditional template-based approaches with intelligent conversation.
 
 ### Project Status (October 2025)
-- **✅ v0.3.1 Released**: M2a AIOP Complete - **PRODUCTION READY**
+- **✅ v0.5.0 Phase 2 Complete**: MCP Functional Parity - **PRODUCTION READY**
 - **✅ Core Features**: E2B Integration (full parity, <1% overhead), Component Registry, Rich CLI
 - **✅ AIOP System**: AI Operation Package exports structured, LLM-consumable data after every run
   - Evidence, Semantic, Narrative, and Metadata layers
   - Automatic secret redaction and size-controlled exports
   - Delta analysis and intent discovery
+  - **NEW**: AIOP read-only access via MCP (`osiris mcp aiop list|show`)
 - **📊 Implementation**: 35 ADRs documenting design decisions, milestones M0-M2a complete
-- **🧪 Testing**: 1177+ tests passing, 43 skipped (E2B live tests)
+- **🧪 Testing**: 1200+ tests passing (94% pass rate)
+  - **MCP Core**: 268/268 passing (100%)
+  - **Phase 2 Features**: 79 new tests (metrics, PII, AIOP, cache, telemetry, audit)
   - Split-run test strategy for Supabase isolation (917 non-Supabase + 54 Supabase)
-  - 202 MCP-specific tests (all passing, +8 new concurrent tests)
-  - Stateless driver pattern eliminates test cross-contamination
-  - Test suite runtime: ~50 seconds (Supabase suite <1 second)
+  - Test suite runtime: ~12 seconds (MCP core), ~82 seconds (full suite)
+- **✅ MCP v0.5.0 Phase 2 Complete** - Functional Parity & Completeness (2025-10-17)
+  - **Tool Response Metrics**: All 10 tools return correlation_id, duration_ms, bytes_in, bytes_out
+  - **Config-Driven Paths**: Eliminated all Path.home() usage, filesystem contract enforced
+  - **AIOP Read-Only Access**: MCP clients can read AIOP artifacts for LLM-assisted debugging
+  - **Memory PII Redaction**: Comprehensive PII redaction (email, DSN, secrets) with consent requirement
+  - **Performance**: Selftest <1.3s (35% under target), P95 latency ~615ms (acceptable for security boundary)
+  - **Telemetry & Audit**: Spec-aware secret masking, payload truncation, config-driven paths
+  - **Cache**: 24-hour TTL, invalidation after connections doctor, config-driven storage
+  - See: `docs/reports/phase2-impact/` for complete impact analysis
 - **✅ MCP v0.5.0 Phase 1 Complete** - CLI-First Security Architecture (2025-10-16)
   - Zero secret access in MCP process via CLI delegation pattern
   - Spec-aware secret masking using ComponentRegistry x-secret declarations
@@ -34,7 +44,7 @@ Osiris MVP is an **LLM-first conversational ETL pipeline generator**. It uses AI
   - Fixed resource leaks (900 connections per 100 ops → 0 leaks)
   - All fixes verified with 202/202 tests passing (100% success rate)
   - See: `docs/security/P0_FIXES_COMPLETE_2025-10-16.md` and `docs/security/MASS_BUG_SEARCH_2025-10-16.md`
-- **🚀 Next**: P1 bug fixes (26 high-priority), MCP Phase 2 (Functional Parity), M2b (Real-time AIOP streaming)
+- **🚀 Next**: MCP Phase 3 (Comprehensive Testing & Security Audit), P1 bug fixes (26 high-priority), M2b (Real-time AIOP streaming)
 
 ## Quick Setup
 
@@ -77,6 +87,12 @@ make validate
 osiris logs list           # List all sessions
 osiris logs show --session <id>  # Show session details
 osiris logs aiop --last    # Export latest run as AIOP for LLM analysis
+
+# MCP server operations (v0.5.0+)
+osiris mcp run --selftest  # Run server self-test (<2s)
+osiris mcp connections list --json  # List connections
+osiris mcp aiop list --json  # List AIOP runs (Phase 2 feature)
+osiris mcp memory capture --session-id <id> --text "Note" --consent --json
 
 # Run pipeline in E2B cloud sandbox
 osiris run pipeline.yaml --e2b
@@ -543,18 +559,25 @@ Only run `detect-secrets scan > .secrets.baseline` when:
 4. After merge: Tag release (`git push origin v0.x.y`) and create GitHub Release
 
 ### Current Development Branches
-- **`feat/mcp-phase1-cli-bridge`** - MCP v0.5.0 Phase 1 + P0 Bug Fixes ✅ COMPLETE
-  - ✅ CLI bridge implementation with subprocess delegation
-  - ✅ 10 CLI subcommands for MCP tools
-  - ✅ Tool refactoring to eliminate secret access from MCP process
-  - ✅ Filesystem contract compliance
-  - ✅ Shared helpers module to prevent code duplication
-  - ✅ Security fix: Spec-aware secret masking using ComponentRegistry (replaces hardcoded lists)
-  - ✅ Component x-secret declarations as single source of truth for secret detection
-  - ✅ Resource URI system fully functional (discovery, memory, OML drafts)
-  - ✅ **P0 Bug Fixes**: Fixed 14 critical bugs (race conditions, cache, leaks, secrets)
-  - 📋 Status: Phase 1 complete + P0 bugs fixed (1177+ tests, 202 MCP tests passing), ready for Phase 2
-  - 📦 Latest commit: `d87be06` - "fix(critical): eliminate 14 P0 bugs" (2025-10-16)
+- **`feature/mcp-server-opus`** - MCP v0.5.0 Phase 1 + Phase 2 ✅ COMPLETE
+  - ✅ **Phase 1** (2025-10-16): CLI-First Security Architecture
+    - CLI bridge implementation with subprocess delegation
+    - 10 CLI subcommands for MCP tools
+    - Tool refactoring to eliminate secret access from MCP process
+    - Filesystem contract compliance
+    - Spec-aware secret masking using ComponentRegistry
+    - P0 Bug Fixes: Fixed 14 critical bugs (race conditions, cache, leaks, secrets)
+  - ✅ **Phase 2** (2025-10-17): Functional Parity & Completeness
+    - Tool response metrics: correlation_id, duration_ms, bytes_in, bytes_out
+    - Config-driven paths: Eliminated all Path.home() usage
+    - AIOP read-only access: MCP clients can read AIOP artifacts
+    - Memory tool improvements: PII redaction, consent requirement, --text flag
+    - Telemetry & audit: Spec-aware masking, payload truncation, stderr separation
+    - Cache: 24-hour TTL, invalidation, config-driven paths
+    - 79 new tests: metrics, PII, AIOP, cache, telemetry, audit, integration, performance
+  - 📋 Status: Phase 2 complete (1200+ tests, 268/268 MCP core passing, 94% overall), ready for Phase 3
+  - 📦 Latest commit: `f798590` - "feat(mcp): Phase 2 functional parity & completeness" (2025-10-17)
+  - 📄 Impact Analysis: `docs/reports/phase2-impact/` (10 comprehensive reports)
 - **`debug/codex-test`** - Test infrastructure fixes, E2B parity improvements, DuckDB processor (24 commits, ready for review)
 - **`feat/graphql-extractor-component`** - GraphQL API extractor component (1 commit, ready for merge)
 

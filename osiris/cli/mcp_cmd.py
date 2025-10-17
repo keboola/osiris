@@ -525,6 +525,7 @@ def cmd_memory(args):
     parser.add_argument("action", nargs="?", help="Action: capture")
     parser.add_argument("--session-id", required=False, help="Session ID")
     parser.add_argument("--consent", action="store_true", help="User consent flag")
+    parser.add_argument("--text", required=False, help="Simple text note (convenience for manual testing)")
     parser.add_argument("--events", required=False, help="JSON string of events to capture")
     parser.add_argument("--retention-days", type=int, default=365, help="Memory retention days (default: 365)")
     parser.add_argument("--json", action="store_true", help="Output JSON")
@@ -536,14 +537,16 @@ def cmd_memory(args):
     if parsed_args.help and parsed_args.action == "capture":
         console.print("\n[bold]osiris mcp memory capture[/bold] - Capture session memory")
         console.print("\n[cyan]Usage:[/cyan]")
-        console.print("  osiris mcp memory capture --session-id <id> --consent [--json]")
+        console.print("  osiris mcp memory capture --session-id <id> --consent [options]")
         console.print("\n[cyan]Required Options:[/cyan]")
         console.print("  --session-id ID  Session identifier to capture")
         console.print("  --consent        Explicit consent for memory capture (required)")
         console.print("\n[cyan]Options:[/cyan]")
+        console.print("  --text NOTE      Simple text note to capture (for quick manual testing)")
+        console.print("  --events JSON    JSON string of events to capture (for structured data)")
         console.print("  --json           Output in JSON format")
         console.print("\n[cyan]Examples:[/cyan]")
-        console.print("  osiris mcp memory capture --session-id abc123 --consent")
+        console.print("  osiris mcp memory capture --session-id abc123 --text 'Testing memory' --consent")
         console.print("  osiris mcp memory capture --session-id abc123 --consent --json")
         console.print()
         return
@@ -565,6 +568,7 @@ def cmd_memory(args):
         exit_code = memory_capture(
             session_id=parsed_args.session_id,
             consent=parsed_args.consent,
+            text=getattr(parsed_args, "text", None),
             json_output=parsed_args.json,
             events=parsed_args.events,
             retention_days=parsed_args.retention_days,

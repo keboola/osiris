@@ -5,12 +5,14 @@ This module implements the actual memory capture logic that the MCP server deleg
 """
 
 import json
+import logging
 import sys
 from datetime import UTC, datetime
 
 from rich.console import Console
 
-console = Console()
+# When --json is used, console should write to stderr
+console = Console(stderr=True)
 
 
 def memory_capture(  # noqa: PLR0915  # CLI command, naturally verbose
@@ -19,6 +21,7 @@ def memory_capture(  # noqa: PLR0915  # CLI command, naturally verbose
     json_output: bool = False,
     events: str | None = None,
     retention_days: int = 365,
+    text: str | None = None,
 ):
     """Capture session memory for future reference.
 
@@ -28,10 +31,15 @@ def memory_capture(  # noqa: PLR0915  # CLI command, naturally verbose
         json_output: Whether to output JSON instead of rich formatting
         events: JSON string of events to capture (for MCP delegation)
         retention_days: Number of days to retain memory (default: 365)
+        text: Simple text note to capture (convenience for manual testing)
 
     Returns:
         Exit code (0 for success, non-zero for errors)
     """
+    # Redirect logging to stderr when using --json
+    if json_output:
+        logging.basicConfig(stream=sys.stderr, force=True, level=logging.INFO)
+
     # Require explicit consent
     if not consent:
         error_msg = "Memory capture requires explicit --consent flag"
@@ -53,7 +61,7 @@ def memory_capture(  # noqa: PLR0915  # CLI command, naturally verbose
         return 2
 
     try:
-        # Parse events if provided
+        # Parse events if provided (or use --text for quick testing)
         events_data = []
         if events:
             try:
@@ -65,6 +73,9 @@ def memory_capture(  # noqa: PLR0915  # CLI command, naturally verbose
                 else:
                     console.print(f"[red]Error: {error_msg}[/red]")
                 return 3
+        elif text:
+            # Convenience: convert --text to a simple event
+            events_data = [{"note": text, "type": "manual_entry"}]
 
         # Get memory directory from config
         from osiris.mcp.config import get_config  # noqa: PLC0415  # Lazy import for CLI performance
@@ -111,6 +122,9 @@ def memory_capture(  # noqa: PLR0915  # CLI command, naturally verbose
         entry_size = len(json.dumps(redacted_entry))
 
         if json_output:
+            # Redirect logging to stderr for clean JSON output
+            logging.basicConfig(stream=sys.stderr, force=True)
+
             result = {
                 "status": "success",
                 "captured": True,
@@ -122,6 +136,7 @@ def memory_capture(  # noqa: PLR0915  # CLI command, naturally verbose
                 "entry_size_bytes": entry_size,
                 "file_path": str(memory_file),
             }
+            # Print to stdout (logs go to stderr due to logging.basicConfig above)
             print(json.dumps(result, indent=2))
         else:
             console.print(f"\n[bold green]✓ Memory captured for session: {session_id}[/bold green]")
