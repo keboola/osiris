@@ -360,7 +360,9 @@ class TestClaudeDesktopSimulation:
         assert details.get("suggest") is not None or "suggest" in error
         # Check for connection reference format (may vary slightly in wording)
         suggest = details.get("suggest", "") or error.get("suggest", "")
-        assert "@" in suggest and ("family" in suggest.lower() or "alias" in suggest.lower() or "connection" in suggest.lower())
+        assert "@" in suggest and (
+            "family" in suggest.lower() or "alias" in suggest.lower() or "connection" in suggest.lower()
+        )
 
     @pytest.mark.asyncio
     async def test_all_tool_schemas_valid(self, mcp_server):
