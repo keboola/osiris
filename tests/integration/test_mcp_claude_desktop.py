@@ -299,7 +299,7 @@ class TestClaudeDesktopSimulation:
 
         # Verify all succeeded
         assert len(results) == 10
-        for i, result in enumerate(results):
+        for result in results:
             result_data = json.loads(result[0].text)
             assert result_data["status"] == "success"
             # Server wraps tool response in envelope: {status, result, _meta}
