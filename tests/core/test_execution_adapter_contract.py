@@ -1,9 +1,9 @@
 """Tests for ExecutionAdapter contract and data structures."""
 
-import json
-import tempfile
 from datetime import datetime
+import json
 from pathlib import Path
+import tempfile
 
 import pytest
 

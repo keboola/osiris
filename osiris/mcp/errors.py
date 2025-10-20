@@ -4,8 +4,8 @@ Error taxonomy for Osiris MCP server.
 Provides structured error handling with consistent format across all tools.
 """
 
-import re
 from enum import Enum
+import re
 from typing import Any
 
 # Deterministic error code mappings

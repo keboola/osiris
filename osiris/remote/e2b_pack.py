@@ -1,10 +1,10 @@
 """E2B payload packing module with validation."""
 
+from dataclasses import dataclass
 import json
+from pathlib import Path
 import tarfile
 import tempfile
-from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 

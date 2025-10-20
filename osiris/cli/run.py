@@ -2,13 +2,13 @@
 
 import json
 import os
+from pathlib import Path
 import sys
 import time
-from pathlib import Path
 from typing import Any
 
-import yaml
 from rich.console import Console
+import yaml
 
 from ..core.adapter_factory import get_execution_adapter
 from ..core.aiop_export import export_aiop_auto

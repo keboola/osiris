@@ -14,9 +14,9 @@
 
 """Tests for osiris logs aiop subcommands (list, show, export, prune)."""
 
+from pathlib import Path
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 

@@ -1,8 +1,8 @@
 """Test E2B full CLI execution with MySQL to CSV pipeline."""
 
 import os
-import tempfile
 from pathlib import Path
+import tempfile
 
 import pytest
 

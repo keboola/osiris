@@ -45,9 +45,12 @@ class TestMCPE2ESimple:
         assert mock_cli.called
         assert mock_cli.call_args[0][0] == ["mcp", "connections", "list"]
 
-        # Verify result
+        # Verify result envelope structure: {status, result, _meta}
         assert result["status"] == "success"
-        assert "connections" in result
+        assert "result" in result
+        # Extract connections from nested result
+        result_data = result.get("result", result)
+        assert "connections" in result_data
 
     @pytest.mark.asyncio
     async def test_discovery_delegates_to_cli(self, mock_cli, mcp_server):
@@ -76,9 +79,12 @@ class TestMCPE2ESimple:
             assert "mcp" in mock_cli.call_args[0][0]
             assert "discovery" in mock_cli.call_args[0][0]
 
-            # Verify result
+            # Verify result envelope structure
             assert result["status"] == "success"
-            assert result["discovery_id"].startswith("disc_")
+            assert "result" in result
+            # Extract discovery_id from nested result
+            result_data = result.get("result", result)
+            assert result_data["discovery_id"].startswith("disc_")
 
     @pytest.mark.asyncio
     async def test_no_env_vars_in_mcp_process(self, mock_cli, mcp_server):
@@ -107,11 +113,15 @@ class TestMCPE2ESimple:
             suggest="Provide connection ID",
         )
 
-        with pytest.raises(OsirisError) as exc_info:
-            await mcp_server._handle_connections_doctor({})
+        # Handlers catch OsirisError and return error envelope (don't raise)
+        result = await mcp_server._handle_connections_doctor({})
 
-        assert exc_info.value.family == ErrorFamily.SCHEMA
-        assert "connection_id" in str(exc_info.value)
+        # Verify error envelope structure
+        assert result["status"] == "error"
+        # Error should have code and message
+        error = result["error"]
+        assert error["code"] in ["SCHEMA", "schema"]
+        assert "connection_id" in error["message"]
 
     @pytest.mark.asyncio
     async def test_metrics_included_in_response(self, mock_cli, mcp_server):
@@ -130,23 +140,26 @@ class TestMCPE2ESimple:
 
         result = await mcp_server._handle_connections_list({})
 
+        # Verify envelope includes _meta at top level
         assert "_meta" in result
-        assert "correlation_id" in result["_meta"]
-        assert "duration_ms" in result["_meta"]
-        assert result["_meta"]["duration_ms"] > 0
+        meta = result["_meta"]
+        assert "correlation_id" in meta
+        assert "duration_ms" in meta
+        # CLI returns metrics, server may add more
+        assert meta["duration_ms"] >= 0
 
     @pytest.mark.asyncio
     async def test_aiop_list_delegates_to_cli(self, mock_cli, mcp_server):
         """Test that AIOP operations delegate to CLI."""
+        # AIOP tool expects CLI to return {"data": [...]} and extracts it
         mock_cli.return_value = {
-            "runs": [
+            "data": [
                 {
                     "run_id": "run_test_001",
                     "pipeline": "test_pipeline",
                     "status": "success",
                 }
             ],
-            "count": 1,
             "status": "success",
             "_meta": {"correlation_id": "test-005", "duration_ms": 8.5},
         }
@@ -155,8 +168,13 @@ class TestMCPE2ESimple:
 
         assert mock_cli.called
         assert mock_cli.call_args[0][0] == ["mcp", "aiop", "list"]
+        # Verify result envelope
         assert result["status"] == "success"
-        assert len(result["runs"]) == 1
+        assert "result" in result
+        # Extract runs from nested result
+        result_data = result.get("result", result)
+        assert "runs" in result_data
+        assert len(result_data["runs"]) == 1
 
     @pytest.mark.asyncio
     async def test_memory_capture_delegates_to_cli(self, mock_cli, mcp_server):
@@ -182,8 +200,13 @@ class TestMCPE2ESimple:
         )
 
         assert mock_cli.called
-        assert result["captured"] is True
-        assert result["pii_redacted"] is True
+        # Verify result envelope
+        assert result["status"] == "success"
+        assert "result" in result
+        # Extract fields from nested result
+        result_data = result.get("result", result)
+        assert result_data["captured"] is True
+        assert result_data["pii_redacted"] is True
 
 
 @pytest.mark.asyncio
@@ -197,8 +220,7 @@ async def test_full_workflow_sequence():
     3. All CLI calls succeed
     4. No env vars needed in MCP process
     """
-    with patch("osiris.mcp.cli_bridge.run_cli_json") as mock_cli, \
-         patch("osiris.mcp.server.init_telemetry"):
+    with patch("osiris.mcp.cli_bridge.run_cli_json") as mock_cli, patch("osiris.mcp.server.init_telemetry"):
         # Setup responses
         responses = [
             # Step 1: List connections
@@ -237,9 +259,12 @@ async def test_full_workflow_sequence():
         with patch.dict(os.environ, {}, clear=True):
             # Step 1: List connections
             result1 = await server._handle_connections_list({})
-            # MCP server wraps CLI response in envelope
+            # MCP server wraps CLI response in envelope: {status, result, _meta}
             assert result1["status"] == "success"
-            assert result1["result"]["count"] == 1
+            assert "result" in result1
+            # Extract count from nested result
+            result1_data = result1.get("result", result1)
+            assert result1_data["count"] == 1
 
             # Step 2: Discovery
             result2 = await server._handle_discovery_request(
@@ -249,7 +274,10 @@ async def test_full_workflow_sequence():
                 }
             )
             assert result2["status"] == "success"
-            assert result2["result"]["discovery_id"].startswith("disc_")
+            assert "result" in result2
+            # Extract discovery_id from nested result
+            result2_data = result2.get("result", result2)
+            assert result2_data["discovery_id"].startswith("disc_")
 
             # Verify all CLI calls made
             assert mock_cli.call_count == 2

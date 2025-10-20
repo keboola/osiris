@@ -10,8 +10,6 @@ Ensures memory capture:
 6. Writes to correct config-driven path
 """
 
-import json
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest

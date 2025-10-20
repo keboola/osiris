@@ -18,9 +18,9 @@ This module provides JSON Schema-based validation for connection configurations
 with friendly error messages and validation modes (warn/strict/off).
 """
 
-import os
 from dataclasses import dataclass
 from enum import Enum
+import os
 from typing import Any
 
 # Basic JSON schemas for connection validation

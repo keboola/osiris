@@ -10,8 +10,8 @@ import logging
 from pathlib import Path
 from typing import Any, Literal
 
-import yaml
 from jsonschema import Draft202012Validator, ValidationError
+import yaml
 
 from ..core.session_logging import SessionContext
 from .error_mapper import FriendlyError, FriendlyErrorMapper

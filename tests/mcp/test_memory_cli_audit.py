@@ -9,9 +9,9 @@ These tests ensure:
 """
 
 import json
+from pathlib import Path
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 
@@ -51,6 +51,7 @@ filesystem:
                 "--consent",
                 "--json",
             ],
+            check=False,
             capture_output=True,
             text=True,
             cwd=str(tmp_path),
@@ -95,6 +96,7 @@ filesystem:
                 "--consent",
                 "--json",
             ],
+            check=False,
             capture_output=True,
             text=True,
             cwd=str(tmp_path),
@@ -136,6 +138,7 @@ filesystem:
                 "--consent",
                 "--json",
             ],
+            check=False,
             capture_output=True,
             text=True,
             cwd=str(tmp_path),
@@ -199,7 +202,7 @@ class TestMemoryURIResolver:
 
     def test_uri_resolves_to_correct_file(self, tmp_path):
         """Test that memory_uri can be resolved to actual file path."""
-        from osiris.mcp.config import MCPFilesystemConfig, MCPConfig
+        from osiris.mcp.config import MCPConfig, MCPFilesystemConfig
         from osiris.mcp.resolver import ResourceResolver
 
         # Create config with tmp_path
@@ -246,6 +249,7 @@ filesystem:
                 "--consent",
                 "--json",
             ],
+            check=False,
             capture_output=True,
             text=True,
             cwd=str(tmp_path),
@@ -255,7 +259,7 @@ filesystem:
         memory_uri = output["memory_uri"]
 
         # Resolve URI
-        from osiris.mcp.config import MCPFilesystemConfig, MCPConfig
+        from osiris.mcp.config import MCPConfig, MCPFilesystemConfig
         from osiris.mcp.resolver import ResourceResolver
 
         fs_config = MCPFilesystemConfig()
@@ -308,6 +312,7 @@ filesystem:
                 "--consent",
                 "--json",
             ],
+            check=False,
             capture_output=True,
             text=True,
             cwd=str(tmp_path),
@@ -331,6 +336,7 @@ filesystem:
         """Test that --help shows the --text flag."""
         result = subprocess.run(
             [sys.executable, str(_OSIRIS_PY), "mcp", "memory", "capture", "--help"],
+            check=False,
             capture_output=True,
             text=True,
         )

@@ -71,6 +71,7 @@ class DiscoveryTools:
                         "discovery_id": cached_result.get("discovery_id"),
                         "cached": True,
                         "artifacts": self._get_artifact_uris(cached_result.get("discovery_id")),
+                        "status": "success",
                     }
                     return add_metrics(result, correlation_id, start_time, args)
 

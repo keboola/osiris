@@ -1,10 +1,10 @@
 """Minimal local runner for compiled manifests."""
 
+from datetime import datetime
 import json
 import logging
-import time
-from datetime import datetime
 from pathlib import Path
+import time
 from typing import Any
 
 import yaml

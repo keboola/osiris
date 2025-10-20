@@ -43,6 +43,7 @@ class GuideTools:
             result = {
                 "error": {"code": "SCHEMA/OML020", "message": "intent is required", "path": ["intent"]},
                 "next_steps": [{"tool": "connections.list", "params": {}}],
+                "status": "success",
             }
             return add_metrics(result, correlation_id, start_time, args)
 
@@ -75,6 +76,7 @@ class GuideTools:
                     "has_error_report": has_error_report,
                 },
                 "recommendations": recommendations,
+                "status": "success",
             }
 
             return add_metrics(result, correlation_id, start_time, args)

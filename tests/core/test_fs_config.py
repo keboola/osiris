@@ -1,8 +1,8 @@
 """Tests for filesystem configuration (ADR-0028)."""
 
 import os
-import tempfile
 from pathlib import Path
+import tempfile
 
 import pytest
 import yaml

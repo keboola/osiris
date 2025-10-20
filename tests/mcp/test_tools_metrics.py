@@ -91,9 +91,7 @@ class TestMetricsFields:
     @pytest.mark.asyncio
     async def test_oml_validate_metrics(self, mock_oml_tools):
         """Test oml.validate returns metrics fields."""
-        result = await mock_oml_tools.validate(
-            {"oml_content": "version: 0.1.0\nname: test\nsteps: []", "strict": True}
-        )
+        result = await mock_oml_tools.validate({"oml_content": "version: 0.1.0\nname: test\nsteps: []", "strict": True})
 
         assert "correlation_id" in result["_meta"]
         assert "duration_ms" in result["_meta"]
@@ -269,6 +267,7 @@ def mock_components_tools(mock_audit_logger):
 @pytest.fixture
 def mock_discovery_tools(mock_audit_logger, monkeypatch):
     """Mock discovery tools with audit logger."""
+
     # Mock CLI calls at the cli_bridge level
     async def mock_run_cli_json(args):
         return {"discovery_id": "disc_test123", "cached": False, "status": "success"}

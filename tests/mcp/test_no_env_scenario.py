@@ -155,7 +155,10 @@ class TestNoEnvScenario:
         assert "from osiris.core.config import load_connections_yaml" not in content
 
         # SHOULD contain CLI bridge import (module-level import is fine)
-        assert "from osiris.mcp import cli_bridge" in content or "from osiris.mcp.cli_bridge import run_cli_json" in content
+        assert (
+            "from osiris.mcp import cli_bridge" in content
+            or "from osiris.mcp.cli_bridge import run_cli_json" in content
+        )
 
         # Check discovery.py
         discovery_file = tools_module_path / "discovery.py"
@@ -167,7 +170,10 @@ class TestNoEnvScenario:
         assert "from osiris.core.config import parse_connection_ref" not in content
 
         # SHOULD contain CLI bridge import (module-level import is fine)
-        assert "from osiris.mcp import cli_bridge" in content or "from osiris.mcp.cli_bridge import run_cli_json" in content
+        assert (
+            "from osiris.mcp import cli_bridge" in content
+            or "from osiris.mcp.cli_bridge import run_cli_json" in content
+        )
 
     def test_mcp_config_loads_from_yaml_not_env(self, tmp_path):
         """Test that MCPFilesystemConfig prefers osiris.yaml over environment."""

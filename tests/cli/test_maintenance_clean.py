@@ -1,7 +1,7 @@
 """Tests for maintenance clean command."""
 
-import json
 from datetime import datetime, timedelta
+import json
 
 from osiris.cli.init import init_command
 from osiris.cli.maintenance import clean_command

@@ -5,9 +5,9 @@ import logging
 import time
 from typing import Any
 
+from jsonpath_ng import parse as jsonpath_parse
 import pandas as pd
 import requests
-from jsonpath_ng import parse as jsonpath_parse
 
 logger = logging.getLogger(__name__)
 

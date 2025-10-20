@@ -3,8 +3,8 @@
 import contextlib
 import inspect
 import os
-import tempfile
 from pathlib import Path
+import tempfile
 from unittest.mock import MagicMock
 
 import pytest

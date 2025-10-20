@@ -93,6 +93,7 @@ class ComponentsTools:
             result = {
                 "components": {"extractors": extractors, "writers": writers, "processors": processors, "other": others},
                 "total_count": len(components),
+                "status": "success",
             }
 
             return add_metrics(result, correlation_id, start_time, args)

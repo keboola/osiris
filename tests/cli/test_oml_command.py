@@ -1,7 +1,7 @@
 """Tests for OML CLI command."""
 
-import tempfile
 from pathlib import Path
+import tempfile
 from unittest.mock import patch
 
 import yaml

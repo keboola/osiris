@@ -12,9 +12,9 @@ Provides:
 import argparse
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
-from pathlib import Path
 
 from rich.console import Console
 
@@ -665,7 +665,7 @@ def cmd_usecases(args):
         sys.exit(1)
 
 
-def cmd_aiop(args):
+def cmd_aiop(args):  # noqa: PLR0915  # CLI router, naturally verbose
     """Handle AIOP subcommands."""
     ensure_pythonpath()
 

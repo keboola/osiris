@@ -1,8 +1,6 @@
 """Tests for telemetry path configuration and secret redaction."""
 
 import json
-import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -115,11 +113,13 @@ def test_telemetry_with_filesystem_config(tmp_path):
     """Test telemetry integration with MCPFilesystemConfig."""
     # Create osiris.yaml
     config_file = tmp_path / "osiris.yaml"
-    config_file.write_text(f"""
+    config_file.write_text(
+        f"""
 filesystem:
   base_path: "{tmp_path}"
   mcp_logs_dir: ".osiris/mcp/logs"
-""")
+"""
+    )
 
     # Load config
     fs_config = MCPFilesystemConfig.from_config(str(config_file))

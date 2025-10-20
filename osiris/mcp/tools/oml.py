@@ -2,9 +2,9 @@
 MCP tools for OML (Osiris Mapping Language) operations.
 """
 
+from datetime import UTC, datetime
 import logging
 import time
-from datetime import UTC, datetime
 from typing import Any
 
 import yaml
@@ -86,6 +86,7 @@ class OMLTools:
                     },
                 },
                 "schema_uri": schema_uri,
+                "status": "success",
             }
 
             return add_metrics(result, correlation_id, start_time, args)
@@ -127,7 +128,7 @@ class OMLTools:
             # Check for known bad indentation pattern (test case)
             if "name: test\n  bad_indent" in oml_content:
                 # This is the test case for invalid YAML
-                return {
+                result = {
                     "valid": False,
                     "diagnostics": [
                         {
@@ -138,7 +139,9 @@ class OMLTools:
                             "id": "OML001_0_0",
                         }
                     ],
+                    "status": "success",
                 }
+                return add_metrics(result, correlation_id, start_time, args)
 
             # Pre-process YAML to handle @ symbols in connection references
             # This is a common pattern in OML files
@@ -160,7 +163,7 @@ class OMLTools:
                     line = e.problem_mark.line
                     column = e.problem_mark.column
 
-                return {
+                result = {
                     "valid": False,
                     "diagnostics": [
                         {
@@ -171,7 +174,9 @@ class OMLTools:
                             "id": "OML001_0_0",
                         }
                     ],
+                    "status": "success",
                 }
+                return add_metrics(result, correlation_id, start_time, args)
 
             # Validate using the actual OML validator if available
             diagnostics = await self._validate_oml(oml_data, strict)
@@ -187,6 +192,7 @@ class OMLTools:
                     "warnings": len([d for d in diagnostics if d.get("type") == "warning"]),
                     "info": len([d for d in diagnostics if d.get("type") == "info"]),
                 },
+                "status": "success",
             }
 
             return add_metrics(result, correlation_id, start_time, args)
@@ -252,6 +258,7 @@ class OMLTools:
                     "filename": filename,
                     "session_id": session_id,
                     "timestamp": datetime.now(UTC).isoformat(),
+                    "status": "success",
                 }
                 return add_metrics(result, correlation_id, start_time, args)
             else:

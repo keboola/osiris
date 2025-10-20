@@ -4,19 +4,19 @@ This worker receives commands via stdin, executes drivers directly,
 and streams results back via stdout.
 """
 
+from collections.abc import Iterable, Mapping
 import copy
 import hashlib
 import importlib
 import json
 import logging
 import os
+from pathlib import Path
 import re
 import subprocess
 import sys
 import time
 import traceback
-from collections.abc import Iterable, Mapping
-from pathlib import Path
 from typing import Any
 
 try:  # Python 3.11+

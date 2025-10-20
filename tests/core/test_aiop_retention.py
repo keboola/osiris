@@ -17,8 +17,8 @@
 
 import datetime
 import os
-import time
 from pathlib import Path
+import time
 from unittest.mock import patch
 
 import pytest

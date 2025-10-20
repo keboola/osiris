@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Generate multi-page HTML report from Osiris session logs."""
 
-import json
-import sys
 from datetime import datetime
+import json
 from pathlib import Path
+import sys
 from typing import Any
 
 

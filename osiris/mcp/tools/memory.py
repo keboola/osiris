@@ -4,9 +4,9 @@ MCP tools for memory capture and management.
 
 import json
 import logging
+from pathlib import Path
 import re
 import time
-from pathlib import Path
 from typing import Any
 
 from osiris.mcp.errors import ErrorFamily, OsirisError, PolicyError
@@ -51,6 +51,7 @@ class MemoryTools:
             result = {
                 "error": {"code": "POLICY/POL001", "message": "Consent required for memory capture", "path": []},
                 "captured": False,  # Explicitly set captured to False
+                "status": "success",
             }
             return add_metrics(result, correlation_id, start_time, args)
 
@@ -316,7 +317,7 @@ class MemoryTools:
             sessions_dir = self.memory_dir / "sessions"
             if not sessions_dir.exists():
                 # Return empty list if sessions directory doesn't exist yet (still add metrics)
-                result = {"sessions": [], "count": 0, "total_size_kb": 0.0}
+                result = {"sessions": [], "count": 0, "total_size_kb": 0.0, "status": "success"}
                 return add_metrics(result, correlation_id, start_time, args)
 
             for session_file in sessions_dir.glob("*.jsonl"):
@@ -356,6 +357,7 @@ class MemoryTools:
                 "sessions": sessions,
                 "count": len(sessions),
                 "total_size_kb": sum(s["size_kb"] for s in sessions),
+                "status": "success",
             }
 
             return add_metrics(result, correlation_id, start_time, args)

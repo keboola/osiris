@@ -6,8 +6,8 @@ to CLI subcommands instead of direct secret access.
 """
 
 import json
-import subprocess
 from pathlib import Path
+import subprocess
 from unittest.mock import Mock, patch
 
 import pytest

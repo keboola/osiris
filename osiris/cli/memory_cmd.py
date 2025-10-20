@@ -4,10 +4,10 @@ Provides memory capture functionality with PII redaction.
 This module implements the actual memory capture logic that the MCP server delegates to.
 """
 
+from datetime import UTC, datetime
 import json
 import logging
 import sys
-from datetime import UTC, datetime
 
 from rich.console import Console
 
