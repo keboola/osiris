@@ -461,6 +461,26 @@ Advanced users can customize LLM system prompts: `python osiris.py dump-prompts 
    - Create PR with all updates
 5. **Post-merge**: Tag release (v0.x.y), create GitHub Release
 
+## Docs Governance (Authoritative)
+
+- **ADRs** live in `docs/adr/`. They are short, stable decisions with a clear status.
+- **Every non-trivial ADR spawns an initiative folder** in `docs/milestones/<slug>/`:
+  - `00-initiative.md` - Index, goal, Definition of Done (DoD), KPIs
+  - `10-plan.md` - Scope, risks, effort estimates
+  - `20-execution.md` - Checklists, sub-agents, PR/issues links
+  - `30-verification.md` - Tests, metrics, verification commands
+  - `40-retrospective.md` - What went well / areas to improve
+  - `attachments/` - Bulky reports, coverage data, detailed audits
+- **Work-in-progress technical designs** go to `docs/design/`. Once accepted, they either become ADRs or are linked from ADRs.
+- **Stable specs** live in `docs/reference/`. Operator/user guides in `docs/guides/`.
+- **One-off reports** in `docs/reports/<date>-<topic>/`.
+- **When an initiative is done**, we **archive** it to `docs/archive/<slug>-v<semver>/` and keep only living docs in active folders.
+
+**Contributor Rules**:
+- Update the relevant initiative index (`00-initiative.md`) when scope/DoD changes.
+- If you generate reports, link them from the initiative's `attachments/` or place under `docs/reports/` and link there.
+- Prefer small ADRs + focused milestones over giant documents.
+
 ### Testing & Validation
 **Requirements for Milestone Completion**:
 - Automated test coverage >80% for new code

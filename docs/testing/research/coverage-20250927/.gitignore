@@ -1,7 +1,0 @@
-# Coverage artifacts (too large for git)
-coverage.json
-html/
-
-# To regenerate these:
-# cd testing_env
-# make coverage

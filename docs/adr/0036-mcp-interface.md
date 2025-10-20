@@ -117,6 +117,29 @@ This design ensures `--help` is safe to invoke and provides additional utility c
 - **Increased responsibility for MCP server maintenance**: Requires ongoing upkeep of SDK integration and protocol compliance.
 - **Removal of chat fallback**: No legacy fallback path may impact clients not yet migrated.
 
+## Implementation
+
+This ADR was implemented across **3 phases** (October 2025) within the MCP v0.5.0 initiative:
+
+### Phase 1-3 Status: ✅ Complete
+- **Initiative**: [`docs/milestones/mcp-v0.5.0/00-initiative.md`](../milestones/mcp-v0.5.0/00-initiative.md)
+- **Plan**: [`docs/milestones/mcp-v0.5.0/10-plan.md`](../milestones/mcp-v0.5.0/10-plan.md)
+- **Execution**: [`docs/milestones/mcp-v0.5.0/20-execution.md`](../milestones/mcp-v0.5.0/20-execution.md)
+- **Verification**: [`docs/milestones/mcp-v0.5.0/30-verification.md`](../milestones/mcp-v0.5.0/30-verification.md)
+
+### Key Results
+- Phase 1: CLI-first security architecture with zero secret access (verified)
+- Phase 2: Functional parity with all 10 tools + AIOP read-only access
+- Phase 3: Comprehensive testing (490 tests, 78.4% coverage, 100% pass rate)
+- **Security**: 10/10 security tests passing, zero credential leakage
+- **Performance**: Selftest <1.3s (target <2s), P95 latency 1.5× baseline
+- **Coverage**: 95.3% infrastructure coverage (target >85%)
+
+### Phase 4: In Progress (Target 2025-10-31)
+- Documentation & migration guide
+- Production deployment guide
+- v0.5.0 release preparation
+
 ## Adoption Plan
 
 1. Implement MCP server using the official `modelcontextprotocol` Python SDK, pinning protocol version and tool schema.
