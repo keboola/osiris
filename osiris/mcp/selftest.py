@@ -82,8 +82,10 @@ async def run_selftest() -> bool:
                     content = result.content[0]
                     if hasattr(content, "text"):
                         response = json.loads(content.text)
-                        if response.get("version") == "0.1.0" and "schema" in response:
-                            print(f"✅ oml.schema.get returned valid schema (v{response['version']})")
+                        # Handle nested envelope format: {"status": "success", "result": {...}, "_meta": {...}}
+                        payload = response.get("result", response)
+                        if payload.get("version") == "0.1.0" and "schema" in payload:
+                            print(f"✅ oml.schema.get returned valid schema (v{payload['version']})")
                         else:
                             print(f"❌ oml.schema.get invalid schema: {response}")
                             all_passed = False

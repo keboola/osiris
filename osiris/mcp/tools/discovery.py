@@ -9,8 +9,8 @@ import logging
 import time
 from typing import Any
 
+from osiris.mcp import cli_bridge
 from osiris.mcp.cache import DiscoveryCache
-from osiris.mcp.cli_bridge import run_cli_json
 from osiris.mcp.errors import ErrorFamily, OsirisError
 from osiris.mcp.metrics_helper import add_metrics
 
@@ -70,7 +70,6 @@ class DiscoveryTools:
                     result = {
                         "discovery_id": cached_result.get("discovery_id"),
                         "cached": True,
-                        "status": "success",
                         "artifacts": self._get_artifact_uris(cached_result.get("discovery_id")),
                     }
                     return add_metrics(result, correlation_id, start_time, args)
@@ -87,7 +86,7 @@ class DiscoveryTools:
                 str(samples),
             ]
 
-            result = await run_cli_json(cli_args)
+            result = await cli_bridge.run_cli_json(cli_args)
 
             # Cache the result if idempotency_key provided
             if idempotency_key and result.get("discovery_id"):

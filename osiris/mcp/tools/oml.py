@@ -85,7 +85,6 @@ class OMLTools:
                         },
                     },
                 },
-                "status": "success",
                 "schema_uri": schema_uri,
             }
 
@@ -139,7 +138,6 @@ class OMLTools:
                             "id": "OML001_0_0",
                         }
                     ],
-                    "status": "success",
                 }
 
             # Pre-process YAML to handle @ symbols in connection references
@@ -173,7 +171,6 @@ class OMLTools:
                             "id": "OML001_0_0",
                         }
                     ],
-                    "status": "success",
                 }
 
             # Validate using the actual OML validator if available
@@ -185,7 +182,6 @@ class OMLTools:
             result = {
                 "valid": len([d for d in diagnostics if d.get("type") == "error"]) == 0,
                 "diagnostics": formatted_diagnostics,
-                "status": "success",
                 "summary": {
                     "errors": len([d for d in diagnostics if d.get("type") == "error"]),
                     "warnings": len([d for d in diagnostics if d.get("type") == "warning"]),
@@ -256,7 +252,6 @@ class OMLTools:
                     "filename": filename,
                     "session_id": session_id,
                     "timestamp": datetime.now(UTC).isoformat(),
-                    "status": "success",
                 }
                 return add_metrics(result, correlation_id, start_time, args)
             else:
