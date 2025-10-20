@@ -264,9 +264,7 @@ class ResourceResolver:
 
         return types.ReadResourceResult(
             contents=[
-                types.TextResourceContents(
-                    uri=uri, mimeType="application/json", text=json.dumps(content, indent=2)
-                )
+                types.TextResourceContents(uri=uri, mimeType="application/json", text=json.dumps(content, indent=2))
             ]
         )
 
