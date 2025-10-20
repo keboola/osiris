@@ -8,7 +8,6 @@ import json
 from pathlib import Path
 
 from mcp import types
-from pydantic import AnyUrl
 
 from osiris.mcp.errors import ErrorFamily, OsirisError
 
@@ -132,7 +131,7 @@ class ResourceResolver:
         # Add schema resources
         resources.append(
             types.Resource(
-                uri=AnyUrl("osiris://mcp/schemas/oml/v0.1.0.json"),
+                uri="osiris://mcp/schemas/oml/v0.1.0.json",
                 name="OML v0.1.0 Schema",
                 description="JSON Schema for OML pipeline format version 0.1.0",
                 mimeType="application/json",
@@ -142,7 +141,7 @@ class ResourceResolver:
         # Add prompt resources
         resources.append(
             types.Resource(
-                uri=AnyUrl("osiris://mcp/prompts/oml_authoring_guide.md"),
+                uri="osiris://mcp/prompts/oml_authoring_guide.md",
                 name="OML Authoring Guide",
                 description="Guide for authoring OML pipelines",
                 mimeType="text/markdown",
@@ -152,7 +151,7 @@ class ResourceResolver:
         # Add usecase resources
         resources.append(
             types.Resource(
-                uri=AnyUrl("osiris://mcp/usecases/catalog.yaml"),
+                uri="osiris://mcp/usecases/catalog.yaml",
                 name="Use Case Catalog",
                 description="Catalog of OML pipeline use cases and templates",
                 mimeType="application/x-yaml",
@@ -206,7 +205,7 @@ class ResourceResolver:
                 mime_type = "text/plain"
 
             return types.ReadResourceResult(
-                contents=[types.TextResourceContents(uri=AnyUrl(uri), mimeType=mime_type, text=text)]
+                contents=[types.TextResourceContents(uri=uri, mimeType=mime_type, text=text)]
             )
 
         except (OSError, json.JSONDecodeError) as e:
@@ -266,7 +265,7 @@ class ResourceResolver:
         return types.ReadResourceResult(
             contents=[
                 types.TextResourceContents(
-                    uri=AnyUrl(uri), mimeType="application/json", text=json.dumps(content, indent=2)
+                    uri=uri, mimeType="application/json", text=json.dumps(content, indent=2)
                 )
             ]
         )
