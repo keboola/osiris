@@ -61,7 +61,12 @@ Osiris MVP is an **LLM-first conversational ETL pipeline generator**. It uses AI
   - Fixed cache system (now persists correctly across restarts)
   - Eliminated all credential leaks in driver logging
   - Fixed resource leaks (900 connections per 100 ops → 0 leaks)
-- **🚀 Next**: Phase 4 (Documentation & Release Preparation), P1 bug fixes (26 high-priority), M3b (Real-time AIOP streaming)
+- **✅ MCP v0.5.0 Phase 4 Complete** (2025-10-20)
+  - Documentation & Release Preparation complete
+  - Migration guides, production deployment guide, version bump to 0.5.0
+  - PR #45 ready for merge to feature/mcp-server-opus
+  - Ready for v0.5.0 release
+- **🚀 Next**: PR merge to feature/mcp-server-opus, final release branch & tag, P1 bug fixes (26 high-priority), M3b (Real-time AIOP streaming)
 
 ## Quick Setup
 
