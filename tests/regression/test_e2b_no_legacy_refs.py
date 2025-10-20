@@ -1,7 +1,7 @@
 """Regression test: E2B modules must not contain legacy path references."""
 
-import re
 from pathlib import Path
+import re
 
 BANNED_PATTERNS = [
     r'\bPath\("logs"\)',  # Path("logs")

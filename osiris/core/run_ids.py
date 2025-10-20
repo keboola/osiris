@@ -14,10 +14,10 @@
 
 """Run ID generation with multiple formats (ADR-0028)."""
 
-import sqlite3
-import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+import sqlite3
+import uuid
 
 
 class CounterStore:

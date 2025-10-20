@@ -7,19 +7,40 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Osiris MVP is an **LLM-first conversational ETL pipeline generator**. It uses AI conversation to understand user intent, discover database schemas, generate SQL, and create YAML pipelines. This is an **agentic AI system** that replaces traditional template-based approaches with intelligent conversation.
 
 ### Project Status (October 2025)
+- **✅ v0.5.0 Phase 3 Complete**: Comprehensive Testing & Security Hardening - **PRODUCTION READY FOR v0.5.0 RELEASE**
 - **✅ v0.5.0 Phase 2 Complete**: MCP Functional Parity - **PRODUCTION READY**
+- **✅ v0.5.0 Phase 1 Complete**: CLI-First Security Architecture - **PRODUCTION READY**
 - **✅ Core Features**: E2B Integration (full parity, <1% overhead), Component Registry, Rich CLI
 - **✅ AIOP System**: AI Operation Package exports structured, LLM-consumable data after every run
   - Evidence, Semantic, Narrative, and Metadata layers
   - Automatic secret redaction and size-controlled exports
   - Delta analysis and intent discovery
-  - **NEW**: AIOP read-only access via MCP (`osiris mcp aiop list|show`)
-- **📊 Implementation**: 35 ADRs documenting design decisions, milestones M0-M2a complete
-- **🧪 Testing**: 1200+ tests passing (94% pass rate)
-  - **MCP Core**: 268/268 passing (100%)
-  - **Phase 2 Features**: 79 new tests (metrics, PII, AIOP, cache, telemetry, audit)
+  - AIOP read-only access via MCP (`osiris mcp aiop list|show`)
+- **📊 Implementation**: 35 ADRs documenting design decisions, milestones M0-M3 (Phase 3) complete
+- **🧪 Testing**: 1577+ tests passing (98.1% pass rate), Phase 3 adds 490 tests
+  - **Phase 3 Suite**: 490/490 tests passing (100% of non-skipped)
+    - Security Validation: 10/10 tests, zero credential leakage confirmed
+    - Error Scenarios: 51/51 tests, all 33 error codes covered
+    - Load & Performance: 10 tests, P95 latency ≤ 2× baseline
+    - Server Integration: 56/56 tests, 79% coverage (was 17.5%)
+    - Resource Resolver: 50/50 tests, 98% coverage (was 47.8%)
+    - Integration E2E: 21 tests, full Claude Desktop workflows
+  - **MCP Core**: 294 tests passing (100%)
+  - **Test Coverage**: 78.4% overall (85.1% adjusted), infrastructure >95%
   - Split-run test strategy for Supabase isolation (917 non-Supabase + 54 Supabase)
-  - Test suite runtime: ~12 seconds (MCP core), ~82 seconds (full suite)
+  - Test suite runtime: ~137 seconds (Phase 3), ~13 seconds (MCP core), ~196 seconds (full suite)
+- **✅ MCP v0.5.0 Phase 3 Complete** - Comprehensive Testing & Security Hardening (2025-10-20)
+  - **Security Validation** (10/10 tests): Zero credential leakage, CLI-first isolation verified
+  - **Error Coverage** (51/51 tests): All 33 error codes tested, timeout/network failures handled
+  - **Performance Baseline**: <1.3s selftest, stable latency under concurrent load
+  - **Server Integration** (56 tests): Tool dispatch, lifecycle, resource URIs, protocol compliance
+  - **Resource Resolution** (50 tests): Memory, discovery, OML resources fully tested + 2 bugs fixed
+  - **Manual Test Procedures**: 5 scenarios with 27 pass criteria for Claude Desktop integration
+  - **Comprehensive Docs**: 2,000+ lines (coverage reports, verification audits, PRtest guides)
+  - **Production Bugs Fixed**:
+    - TextContent → TextResourceContents (MCP SDK type fix)
+    - Discovery URI parsing indices correction
+  - See: `docs/milestones/mcp-finish-plan.md`, `docs/testing/PHASE3_FINAL_AUDIT.md`
 - **✅ MCP v0.5.0 Phase 2 Complete** - Functional Parity & Completeness (2025-10-17)
   - **Tool Response Metrics**: All 10 tools return correlation_id, duration_ms, bytes_in, bytes_out
   - **Config-Driven Paths**: Eliminated all Path.home() usage, filesystem contract enforced
@@ -28,23 +49,19 @@ Osiris MVP is an **LLM-first conversational ETL pipeline generator**. It uses AI
   - **Performance**: Selftest <1.3s (35% under target), P95 latency ~615ms (acceptable for security boundary)
   - **Telemetry & Audit**: Spec-aware secret masking, payload truncation, config-driven paths
   - **Cache**: 24-hour TTL, invalidation after connections doctor, config-driven storage
-  - See: `docs/reports/phase2-impact/` for complete impact analysis
 - **✅ MCP v0.5.0 Phase 1 Complete** - CLI-First Security Architecture (2025-10-16)
   - Zero secret access in MCP process via CLI delegation pattern
   - Spec-aware secret masking using ComponentRegistry x-secret declarations
   - Resource URI system fully functional (discovery, memory, OML drafts)
   - Config-driven filesystem paths (no hardcoded directories)
   - 10 CLI subcommands for MCP tools across 7 domains
-  - Comprehensive test coverage and CI security guards
 - **✅ P0 Critical Bug Fixes Complete** (2025-10-16)
   - Fixed 14 critical bugs causing data corruption and security vulnerabilities
   - Eliminated race conditions in audit logging and telemetry (50-70% data loss fixed)
   - Fixed cache system (now persists correctly across restarts)
   - Eliminated all credential leaks in driver logging
   - Fixed resource leaks (900 connections per 100 ops → 0 leaks)
-  - All fixes verified with 202/202 tests passing (100% success rate)
-  - See: `docs/security/P0_FIXES_COMPLETE_2025-10-16.md` and `docs/security/MASS_BUG_SEARCH_2025-10-16.md`
-- **🚀 Next**: MCP Phase 3 (Comprehensive Testing & Security Audit), P1 bug fixes (26 high-priority), M2b (Real-time AIOP streaming)
+- **🚀 Next**: Phase 4 (Documentation & Release Preparation), P1 bug fixes (26 high-priority), M3b (Real-time AIOP streaming)
 
 ## Quick Setup
 

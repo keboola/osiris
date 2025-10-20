@@ -2,8 +2,8 @@
 
 import gzip
 import json
-import tempfile
 from pathlib import Path
+import tempfile
 
 from osiris.core.run_export_v2 import build_aiop
 

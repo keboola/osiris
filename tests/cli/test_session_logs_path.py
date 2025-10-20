@@ -1,7 +1,7 @@
 """Tests for CLI session logging paths using filesystem contract."""
 
-import tempfile
 from pathlib import Path
+import tempfile
 
 import pytest
 import yaml

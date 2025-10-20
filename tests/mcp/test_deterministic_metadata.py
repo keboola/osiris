@@ -4,8 +4,6 @@ Tests for deterministic metadata features:
 - Deterministic correlation ID derivation from request_id
 """
 
-import pytest
-
 from osiris.mcp.cli_bridge import derive_correlation_id
 from osiris.mcp.server import CANONICAL_TOOL_IDS, canonical_tool_id
 

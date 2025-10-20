@@ -4,8 +4,8 @@ MCP tools for OML use case management.
 
 import builtins
 import logging
-import time
 from pathlib import Path
+import time
 from typing import Any
 
 import yaml
@@ -77,6 +77,7 @@ class UsecasesTools:
                 "by_category": categories,
                 "total_count": len(formatted_usecases),
                 "categories": list(categories.keys()),
+                "status": "success",
             }
 
             return add_metrics(result, correlation_id, start_time, args)
@@ -265,6 +266,7 @@ class UsecasesTools:
                 "usecase": usecase,
                 "oml_template": oml_template,
                 "snippet_uri": f"osiris://mcp/usecases/{usecase_id}.yaml",
+                "status": "success",
             }
 
             return add_metrics(result, correlation_id, start_time, args)

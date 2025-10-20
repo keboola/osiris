@@ -5,11 +5,11 @@ transport layer for testing without network access.
 """
 
 import contextlib
-import os
-import time
 from dataclasses import dataclass
 from enum import Enum
+import os
 from pathlib import Path
+import time
 from typing import Any, Protocol
 
 

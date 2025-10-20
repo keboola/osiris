@@ -14,11 +14,11 @@
 
 """Run index management for tracking pipeline executions (ADR-0028)."""
 
+from dataclasses import asdict, dataclass
+from datetime import datetime
 import fcntl
 import json
 import os
-from dataclasses import asdict, dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 

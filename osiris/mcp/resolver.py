@@ -8,7 +8,6 @@ import json
 from pathlib import Path
 
 from mcp import types
-from pydantic import AnyUrl
 
 from osiris.mcp.errors import ErrorFamily, OsirisError
 
@@ -132,7 +131,7 @@ class ResourceResolver:
         # Add schema resources
         resources.append(
             types.Resource(
-                uri=AnyUrl("osiris://mcp/schemas/oml/v0.1.0.json"),
+                uri="osiris://mcp/schemas/oml/v0.1.0.json",
                 name="OML v0.1.0 Schema",
                 description="JSON Schema for OML pipeline format version 0.1.0",
                 mimeType="application/json",
@@ -142,7 +141,7 @@ class ResourceResolver:
         # Add prompt resources
         resources.append(
             types.Resource(
-                uri=AnyUrl("osiris://mcp/prompts/oml_authoring_guide.md"),
+                uri="osiris://mcp/prompts/oml_authoring_guide.md",
                 name="OML Authoring Guide",
                 description="Guide for authoring OML pipelines",
                 mimeType="text/markdown",
@@ -152,7 +151,7 @@ class ResourceResolver:
         # Add usecase resources
         resources.append(
             types.Resource(
-                uri=AnyUrl("osiris://mcp/usecases/catalog.yaml"),
+                uri="osiris://mcp/usecases/catalog.yaml",
                 name="Use Case Catalog",
                 description="Catalog of OML pipeline use cases and templates",
                 mimeType="application/x-yaml",
@@ -199,11 +198,15 @@ class ResourceResolver:
                 with open(file_path) as f:
                     content = json.load(f)
                     text = json.dumps(content, indent=2)
+                mime_type = "application/json"
             else:
                 with open(file_path) as f:
                     text = f.read()
+                mime_type = "text/plain"
 
-            return types.ReadResourceResult(contents=[types.TextContent(type="text", text=text)])
+            return types.ReadResourceResult(
+                contents=[types.TextResourceContents(uri=uri, mimeType=mime_type, text=text)]
+            )
 
         except (OSError, json.JSONDecodeError) as e:
             raise OsirisError(
@@ -224,8 +227,9 @@ class ResourceResolver:
             Generated artifact content
         """
         # Parse discovery URI format: osiris://mcp/discovery/{disc_id}/{artifact}.json
+        # Split gives: ['osiris:', '', 'mcp', 'discovery', 'disc_id', 'artifact.json']
         parts = uri.split("/")
-        if len(parts) < 5:
+        if len(parts) < 6:
             raise OsirisError(
                 ErrorFamily.SEMANTIC,
                 f"Invalid discovery URI format: {uri}",
@@ -233,8 +237,8 @@ class ResourceResolver:
                 suggest="Use format osiris://mcp/discovery/<id>/<artifact>.json",
             )
 
-        discovery_id = parts[3]
-        artifact_name = parts[4].replace(".json", "")
+        discovery_id = parts[4]
+        artifact_name = parts[5].replace(".json", "")
 
         # Generate placeholder content based on artifact type
         if artifact_name == "overview":
@@ -258,7 +262,11 @@ class ResourceResolver:
                 suggest="Valid artifacts: overview, tables, samples",
             )
 
-        return types.ReadResourceResult(contents=[types.TextContent(type="text", text=json.dumps(content, indent=2))])
+        return types.ReadResourceResult(
+            contents=[
+                types.TextResourceContents(uri=uri, mimeType="application/json", text=json.dumps(content, indent=2))
+            ]
+        )
 
     async def write_resource(self, uri: str, content: str) -> bool:
         """

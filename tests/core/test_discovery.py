@@ -2,10 +2,10 @@
 
 """Tests for discovery functionality."""
 
-import json
-import tempfile
 from datetime import datetime
+import json
 from pathlib import Path
+import tempfile
 from unittest.mock import AsyncMock
 
 import pandas as pd

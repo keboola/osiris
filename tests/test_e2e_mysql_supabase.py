@@ -1,8 +1,8 @@
 """E2E test for MySQL to Supabase pipeline."""
 
 import json
-import tempfile
 from pathlib import Path
+import tempfile
 from unittest.mock import MagicMock, patch
 
 import pandas as pd

@@ -11,11 +11,11 @@ Usage:
 """
 
 import os
+from pathlib import Path
 import shutil
 import subprocess  # nosec B404
 import sys
 import tempfile
-from pathlib import Path
 from typing import Any
 
 import yaml

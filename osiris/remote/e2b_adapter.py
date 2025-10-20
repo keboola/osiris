@@ -9,8 +9,8 @@ import contextlib
 import json
 import logging
 import os
-import time
 from pathlib import Path
+import time
 from typing import Any
 
 import yaml

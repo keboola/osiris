@@ -1,8 +1,8 @@
 """Filesystem CSV writer for deterministic CSV output."""
 
+from collections.abc import Iterator
 import csv
 import logging
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 

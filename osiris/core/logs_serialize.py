@@ -4,8 +4,8 @@ This module provides functions to serialize session data to JSON format
 that conforms to the defined schemas.
 """
 
-import json
 from datetime import datetime
+import json
 from pathlib import Path
 
 from osiris.core.session_reader import SessionSummary

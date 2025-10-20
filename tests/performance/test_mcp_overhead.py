@@ -27,13 +27,11 @@ OPTIMIZATION OPPORTUNITIES:
 """
 
 import asyncio
-import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 import time
-from pathlib import Path
-from typing import Dict, List
 
 import pytest
 
@@ -41,7 +39,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
-def calculate_percentiles(latencies: List[float]) -> Dict[str, float]:
+def calculate_percentiles(latencies: list[float]) -> dict[str, float]:
     """Calculate P50, P95, P99 percentiles from latency measurements."""
     sorted_latencies = sorted(latencies)
     n = len(sorted_latencies)
@@ -55,13 +53,14 @@ def calculate_percentiles(latencies: List[float]) -> Dict[str, float]:
     }
 
 
-def run_cli_command(args: List[str], timeout: float = 10.0) -> Dict:
+def run_cli_command(args: list[str], timeout: float = 10.0) -> dict:
     """Run CLI command and measure execution time."""
     start_time = time.perf_counter()
 
     # Run command
     result = subprocess.run(
         ["python", "osiris.py"] + args,
+        check=False,
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -117,7 +116,7 @@ class TestCLIBridgeOverhead:
 
         # Document baseline for optimization tracking
         print(f"\n✅ Baseline established: P95 = {stats['p95']:.2f}ms")
-        print("   (includes ~500ms Python startup + ~{:.0f}ms execution)".format(stats['p95'] - 500))
+        print("   (includes ~500ms Python startup + ~{:.0f}ms execution)".format(stats["p95"] - 500))
 
     def test_sequential_load(self):
         """
@@ -171,7 +170,7 @@ class TestCLIBridgeOverhead:
         """
         num_concurrent = 10
 
-        async def run_async_call(call_id: int) -> Dict:
+        async def run_async_call(call_id: int) -> dict:
             """Run a single async CLI call."""
             loop = asyncio.get_event_loop()
             start_time = time.perf_counter()
@@ -247,7 +246,7 @@ class TestCLIBridgeOverhead:
         )
 
         # Log efficiency gain
-        efficiency = (expected_sequential / total_time_s)
+        efficiency = expected_sequential / total_time_s
         print(f"\n✅ Concurrency efficiency: {efficiency:.1f}x faster than sequential")
 
     def test_python_startup_baseline(self):
@@ -261,6 +260,7 @@ class TestCLIBridgeOverhead:
         for _ in range(10):
             result = subprocess.run(
                 ["python", "-c", "import osiris"],
+                check=False,
                 capture_output=True,
                 cwd=str(Path(__file__).parent.parent.parent),
             )
@@ -276,10 +276,10 @@ class TestCLIBridgeOverhead:
 
         stats = calculate_percentiles(latencies)
 
-        print(f"\n=== Python Startup Baseline ===")
+        print("\n=== Python Startup Baseline ===")
         print(f"P50: {stats['p50']:.2f}ms")
         print(f"P95: {stats['p95']:.2f}ms")
-        print(f"Note: This is the minimum overhead for subprocess delegation")
+        print("Note: This is the minimum overhead for subprocess delegation")
 
         # Document baseline
         assert stats["p95"] < 1000, f"Startup overhead {stats['p95']:.2f}ms exceeds 1000ms"
@@ -338,7 +338,7 @@ class TestSpecificToolOverhead:
             latencies.append(result["latency_ms"])
 
         stats = calculate_percentiles(latencies)
-        print(f"\n=== connections_list overhead ===")
+        print("\n=== connections_list overhead ===")
         print(f"P95: {stats['p95']:.2f}ms")
         print(f"Avg: {stats['avg']:.2f}ms")
         assert stats["p95"] <= 900
@@ -352,7 +352,7 @@ class TestSpecificToolOverhead:
             latencies.append(result["latency_ms"])
 
         stats = calculate_percentiles(latencies)
-        print(f"\n=== components_list overhead ===")
+        print("\n=== components_list overhead ===")
         print(f"P95: {stats['p95']:.2f}ms")
         print(f"Avg: {stats['avg']:.2f}ms")
         # Components list is heavier due to spec loading
@@ -382,7 +382,7 @@ steps:
                 latencies.append(result["latency_ms"])
 
             stats = calculate_percentiles(latencies)
-            print(f"\n=== oml_validate overhead ===")
+            print("\n=== oml_validate overhead ===")
             print(f"P95: {stats['p95']:.2f}ms")
             print(f"Avg: {stats['avg']:.2f}ms")
 

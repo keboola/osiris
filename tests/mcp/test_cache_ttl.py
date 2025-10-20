@@ -2,10 +2,10 @@
 Test discovery cache TTL behavior.
 """
 
-import json
-import tempfile
 from datetime import UTC, datetime, timedelta
+import json
 from pathlib import Path
+import tempfile
 from unittest.mock import patch
 
 import pytest

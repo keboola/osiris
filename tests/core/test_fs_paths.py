@@ -1,8 +1,8 @@
 """Tests for filesystem paths and token rendering (ADR-0028)."""
 
-import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+import tempfile
 
 from osiris.core.fs_config import FilesystemConfig, IdsConfig, NamingConfig
 from osiris.core.fs_paths import (

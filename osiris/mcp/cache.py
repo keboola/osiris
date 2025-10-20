@@ -4,8 +4,8 @@ Cache management for Osiris MCP server.
 Handles TTL-based caching for discovery artifacts.
 """
 
-import json
 from datetime import UTC, datetime, timedelta
+import json
 from pathlib import Path
 from typing import Any
 
@@ -250,7 +250,9 @@ class DiscoveryCache:
         invalidated_discovery_ids: set[str] = set()
 
         # Clear from memory cache
-        keys_to_remove = [key for key, entry in self._memory_cache.items() if entry.get("connection_id") == connection_id]
+        keys_to_remove = [
+            key for key, entry in self._memory_cache.items() if entry.get("connection_id") == connection_id
+        ]
         for key in keys_to_remove:
             entry = self._memory_cache[key]
             if "discovery_id" in entry:

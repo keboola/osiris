@@ -6,9 +6,9 @@ Tests that:
 2. Global telemetry singleton is thread-safe (RC-004)
 """
 
+from pathlib import Path
 import threading
 import time
-from pathlib import Path
 from typing import Any
 
 from osiris.mcp.telemetry import TelemetryEmitter, init_telemetry

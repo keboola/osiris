@@ -4,12 +4,12 @@ Telemetry module for Osiris MCP server.
 Emits structured telemetry events for observability and monitoring.
 """
 
+from datetime import UTC, datetime
 import json
 import logging
+from pathlib import Path
 import threading
 import time
-from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)

@@ -2,8 +2,8 @@
 Test audit event logging for MCP server.
 """
 
-import json
 from datetime import UTC
+import json
 from unittest.mock import patch
 
 import pytest

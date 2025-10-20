@@ -4,11 +4,11 @@ Provides standalone discovery functionality that can be used directly
 or delegated to from MCP commands.
 """
 
+from datetime import UTC, datetime
 import json
 import logging
-import time
-from datetime import UTC, datetime
 from pathlib import Path
+import time
 
 from rich.console import Console
 from rich.table import Table

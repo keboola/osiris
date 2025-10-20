@@ -14,10 +14,10 @@
 
 """Retention policy execution for run logs and AIOP (ADR-0028)."""
 
-import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+import shutil
 from typing import Any
 
 from osiris.core.fs_config import FilesystemConfig

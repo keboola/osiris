@@ -1,8 +1,8 @@
 """CLI command for managing pipeline runs."""
 
 import argparse
-import json
 from datetime import datetime, timedelta
+import json
 
 from rich.console import Console
 from rich.table import Table
