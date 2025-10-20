@@ -179,6 +179,9 @@ def mask_connection_for_display(connection: dict[str, Any], family: str | None =
     declarations to identify which fields are secrets, with fallback to
     heuristic detection for unknown families.
 
+    Recursively masks nested dictionaries to handle structures like
+    /resolved_connection/password declared in component specs.
+
     Args:
         connection: Connection configuration dictionary
         family: Connection family (e.g., "mysql", "supabase", "duckdb").
@@ -186,23 +189,35 @@ def mask_connection_for_display(connection: dict[str, Any], family: str | None =
                 If None, uses fallback heuristics only.
 
     Returns:
-        Copy of connection with sensitive fields masked
+        Deep copy of connection with all sensitive fields masked
     """
     # Get secret fields from component specs (or fallback)
     secret_fields = _get_secret_fields_for_family(family)
 
-    masked = connection.copy()
-    for key in masked:
-        # Check if this field matches any secret field name
-        if _is_secret_key(key, secret_fields):
-            # Check if it's an env var reference like ${VAR}
-            if isinstance(masked[key], str) and masked[key].startswith("${"):
-                # Keep the env var reference (not a secret value)
-                continue
-            else:
-                # Mask the actual value
-                masked[key] = "***MASKED***"
-    return masked
+    def _mask_recursive(obj: Any) -> Any:
+        """Recursively mask secrets in nested structures."""
+        if isinstance(obj, dict):
+            result = {}
+            for key, value in obj.items():
+                # Check if this key is a secret field
+                if _is_secret_key(key, secret_fields):
+                    # Preserve env var references like ${VAR}
+                    if isinstance(value, str) and value.startswith("${"):
+                        result[key] = value
+                    else:
+                        # Mask the actual value
+                        result[key] = "***MASKED***"
+                # Recursively mask nested dicts
+                elif isinstance(value, dict):
+                    result[key] = _mask_recursive(value)
+                # Keep non-dict, non-secret values as-is
+                else:
+                    result[key] = value
+            return result
+        # Non-dict values pass through
+        return obj
+
+    return _mask_recursive(connection)
 
 
 def load_and_mask_connections(substitute_env: bool = True) -> dict[str, dict[str, dict[str, Any]]]:

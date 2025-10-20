@@ -40,17 +40,18 @@ class TestBuildClaudeClientsSnippet:
         assert server_config["env"]["PYTHONPATH"] == "/Users/me/osiris"
 
     def test_venv_python_path_with_spaces(self):
-        """Test that paths with spaces are handled correctly in bash args."""
+        """Test that paths with spaces are safely quoted with shlex.quote()."""
         config = build_claude_clients_snippet(
             base_path="/Users/me/my project/osiris", venv_python="/Users/me/my project/osiris/.venv/bin/python"
         )
 
         server_config = config["mcpServers"]["osiris"]
 
-        # Verify paths with spaces are included in args (bash -lc will handle quoting)
+        # Verify paths with spaces are properly quoted using shlex.quote()
+        # This prevents shell injection and handles spaces correctly
         expected_args = [
             "-lc",
-            "cd /Users/me/my project/osiris && exec /Users/me/my project/osiris/.venv/bin/python -m osiris.cli.mcp_entrypoint",
+            "cd '/Users/me/my project/osiris' && exec '/Users/me/my project/osiris/.venv/bin/python' -m osiris.cli.mcp_entrypoint",
         ]
         assert server_config["args"] == expected_args
 

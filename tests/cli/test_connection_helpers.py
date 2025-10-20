@@ -207,3 +207,60 @@ class TestMaskConnectionForDisplay:
         assert original["password"] == "secret123"  # pragma: allowlist secret
         # Masked should be different
         assert masked["password"] == "***MASKED***"
+
+    def test_nested_secret_masking(self):
+        """Test that nested structures like resolved_connection are masked.
+
+        This validates the fix for Codex finding: nested secrets in structures
+        like /resolved_connection/password must be recursively masked.
+        """
+        config = {
+            "host": "localhost",
+            "password": "top_level_secret",  # pragma: allowlist secret
+            "resolved_connection": {
+                "password": "nested_secret",  # pragma: allowlist secret
+                "key": "api_key_123",  # pragma: allowlist secret
+                "service_role_key": "secret_role_key",  # pragma: allowlist secret
+                "url": "https://example.com",  # Not a secret
+                "nested_level_2": {"api_key": "another_secret"},  # pragma: allowlist secret
+            },
+        }
+
+        masked = mask_connection_for_display(config, family="supabase")
+
+        # Top-level secrets masked
+        assert masked["password"] == "***MASKED***"
+
+        # Nested secrets also masked (this was the bug!)
+        assert masked["resolved_connection"]["password"] == "***MASKED***"
+        assert masked["resolved_connection"]["key"] == "***MASKED***"
+        assert masked["resolved_connection"]["service_role_key"] == "***MASKED***"
+
+        # Deeply nested secrets masked
+        assert masked["resolved_connection"]["nested_level_2"]["api_key"] == "***MASKED***"
+
+        # Non-secrets preserved
+        assert masked["host"] == "localhost"
+        assert masked["resolved_connection"]["url"] == "https://example.com"
+
+        # Original unchanged (deep copy verification)
+        assert config["resolved_connection"]["password"] == "nested_secret"  # pragma: allowlist secret
+
+    def test_nested_with_env_var_references(self):
+        """Test that nested env var references like ${VAR} are preserved."""
+        config = {
+            "host": "localhost",
+            "resolved_connection": {
+                "password": "${DB_PASSWORD}",
+                "key": "${API_KEY}",
+                "url": "https://example.com",
+            },
+        }
+
+        masked = mask_connection_for_display(config, family="supabase")
+
+        # Nested env var references should be preserved
+        assert masked["resolved_connection"]["password"] == "${DB_PASSWORD}"
+        assert masked["resolved_connection"]["key"] == "${API_KEY}"
+        # Non-secrets still work
+        assert masked["resolved_connection"]["url"] == "https://example.com"
