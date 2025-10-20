@@ -25,7 +25,7 @@ google-generativeai>=0.3.0  # Gemini API
 python-dotenv>=1.0      # Environment variable loading from .env files
 
 # MCP Server dependencies
-mcp>=1.2.1              # Model Context Protocol Python SDK
+modelcontextprotocol>=1.2.1  # Model Context Protocol Python SDK (v0.5.0)
 
 # Development dependencies
 pytest>=7.0.0           # Testing framework

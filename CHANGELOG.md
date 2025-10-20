@@ -9,6 +9,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+(No unreleased changes yet)
+
+### Changed
+
+(No unreleased changes yet)
+
+## [0.5.0] - 2025-10-20
+
+**Major Release: MCP v0.5.0 Production Ready**
+
+This release delivers a production-ready Model Context Protocol (MCP) server with CLI-first security architecture, comprehensive testing, and full documentation. All four phases complete with 490 new tests, 78.4% coverage, and zero credential leakage verified.
+
+### Breaking Changes
+
+**⚠️ IMPORTANT: Migration Required**
+
+**Tool Name Changes**:
+- All MCP tools now use underscore-separated naming (`connections_list`, not `osiris.connections.list`)
+- Legacy dot-notation aliases supported for backward compatibility but deprecated
+- Update your MCP client code to use new tool names
+
+**Configuration Requirements**:
+- `osiris init` now required to configure filesystem paths automatically
+- MCP server uses config-driven paths (no hardcoded home directories)
+- `filesystem.base_path` auto-configured to current directory's absolute path
+
+**Migration Steps**:
+1. Run `osiris init` in your project directory to configure paths
+2. Update MCP tool calls to use underscore naming (e.g., `connections_list`)
+3. Verify connection configurations in `osiris_connections.yaml`
+4. Test MCP server with `osiris mcp run --selftest` (<2s)
+
+See `docs/migration/mcp-v0.5-migration.md` for complete migration guide.
+
+### Added
+
+#### MCP v0.5.0 - Phase 1-4 Summary
+
+**Phase 1: CLI-First Security Architecture** (2025-10-16)
+- Zero secret access in MCP process via CLI delegation pattern
+- Spec-aware secret masking using ComponentRegistry x-secret declarations
+- 10 CLI subcommands for MCP tools across 7 domains
+- Resource URI system (discovery, memory, OML drafts)
+- Config-driven filesystem paths (no hardcoded directories)
+
+**Phase 2: Functional Parity & Completeness** (2025-10-17)
+- Tool response metrics: correlation_id, duration_ms, bytes_in, bytes_out
+- AIOP read-only access via MCP for LLM debugging
+- Memory PII redaction with consent requirement
+- Cache with 24-hour TTL and invalidation
+- Telemetry & audit logging with spec-aware masking
+
+**Phase 3: Comprehensive Testing & Security Hardening** (2025-10-20)
+- 490 Phase 3 tests passing (100% of non-skipped)
+- Security: 10/10 tests, zero credential leakage verified
+- Error coverage: 51/51 tests, all 33 error codes covered
+- Performance: <1.3s selftest, P95 latency ≤ 2× baseline
+- Server integration: 56/56 tests, 79% coverage (was 17.5%)
+- Resource resolver: 50/50 tests, 98% coverage (was 47.8%)
+- Overall coverage: 78.4% (85.1% adjusted)
+
+**Phase 4: Documentation & Release Preparation** (2025-10-20)
+- Migration guide: `docs/migration/mcp-v0.5-migration.md`
+- Production guide: `docs/guides/mcp-production.md`
+- Manual test procedures for Claude Desktop integration
+- Comprehensive API documentation for all 10 tools
+- v0.5.0 release preparation complete
+
 #### MCP Phase 3 (Comprehensive Testing & Security Hardening)
 
 **Status**: ✅ Complete (2025-10-20)
