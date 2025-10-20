@@ -25,6 +25,116 @@ from osiris.mcp.telemetry import init_telemetry
 logger = logging.getLogger(__name__)
 
 
+# Canonical tool ID mapping (all aliases -> canonical name)
+# This ensures deterministic tool identification in metrics and audit logs
+CANONICAL_TOOL_IDS = {
+    # Connections tools
+    "connections_list": "connections_list",
+    "connections.list": "connections_list",
+    "osiris.connections.list": "connections_list",
+    "connections_doctor": "connections_doctor",
+    "connections.doctor": "connections_doctor",
+    "osiris.connections.doctor": "connections_doctor",
+    # Discovery tools
+    "discovery_request": "discovery_request",
+    "discovery.request": "discovery_request",
+    "osiris.discovery.request": "discovery_request",
+    "osiris.introspect_sources": "discovery_request",  # Legacy alias
+    # OML tools
+    "oml_schema_get": "oml_schema_get",
+    "oml.schema.get": "oml_schema_get",
+    "osiris.oml.schema.get": "oml_schema_get",
+    "oml_validate": "oml_validate",
+    "oml.validate": "oml_validate",
+    "osiris.oml.validate": "oml_validate",
+    "osiris.validate_oml": "oml_validate",  # Legacy alias
+    "oml_save": "oml_save",
+    "oml.save": "oml_save",
+    "osiris.oml.save": "oml_save",
+    "osiris.save_oml": "oml_save",  # Legacy alias
+    # Guide tools
+    "guide_start": "guide_start",
+    "guide.start": "guide_start",
+    "osiris.guide_start": "guide_start",
+    "osiris.guide.start": "guide_start",
+    # Memory tools
+    "memory_capture": "memory_capture",
+    "memory.capture": "memory_capture",
+    "osiris.memory.capture": "memory_capture",
+    # AIOP tools
+    "aiop_list": "aiop_list",
+    "aiop.list": "aiop_list",
+    "osiris.aiop.list": "aiop_list",
+    "aiop_show": "aiop_show",
+    "aiop.show": "aiop_show",
+    "osiris.aiop.show": "aiop_show",
+    # Components tools
+    "components_list": "components_list",
+    "components.list": "components_list",
+    "osiris.components.list": "components_list",
+    # Usecases tools
+    "usecases_list": "usecases_list",
+    "usecases.list": "usecases_list",
+    "osiris.usecases.list": "usecases_list",
+}
+
+
+def canonical_tool_id(name: str) -> str:
+    """
+    Get canonical tool ID for any alias.
+
+    This ensures all tool name variations map to the same canonical name,
+    making metrics and audit logs deterministic across different client implementations.
+
+    Args:
+        name: Tool name or alias
+
+    Returns:
+        Canonical tool ID (or original name if no mapping exists)
+    """
+    return CANONICAL_TOOL_IDS.get(name, name)
+
+
+def _success_envelope(result: dict, meta: dict) -> dict:
+    """MCP protocol success response envelope."""
+    return {"status": "success", "result": result, "_meta": meta}
+
+
+def _error_envelope(code: str, message: str, details: dict | None, meta: dict) -> dict:
+    """MCP protocol error response envelope."""
+    return {"status": "error", "error": {"code": code, "message": message, "details": details or {}}, "_meta": meta}
+
+
+# Policy constants
+MAX_PAYLOAD_BYTES = 16 * 1024 * 1024  # 16MB
+
+
+def _validate_payload_size(args: dict) -> tuple[bool, int, str | None]:
+    """
+    Validate payload size against 16MB limit.
+
+    Returns:
+        (is_valid, size_bytes, error_message)
+    """
+    size = len(json.dumps(args).encode("utf-8"))
+    if size > MAX_PAYLOAD_BYTES:
+        return False, size, f"Payload {size} bytes exceeds {MAX_PAYLOAD_BYTES} byte limit"
+    return True, size, None
+
+
+def _validate_consent(tool_name: str, args: dict) -> tuple[bool, str | None]:
+    """
+    Validate consent requirement for memory tools.
+
+    Returns:
+        (is_valid, error_message)
+    """
+    if tool_name in ["memory_capture", "memory.capture", "osiris.memory.capture"]:
+        if not args.get("consent", False):
+            return False, "Memory capture requires explicit --consent flag"
+    return True, None
+
+
 class OsirisMCPServer:
     """
     Main MCP Server for Osiris OML authoring.
@@ -219,8 +329,46 @@ class OsirisMCPServer:
     async def _call_tool(self, name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
         """Execute a tool call."""
         try:
+            # Generate correlation ID for tracking
+            # NOTE: MCP SDK doesn't expose request_id at handler level, so we use random UUID
+            # If request_id becomes available in future SDK versions, use derive_correlation_id(request_id)
+            import uuid  # noqa: PLC0415  # Lazy import
+
+            correlation_id = str(uuid.uuid4())
+
+            # Get canonical tool ID for deterministic metrics
+            canonical_tool = canonical_tool_id(name)
+
+            # POLICY GUARD: Validate payload size (BEFORE delegating to CLI)
+            is_valid, size, error_msg = _validate_payload_size(arguments)
+            if not is_valid:
+                meta = {
+                    "correlation_id": correlation_id,
+                    "tool": canonical_tool,
+                    "bytes_in": size,
+                    "bytes_out": 0,
+                    "duration_ms": 0,
+                }
+                error_response = _error_envelope(
+                    "payload_too_large", error_msg, {"limit_bytes": MAX_PAYLOAD_BYTES, "actual_bytes": size}, meta
+                )
+                return [types.TextContent(type="text", text=json.dumps(error_response))]
+
+            # POLICY GUARD: Validate consent for memory tools (BEFORE delegating to CLI)
+            is_valid, error_msg = _validate_consent(name, arguments)
+            if not is_valid:
+                meta = {
+                    "correlation_id": correlation_id,
+                    "tool": canonical_tool,
+                    "bytes_in": size,
+                    "bytes_out": 0,
+                    "duration_ms": 0,
+                }
+                error_response = _error_envelope("consent_required", error_msg, {"tool": canonical_tool}, meta)
+                return [types.TextContent(type="text", text=json.dumps(error_response))]
+
             # Log the tool call
-            await self.audit.log_tool_call(tool_name=name, arguments=arguments)
+            await self.audit.log_tool_call(tool_name=canonical_tool, arguments=arguments)
 
             # Resolve aliases
             actual_name = self.tool_aliases.get(name, name)
@@ -257,6 +405,11 @@ class OsirisMCPServer:
                     path=["tool", "name"],
                     suggest="Use guide_start to see available tools",
                 )
+
+            # Inject canonical tool ID into _meta if not already present
+            if isinstance(result, dict) and "_meta" in result:
+                if "tool" not in result["_meta"]:
+                    result["_meta"]["tool"] = canonical_tool
 
             # Convert result to JSON
             result_json = json.dumps(result)
@@ -372,51 +525,207 @@ class OsirisMCPServer:
     # Tool handler implementations using actual tool modules
     async def _handle_connections_list(self, args: dict[str, Any]) -> dict:
         """Handle connections.list tool."""
-        return await self.connections_tools.list(args)
+        try:
+            result = await self.connections_tools.list(args)
+            meta = result.pop("_meta", {})
+            return _success_envelope(result, meta)
+        except OsirisError as e:
+            meta = getattr(e, "meta", {})
+            return _error_envelope(
+                e.family.value if hasattr(e, "family") else "UNKNOWN",
+                str(e),
+                e.to_dict() if hasattr(e, "to_dict") else None,
+                meta,
+            )
+        except Exception as e:
+            return _error_envelope("INTERNAL", str(e), None, {})
 
     async def _handle_connections_doctor(self, args: dict[str, Any]) -> dict:
         """Handle connections.doctor tool."""
-        return await self.connections_tools.doctor(args)
+        try:
+            result = await self.connections_tools.doctor(args)
+            meta = result.pop("_meta", {})
+            return _success_envelope(result, meta)
+        except OsirisError as e:
+            meta = getattr(e, "meta", {})
+            return _error_envelope(
+                e.family.value if hasattr(e, "family") else "UNKNOWN",
+                str(e),
+                e.to_dict() if hasattr(e, "to_dict") else None,
+                meta,
+            )
+        except Exception as e:
+            return _error_envelope("INTERNAL", str(e), None, {})
 
     async def _handle_components_list(self, args: dict[str, Any]) -> dict:
         """Handle components.list tool."""
-        return await self.components_tools.list(args)
+        try:
+            result = await self.components_tools.list(args)
+            meta = result.pop("_meta", {})
+            return _success_envelope(result, meta)
+        except OsirisError as e:
+            meta = getattr(e, "meta", {})
+            return _error_envelope(
+                e.family.value if hasattr(e, "family") else "UNKNOWN",
+                str(e),
+                e.to_dict() if hasattr(e, "to_dict") else None,
+                meta,
+            )
+        except Exception as e:
+            return _error_envelope("INTERNAL", str(e), None, {})
 
     async def _handle_discovery_request(self, args: dict[str, Any]) -> dict:
         """Handle discovery.request tool."""
-        return await self.discovery_tools.request(args)
+        try:
+            result = await self.discovery_tools.request(args)
+            meta = result.pop("_meta", {})
+            return _success_envelope(result, meta)
+        except OsirisError as e:
+            meta = getattr(e, "meta", {})
+            return _error_envelope(
+                e.family.value if hasattr(e, "family") else "UNKNOWN",
+                str(e),
+                e.to_dict() if hasattr(e, "to_dict") else None,
+                meta,
+            )
+        except Exception as e:
+            return _error_envelope("INTERNAL", str(e), None, {})
 
     async def _handle_usecases_list(self, args: dict[str, Any]) -> dict:
         """Handle usecases.list tool."""
-        return await self.usecases_tools.list(args)
+        try:
+            result = await self.usecases_tools.list(args)
+            meta = result.pop("_meta", {})
+            return _success_envelope(result, meta)
+        except OsirisError as e:
+            meta = getattr(e, "meta", {})
+            return _error_envelope(
+                e.family.value if hasattr(e, "family") else "UNKNOWN",
+                str(e),
+                e.to_dict() if hasattr(e, "to_dict") else None,
+                meta,
+            )
+        except Exception as e:
+            return _error_envelope("INTERNAL", str(e), None, {})
 
     async def _handle_oml_schema_get(self, args: dict[str, Any]) -> dict:
         """Handle oml.schema.get tool."""
-        return await self.oml_tools.schema_get(args)
+        try:
+            result = await self.oml_tools.schema_get(args)
+            meta = result.pop("_meta", {})
+            return _success_envelope(result, meta)
+        except OsirisError as e:
+            meta = getattr(e, "meta", {})
+            return _error_envelope(
+                e.family.value if hasattr(e, "family") else "UNKNOWN",
+                str(e),
+                e.to_dict() if hasattr(e, "to_dict") else None,
+                meta,
+            )
+        except Exception as e:
+            return _error_envelope("INTERNAL", str(e), None, {})
 
     async def _handle_validate_oml(self, args: dict[str, Any]) -> dict:
         """Handle validate_oml tool."""
-        return await self.oml_tools.validate(args)
+        try:
+            result = await self.oml_tools.validate(args)
+            meta = result.pop("_meta", {})
+            return _success_envelope(result, meta)
+        except OsirisError as e:
+            meta = getattr(e, "meta", {})
+            return _error_envelope(
+                e.family.value if hasattr(e, "family") else "UNKNOWN",
+                str(e),
+                e.to_dict() if hasattr(e, "to_dict") else None,
+                meta,
+            )
+        except Exception as e:
+            return _error_envelope("INTERNAL", str(e), None, {})
 
     async def _handle_save_oml(self, args: dict[str, Any]) -> dict:
         """Handle save_oml tool."""
-        return await self.oml_tools.save(args)
+        try:
+            result = await self.oml_tools.save(args)
+            meta = result.pop("_meta", {})
+            return _success_envelope(result, meta)
+        except OsirisError as e:
+            meta = getattr(e, "meta", {})
+            return _error_envelope(
+                e.family.value if hasattr(e, "family") else "UNKNOWN",
+                str(e),
+                e.to_dict() if hasattr(e, "to_dict") else None,
+                meta,
+            )
+        except Exception as e:
+            return _error_envelope("INTERNAL", str(e), None, {})
 
     async def _handle_guide_start(self, args: dict[str, Any]) -> dict:
         """Handle guide.start tool."""
-        return await self.guide_tools.start(args)
+        try:
+            result = await self.guide_tools.start(args)
+            meta = result.pop("_meta", {})
+            return _success_envelope(result, meta)
+        except OsirisError as e:
+            meta = getattr(e, "meta", {})
+            return _error_envelope(
+                e.family.value if hasattr(e, "family") else "UNKNOWN",
+                str(e),
+                e.to_dict() if hasattr(e, "to_dict") else None,
+                meta,
+            )
+        except Exception as e:
+            return _error_envelope("INTERNAL", str(e), None, {})
 
     async def _handle_memory_capture(self, args: dict[str, Any]) -> dict:
         """Handle memory.capture tool."""
-        return await self.memory_tools.capture(args)
+        try:
+            result = await self.memory_tools.capture(args)
+            meta = result.pop("_meta", {})
+            return _success_envelope(result, meta)
+        except OsirisError as e:
+            meta = getattr(e, "meta", {})
+            return _error_envelope(
+                e.family.value if hasattr(e, "family") else "UNKNOWN",
+                str(e),
+                e.to_dict() if hasattr(e, "to_dict") else None,
+                meta,
+            )
+        except Exception as e:
+            return _error_envelope("INTERNAL", str(e), None, {})
 
     async def _handle_aiop_list(self, args: dict[str, Any]) -> dict:
         """Handle aiop_list tool."""
-        return await self.aiop_tools.list(args)
+        try:
+            result = await self.aiop_tools.list(args)
+            meta = result.pop("_meta", {})
+            return _success_envelope(result, meta)
+        except OsirisError as e:
+            meta = getattr(e, "meta", {})
+            return _error_envelope(
+                e.family.value if hasattr(e, "family") else "UNKNOWN",
+                str(e),
+                e.to_dict() if hasattr(e, "to_dict") else None,
+                meta,
+            )
+        except Exception as e:
+            return _error_envelope("INTERNAL", str(e), None, {})
 
     async def _handle_aiop_show(self, args: dict[str, Any]) -> dict:
         """Handle aiop_show tool."""
-        return await self.aiop_tools.show(args)
+        try:
+            result = await self.aiop_tools.show(args)
+            meta = result.pop("_meta", {})
+            return _success_envelope(result, meta)
+        except OsirisError as e:
+            meta = getattr(e, "meta", {})
+            return _error_envelope(
+                e.family.value if hasattr(e, "family") else "UNKNOWN",
+                str(e),
+                e.to_dict() if hasattr(e, "to_dict") else None,
+                meta,
+            )
+        except Exception as e:
+            return _error_envelope("INTERNAL", str(e), None, {})
 
     async def run(self):
         """Run the MCP server with stdio transport."""

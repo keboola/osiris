@@ -48,7 +48,7 @@ class TestConnectionsTools:
             "_meta": {"correlation_id": "test-123", "duration_ms": 10},
         }
 
-        with patch("osiris.mcp.tools.connections.run_cli_json", return_value=mock_result):
+        with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_result):
             result = await connections_tools.list({})
 
             assert result["status"] == "success"
@@ -84,7 +84,7 @@ class TestConnectionsTools:
             "_meta": {"correlation_id": "test-456", "duration_ms": 15},
         }
 
-        with patch("osiris.mcp.tools.connections.run_cli_json", return_value=mock_result):
+        with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_result):
             result = await connections_tools.doctor({"connection_id": "@mysql.default"})
 
             assert result["status"] == "success"
@@ -117,7 +117,7 @@ class TestConnectionsTools:
             "_meta": {"correlation_id": "test-789", "duration_ms": 5},
         }
 
-        with patch("osiris.mcp.tools.connections.run_cli_json", return_value=mock_result):
+        with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_result):
             result = await connections_tools.doctor({"connection_id": "@mysql.nonexistent"})
 
             assert result["status"] == "success"

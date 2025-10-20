@@ -155,8 +155,49 @@ class TestClaudeDesktopSimulation:
         result3_data = json.loads(result3[0].text)
         assert result3_data["status"] == "success"
 
-        # All should produce identical results
-        assert result1_data == result2_data == result3_data
+        # All should produce identical results (excluding timing-based metadata)
+        def normalize(data):
+            """Remove non-deterministic fields for comparison."""
+            import copy
+            normalized = copy.deepcopy(data)
+
+            # Remove top-level timing fields
+            normalized.pop('duration_ms', None)
+            normalized.pop('correlation_id', None)
+
+            # Remove _meta timing fields but KEEP canonical tool name
+            if '_meta' in normalized:
+                meta = normalized['_meta']
+                meta.pop('duration_ms', None)
+                meta.pop('correlation_id', None)
+                meta.pop('bytes_in', None)
+                meta.pop('bytes_out', None)
+                # Keep 'tool' field - it should be deterministic (canonical ID)
+
+            # Remove timing fields from nested result object (CLI response)
+            if 'result' in normalized and isinstance(normalized['result'], dict):
+                result = normalized['result']
+                result.pop('duration_ms', None)
+                result.pop('correlation_id', None)
+                result.pop('bytes_in', None)
+                result.pop('bytes_out', None)
+                # Also clean nested _meta in result
+                if '_meta' in result:
+                    result_meta = result['_meta']
+                    result_meta.pop('duration_ms', None)
+                    result_meta.pop('correlation_id', None)
+                    result_meta.pop('bytes_in', None)
+                    result_meta.pop('bytes_out', None)
+
+            return normalized
+
+        # Verify canonical tool ID is consistent across aliases (check before normalization)
+        assert result1_data.get('_meta', {}).get('tool') == "connections_list"
+        assert result2_data.get('_meta', {}).get('tool') == "connections_list"
+        assert result3_data.get('_meta', {}).get('tool') == "connections_list"
+
+        # Verify normalized results are identical (after removing timing/correlation fields)
+        assert normalize(result1_data) == normalize(result2_data) == normalize(result3_data)
 
         # Verify CLI bridge called 3 times with same command
         assert mock_cli_bridge.call_count == 3
@@ -175,30 +216,27 @@ class TestClaudeDesktopSimulation:
         small_response = {
             "connections": [{"family": "mysql", "alias": "test"}],
             "count": 1,
-            "status": "success",
+            "_meta": {"correlation_id": "test", "duration_ms": 10, "bytes_in": 10, "bytes_out": 100},
         }
         mock_cli_bridge.return_value = small_response
 
-        result = await mcp_server._call_tool("connections_list", {})
+        small_args = {"filter": "test"}  # Small input args
+        result = await mcp_server._call_tool("connections_list", small_args)
         result_data = json.loads(result[0].text)
         assert result_data["status"] == "success"
 
-        # Test 2: Large payload rejected
-        # Create a response that exceeds 16MB when serialized
+        # Test 2: Large input payload rejected (before CLI delegation)
+        # Create INPUT arguments that exceed 16MB when serialized
         large_data = "x" * (17 * 1024 * 1024)  # 17MB
-        large_response = {
-            "data": large_data,
-            "status": "success",
-        }
-        mock_cli_bridge.return_value = large_response
+        large_args = {"data": large_data}  # Large INPUT arguments
 
-        result = await mcp_server._call_tool("connections_list", {})
+        result = await mcp_server._call_tool("connections_list", large_args)
         result_data = json.loads(result[0].text)
 
-        # Should return error response
+        # Should return error response (payload guard blocks before CLI call)
         assert result_data["status"] == "error"
-        assert result_data["error"]["family"] == "POLICY"
-        assert "payload" in result_data["error"]["message"].lower() or "size" in result_data["error"]["message"].lower()
+        assert result_data["error"]["code"] == "payload_too_large"
+        assert "payload" in result_data["error"]["message"].lower() or "16" in result_data["error"]["message"].lower()
 
     @pytest.mark.asyncio
     async def test_concurrent_tool_calls(self, mock_cli_bridge, mcp_server):
@@ -342,7 +380,7 @@ class TestClaudeDesktopSimulation:
         - Data flows correctly
         - Resources accessible
         """
-        # Step 1: List connections
+        # Step 1: List connections (CLI response format - no envelope)
         connections_response = {
             "connections": [
                 {
@@ -353,11 +391,10 @@ class TestClaudeDesktopSimulation:
                 }
             ],
             "count": 1,
-            "status": "success",
-            "_meta": {"correlation_id": "wf-001", "duration_ms": 10.0},
+            "_meta": {"correlation_id": "wf-001", "duration_ms": 10.0, "bytes_in": 0, "bytes_out": 100},
         }
 
-        # Step 2: Discovery
+        # Step 2: Discovery (CLI response format)
         discovery_response = {
             "discovery_id": "disc_wf_test_123",
             "connection_id": "@mysql.db1",
@@ -366,25 +403,22 @@ class TestClaudeDesktopSimulation:
                 "overview": "osiris://mcp/discovery/disc_wf_test_123/overview.json",
             },
             "summary": {"table_count": 5},
-            "status": "success",
-            "_meta": {"correlation_id": "wf-002", "duration_ms": 500.0},
+            "_meta": {"correlation_id": "wf-002", "duration_ms": 500.0, "bytes_in": 50, "bytes_out": 200},
         }
 
-        # Step 3: Validation
+        # Step 3: Validation (CLI response format)
         validation_response = {
             "valid": True,
             "version": "0.1.0",
             "step_count": 2,
-            "status": "success",
-            "_meta": {"correlation_id": "wf-003", "duration_ms": 30.0},
+            "_meta": {"correlation_id": "wf-003", "duration_ms": 30.0, "bytes_in": 100, "bytes_out": 50},
         }
 
-        # Step 4: Save
+        # Step 4: Save (CLI response format)
         save_response = {
             "saved": True,
             "uri": "osiris://mcp/drafts/oml/test_pipeline.yaml",
-            "status": "success",
-            "_meta": {"correlation_id": "wf-004", "duration_ms": 15.0},
+            "_meta": {"correlation_id": "wf-004", "duration_ms": 15.0, "bytes_in": 200, "bytes_out": 50},
         }
 
         mock_cli_bridge.side_effect = [
@@ -397,7 +431,9 @@ class TestClaudeDesktopSimulation:
         # Execute workflow
         result1 = await mcp_server._call_tool("connections_list", {})
         result1_data = json.loads(result1[0].text)
-        assert result1_data["count"] == 1
+        # MCP server wraps CLI response in envelope: {status, result, _meta}
+        assert result1_data["status"] == "success"
+        assert result1_data["result"]["count"] == 1
 
         result2 = await mcp_server._call_tool(
             "discovery_request",
@@ -407,7 +443,8 @@ class TestClaudeDesktopSimulation:
             },
         )
         result2_data = json.loads(result2[0].text)
-        assert result2_data["discovery_id"].startswith("disc_")
+        assert result2_data["status"] == "success"
+        assert result2_data["result"]["discovery_id"].startswith("disc_")
 
         oml_content = """
 pipeline:

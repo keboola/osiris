@@ -202,6 +202,7 @@ async def test_full_workflow_sequence():
         # Setup responses
         responses = [
             # Step 1: List connections
+            # CLI response format (no envelope - MCP server will wrap)
             {
                 "connections": [
                     {
@@ -212,10 +213,9 @@ async def test_full_workflow_sequence():
                     }
                 ],
                 "count": 1,
-                "status": "success",
-                "_meta": {"correlation_id": "wf-001", "duration_ms": 10.0},
+                "_meta": {"correlation_id": "wf-001", "duration_ms": 10.0, "bytes_in": 0, "bytes_out": 100},
             },
-            # Step 2: Discovery
+            # Step 2: Discovery (CLI response format)
             {
                 "discovery_id": "disc_wf_test",
                 "connection_id": "@mysql.source",
@@ -224,8 +224,7 @@ async def test_full_workflow_sequence():
                     "overview": "osiris://mcp/discovery/disc_wf_test/overview.json",
                 },
                 "summary": {"table_count": 3},
-                "status": "success",
-                "_meta": {"correlation_id": "wf-002", "duration_ms": 450.0},
+                "_meta": {"correlation_id": "wf-002", "duration_ms": 450.0, "bytes_in": 50, "bytes_out": 200},
             },
         ]
 
@@ -238,8 +237,9 @@ async def test_full_workflow_sequence():
         with patch.dict(os.environ, {}, clear=True):
             # Step 1: List connections
             result1 = await server._handle_connections_list({})
+            # MCP server wraps CLI response in envelope
             assert result1["status"] == "success"
-            assert result1["count"] == 1
+            assert result1["result"]["count"] == 1
 
             # Step 2: Discovery
             result2 = await server._handle_discovery_request(
@@ -249,7 +249,7 @@ async def test_full_workflow_sequence():
                 }
             )
             assert result2["status"] == "success"
-            assert result2["discovery_id"].startswith("disc_")
+            assert result2["result"]["discovery_id"].startswith("disc_")
 
             # Verify all CLI calls made
             assert mock_cli.call_count == 2

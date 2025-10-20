@@ -126,6 +126,8 @@ class TestRC002MetricsLock:
 
     def test_emit_server_stop_captures_final_metrics_atomically(self, tmp_path: Path):
         """Server stop should capture final metrics without race conditions."""
+        from datetime import UTC, datetime
+
         telemetry = TelemetryEmitter(enabled=True, output_dir=tmp_path)
 
         # Emit some tool calls
@@ -142,7 +144,8 @@ class TestRC002MetricsLock:
         telemetry.emit_server_stop(reason="test")
 
         # Verify telemetry file contains server_stop event with correct metrics
-        telemetry_file = tmp_path / f"mcp_telemetry_{time.strftime('%Y%m%d')}.jsonl"
+        # Use UTC time to match TelemetryEmitter's file naming convention
+        telemetry_file = tmp_path / f"mcp_telemetry_{datetime.now(UTC).strftime('%Y%m%d')}.jsonl"
         assert telemetry_file.exists()
 
         import json

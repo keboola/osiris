@@ -43,7 +43,10 @@ class TestAIOPTools:
             },
         ]
 
-        with patch("osiris.mcp.tools.aiop.run_cli_json", return_value=mock_result):
+        # CLI bridge now wraps array responses in {"data": ..., "_meta": ...}
+        wrapped_mock = {"data": mock_result, "_meta": {"correlation_id": "test123"}}
+
+        with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=wrapped_mock):
             result = await aiop_tools.list({})
 
             # Result should be wrapped in dict with runs and count
@@ -79,7 +82,10 @@ class TestAIOPTools:
             }
         ]
 
-        with patch("osiris.mcp.tools.aiop.run_cli_json", return_value=mock_result) as mock_cli:
+        # CLI bridge now wraps array responses in {"data": ..., "_meta": ...}
+        wrapped_mock = {"data": mock_result, "_meta": {"correlation_id": "test123"}}
+
+        with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=wrapped_mock) as mock_cli:
             result = await aiop_tools.list({"pipeline": "orders_etl"})
 
             # Verify CLI was called with correct args
@@ -110,7 +116,10 @@ class TestAIOPTools:
             }
         ]
 
-        with patch("osiris.mcp.tools.aiop.run_cli_json", return_value=mock_result) as mock_cli:
+        # CLI bridge now wraps array responses in {"data": ..., "_meta": ...}
+        wrapped_mock = {"data": mock_result, "_meta": {"correlation_id": "test123"}}
+
+        with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=wrapped_mock) as mock_cli:
             result = await aiop_tools.list({"profile": "prod"})
 
             # Verify CLI was called with correct args
@@ -127,7 +136,10 @@ class TestAIOPTools:
         """Test listing AIOP runs when none exist."""
         mock_result = []
 
-        with patch("osiris.mcp.tools.aiop.run_cli_json", return_value=mock_result):
+        # CLI bridge now wraps array responses in {"data": ..., "_meta": ...}
+        wrapped_mock = {"data": mock_result, "_meta": {"correlation_id": "test123"}}
+
+        with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=wrapped_mock):
             result = await aiop_tools.list({})
 
             assert isinstance(result, dict)
@@ -165,7 +177,7 @@ class TestAIOPTools:
             "summary_path": "/path/to/summary.json",
         }
 
-        with patch("osiris.mcp.tools.aiop.run_cli_json", return_value=mock_result) as mock_cli:
+        with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_result) as mock_cli:
             result = await aiop_tools.show({"run_id": "2025-10-17T10-30-00Z_01J9Z8"})
 
             # Verify CLI was called with correct args
@@ -198,7 +210,7 @@ class TestAIOPTools:
     async def test_aiop_show_nonexistent_run(self, aiop_tools):
         """Test showing AIOP summary for nonexistent run."""
         # CLI will raise an error which should be caught and re-raised
-        with patch("osiris.mcp.tools.aiop.run_cli_json", side_effect=Exception("Run not found")):
+        with patch("osiris.mcp.cli_bridge.run_cli_json", side_effect=Exception("Run not found")):
             with pytest.raises(OsirisError) as exc_info:
                 await aiop_tools.show({"run_id": "nonexistent_run_id"})
 
@@ -224,15 +236,15 @@ class TestAIOPTools:
 
         tools_with_audit = AIOPTools(audit_logger=mock_audit)
 
-        with patch("osiris.mcp.tools.aiop.run_cli_json", return_value=mock_result):
+        with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_result):
             result = await tools_with_audit.list({})
 
-            # Check that metrics were added at top level (not nested)
-            assert "correlation_id" in result
-            assert result["correlation_id"] == "test-corr-123"
-            assert "duration_ms" in result
-            assert "bytes_in" in result
-            assert "bytes_out" in result
+            # Check that metrics were added in _meta
+            assert "_meta" in result
+            assert result["_meta"]["correlation_id"] == "test-corr-123"
+            assert "duration_ms" in result["_meta"]
+            assert "bytes_in" in result["_meta"]
+            assert "bytes_out" in result["_meta"]
 
     @pytest.mark.asyncio
     async def test_aiop_show_with_metrics(self, aiop_tools):
@@ -248,20 +260,20 @@ class TestAIOPTools:
         mock_audit = type("MockAudit", (), {"make_correlation_id": lambda self: "test-corr-456"})()
         tools_with_audit = AIOPTools(audit_logger=mock_audit)
 
-        with patch("osiris.mcp.tools.aiop.run_cli_json", return_value=mock_result):
+        with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_result):
             result = await tools_with_audit.show({"run_id": "2025-10-17T10-30-00Z_01J9Z8"})
 
-            # Check that metrics were added at top level (not nested)
-            assert "correlation_id" in result
-            assert result["correlation_id"] == "test-corr-456"
-            assert "duration_ms" in result
-            assert "bytes_in" in result
-            assert "bytes_out" in result
+            # Check that metrics were added in _meta
+            assert "_meta" in result
+            assert result["_meta"]["correlation_id"] == "test-corr-456"
+            assert "duration_ms" in result["_meta"]
+            assert "bytes_in" in result["_meta"]
+            assert "bytes_out" in result["_meta"]
 
     @pytest.mark.asyncio
     async def test_aiop_list_cli_error(self, aiop_tools):
         """Test handling of CLI errors during list."""
-        with patch("osiris.mcp.tools.aiop.run_cli_json", side_effect=Exception("AIOP index not found")):
+        with patch("osiris.mcp.cli_bridge.run_cli_json", side_effect=Exception("AIOP index not found")):
             with pytest.raises(OsirisError) as exc_info:
                 await aiop_tools.list({})
 

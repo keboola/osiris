@@ -33,7 +33,7 @@ def add_metrics(
     """
     Add metrics fields to a tool response.
 
-    This function adds the required metrics fields at the top level of the response:
+    This function adds the required metrics fields in a _meta dictionary:
     - correlation_id: Unique identifier for request tracing
     - duration_ms: Time taken to process the request
     - bytes_in: Size of the request parameters
@@ -46,17 +46,23 @@ def add_metrics(
         request_args: Original request arguments
 
     Returns:
-        Response with metrics fields added at top level
+        Response with metrics fields added in _meta dict
     """
     # Calculate metrics
     duration_ms = int((time.time() - start_time) * 1000)
     bytes_in = calculate_bytes(request_args)
     bytes_out = calculate_bytes(response)
 
-    # Add metrics at top level (not nested)
-    response["correlation_id"] = correlation_id
-    response["duration_ms"] = duration_ms
-    response["bytes_in"] = bytes_in
-    response["bytes_out"] = bytes_out
+    # Merge with existing _meta if present (from CLI responses)
+    existing_meta = response.get("_meta", {})
+
+    # Add/override metrics in _meta dict
+    response["_meta"] = {
+        **existing_meta,
+        "correlation_id": correlation_id,
+        "duration_ms": duration_ms,
+        "bytes_in": bytes_in,
+        "bytes_out": bytes_out,
+    }
 
     return response

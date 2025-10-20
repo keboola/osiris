@@ -73,7 +73,7 @@ class TestDiscoveryTools:
             "_meta": {"correlation_id": "test-789", "duration_ms": 500},
         }
 
-        with patch("osiris.mcp.tools.discovery.run_cli_json", return_value=mock_cli_result):
+        with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_cli_result):
             result = await discovery_tools.request(
                 {"connection_id": "@mysql.default", "component_id": "mysql.extractor", "samples": 0}
             )

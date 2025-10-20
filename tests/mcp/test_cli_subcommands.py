@@ -185,8 +185,9 @@ class TestMemoryCommand:
         assert exit_code == 0
 
         captured = capsys.readouterr()
-        assert "Memory captured" in captured.out
-        assert "test123" in captured.out
+        # Human output goes to stderr to keep stdout clean for JSON
+        assert "Memory captured" in captured.err
+        assert "test123" in captured.err
 
 
 class TestUsecasesCommand:

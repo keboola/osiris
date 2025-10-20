@@ -111,4 +111,4 @@ class TestServerBoot:
 
         config = MCPConfig()
         assert config.SERVER_VERSION == "0.5.0"
-        assert config.PROTOCOL_VERSION == "0.5"
+        assert config.PROTOCOL_VERSION == "2024-11-05"  # MCP protocol spec version

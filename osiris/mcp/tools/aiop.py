@@ -10,7 +10,7 @@ import logging
 import time
 from typing import Any
 
-from osiris.mcp.cli_bridge import run_cli_json
+from osiris.mcp import cli_bridge
 from osiris.mcp.errors import ErrorFamily, OsirisError
 from osiris.mcp.metrics_helper import add_metrics
 
@@ -48,8 +48,11 @@ class AIOPTools:
             if args.get("profile"):
                 cli_args.extend(["--profile", args["profile"]])
 
-            # Delegate to CLI (returns a list)
-            runs = await run_cli_json(cli_args)
+            # Delegate to CLI (returns wrapped list with metadata)
+            cli_response = await cli_bridge.run_cli_json(cli_args)
+
+            # Extract data from wrapped response (CLI bridge wraps arrays in {"data": ...})
+            runs = cli_response.get("data", []) if isinstance(cli_response, dict) else []
 
             # Wrap list in dict for MCP protocol compliance
             response = {"runs": runs, "count": len(runs)}
@@ -93,7 +96,7 @@ class AIOPTools:
 
         try:
             # Delegate to CLI: osiris mcp aiop show --run <run_id> --json
-            result = await run_cli_json(["mcp", "aiop", "show", "--run", run_id])
+            result = await cli_bridge.run_cli_json(["mcp", "aiop", "show", "--run", run_id])
 
             # Add metrics to response
             return add_metrics(result, correlation_id, start_time, args)

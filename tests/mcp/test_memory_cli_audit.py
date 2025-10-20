@@ -180,17 +180,18 @@ filesystem:
             }
         )
 
-        # Verify metrics are present
-        assert "correlation_id" in result, "Missing correlation_id"
-        assert "duration_ms" in result, "Missing duration_ms"
-        assert "bytes_in" in result, "Missing bytes_in"
-        assert "bytes_out" in result, "Missing bytes_out"
+        # Verify metrics are present in _meta
+        assert "_meta" in result, "Missing _meta"
+        assert "correlation_id" in result["_meta"], "Missing correlation_id"
+        assert "duration_ms" in result["_meta"], "Missing duration_ms"
+        assert "bytes_in" in result["_meta"], "Missing bytes_in"
+        assert "bytes_out" in result["_meta"], "Missing bytes_out"
 
         # Verify types
-        assert isinstance(result["correlation_id"], str)
-        assert isinstance(result["duration_ms"], (int, float))
-        assert isinstance(result["bytes_in"], int)
-        assert isinstance(result["bytes_out"], int)
+        assert isinstance(result["_meta"]["correlation_id"], str)
+        assert isinstance(result["_meta"]["duration_ms"], (int, float))
+        assert isinstance(result["_meta"]["bytes_in"], int)
+        assert isinstance(result["_meta"]["bytes_out"], int)
 
 
 class TestMemoryURIResolver:

@@ -20,41 +20,41 @@ class TestMetricsFields:
         result = await mock_connections_tools.list({})
 
         # Verify required metrics fields
-        assert "correlation_id" in result, "Missing correlation_id"
-        assert "duration_ms" in result, "Missing duration_ms"
-        assert "bytes_in" in result, "Missing bytes_in"
-        assert "bytes_out" in result, "Missing bytes_out"
+        assert "correlation_id" in result["_meta"], "Missing correlation_id"
+        assert "duration_ms" in result["_meta"], "Missing duration_ms"
+        assert "bytes_in" in result["_meta"], "Missing bytes_in"
+        assert "bytes_out" in result["_meta"], "Missing bytes_out"
 
         # Verify field types
-        assert isinstance(result["correlation_id"], str)
-        assert isinstance(result["duration_ms"], int)
-        assert isinstance(result["bytes_in"], int)
-        assert isinstance(result["bytes_out"], int)
+        assert isinstance(result["_meta"]["correlation_id"], str)
+        assert isinstance(result["_meta"]["duration_ms"], int)
+        assert isinstance(result["_meta"]["bytes_in"], int)
+        assert isinstance(result["_meta"]["bytes_out"], int)
 
         # Verify non-negative values
-        assert result["duration_ms"] >= 0
-        assert result["bytes_in"] >= 0
-        assert result["bytes_out"] >= 0
+        assert result["_meta"]["duration_ms"] >= 0
+        assert result["_meta"]["bytes_in"] >= 0
+        assert result["_meta"]["bytes_out"] >= 0
 
     @pytest.mark.asyncio
     async def test_connections_doctor_metrics(self, mock_connections_tools):
         """Test connections.doctor returns metrics fields."""
         result = await mock_connections_tools.doctor({"connection_id": "@mysql.default"})
 
-        assert "correlation_id" in result
-        assert "duration_ms" in result
-        assert "bytes_in" in result
-        assert "bytes_out" in result
+        assert "correlation_id" in result["_meta"]
+        assert "duration_ms" in result["_meta"]
+        assert "bytes_in" in result["_meta"]
+        assert "bytes_out" in result["_meta"]
 
     @pytest.mark.asyncio
     async def test_components_list_metrics(self, mock_components_tools):
         """Test components.list returns metrics fields."""
         result = await mock_components_tools.list({})
 
-        assert "correlation_id" in result
-        assert "duration_ms" in result
-        assert "bytes_in" in result
-        assert "bytes_out" in result
+        assert "correlation_id" in result["_meta"]
+        assert "duration_ms" in result["_meta"]
+        assert "bytes_in" in result["_meta"]
+        assert "bytes_out" in result["_meta"]
 
     @pytest.mark.asyncio
     async def test_discovery_request_metrics(self, mock_discovery_tools):
@@ -63,30 +63,30 @@ class TestMetricsFields:
             {"connection_id": "@mysql.default", "component_id": "mysql.extractor", "samples": 5}
         )
 
-        assert "correlation_id" in result
-        assert "duration_ms" in result
-        assert "bytes_in" in result
-        assert "bytes_out" in result
+        assert "correlation_id" in result["_meta"]
+        assert "duration_ms" in result["_meta"]
+        assert "bytes_in" in result["_meta"]
+        assert "bytes_out" in result["_meta"]
 
     @pytest.mark.asyncio
     async def test_usecases_list_metrics(self, mock_usecases_tools):
         """Test usecases.list returns metrics fields."""
         result = await mock_usecases_tools.list({})
 
-        assert "correlation_id" in result
-        assert "duration_ms" in result
-        assert "bytes_in" in result
-        assert "bytes_out" in result
+        assert "correlation_id" in result["_meta"]
+        assert "duration_ms" in result["_meta"]
+        assert "bytes_in" in result["_meta"]
+        assert "bytes_out" in result["_meta"]
 
     @pytest.mark.asyncio
     async def test_oml_schema_get_metrics(self, mock_oml_tools):
         """Test oml.schema_get returns metrics fields."""
         result = await mock_oml_tools.schema_get({})
 
-        assert "correlation_id" in result
-        assert "duration_ms" in result
-        assert "bytes_in" in result
-        assert "bytes_out" in result
+        assert "correlation_id" in result["_meta"]
+        assert "duration_ms" in result["_meta"]
+        assert "bytes_in" in result["_meta"]
+        assert "bytes_out" in result["_meta"]
 
     @pytest.mark.asyncio
     async def test_oml_validate_metrics(self, mock_oml_tools):
@@ -95,10 +95,10 @@ class TestMetricsFields:
             {"oml_content": "version: 0.1.0\nname: test\nsteps: []", "strict": True}
         )
 
-        assert "correlation_id" in result
-        assert "duration_ms" in result
-        assert "bytes_in" in result
-        assert "bytes_out" in result
+        assert "correlation_id" in result["_meta"]
+        assert "duration_ms" in result["_meta"]
+        assert "bytes_in" in result["_meta"]
+        assert "bytes_out" in result["_meta"]
 
     @pytest.mark.asyncio
     async def test_oml_save_metrics(self, mock_oml_tools):
@@ -107,30 +107,30 @@ class TestMetricsFields:
             {"oml_content": "version: 0.1.0\nname: test\nsteps: []", "session_id": "test_session"}
         )
 
-        assert "correlation_id" in result
-        assert "duration_ms" in result
-        assert "bytes_in" in result
-        assert "bytes_out" in result
+        assert "correlation_id" in result["_meta"]
+        assert "duration_ms" in result["_meta"]
+        assert "bytes_in" in result["_meta"]
+        assert "bytes_out" in result["_meta"]
 
     @pytest.mark.asyncio
     async def test_guide_start_metrics(self, mock_guide_tools):
         """Test guide.start returns metrics fields."""
         result = await mock_guide_tools.start({"intent": "test intent"})
 
-        assert "correlation_id" in result
-        assert "duration_ms" in result
-        assert "bytes_in" in result
-        assert "bytes_out" in result
+        assert "correlation_id" in result["_meta"]
+        assert "duration_ms" in result["_meta"]
+        assert "bytes_in" in result["_meta"]
+        assert "bytes_out" in result["_meta"]
 
     @pytest.mark.asyncio
     async def test_memory_capture_metrics(self, mock_memory_tools):
         """Test memory.capture returns metrics fields."""
         result = await mock_memory_tools.capture({"consent": True, "session_id": "test_session", "intent": "test"})
 
-        assert "correlation_id" in result
-        assert "duration_ms" in result
-        assert "bytes_in" in result
-        assert "bytes_out" in result
+        assert "correlation_id" in result["_meta"]
+        assert "duration_ms" in result["_meta"]
+        assert "bytes_in" in result["_meta"]
+        assert "bytes_out" in result["_meta"]
 
 
 class TestCorrelationIdFormat:
@@ -141,7 +141,7 @@ class TestCorrelationIdFormat:
         """Test correlation_id follows expected format."""
         result = await mock_connections_tools.list({})
 
-        correlation_id = result["correlation_id"]
+        correlation_id = result["_meta"]["correlation_id"]
         # Format: mcp_<session>_<counter>
         assert correlation_id.startswith("mcp_")
         parts = correlation_id.split("_")
@@ -154,7 +154,7 @@ class TestCorrelationIdFormat:
         result2 = await mock_connections_tools.list({})
 
         # Should have different correlation IDs
-        assert result1["correlation_id"] != result2["correlation_id"]
+        assert result1["_meta"]["correlation_id"] != result2["_meta"]["correlation_id"]
 
 
 class TestMetricsAccuracy:
@@ -166,7 +166,7 @@ class TestMetricsAccuracy:
         result = await mock_connections_tools.list({})
 
         # Should complete in < 10 seconds for mocked operations
-        assert result["duration_ms"] < 10000, "Duration should be less than 10 seconds"
+        assert result["_meta"]["duration_ms"] < 10000, "Duration should be less than 10 seconds"
 
     @pytest.mark.asyncio
     async def test_bytes_in_calculation(self, mock_connections_tools):
@@ -178,7 +178,7 @@ class TestMetricsAccuracy:
         result2 = await mock_connections_tools.doctor({"connection_id": "@mysql.default"})
 
         # Result2 should have more bytes_in since it has arguments
-        assert result2["bytes_in"] > result1["bytes_in"]
+        assert result2["_meta"]["bytes_in"] > result1["_meta"]["bytes_in"]
 
     @pytest.mark.asyncio
     async def test_bytes_out_non_zero(self, mock_connections_tools):
@@ -186,7 +186,7 @@ class TestMetricsAccuracy:
         result = await mock_connections_tools.list({})
 
         # Response should have content
-        assert result["bytes_out"] > 0, "bytes_out should be greater than 0 for non-empty response"
+        assert result["_meta"]["bytes_out"] > 0, "bytes_out should be greater than 0 for non-empty response"
 
 
 class TestErrorResponseMetrics:
@@ -200,10 +200,10 @@ class TestErrorResponseMetrics:
 
         # Should have error but still have metrics
         assert "error" in result
-        assert "correlation_id" in result
-        assert "duration_ms" in result
-        assert "bytes_in" in result
-        assert "bytes_out" in result
+        assert "correlation_id" in result["_meta"]
+        assert "duration_ms" in result["_meta"]
+        assert "bytes_in" in result["_meta"]
+        assert "bytes_out" in result["_meta"]
 
     @pytest.mark.asyncio
     async def test_memory_capture_no_consent_has_metrics(self, mock_memory_tools):
@@ -212,10 +212,10 @@ class TestErrorResponseMetrics:
 
         # Should have error but still have metrics
         assert "error" in result
-        assert "correlation_id" in result
-        assert "duration_ms" in result
-        assert "bytes_in" in result
-        assert "bytes_out" in result
+        assert "correlation_id" in result["_meta"]
+        assert "duration_ms" in result["_meta"]
+        assert "bytes_in" in result["_meta"]
+        assert "bytes_out" in result["_meta"]
 
 
 # Fixtures
@@ -269,16 +269,13 @@ def mock_components_tools(mock_audit_logger):
 @pytest.fixture
 def mock_discovery_tools(mock_audit_logger, monkeypatch):
     """Mock discovery tools with audit logger."""
-    # Mock CLI calls at the module level where it's imported
+    # Mock CLI calls at the cli_bridge level
     async def mock_run_cli_json(args):
         return {"discovery_id": "disc_test123", "cached": False, "status": "success"}
 
-    # Patch at both locations to ensure it works
     from osiris.mcp import cli_bridge
-    from osiris.mcp.tools import discovery as discovery_module
 
     monkeypatch.setattr(cli_bridge, "run_cli_json", mock_run_cli_json)
-    monkeypatch.setattr(discovery_module, "run_cli_json", mock_run_cli_json)
 
     from osiris.mcp.tools.discovery import DiscoveryTools
 

@@ -12,6 +12,7 @@ Security Model:
 - Errors are mapped to MCP-compatible format
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -27,9 +28,37 @@ from osiris.mcp.errors import ErrorFamily, OsirisError
 logger = logging.getLogger(__name__)
 
 
+def derive_correlation_id(request_id: str | None = None) -> str:
+    """
+    Derive correlation ID deterministically from request_id if available.
+
+    When request_id is provided (from MCP protocol), this generates a deterministic
+    correlation ID using SHA-256 hash. This ensures the same request_id always produces
+    the same correlation ID, enabling reproducible metrics for testing and auditing.
+
+    When request_id is None, generates a random correlation ID for non-request contexts.
+
+    Args:
+        request_id: Optional request ID from MCP protocol
+
+    Returns:
+        Correlation ID (deterministic if request_id provided, else random)
+        Format: "mcp_<12-char-hex>"
+    """
+    if request_id is not None:
+        # Deterministic: SHA-256 hash of request_id (supports empty string)
+        hash_digest = hashlib.sha256(request_id.encode()).hexdigest()[:12]
+        return f"mcp_{hash_digest}"
+    else:
+        # Random for non-request contexts
+        return f"mcp_{uuid.uuid4().hex[:12]}"
+
+
 def generate_correlation_id() -> str:
     """
     Generate a correlation ID for tracking CLI operations.
+
+    DEPRECATED: Use derive_correlation_id() instead for deterministic IDs.
 
     Returns:
         Unique correlation ID (UUID4 format)
@@ -171,7 +200,12 @@ def ensure_base_path() -> Path:
     return Path.cwd().resolve()
 
 
-async def run_cli_json(args: list[str], timeout_s: float = 30.0, correlation_id: str | None = None) -> dict[str, Any]:
+async def run_cli_json(
+    args: list[str],
+    timeout_s: float = 30.0,
+    correlation_id: str | None = None,
+    request_id: str | None = None,
+) -> dict[str, Any]:
     """
     Execute Osiris CLI command and return parsed JSON result.
 
@@ -181,7 +215,8 @@ async def run_cli_json(args: list[str], timeout_s: float = 30.0, correlation_id:
     Args:
         args: Command arguments (e.g., ["mcp", "connections", "list"])
         timeout_s: Command timeout in seconds (default: 30.0)
-        correlation_id: Optional correlation ID for tracking
+        correlation_id: Pre-computed correlation ID (if already derived at MCP layer)
+        request_id: Request ID for deterministic correlation (if correlation_id not provided)
 
     Returns:
         Parsed JSON response from CLI
@@ -189,8 +224,9 @@ async def run_cli_json(args: list[str], timeout_s: float = 30.0, correlation_id:
     Raises:
         OsirisError: If command fails or returns invalid JSON
     """
+    # Use provided correlation_id, or derive from request_id, or generate random
     if correlation_id is None:
-        correlation_id = generate_correlation_id()
+        correlation_id = derive_correlation_id(request_id)
 
     start_time = time.time()
 
@@ -253,15 +289,28 @@ async def run_cli_json(args: list[str], timeout_s: float = 30.0, correlation_id:
             ) from e
 
         # Add metadata to response
-        response["_meta"] = {
-            "correlation_id": correlation_id,
-            "duration_ms": metrics["duration_ms"],
-            "bytes_in": metrics["bytes_in"],
-            "bytes_out": metrics["bytes_out"],
-            "cli_command": " ".join(args),
-        }
-
-        return response
+        # Handle both dict and non-dict responses (some commands return arrays)
+        if isinstance(response, dict):
+            response["_meta"] = {
+                "correlation_id": correlation_id,
+                "duration_ms": metrics["duration_ms"],
+                "bytes_in": metrics["bytes_in"],
+                "bytes_out": metrics["bytes_out"],
+                "cli_command": " ".join(args),
+            }
+            return response
+        else:
+            # For non-dict responses (e.g., arrays), wrap in a dict with metadata
+            return {
+                "data": response,
+                "_meta": {
+                    "correlation_id": correlation_id,
+                    "duration_ms": metrics["duration_ms"],
+                    "bytes_in": metrics["bytes_in"],
+                    "bytes_out": metrics["bytes_out"],
+                    "cli_command": " ".join(args),
+                },
+            }
 
     except OsirisError:
         # Re-raise OsirisError as-is (already properly formatted)

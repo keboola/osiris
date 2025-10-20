@@ -44,7 +44,7 @@ class TestNoEnvScenario:
                 "_meta": {"correlation_id": "test-123", "duration_ms": 10},
             }
 
-            with patch("osiris.mcp.tools.connections.run_cli_json", return_value=mock_result) as mock_cli:
+            with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_result) as mock_cli:
                 tools = ConnectionsTools()
                 result = await tools.list({})
 
@@ -82,7 +82,7 @@ class TestNoEnvScenario:
                 "_meta": {"correlation_id": "test-456", "duration_ms": 15},
             }
 
-            with patch("osiris.mcp.tools.connections.run_cli_json", return_value=mock_result) as mock_cli:
+            with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_result) as mock_cli:
                 tools = ConnectionsTools()
                 result = await tools.doctor({"connection_id": "@mysql.default"})
 
@@ -118,7 +118,7 @@ class TestNoEnvScenario:
                 "_meta": {"correlation_id": "test-789", "duration_ms": 500},
             }
 
-            with patch("osiris.mcp.tools.discovery.run_cli_json", return_value=mock_result) as mock_cli:
+            with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_result) as mock_cli:
                 tools = DiscoveryTools()
                 result = await tools.request(
                     {"connection_id": "@mysql.default", "component_id": "mysql.extractor", "samples": 10}
@@ -154,8 +154,8 @@ class TestNoEnvScenario:
         assert "from osiris.core.config import resolve_connection" not in content
         assert "from osiris.core.config import load_connections_yaml" not in content
 
-        # SHOULD contain CLI bridge import
-        assert "from osiris.mcp.cli_bridge import run_cli_json" in content
+        # SHOULD contain CLI bridge import (module-level import is fine)
+        assert "from osiris.mcp import cli_bridge" in content or "from osiris.mcp.cli_bridge import run_cli_json" in content
 
         # Check discovery.py
         discovery_file = tools_module_path / "discovery.py"
@@ -166,8 +166,8 @@ class TestNoEnvScenario:
         assert "from osiris.core.config import resolve_connection" not in content
         assert "from osiris.core.config import parse_connection_ref" not in content
 
-        # SHOULD contain CLI bridge import
-        assert "from osiris.mcp.cli_bridge import run_cli_json" in content
+        # SHOULD contain CLI bridge import (module-level import is fine)
+        assert "from osiris.mcp import cli_bridge" in content or "from osiris.mcp.cli_bridge import run_cli_json" in content
 
     def test_mcp_config_loads_from_yaml_not_env(self, tmp_path):
         """Test that MCPFilesystemConfig prefers osiris.yaml over environment."""
@@ -243,7 +243,7 @@ class TestCLIDelegationIntegrity:
             },
         }
 
-        with patch("osiris.mcp.tools.connections.run_cli_json", return_value=mock_result):
+        with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_result):
             tools = ConnectionsTools()
             result = await tools.list({})
 
@@ -266,7 +266,7 @@ class TestCLIDelegationIntegrity:
             suggest="Provide a valid connection ID",
         )
 
-        with patch("osiris.mcp.tools.connections.run_cli_json", side_effect=error):
+        with patch("osiris.mcp.cli_bridge.run_cli_json", side_effect=error):
             tools = ConnectionsTools()
 
             with pytest.raises(OsirisError) as exc_info:

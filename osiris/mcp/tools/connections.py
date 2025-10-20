@@ -9,7 +9,7 @@ import logging
 import time
 from typing import Any
 
-from osiris.mcp.cli_bridge import run_cli_json
+from osiris.mcp import cli_bridge
 from osiris.mcp.errors import ErrorFamily, OsirisError
 from osiris.mcp.metrics_helper import add_metrics
 
@@ -39,7 +39,7 @@ class ConnectionsTools:
 
         try:
             # Delegate to CLI: osiris mcp connections list --json
-            result = await run_cli_json(["mcp", "connections", "list"])
+            result = await cli_bridge.run_cli_json(["mcp", "connections", "list"])
 
             # Add metrics to response
             return add_metrics(result, correlation_id, start_time, args)
@@ -84,7 +84,7 @@ class ConnectionsTools:
                 connection_id = f"@{connection_id}"
 
             # Delegate to CLI: osiris mcp connections doctor --connection-id @mysql.default --json
-            result = await run_cli_json(["mcp", "connections", "doctor", "--connection-id", connection_id])
+            result = await cli_bridge.run_cli_json(["mcp", "connections", "doctor", "--connection-id", connection_id])
 
             # Add metrics to response
             return add_metrics(result, correlation_id, start_time, args)
