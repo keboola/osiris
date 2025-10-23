@@ -30,6 +30,8 @@ configSchema:
 
 secrets: []  # No secrets needed for mock processor
 
+x-connection-fields: []  # DuckDB operates in-memory, no connection
+
 examples:
   - title: Generate series
     config:

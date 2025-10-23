@@ -117,6 +117,14 @@ x-secret:
   - /resolved_connection/pg_dsn
   - /resolved_connection/password
 
+x-connection-fields:
+  - name: url
+    override: allowed
+  - name: project_id
+    override: allowed
+  - name: key
+    override: forbidden  # Security: API key cannot be overridden
+
 redaction:
   strategy: mask
   mask: "****"

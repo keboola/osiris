@@ -88,9 +88,9 @@ Diagnose connection issues and validate configuration.
 ```json
 {
   "type": "object",
-  "required": ["connection_id"],
+  "required": ["connection"],
   "properties": {
-    "connection_id": {
+    "connection": {
       "type": "string",
       "description": "Connection reference (e.g., @mysql.default)"
     }
@@ -104,7 +104,7 @@ Diagnose connection issues and validate configuration.
 {
   "type": "object",
   "properties": {
-    "connection_id": { "type": "string" },
+    "connection": { "type": "string" },
     "family": { "type": "string" },
     "alias": { "type": "string" },
     "health": { "type": "string", "enum": ["healthy", "unhealthy"] },
@@ -178,15 +178,15 @@ Discover database schema with optional sampling and caching.
 ```json
 {
   "type": "object",
-  "required": ["connection_id", "component_id"],
+  "required": ["connection", "component"],
   "properties": {
-    "connection_id": {
+    "connection": {
       "type": "string",
-      "description": "Database connection ID"
+      "description": "Database connection reference"
     },
-    "component_id": {
+    "component": {
       "type": "string",
-      "description": "Component ID for discovery"
+      "description": "Component for discovery"
     },
     "samples": {
       "type": "integer",

@@ -39,7 +39,7 @@ class TestMetricsFields:
     @pytest.mark.asyncio
     async def test_connections_doctor_metrics(self, mock_connections_tools):
         """Test connections.doctor returns metrics fields."""
-        result = await mock_connections_tools.doctor({"connection_id": "@mysql.default"})
+        result = await mock_connections_tools.doctor({"connection": "@mysql.default"})
 
         assert "correlation_id" in result["_meta"]
         assert "duration_ms" in result["_meta"]
@@ -60,7 +60,7 @@ class TestMetricsFields:
     async def test_discovery_request_metrics(self, mock_discovery_tools):
         """Test discovery.request returns metrics fields."""
         result = await mock_discovery_tools.request(
-            {"connection_id": "@mysql.default", "component_id": "mysql.extractor", "samples": 5}
+            {"connection": "@mysql.default", "component": "mysql.extractor", "samples": 5}
         )
 
         assert "correlation_id" in result["_meta"]
@@ -173,7 +173,7 @@ class TestMetricsAccuracy:
         result1 = await mock_connections_tools.list({})
 
         # Args with data
-        result2 = await mock_connections_tools.doctor({"connection_id": "@mysql.default"})
+        result2 = await mock_connections_tools.doctor({"connection": "@mysql.default"})
 
         # Result2 should have more bytes_in since it has arguments
         assert result2["_meta"]["bytes_in"] > result1["_meta"]["bytes_in"]
@@ -244,7 +244,7 @@ def mock_connections_tools(mock_audit_logger, monkeypatch):
         if "list" in args:
             return {"connections": [], "count": 0, "status": "success"}
         elif "doctor" in args:
-            return {"connection_id": "@mysql.default", "status": "ok", "message": "Connection OK"}
+            return {"connection": "@mysql.default", "status": "ok", "message": "Connection OK"}
         return {}
 
     from osiris.mcp import cli_bridge

@@ -67,7 +67,7 @@ class TestToolDispatch:
     async def test_connections_doctor_dispatch(self, server):
         """Test connections_doctor tool dispatches correctly."""
         mock_result = {
-            "connection_id": "@mysql.default",
+            "connection": "@mysql.default",
             "health": "healthy",
             "diagnostics": [],
             "_meta": {"correlation_id": "test-456", "duration_ms": 15},
@@ -75,7 +75,7 @@ class TestToolDispatch:
 
         server.connections_tools.doctor = AsyncMock(return_value=mock_result)
 
-        result = await server._call_tool("connections_doctor", {"connection_id": "@mysql.default"})
+        result = await server._call_tool("connections_doctor", {"connection": "@mysql.default"})
 
         assert len(result) == 1
         response = json.loads(result[0].text)
@@ -112,7 +112,7 @@ class TestToolDispatch:
         server.discovery_tools.request = AsyncMock(return_value=mock_result)
 
         result = await server._call_tool(
-            "discovery_request", {"connection_id": "@mysql.main", "component_id": "mysql_extractor"}
+            "discovery_request", {"connection": "@mysql.main", "component": "mysql_extractor"}
         )
 
         assert len(result) == 1
@@ -302,7 +302,7 @@ class TestToolDispatch:
 
         # Call with discovery.request alias
         result = await server._call_tool(
-            "discovery.request", {"connection_id": "@mysql.main", "component_id": "mysql_extractor"}
+            "discovery.request", {"connection": "@mysql.main", "component": "mysql_extractor"}
         )
 
         assert len(result) == 1
@@ -724,7 +724,7 @@ class TestErrorPropagation:
 
         server.connections_tools.doctor = AsyncMock(side_effect=error)
 
-        result = await server._call_tool("connections_doctor", {"connection_id": "@mysql.main"})
+        result = await server._call_tool("connections_doctor", {"connection": "@mysql.main"})
 
         assert len(result) == 1
         response = json.loads(result[0].text)
@@ -747,7 +747,7 @@ class TestErrorPropagation:
         server.discovery_tools.request = AsyncMock(side_effect=error)
 
         result = await server._call_tool(
-            "discovery_request", {"connection_id": "@mysql.main", "component_id": "mysql_extractor"}
+            "discovery_request", {"connection": "@mysql.main", "component": "mysql_extractor"}
         )
 
         assert len(result) == 1
@@ -841,7 +841,7 @@ class TestErrorPropagation:
 
         server.connections_tools.doctor = AsyncMock(side_effect=error)
 
-        result = await server._call_tool("connections_doctor", {"connection_id": "@mysql.main"})
+        result = await server._call_tool("connections_doctor", {"connection": "@mysql.main"})
 
         assert len(result) == 1
         response = json.loads(result[0].text)
@@ -862,7 +862,7 @@ class TestErrorPropagation:
 
         server.connections_tools.doctor = AsyncMock(side_effect=error)
 
-        result = await server._call_tool("connections_doctor", {"connection_id": "@mysql.main"})
+        result = await server._call_tool("connections_doctor", {"connection": "@mysql.main"})
 
         assert len(result) == 1
         response = json.loads(result[0].text)

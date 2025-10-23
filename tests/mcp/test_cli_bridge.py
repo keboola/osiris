@@ -79,7 +79,7 @@ class TestMapCliErrorToMcp:
     def test_maps_schema_error(self):
         """Test mapping of schema errors (exit code 2)."""
         error = map_cli_error_to_mcp(
-            exit_code=2, stderr="Invalid argument: connection_id", cmd=["osiris", "mcp", "connections", "doctor"]
+            exit_code=2, stderr="Invalid argument: connection", cmd=["osiris", "mcp", "connections", "doctor"]
         )
 
         assert error.family == ErrorFamily.SCHEMA
@@ -220,7 +220,7 @@ class TestRunCliJson:
         mock_result = Mock()
         mock_result.returncode = 2
         mock_result.stdout = ""
-        mock_result.stderr = "Error: connection_id is required"
+        mock_result.stderr = "Error: connection is required"
 
         with patch("subprocess.run", return_value=mock_result):
             with patch("osiris.mcp.cli_bridge.ensure_base_path", return_value=Path("/tmp/test")):
@@ -229,7 +229,7 @@ class TestRunCliJson:
 
         # Exit code 2 maps to SCHEMA errors
         assert exc_info.value.family == ErrorFamily.SCHEMA
-        assert "connection_id is required" in str(exc_info.value)
+        assert "connection is required" in str(exc_info.value)
 
     async def test_handles_timeout(self):
         """Test timeout handling."""

@@ -36,8 +36,8 @@ class TestDiscoveryTools:
 
         result = await discovery_tools.request(
             {
-                "connection_id": "@mysql.default",
-                "component_id": "mysql.extractor",
+                "connection": "@mysql.default",
+                "component": "mysql.extractor",
                 "samples": 5,
                 "idempotency_key": "test_key",
             }
@@ -65,7 +65,7 @@ class TestDiscoveryTools:
             "discovery_id": "disc_cli123",
             "status": "success",
             "summary": {
-                "connection_id": "@mysql.default",
+                "connection": "@mysql.default",
                 "database_type": "mysql",
                 "total_tables": 5,
                 "tables_discovered": ["users", "orders"],
@@ -75,7 +75,7 @@ class TestDiscoveryTools:
 
         with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_cli_result):
             result = await discovery_tools.request(
-                {"connection_id": "@mysql.default", "component_id": "mysql.extractor", "samples": 0}
+                {"connection": "@mysql.default", "component": "mysql.extractor", "samples": 0}
             )
 
             assert result["status"] == "success"
@@ -84,21 +84,21 @@ class TestDiscoveryTools:
 
     @pytest.mark.asyncio
     async def test_discovery_request_missing_connection_id(self, discovery_tools):
-        """Test discovery request without connection_id."""
+        """Test discovery request without connection."""
         with pytest.raises(OsirisError) as exc_info:
-            await discovery_tools.request({"component_id": "mysql.extractor"})
+            await discovery_tools.request({"component": "mysql.extractor"})
 
         assert exc_info.value.family.value == "SCHEMA"
-        assert "connection_id is required" in str(exc_info.value)
+        assert "connection is required" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_discovery_request_missing_component_id(self, discovery_tools):
-        """Test discovery request without component_id."""
+        """Test discovery request without component."""
         with pytest.raises(OsirisError) as exc_info:
-            await discovery_tools.request({"connection_id": "@mysql.default"})
+            await discovery_tools.request({"connection": "@mysql.default"})
 
         assert exc_info.value.family.value == "SCHEMA"
-        assert "component_id is required" in str(exc_info.value)
+        assert "component is required" in str(exc_info.value)
 
     # Note: _perform_discovery is now in CLI subcommands (discovery_cmds.py),
     # not in the MCP tool. The MCP tool delegates to CLI.

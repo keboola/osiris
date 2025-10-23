@@ -31,18 +31,19 @@ class TestOMLTools:
 
         schema = result["schema"]
         assert schema["type"] == "object"
-        assert schema["required"] == ["version", "name", "steps"]
+        assert schema["required"] == ["oml_version", "name", "steps"]
         assert "properties" in schema
 
     @pytest.mark.asyncio
     async def test_validate_oml_valid(self, oml_tools):
         """Test validating valid OML content."""
         valid_oml = """
-version: 0.1.0
+oml_version: "0.1.0"
 name: test_pipeline
 steps:
   - id: extract
     component: mysql.extractor
+    mode: read
     config:
       connection: @mysql.default
       query: SELECT * FROM users
@@ -79,8 +80,8 @@ name: test_pipeline
         result = await oml_tools.validate({"oml_content": incomplete_oml})
 
         assert result["valid"] is False
-        assert any("Missing required field: version" in d["message"] for d in result["diagnostics"])
-        assert any("Missing required field: steps" in d["message"] for d in result["diagnostics"])
+        assert any("Missing required" in d["message"] and "oml_version" in d["message"] for d in result["diagnostics"])
+        assert any("Missing required" in d["message"] and "steps" in d["message"] for d in result["diagnostics"])
 
     @pytest.mark.asyncio
     async def test_validate_oml_no_content(self, oml_tools):

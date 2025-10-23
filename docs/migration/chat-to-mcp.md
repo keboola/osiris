@@ -81,8 +81,8 @@ async with stdio_client(server_params) as (read, write):
         # Discover schema
         discovery = await session.call_tool(
             "osiris.introspect_sources", {
-                "connection_id": "@mysql.default",
-                "component_id": "mysql.extractor",
+                "connection": "@mysql.default",
+                "component": "mysql.extractor",
                 "samples": 5
             }
         )
@@ -256,8 +256,8 @@ osiris mcp run --selftest
 3. **Use idempotency keys for determinism**
    ```python
    await session.call_tool("osiris.introspect_sources", {
-       "connection_id": "@mysql.default",
-       "component_id": "mysql.extractor",
+       "connection": "@mysql.default",
+       "component": "mysql.extractor",
        "idempotency_key": "discovery_123"
    })
    ```

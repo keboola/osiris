@@ -143,8 +143,8 @@ class GuideTools:
                 {
                     "tool": "osiris.introspect_sources",
                     "arguments": {
-                        "connection_id": known_connections[0] if known_connections else "@mysql.default",
-                        "component_id": "mysql.extractor",
+                        "connection": known_connections[0] if known_connections else "@mysql.default",
+                        "component": "mysql.extractor",
                         "samples": 5,
                     },
                     "description": "Discover database schema with sample data",

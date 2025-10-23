@@ -1299,7 +1299,7 @@ python ../osiris.py mcp aiop show --run-id $RUN_ID --json | wc -c
 |-----------|-----------|
 | **Tool Name** | `connections_doctor` |
 | **Aliases** | `osiris.connections.doctor`, `connections.doctor` |
-| **Input Parameters** | `connection_id` (required, string, format: `@family.alias`) |
+| **Input Parameters** | `connection` (required, string, format: `@family.alias`) |
 | **Expected Output Fields** | `connection_ok` (bool), `diagnostics` (array), `suggest` (string), `_meta` (object) |
 | **Error Scenarios** | Connection not found, auth failure, timeout, DNS error, network unreachable |
 | **CLI Equivalent** | `osiris mcp connections doctor --connection-id @mysql.main --json` |
@@ -1364,7 +1364,7 @@ python ../osiris.py mcp aiop show --run-id $RUN_ID --json | wc -c
 |-----------|-----------|
 | **Tool Name** | `discovery_request` |
 | **Aliases** | `osiris.introspect_sources`, `discovery.request` |
-| **Input Parameters** | `connection_id` (required), `component_id` (required), `samples` (optional, 0-100), `idempotency_key` (optional) |
+| **Input Parameters** | `connection` (required), `component` (required), `samples` (optional, 0-100), `idempotency_key` (optional) |
 | **Expected Output Fields** | `discovery_id` (string), `status` (string), `cache_hit` (bool), `artifacts` (array), `_meta` (object) |
 | **Error Scenarios** | Connection not found, timeout, auth failure, schema parse error |
 | **CLI Equivalent** | `osiris mcp discovery run --connection-id @mysql.main --json` |
@@ -2386,7 +2386,7 @@ Capture this session with my consent
 
 **Test Invalid Connection**:
 ```
-Use connections_doctor with connection_id "@invalid.connection"
+Use connections_doctor with connection "@invalid.connection"
 ```
 
 **Expected**: Error message displayed, suggestion provided, server stays responsive

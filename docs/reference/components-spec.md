@@ -29,6 +29,7 @@ The Component Specification Schema enables Osiris components to be self-describi
 | `title` | string | Human-readable component title |
 | `description` | string | Detailed component description |
 | `secrets` | array | JSON Pointer paths to secret fields |
+| `x-connection-fields` | array | Fields provided by connection references with override policies |
 | `redaction` | object | Policy for redacting sensitive data |
 | `constraints` | object | Cross-field validation rules |
 | `examples` | array | Usage examples with config and OML |
@@ -109,6 +110,59 @@ The `secrets` field uses JSON Pointer notation to identify sensitive fields:
 - Path segments separated by `/`
 - Array indices as numbers: `/items/0/secret`
 - Special characters escaped: `~0` for `~`, `~1` for `/`
+
+### Connection Fields (x-connection-fields)
+
+The `x-connection-fields` field declares which configuration fields can be provided by a connection reference and controls whether they can be overridden in pipeline step configs. This enables secure credential management and fine-grained control over field overrides.
+
+**Purpose**: When a pipeline step uses a connection reference (e.g., `connection: "@mysql.prod"`), certain fields are resolved from the connection definition. The `x-connection-fields` specification tells the validator which fields are expected from the connection and their override policies.
+
+**Simple Format** (all fields overridable by default):
+```yaml
+x-connection-fields:
+  - endpoint
+  - auth_token
+  - auth_username
+```
+
+**Advanced Format** (with override control):
+```yaml
+x-connection-fields:
+  - name: host
+    override: allowed      # Can be overridden in step config
+  - name: password
+    override: forbidden    # Cannot be overridden (security)
+  - name: headers
+    override: warning      # Can override but emits warning
+```
+
+**Override Policies**:
+- `allowed`: Step config can override connection value (for testing/flexibility)
+- `forbidden`: Step config cannot override (security-sensitive fields)
+- `warning`: Step config can override but emits warning (ambiguous fields)
+
+**Example with MySQL**:
+```yaml
+x-connection-fields:
+  - name: host
+    override: allowed      # Infrastructure field - safe to override
+  - name: port
+    override: allowed      # Infrastructure field - safe to override
+  - name: database
+    override: forbidden    # Security: prevent database switching
+  - name: user
+    override: forbidden    # Security: prevent user switching
+  - name: password
+    override: forbidden    # Security: prevent credential override
+```
+
+**Validation Behavior**:
+- When connection reference used: Validator skips validation of connection-provided required fields
+- Forbidden override: Validation error if step config attempts override
+- Warning override: Validation warning if step config attempts override
+- Allowed override: No error or warning
+
+**See Also**: [x-connection-fields Specification](./x-connection-fields.md) for comprehensive documentation.
 
 ### Redaction Policy
 

@@ -333,9 +333,9 @@ class TestClaudeDesktopSimulation:
         # Simulate CLI error
         mock_cli_bridge.side_effect = OsirisError(
             ErrorFamily.SCHEMA,
-            "Missing required field: connection_id",
-            path=["arguments", "connection_id"],
-            suggest="Provide connection_id in the format @family.alias",
+            "Missing required field: connection",
+            path=["arguments", "connection"],
+            suggest="Provide connection in the format @family.alias",
         )
 
         result = await mcp_server._call_tool("connections_doctor", {})
@@ -349,14 +349,14 @@ class TestClaudeDesktopSimulation:
         error = result_data["error"]
         # Top-level error has code (family) and message
         assert error["code"] == "SCHEMA"  # Family value
-        assert "connection_id" in error["message"]
+        assert "connection" in error["message"]
 
         # Details dict contains the full error info
         details = error.get("details", {})
-        # OsirisError was created with path=["arguments", "connection_id"] but tool may simplify
-        # Check that connection_id is mentioned in the path
+        # OsirisError was created with path=["arguments", "connection"] but tool may simplify
+        # Check that connection is mentioned in the path
         if "path" in details:
-            assert "connection_id" in str(details.get("path", []))
+            assert "connection" in str(details.get("path", []))
         assert details.get("suggest") is not None or "suggest" in error
         # Check for connection reference format (may vary slightly in wording)
         suggest = details.get("suggest", "") or error.get("suggest", "")
@@ -471,8 +471,8 @@ class TestClaudeDesktopSimulation:
         result2 = await mcp_server._call_tool(
             "discovery_request",
             {
-                "connection_id": "@mysql.db1",
-                "component_id": "@mysql/extractor",
+                "connection": "@mysql.db1",
+                "component": "@mysql/extractor",
             },
         )
         result2_data = json.loads(result2[0].text)
@@ -673,7 +673,7 @@ steps:
         - Error family: SCHEMA
         - Indicates missing field
         """
-        # connections_doctor requires connection_id (tool will raise OsirisError directly)
+        # connections_doctor requires connection (tool will raise OsirisError directly)
         # Mock will not be called because validation happens before CLI delegation
         result = await mcp_server._call_tool("connections_doctor", {})
         result_data = json.loads(result[0].text)
@@ -681,11 +681,11 @@ steps:
         # When tool raises OsirisError, handler returns envelope format
         # (different from unknown tool which uses _call_tool's error handler)
         assert result_data["status"] == "error"
-        # Error should mention connection_id
+        # Error should mention connection
         error = result_data["error"]
         # Check code is SCHEMA error family
         assert error["code"] in ["SCHEMA", "schema"]
-        assert "connection_id" in error["message"]
+        assert "connection" in error["message"]
 
     @pytest.mark.asyncio
     async def test_all_tools_callable(self, mock_cli_bridge, mcp_server):

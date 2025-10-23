@@ -61,7 +61,7 @@ class ConnectionsTools:
         Diagnose connection issues via CLI delegation.
 
         Args:
-            args: Tool arguments with connection_id
+            args: Tool arguments with connection
 
         Returns:
             Dictionary with diagnostic information
@@ -69,22 +69,22 @@ class ConnectionsTools:
         start_time = time.time()
         correlation_id = self.audit.make_correlation_id() if self.audit else "unknown"
 
-        connection_id = args.get("connection_id")
-        if not connection_id:
+        connection = args.get("connection")
+        if not connection:
             raise OsirisError(
                 ErrorFamily.SCHEMA,
-                "connection_id is required",
-                path=["connection_id"],
+                "connection is required",
+                path=["connection"],
                 suggest="Provide a connection reference like @mysql.default",
             )
 
         try:
-            # Ensure connection_id has @ prefix
-            if not connection_id.startswith("@"):
-                connection_id = f"@{connection_id}"
+            # Ensure connection has @ prefix
+            if not connection.startswith("@"):
+                connection = f"@{connection}"
 
             # Delegate to CLI: osiris mcp connections doctor --connection-id @mysql.default --json
-            result = await cli_bridge.run_cli_json(["mcp", "connections", "doctor", "--connection-id", connection_id])
+            result = await cli_bridge.run_cli_json(["mcp", "connections", "doctor", "--connection-id", connection])
 
             # Add metrics to response
             return add_metrics(result, correlation_id, start_time, args)
@@ -97,6 +97,6 @@ class ConnectionsTools:
             raise OsirisError(
                 ErrorFamily.SEMANTIC,
                 f"Failed to diagnose connection: {str(e)}",
-                path=["connection_id"],
+                path=["connection"],
                 suggest="Check the connection reference format and CLI bridge",
             ) from e

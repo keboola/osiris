@@ -69,8 +69,8 @@ class TestMCPE2ESimple:
 
             result = await mcp_server._handle_discovery_request(
                 {
-                    "connection_id": "@mysql.test",
-                    "component_id": "@mysql/extractor",
+                    "connection": "@mysql.test",
+                    "component": "@mysql/extractor",
                 }
             )
 
@@ -108,8 +108,8 @@ class TestMCPE2ESimple:
         """Test that CLI errors are properly propagated."""
         mock_cli.side_effect = OsirisError(
             ErrorFamily.SCHEMA,
-            "connection_id is required",
-            path=["connection_id"],
+            "connection is required",
+            path=["connection"],
             suggest="Provide connection ID",
         )
 
@@ -121,7 +121,7 @@ class TestMCPE2ESimple:
         # Error should have code and message
         error = result["error"]
         assert error["code"] in ["SCHEMA", "schema"]
-        assert "connection_id" in error["message"]
+        assert "connection" in error["message"]
 
     @pytest.mark.asyncio
     async def test_metrics_included_in_response(self, mock_cli, mcp_server):
@@ -269,8 +269,8 @@ async def test_full_workflow_sequence():
             # Step 2: Discovery
             result2 = await server._handle_discovery_request(
                 {
-                    "connection_id": "@mysql.source",
-                    "component_id": "@mysql/extractor",
+                    "connection": "@mysql.source",
+                    "component": "@mysql/extractor",
                 }
             )
             assert result2["status"] == "success"

@@ -179,8 +179,8 @@ class OsirisMCPServer:
                 description="Diagnose connection issues",
                 inputSchema={
                     "type": "object",
-                    "properties": {"connection_id": {"type": "string", "description": "Connection ID to diagnose"}},
-                    "required": ["connection_id"],
+                    "properties": {"connection": {"type": "string", "description": "Connection ID to diagnose"}},
+                    "required": ["connection"],
                 },
             ),
             # Component tools
@@ -199,8 +199,8 @@ class OsirisMCPServer:
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "connection_id": {"type": "string", "description": "Database connection ID"},
-                        "component_id": {"type": "string", "description": "Component ID for discovery"},
+                        "connection": {"type": "string", "description": "Database connection ID"},
+                        "component": {"type": "string", "description": "Component ID for discovery"},
                         "samples": {
                             "type": "integer",
                             "description": "Number of sample rows to fetch",
@@ -209,7 +209,7 @@ class OsirisMCPServer:
                         },
                         "idempotency_key": {"type": "string", "description": "Key for deterministic caching"},
                     },
-                    "required": ["connection_id", "component_id"],
+                    "required": ["connection", "component"],
                 },
             ),
             # Use cases tool

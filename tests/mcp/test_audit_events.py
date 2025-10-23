@@ -70,7 +70,7 @@ class TestAuditEvents:
     async def test_audit_log_tool_error(self, audit_logger, tmp_path):
         """Test logging a tool error."""
         correlation_id = await audit_logger.log_tool_call(
-            tool_name="discovery.request", arguments={"connection_id": "test"}
+            tool_name="discovery.request", arguments={"connection": "test"}
         )
 
         # Log an error

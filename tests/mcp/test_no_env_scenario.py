@@ -73,7 +73,7 @@ class TestNoEnvScenario:
 
             # Mock CLI result
             mock_result = {
-                "connection_id": "@mysql.default",
+                "connection": "@mysql.default",
                 "family": "mysql",
                 "alias": "default",
                 "health": "healthy",
@@ -84,7 +84,7 @@ class TestNoEnvScenario:
 
             with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_result) as mock_cli:
                 tools = ConnectionsTools()
-                result = await tools.doctor({"connection_id": "@mysql.default"})
+                result = await tools.doctor({"connection": "@mysql.default"})
 
                 # Verify CLI was called
                 mock_cli.assert_called_once()
@@ -114,14 +114,14 @@ class TestNoEnvScenario:
             mock_result = {
                 "discovery_id": "disc_12345",
                 "status": "success",
-                "summary": {"connection_id": "@mysql.default", "database_type": "mysql", "total_tables": 5},
+                "summary": {"connection": "@mysql.default", "database_type": "mysql", "total_tables": 5},
                 "_meta": {"correlation_id": "test-789", "duration_ms": 500},
             }
 
             with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_result) as mock_cli:
                 tools = DiscoveryTools()
                 result = await tools.request(
-                    {"connection_id": "@mysql.default", "component_id": "mysql.extractor", "samples": 10}
+                    {"connection": "@mysql.default", "component": "mysql.extractor", "samples": 10}
                 )
 
                 # Verify CLI was called (note: --component-id NOT passed, derived from connection family)
@@ -267,8 +267,8 @@ class TestCLIDelegationIntegrity:
         # Simulate CLI error
         error = OsirisError(
             ErrorFamily.SEMANTIC,  # CLI errors map to SEMANTIC by default
-            "connection_id is required",
-            path=["connection_id"],
+            "connection is required",
+            path=["connection"],
             suggest="Provide a valid connection ID",
         )
 
@@ -276,8 +276,8 @@ class TestCLIDelegationIntegrity:
             tools = ConnectionsTools()
 
             with pytest.raises(OsirisError) as exc_info:
-                await tools.doctor({"connection_id": "@invalid"})
+                await tools.doctor({"connection": "@invalid"})
 
             # Error should be propagated as-is
             assert exc_info.value.family == ErrorFamily.SEMANTIC
-            assert "connection_id is required" in str(exc_info.value)
+            assert "connection is required" in str(exc_info.value)

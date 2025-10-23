@@ -115,7 +115,7 @@ List all configured database connections from `osiris_connections.yaml`.
 
 Diagnose connection issues and validate configuration.
 
-**Input**: `connection_id` (string, required)
+**Input**: `connection` (string, required)
 **Output**: Health status and diagnostic checks
 
 ### Component Tools
@@ -135,8 +135,8 @@ Discover database schema with optional sampling. Results are cached for 24 hours
 
 **Input**:
 
-- `connection_id` (string, required)
-- `component_id` (string, required)
+- `connection` (string, required)
+- `component` (string, required)
 - `samples` (integer, optional, 0-100)
 - `idempotency_key` (string, optional)
 

@@ -58,7 +58,7 @@ class TestOMLSchemaParity:
         assert "required" in schema
 
         # Check required top-level fields
-        required_fields = ["name", "version", "steps"]
+        required_fields = ["name", "oml_version", "steps"]
         for field in required_fields:
             assert field in schema["required"]
 
@@ -73,13 +73,15 @@ class TestOMLSchemaParity:
         # Verify step properties
         assert step_schema["type"] == "object"
         assert "properties" in step_schema
-        assert "name" in step_schema["properties"]
+        assert "id" in step_schema["properties"]
         assert "component" in step_schema["properties"]
+        assert "mode" in step_schema["properties"]
         assert "config" in step_schema["properties"]
 
         # Verify required step fields
-        assert "name" in step_schema["required"]
+        assert "id" in step_schema["required"]
         assert "component" in step_schema["required"]
+        assert "mode" in step_schema["required"]
 
     @pytest.mark.asyncio
     async def test_schema_connection_references(self, oml_tools):
@@ -100,14 +102,14 @@ class TestOMLSchemaParity:
         """Test schema validates correct OML."""
         valid_oml = """
 name: test_pipeline
-version: "1.0"
+oml_version: "0.1.0"
 steps:
-  - name: extract
+  - id: extract
     component: mysql_extractor
+    mode: read
     connection: "@mysql.source"
     config:
       query: "SELECT * FROM users"
-      mode: batch
 """
         result = await oml_tools.validate({"oml_content": valid_oml, "strict": True})
 
@@ -137,10 +139,11 @@ steps:
         # Test v0.1.0 format is still valid
         legacy_oml = """
 name: legacy_pipeline
-version: "0.1"
+oml_version: "0.1.0"
 steps:
-  - name: step1
+  - id: step1
     component: component1
+    mode: read
     config: {}
 """
         result = await oml_tools.validate({"oml_content": legacy_oml})

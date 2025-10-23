@@ -63,9 +63,9 @@ class OMLTools:
                     "$schema": "http://json-schema.org/draft-07/schema#",
                     "version": "0.1.0",
                     "type": "object",
-                    "required": ["version", "name", "steps"],
+                    "required": ["oml_version", "name", "steps"],
                     "properties": {
-                        "version": {"type": "string", "enum": ["0.1.0"], "description": "OML schema version"},
+                        "oml_version": {"type": "string", "enum": ["0.1.0"], "description": "OML schema version"},
                         "name": {"type": "string", "description": "Pipeline name"},
                         "description": {"type": "string", "description": "Pipeline description"},
                         "steps": {
@@ -73,13 +73,13 @@ class OMLTools:
                             "description": "Pipeline steps",
                             "items": {
                                 "type": "object",
-                                "required": ["name", "component"],
+                                "required": ["id", "component", "mode"],
                                 "properties": {
                                     "id": {"type": "string"},
-                                    "name": {"type": "string"},
                                     "component": {"type": "string"},
+                                    "mode": {"type": "string", "enum": ["read", "write", "transform"]},
                                     "config": {"type": "object"},
-                                    "depends_on": {"type": "array", "items": {"type": "string"}},
+                                    "needs": {"type": "array", "items": {"type": "string"}},
                                 },
                             },
                         },
@@ -276,7 +276,7 @@ class OMLTools:
 
     async def _validate_oml(self, oml_data: dict[str, Any], strict: bool) -> list[dict[str, Any]]:
         """
-        Perform actual OML validation.
+        Perform actual OML validation using the core OMLValidator.
 
         Args:
             oml_data: Parsed OML data
@@ -285,88 +285,50 @@ class OMLTools:
         Returns:
             List of diagnostic items
         """
-        diagnostics = []
-
-        # Basic structure validation
-        if "version" not in oml_data:
-            diagnostics.append({"type": "error", "line": 1, "column": 0, "message": "Missing required field: version"})
-        elif str(oml_data["version"]) not in ["0.1.0", "1.0", "0.1"]:
-            # Accept common version formats for backward compatibility
-            diagnostics.append(
-                {
-                    "type": "error",
-                    "line": 1,
-                    "column": 0,
-                    "message": f"Invalid version: {oml_data['version']}, expected 0.1.0",
-                }
-            )
-
-        if "name" not in oml_data:
-            diagnostics.append({"type": "error", "line": 1, "column": 0, "message": "Missing required field: name"})
-
-        if "steps" not in oml_data:
-            diagnostics.append({"type": "error", "line": 1, "column": 0, "message": "Missing required field: steps"})
-        elif not isinstance(oml_data["steps"], list):
-            diagnostics.append({"type": "error", "line": 1, "column": 0, "message": "Field 'steps' must be an array"})
-        elif len(oml_data["steps"]) == 0:
-            diagnostics.append({"type": "warning", "line": 1, "column": 0, "message": "Pipeline has no steps"})
-
-        # Validate steps
-        if isinstance(oml_data.get("steps"), list):
-            for i, step in enumerate(oml_data["steps"]):
-                if not isinstance(step, dict):
-                    diagnostics.append(
-                        {
-                            "type": "error",
-                            "line": i + 5,  # Approximate line number
-                            "column": 0,
-                            "message": f"Step {i} must be an object",
-                        }
-                    )
-                    continue
-
-                # Check required step fields (id is optional in lenient mode)
-                if "id" not in step and strict and oml_data.get("version") not in ["1.0", "0.1"]:
-                    diagnostics.append(
-                        {"type": "error", "line": i + 5, "column": 0, "message": f"Step {i} missing required field: id"}
-                    )
-
-                if "component" not in step:
-                    diagnostics.append(
-                        {
-                            "type": "error",
-                            "line": i + 5,
-                            "column": 0,
-                            "message": f"Step {i} missing required field: component",
-                        }
-                    )
-
-                if "config" not in step:
-                    diagnostics.append(
-                        {
-                            "type": "error",
-                            "line": i + 5,
-                            "column": 0,
-                            "message": f"Step {i} missing required field: config",
-                        }
-                    )
-
-        # Try to use the actual OML validator if available
         try:
             from osiris.core.oml_validator import OMLValidator  # noqa: PLC0415  # Lazy import
 
             validator = OMLValidator()
-            # Convert OML data to YAML string for validator
-            yaml_str = yaml.dump(oml_data)
-            validation_result = validator.validate(yaml_str)
 
-            # Convert validator results to diagnostics
-            if validation_result and "diagnostics" in validation_result:
-                diagnostics = validation_result["diagnostics"]
+            # OMLValidator.validate() returns (is_valid, errors, warnings) tuple
+            is_valid, errors, warnings = validator.validate(oml_data)
 
-        except ImportError:
-            logger.debug("OML validator not available, using basic validation")
+            # Convert errors and warnings to diagnostics format
+            diagnostics = []
+
+            # Add errors
+            for error in errors:
+                diagnostic = {
+                    "type": "error",
+                    "message": error.get("message", "Unknown error"),
+                    "location": error.get("location", "unknown"),
+                }
+                diagnostics.append(diagnostic)
+
+            # Add warnings
+            for warning in warnings:
+                diagnostic = {
+                    "type": "warning",
+                    "message": warning.get("message", "Unknown warning"),
+                    "location": warning.get("location", "unknown"),
+                }
+                diagnostics.append(diagnostic)
+
+            return diagnostics
+
+        except ImportError as e:
+            logger.error(f"Failed to import OMLValidator: {e}")
+            raise OsirisError(
+                ErrorFamily.SEMANTIC,
+                "OML validator is not available - core validation module missing",
+                path=["validation"],
+                suggest="Ensure osiris.core.oml_validator is properly installed",
+            ) from e
         except Exception as e:
             logger.error(f"OML validator error: {e}")
-
-        return diagnostics
+            raise OsirisError(
+                ErrorFamily.SEMANTIC,
+                f"OML validation failed: {str(e)}",
+                path=["validation"],
+                suggest="Check OML structure and validator state",
+            ) from e

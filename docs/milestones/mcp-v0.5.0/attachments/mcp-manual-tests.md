@@ -175,7 +175,7 @@ This guide provides comprehensive manual test procedures for the Osiris MCP (Mod
    ```
 
    **Expected Behavior**:
-   - Claude invokes `discovery_request` with connection_id
+   - Claude invokes `discovery_request` with connection parameter
    - Server returns schema information (tables, columns, types)
    - Results cached in `.osiris/mcp/logs/cache/`
 
@@ -210,7 +210,7 @@ This guide provides comprehensive manual test procedures for the Osiris MCP (Mod
 
    In Claude Desktop chat:
    ```
-   Use connections_doctor with connection_id "@invalid.connection"
+   Use connections_doctor with connection "@invalid.connection"
    ```
 
    **Expected Behavior**:
@@ -227,11 +227,11 @@ This guide provides comprehensive manual test procedures for the Osiris MCP (Mod
 
    In Claude Desktop chat:
    ```
-   Use connections_doctor without providing connection_id
+   Use connections_doctor without providing connection
    ```
 
    **Expected Behavior**:
-   - Error message: "connection_id is required"
+   - Error message: "connection is required"
    - Suggestion: "Provide a connection reference like @mysql.default"
 
    **Pass Criteria**:
@@ -606,7 +606,7 @@ cp testing_env/osiris_connections.yaml testing_env/osiris_connections.yaml.backu
    **Pass Criteria**:
    - Server restarts cleanly
    - No stale cache data causes errors
-   - New connection_id values generated
+   - New correlation IDs generated for each request
 
 ### 4.3 Long-Running Request Interruption
 

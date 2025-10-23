@@ -30,7 +30,7 @@ class DiscoveryTools:
         Perform database schema discovery via CLI delegation.
 
         Args:
-            args: Tool arguments including connection_id, component_id, samples, idempotency_key
+            args: Tool arguments including connection, component, samples, idempotency_key
 
         Returns:
             Dictionary with discovery results
@@ -38,35 +38,35 @@ class DiscoveryTools:
         start_time = time.time()
         correlation_id = self.audit.make_correlation_id() if self.audit else "unknown"
 
-        connection_id = args.get("connection_id")
-        component_id = args.get("component_id")
+        connection = args.get("connection")
+        component = args.get("component")
         samples = args.get("samples", 0)
         idempotency_key = args.get("idempotency_key")
 
         # Validate required fields
-        if not connection_id:
+        if not connection:
             raise OsirisError(
                 ErrorFamily.SCHEMA,
-                "connection_id is required",
-                path=["connection_id"],
+                "connection is required",
+                path=["connection"],
                 suggest="Provide a connection reference like @mysql.default",
             )
 
-        if not component_id:
+        if not component:
             raise OsirisError(
                 ErrorFamily.SCHEMA,
-                "component_id is required",
-                path=["component_id"],
+                "component is required",
+                path=["component"],
                 suggest="Provide a component ID like mysql.extractor",
             )
 
         try:
             # Check cache first (optional optimization)
             if idempotency_key:
-                cached_result = await self.cache.get(connection_id, component_id, samples, idempotency_key)
+                cached_result = await self.cache.get(connection, component, samples, idempotency_key)
 
                 if cached_result:
-                    logger.info(f"Discovery cache hit for {connection_id}/{component_id}")
+                    logger.info(f"Discovery cache hit for {connection}/{component}")
                     result = {
                         "discovery_id": cached_result.get("discovery_id"),
                         "cached": True,
@@ -76,13 +76,13 @@ class DiscoveryTools:
                     return add_metrics(result, correlation_id, start_time, args)
 
             # Delegate to CLI: osiris mcp discovery run --connection-id @mysql.default --samples 10
-            # Note: component_id is derived from connection family in CLI, not passed explicitly
+            # Note: component is derived from connection family in CLI, not passed explicitly
             cli_args = [
                 "mcp",
                 "discovery",
                 "run",
                 "--connection-id",
-                connection_id,
+                connection,
                 "--samples",
                 str(samples),
             ]
@@ -91,7 +91,7 @@ class DiscoveryTools:
 
             # Cache the result if idempotency_key provided
             if idempotency_key and result.get("discovery_id"):
-                await self.cache.set(connection_id, component_id, samples, result, idempotency_key)
+                await self.cache.set(connection, component, samples, result, idempotency_key)
 
             # Add metrics and return
             return add_metrics(result, correlation_id, start_time, args)

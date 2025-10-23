@@ -43,7 +43,7 @@ class DiscoveryCache:
         self._memory_cache: dict[str, dict[str, Any]] = {}
 
     def _generate_cache_key(
-        self, connection_id: str, component_id: str, samples: int = 0, idempotency_key: str | None = None
+        self, connection: str, component: str, samples: int = 0, idempotency_key: str | None = None
     ) -> str:
         """
         Generate a deterministic cache key for request deduplication.
@@ -52,8 +52,8 @@ class DiscoveryCache:
         with the rest of the system.
 
         Args:
-            connection_id: Database connection ID
-            component_id: Component ID
+            connection: Database connection ID
+            component: Component ID
             samples: Number of samples requested
             idempotency_key: Optional idempotency key for determinism
 
@@ -65,24 +65,24 @@ class DiscoveryCache:
             - cache_key: Includes idempotency_key for request-level caching
             - discovery_id: Excludes idempotency_key, identifies artifacts only
         """
-        return generate_cache_key(connection_id, component_id, samples, idempotency_key)
+        return generate_cache_key(connection, component, samples, idempotency_key)
 
     async def get(
-        self, connection_id: str, component_id: str, samples: int = 0, idempotency_key: str | None = None
+        self, connection: str, component: str, samples: int = 0, idempotency_key: str | None = None
     ) -> dict[str, Any] | None:
         """
         Get cached discovery result.
 
         Args:
-            connection_id: Database connection ID
-            component_id: Component ID
+            connection: Database connection ID
+            component: Component ID
             samples: Number of samples requested
             idempotency_key: Optional idempotency key
 
         Returns:
             Cached discovery result or None if not found/expired
         """
-        cache_key = self._generate_cache_key(connection_id, component_id, samples, idempotency_key)
+        cache_key = self._generate_cache_key(connection, component, samples, idempotency_key)
 
         # Check memory cache first
         if cache_key in self._memory_cache:
@@ -95,7 +95,7 @@ class DiscoveryCache:
 
         # Check disk cache using discovery_id (same as write path at line 160)
         # Generate discovery_id for disk lookup (not cache_key!)
-        discovery_id = generate_discovery_id(connection_id, component_id, samples)
+        discovery_id = generate_discovery_id(connection, component, samples)
         cache_file = self.cache_dir / f"{discovery_id}.json"
         if cache_file.exists():
             try:
@@ -117,8 +117,8 @@ class DiscoveryCache:
 
     async def set(
         self,
-        connection_id: str,
-        component_id: str,
+        connection: str,
+        component: str,
         samples: int,
         data: dict[str, Any],
         idempotency_key: str | None = None,
@@ -128,8 +128,8 @@ class DiscoveryCache:
         Cache discovery result.
 
         Args:
-            connection_id: Database connection ID
-            component_id: Component ID
+            connection: Database connection ID
+            component: Component ID
             samples: Number of samples included
             data: Discovery data to cache
             idempotency_key: Optional idempotency key
@@ -139,10 +139,10 @@ class DiscoveryCache:
             Discovery ID for referencing cached data
         """
         # Generate cache key for lookup (includes idempotency_key)
-        cache_key = self._generate_cache_key(connection_id, component_id, samples, idempotency_key)
+        cache_key = self._generate_cache_key(connection, component, samples, idempotency_key)
 
         # Generate discovery ID for artifacts (excludes idempotency_key)
-        discovery_id = generate_discovery_id(connection_id, component_id, samples)
+        discovery_id = generate_discovery_id(connection, component, samples)
 
         ttl = ttl or self.default_ttl
         expiry_time = datetime.now(UTC) + ttl
@@ -151,8 +151,8 @@ class DiscoveryCache:
         entry = {
             "discovery_id": discovery_id,  # Artifact ID (stable across idempotency_keys)
             "cache_key": cache_key,  # Cache lookup key (includes idempotency_key)
-            "connection_id": connection_id,
-            "component_id": component_id,
+            "connection_id": connection,
+            "component_id": component,
             "samples": samples,
             "idempotency_key": idempotency_key,
             "data": data,
@@ -233,7 +233,7 @@ class DiscoveryCache:
         """
         return f"osiris://mcp/discovery/{discovery_id}/{artifact_type}.json"
 
-    async def invalidate_connection(self, connection_id: str) -> int:
+    async def invalidate_connection(self, connection: str) -> int:
         """
         Invalidate all cache entries for a specific connection.
 
@@ -241,7 +241,7 @@ class DiscoveryCache:
         fresh discovery when the connection is used again.
 
         Args:
-            connection_id: Connection ID to invalidate (e.g., "mysql.default")
+            connection: Connection ID to invalidate (e.g., "mysql.default")
 
         Returns:
             Number of unique discovery entries invalidated
@@ -251,7 +251,7 @@ class DiscoveryCache:
 
         # Clear from memory cache
         keys_to_remove = [
-            key for key, entry in self._memory_cache.items() if entry.get("connection_id") == connection_id
+            key for key, entry in self._memory_cache.items() if entry.get("connection_id") == connection
         ]
         for key in keys_to_remove:
             entry = self._memory_cache[key]
@@ -264,7 +264,7 @@ class DiscoveryCache:
             try:
                 with open(cache_file) as f:
                     entry = json.load(f)
-                if entry.get("connection_id") == connection_id:
+                if entry.get("connection_id") == connection:
                     if "discovery_id" in entry:
                         invalidated_discovery_ids.add(entry["discovery_id"])
                     cache_file.unlink()

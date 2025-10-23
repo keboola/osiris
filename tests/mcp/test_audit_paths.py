@@ -137,7 +137,7 @@ async def test_audit_secret_redaction(tmp_path):
 
     # Create arguments with secrets
     sensitive_args = {
-        "connection_id": "@mysql.main",
+        "connection": "@mysql.main",
         "username": "admin",
         "password": "secret123",  # pragma: allowlist secret
         "api_key": "key_abc123",  # pragma: allowlist secret
@@ -148,7 +148,7 @@ async def test_audit_secret_redaction(tmp_path):
     sanitized = logger._sanitize_arguments(sensitive_args)
 
     # Verify redaction
-    assert sanitized["connection_id"] == "@mysql.main"  # Not a secret
+    assert sanitized["connection"] == "@mysql.main"  # Not a secret
     assert sanitized["username"] == "admin"  # Not a secret
     assert sanitized["password"] == "***MASKED***"  # Should be masked
     assert sanitized["api_key"] == "***MASKED***"  # Should be masked

@@ -182,7 +182,7 @@ class TestMCPSecretIsolation:
 
             with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_result):
                 tools = ConnectionsTools(audit_logger=mock_audit_logger)
-                result = await tools.doctor({"connection_id": malicious_input["connection_id"]})
+                result = await tools.doctor({"connection": malicious_input["connection_id"]})
 
                 # Verify result is clean JSON
                 import json
@@ -243,7 +243,7 @@ class TestMCPSecretIsolation:
         with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_discovery):
             disc_tools = DiscoveryTools(audit_logger=mock_audit_logger)
             result = await disc_tools.request(
-                {"connection_id": "@mysql.default", "component_id": "mysql.extractor", "samples": 5}
+                {"connection": "@mysql.default", "component": "mysql.extractor", "samples": 5}
             )
             # Verify no credentials in any field
             import json
@@ -387,7 +387,7 @@ class TestMCPSecretIsolation:
             tools = ConnectionsTools(audit_logger=mock_audit_logger)
 
             with pytest.raises(OsirisError) as exc_info:
-                await tools.doctor({"connection_id": "@mysql.default"})
+                await tools.doctor({"connection": "@mysql.default"})
 
             # Verify error message is sanitized
             error_msg = str(exc_info.value)

@@ -230,7 +230,7 @@ class TestCliSubprocessFailures:
         """Test exit code 2 maps to SCHEMA error."""
         error = map_cli_error_to_mcp(
             exit_code=2,
-            stderr="Invalid argument: connection_id required",
+            stderr="Invalid argument: connection required",
             cmd=["osiris", "mcp", "connections", "doctor"],
         )
         assert error.family == ErrorFamily.SCHEMA

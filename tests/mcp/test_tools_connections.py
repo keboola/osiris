@@ -72,7 +72,7 @@ class TestConnectionsTools:
     async def test_connections_doctor_success(self, connections_tools):
         """Test successful connection diagnosis via CLI delegation."""
         mock_result = {
-            "connection_id": "@mysql.default",
+            "connection": "@mysql.default",
             "family": "mysql",
             "alias": "default",
             "health": "healthy",
@@ -85,7 +85,7 @@ class TestConnectionsTools:
         }
 
         with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_result):
-            result = await connections_tools.doctor({"connection_id": "@mysql.default"})
+            result = await connections_tools.doctor({"connection": "@mysql.default"})
 
             assert result["status"] == "success"
             assert result["health"] == "healthy"
@@ -101,7 +101,7 @@ class TestConnectionsTools:
     async def test_connections_doctor_missing_connection(self, connections_tools):
         """Test diagnosis of missing connection via CLI delegation."""
         mock_result = {
-            "connection_id": "@mysql.nonexistent",
+            "connection": "@mysql.nonexistent",
             "family": "mysql",
             "alias": "nonexistent",
             "health": "unhealthy",
@@ -118,7 +118,7 @@ class TestConnectionsTools:
         }
 
         with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_result):
-            result = await connections_tools.doctor({"connection_id": "@mysql.nonexistent"})
+            result = await connections_tools.doctor({"connection": "@mysql.nonexistent"})
 
             assert result["status"] == "success"
             assert result["health"] == "unhealthy"
@@ -126,12 +126,12 @@ class TestConnectionsTools:
 
     @pytest.mark.asyncio
     async def test_connections_doctor_no_connection_id(self, connections_tools):
-        """Test doctor without connection_id raises error."""
+        """Test doctor without connection raises error."""
         with pytest.raises(OsirisError) as exc_info:
             await connections_tools.doctor({})
 
         assert exc_info.value.family.value == "SCHEMA"
-        assert "connection_id is required" in str(exc_info.value)
+        assert "connection is required" in str(exc_info.value)
 
     # Note: _sanitize_config and _get_required_fields are now in CLI subcommands
     # (connections_cmds.py), not in the MCP tool. The MCP tool delegates to CLI.

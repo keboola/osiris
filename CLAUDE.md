@@ -58,6 +58,14 @@ osiris dump-prompts --export   # Export prompts
 osiris chat --pro-mode         # Use custom prompts
 ```
 
+## Available Skills
+
+Skills are specialized tools invoked via the Skill tool when needed:
+
+- **codex**: Interact with OpenAI Codex CLI for second opinions, multi-model analysis, and structured output generation. Useful for code review from different AI perspective, architectural validation, or when you need structured JSON responses with schemas.
+
+Usage: "Use the codex skill to [task]" or "Invoke codex skill"
+
 ## Architecture
 
 ### Core Modules
@@ -67,13 +75,15 @@ osiris chat --pro-mode         # Use custom prompts
 - **`osiris/remote/`** - E2B cloud execution
 - **`osiris/cli/`** - Rich-powered CLI with helpers for code reuse
 - **`osiris/mcp/`** - Model Context Protocol server with CLI-first security
+- **`components/`** - Component specs with x-connection-fields for override control
 
 ### Key Principles
 1. **LLM-First**: AI handles discovery, SQL generation, pipeline creation
-2. **Security-First**: MCP zero-secret access via CLI delegation
+2. **Security-First**: MCP zero-secret access via CLI delegation, x-connection-fields prevent credential overrides
 3. **DRY Code**: Shared helpers eliminate duplication
 4. **Progressive Discovery**: Intelligent schema exploration
 5. **Human Validation**: Expert approval required
+6. **Agent-First Workflow**: When the work plan allows, prefer using sub-agents (Task tool) for complex, multi-step tasks. This enables parallel execution, specialized expertise, and better resource management. Use sub-agents for exploration, testing, documentation, and any task that can be delegated.
 
 ## MCP Security Architecture
 
@@ -86,6 +96,7 @@ MCP Server (NO SECRETS) → CLI Bridge → CLI Subcommands (HAS SECRETS)
 - **Secret Masking**: Use `mask_connection_for_display()` with spec-aware detection
 - **Delegation Pattern**: MCP tools call CLI via `run_cli_json()`
 - **Filesystem Contract**: All paths MUST be config-driven, never hardcoded (`Path.home()` forbidden)
+- **Override Control**: Component specs use `x-connection-fields` to declare which fields can be overridden (see `docs/reference/x-connection-fields.md`)
 
 Example:
 ```python
@@ -93,6 +104,15 @@ Example:
 from osiris.cli.helpers.connection_helpers import mask_connection_for_display
 result = mask_connection_for_display(config, family=family)  # Spec-aware
 ```
+
+### Component Connection Fields (x-connection-fields)
+
+Components declare which fields come from connections and control override policies:
+- `override: allowed` - Infrastructure fields (host, port) can be overridden for testing
+- `override: forbidden` - Security fields (password, token) cannot be overridden
+- `override: warning` - Ambiguous fields (headers) can override but emit warning
+
+See `docs/reference/x-connection-fields.md` for full specification.
 
 ## Testing Guidelines
 
