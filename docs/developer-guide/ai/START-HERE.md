@@ -11,6 +11,42 @@ Single entry point for AI-assisted component development in Osiris. This guide r
 3. Load only the documents you need
 4. Don't read everything - be selective
 
+## Prerequisites (Read First!)
+
+**IMPORTANT:** Before building components, understand Osiris architecture:
+
+→ **`../human/CONCEPTS.md`** - **READ THIS FIRST**
+   - Explains 5 core abstractions: Component, Connector, Driver, Registry, Runner
+   - Shows how they work together
+   - Essential for understanding the system
+   - ~15 minute read
+
+**Core Principles:**
+- **LLM-First**: Osiris is conversational ETL - AI discovers schemas, generates SQL, creates pipelines
+- **Spec-First**: Components are self-describing via `spec.yaml` (declarative)
+- **Runtime Separation**: Spec (what) vs Driver (how) vs Connector (where)
+- **Security First**: Secrets never in specs, connection fields with override policies
+- **Validation**: Schema → Semantic → Runtime (3-layer validation)
+
+**Quick Mental Model:**
+```
+Component (spec.yaml)      → What operations are possible?
+   ↓ used by
+Registry                   → Catalog of all components
+   ↓ referenced by
+Compiler                   → Validates OML pipelines
+   ↓ creates
+Runner                     → Executes pipeline steps
+   ↓ uses
+Driver (implementation)    → How to execute operation?
+   ↓ uses
+Connector                  → Where/how to connect?
+```
+
+**After reading CONCEPTS.md**, proceed to task router below.
+
+---
+
 ## Task Router
 
 ### Task 1: "Build a new component from scratch"
