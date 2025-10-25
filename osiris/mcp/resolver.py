@@ -138,6 +138,34 @@ class ResourceResolver:
             )
         )
 
+        # Add instruction resources (inline content)
+        resources.append(
+            types.Resource(
+                uri="osiris://instructions/workflow",
+                name="Osiris MCP Workflow",
+                description="Step-by-step workflow for creating OML pipelines via MCP",
+                mimeType="text/markdown",
+            )
+        )
+
+        resources.append(
+            types.Resource(
+                uri="osiris://instructions/oml-syntax",
+                name="OML Syntax Guide",
+                description="OML v0.1.0 syntax reference and structure",
+                mimeType="text/markdown",
+            )
+        )
+
+        resources.append(
+            types.Resource(
+                uri="osiris://instructions/best-practices",
+                name="OML Best Practices",
+                description="Best practices for writing OML pipelines",
+                mimeType="text/markdown",
+            )
+        )
+
         # Add prompt resources
         resources.append(
             types.Resource(
@@ -173,6 +201,10 @@ class ResourceResolver:
         Raises:
             OsirisError: If resource not found or cannot be read
         """
+        # Handle inline instruction resources
+        if uri.startswith("osiris://instructions/"):
+            return await self._get_instruction_resource(uri)
+
         # Get physical path
         try:
             file_path = self._get_physical_path(uri)
@@ -266,6 +298,379 @@ class ResourceResolver:
             contents=[
                 types.TextResourceContents(uri=uri, mimeType="application/json", text=json.dumps(content, indent=2))
             ]
+        )
+
+    async def _get_instruction_resource(self, uri: str) -> types.ReadResourceResult:
+        """
+        Get inline instruction resources.
+
+        Args:
+            uri: Instruction resource URI (osiris://instructions/...)
+
+        Returns:
+            Instruction content
+
+        Raises:
+            OsirisError: If instruction not found
+        """
+        if uri == "osiris://instructions/workflow":
+            content = """# Osiris MCP Workflow
+
+## CRITICAL: Always Follow This Pattern
+
+### Step 1: Get OML Schema FIRST
+Before creating any pipeline, ALWAYS call `oml_schema_get` to understand the OML v0.1.0 structure.
+
+### Step 2: Ask Clarifying Questions
+Never assume business logic. Ask the user to define:
+- "TOP X" → Top by what metric? (sales, rating, revenue, date)
+- "recent" → What timeframe? (last day, week, month, year)
+- "best" → Best according to what criteria?
+- Filters and transformations should be explicit
+
+### Step 3: Discovery (if needed)
+Use `discovery_request` to explore schemas and sample data
+
+### Step 4: Create OML Draft
+Draft the pipeline following the schema structure
+
+### Step 5: ALWAYS Validate
+Call `oml_validate` to verify the OML before saving
+
+### Step 6: Save Only After Validation
+Only call `oml_save` if validation passes
+
+### Step 7: Capture Learnings
+Use `memory_capture` to save successful patterns, business decisions, user preferences
+
+## Validation Rules
+- Steps with write_mode='replace' or 'upsert' REQUIRE 'primary_key' field
+- Connection references must use '@family.alias' format
+- All step IDs must be unique
+
+## Common Mistakes to Avoid
+- ❌ Skipping oml_schema_get
+- ❌ Skipping oml_validate
+- ❌ Assuming what "top" means
+- ❌ Not asking clarifying questions
+"""
+
+        elif uri == "osiris://instructions/oml-syntax":
+            content = """# OML v0.1.0 Syntax Guide
+
+## Document Structure
+
+```yaml
+oml_version: "0.1.0"
+name: pipeline-name
+description: Optional description
+steps:
+  - id: step1
+    component: component.name
+    mode: read|write|transform
+    config:
+      # Component-specific configuration
+```
+
+## Required Top-Level Keys
+- `oml_version` (string) - Must be "0.1.0"
+- `name` (string) - Pipeline name (kebab-case recommended)
+- `steps` (array) - List of pipeline steps
+
+## Step Structure
+
+Each step requires:
+- `id` (string) - Unique identifier for the step
+- `component` (string) - Component name from registry (e.g., "mysql.extractor")
+- `mode` (enum) - One of: `read`, `write`, `transform`
+- `config` (object) - Component configuration
+
+Optional step fields:
+- `needs` (array) - List of step IDs this step depends on
+- `description` (string) - Step description
+
+## Modes Explained
+
+- **read** - Extract data from a source (extractors)
+- **write** - Write data to a destination (writers)
+- **transform** - Transform data in-memory (transformers)
+
+## Connection References
+
+Use the `@family.alias` format to reference configured connections:
+
+```yaml
+config:
+  connection: "@mysql.production"
+  table: users
+```
+
+Never inline credentials - always use connection references.
+
+## Common Components
+
+### Database Extractors
+- `mysql.extractor` - Extract from MySQL
+- `supabase.extractor` - Extract from Supabase
+
+Requires: `connection` + (`query` OR `table`)
+
+### Database Writers
+- `mysql.writer` - Write to MySQL
+- `supabase.writer` - Write to Supabase
+
+Requires: `connection`, `table`
+Optional: `write_mode` (append|replace|upsert), `primary_key`
+
+### Transformers
+- `duckdb.transformer` - Transform with SQL
+
+Requires: `query`
+
+### Filesystem Components
+- `filesystem.csv_reader` - Read CSV files
+- `filesystem.csv_writer` - Write CSV files
+- `filesystem.json_reader` - Read JSON files
+- `filesystem.json_writer` - Write JSON files
+
+Requires: `path`
+
+## Write Modes
+
+For writer components:
+- `append` (default) - Insert new rows
+- `replace` - Replace all rows (REQUIRES `primary_key`)
+- `upsert` - Insert or update (REQUIRES `primary_key`)
+
+## Dependencies
+
+Use `needs` to specify step execution order:
+
+```yaml
+steps:
+  - id: extract
+    component: mysql.extractor
+    mode: read
+    config:
+      connection: "@mysql.db"
+      table: users
+
+  - id: write
+    component: supabase.writer
+    mode: write
+    needs: [extract]  # Runs after extract
+    config:
+      connection: "@supabase.db"
+      table: users_copy
+```
+
+## Forbidden Keys
+
+These are legacy v0.0.x keys and will cause validation errors:
+- `version` (use `oml_version` instead)
+- `connectors`
+- `tasks`
+- `outputs`
+"""
+
+        elif uri == "osiris://instructions/best-practices":
+            content = """# OML Best Practices
+
+## Pipeline Design
+
+### 1. Use Descriptive IDs
+```yaml
+# Good
+steps:
+  - id: extract_active_users
+  - id: transform_user_metrics
+  - id: write_to_warehouse
+
+# Avoid
+steps:
+  - id: step1
+  - id: step2
+```
+
+### 2. Add Descriptions
+```yaml
+name: user-analytics-pipeline
+description: Daily aggregation of user activity metrics for reporting
+
+steps:
+  - id: extract_events
+    description: Extract last 24h of user events from production DB
+    ...
+```
+
+### 3. Specify Write Modes Explicitly
+```yaml
+# Always specify write_mode for clarity
+config:
+  connection: "@supabase.warehouse"
+  table: daily_metrics
+  write_mode: upsert  # Explicit intent
+  primary_key: [date, user_id]
+```
+
+## Security
+
+### 1. Never Inline Secrets
+```yaml
+# ❌ WRONG - Inline credentials
+config:
+  host: db.example.com
+  user: admin
+  password: secret123  # FORBIDDEN
+
+# ✅ CORRECT - Use connection reference
+config:
+  connection: "@mysql.production"
+```
+
+### 2. Don't Override Security Fields
+```yaml
+# ❌ WRONG - Override forbidden fields
+config:
+  connection: "@mysql.production"
+  password: different_password  # Validation error
+
+# ✅ CORRECT - Only override allowed fields
+config:
+  connection: "@mysql.production"
+  schema: analytics  # Allowed override
+```
+
+## Component Selection
+
+### 1. Use Appropriate Components
+- **Extractors** for reading data sources
+- **Transformers** for data manipulation
+- **Writers** for persisting results
+
+### 2. Choose SQL vs Code Transforms
+```yaml
+# Prefer SQL transformers for data operations
+- id: aggregate
+  component: duckdb.transformer
+  mode: transform
+  config:
+    query: |
+      SELECT user_id, COUNT(*) as event_count
+      FROM events
+      GROUP BY user_id
+```
+
+## Performance
+
+### 1. Limit Data Early
+```yaml
+# Good - Filter at source
+config:
+  query: |
+    SELECT * FROM events
+    WHERE created_at >= NOW() - INTERVAL 1 DAY
+    LIMIT 10000
+
+# Avoid - Extracting everything then filtering
+```
+
+### 2. Use Dependencies Wisely
+```yaml
+# Parallel execution (no dependencies)
+steps:
+  - id: extract_users
+    ...
+  - id: extract_orders
+    ...
+
+# Sequential when needed
+steps:
+  - id: extract_users
+    ...
+  - id: enrich_users
+    needs: [extract_users]
+    ...
+```
+
+## Validation
+
+### 1. Always Validate Before Saving
+```
+1. Call oml_validate
+2. Fix any errors
+3. Call oml_save
+```
+
+### 2. Check Component Requirements
+Each component has specific required fields - consult component specs or discovery results.
+
+### 3. Handle Primary Keys
+```yaml
+# For replace/upsert, always specify primary_key
+config:
+  write_mode: upsert
+  primary_key: [id]  # Required!
+```
+
+## Testing
+
+### 1. Start with Small Data
+Use LIMIT clauses during development:
+```yaml
+config:
+  query: SELECT * FROM large_table LIMIT 100
+```
+
+### 2. Test Incrementally
+1. Test extract step alone
+2. Add transform
+3. Add write step
+
+### 3. Use Appropriate Environments
+```yaml
+# Development
+config:
+  connection: "@mysql.dev"
+
+# Production (after testing)
+config:
+  connection: "@mysql.production"
+```
+
+## Maintainability
+
+### 1. Document Complex Logic
+```yaml
+steps:
+  - id: complex_transform
+    description: |
+      Calculates 7-day rolling average of user activity.
+      Excludes inactive users (no activity in 30 days).
+      Aggregates by user_id and date.
+    component: duckdb.transformer
+    ...
+```
+
+### 2. Keep Pipelines Focused
+One pipeline = one concern. Split large workflows into multiple pipelines.
+
+### 3. Use Consistent Naming
+- Pipeline names: `kebab-case`
+- Step IDs: `snake_case` or `kebab-case`
+- Table names: Match your database conventions
+"""
+
+        else:
+            raise OsirisError(
+                ErrorFamily.SEMANTIC,
+                f"Unknown instruction resource: {uri}",
+                path=["uri"],
+                suggest="Valid instructions: workflow, oml-syntax, best-practices",
+            )
+
+        return types.ReadResourceResult(
+            contents=[types.TextResourceContents(uri=uri, mimeType="text/markdown", text=content)]
         )
 
     async def write_resource(self, uri: str, content: str) -> bool:

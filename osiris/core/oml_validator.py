@@ -395,6 +395,54 @@ class OMLValidator:
                 }
             )
 
+        # Business Logic Validation
+        # ------------------------
+        # These validations match the compiler's business rules to provide early feedback
+        # and prevent "valid OML" that fails at compilation time.
+
+        if component:
+            # 1. Primary Key Requirement for Writers with replace/upsert modes
+            # Components that support write_mode: mysql.writer, supabase.writer, duckdb.writer
+            # Note: mysql.writer uses "mode" field, while supabase.writer uses "write_mode"
+            writer_components = {
+                "mysql.writer",
+                "supabase.writer",
+                "duckdb.writer",
+                "filesystem.csv_writer",  # if it supports write_mode
+            }
+
+            if component in writer_components:
+                # Check both "write_mode" (Supabase) and "mode" (MySQL) fields
+                write_mode_value = config.get("write_mode", config.get("mode"))
+
+                if write_mode_value in {"replace", "upsert"}:
+                    # Primary key is required for replace and upsert operations
+                    if "primary_key" not in config:
+                        self.errors.append(
+                            {
+                                "type": "missing_required_field",
+                                "message": f"'primary_key' is required when write_mode is '{write_mode_value}'",
+                                "location": f"{location}.primary_key",
+                            }
+                        )
+
+            # 2. Write Mode Validation
+            # Warn about unknown write modes (valid values: append, replace, upsert, truncate)
+            write_mode = config.get("write_mode")
+            mode = config.get("mode")
+            mode_value = write_mode or mode
+
+            if mode_value is not None:
+                valid_write_modes = {"append", "replace", "upsert", "truncate"}
+                if mode_value not in valid_write_modes:
+                    self.warnings.append(
+                        {
+                            "type": "unknown_write_mode",
+                            "message": f"Unknown write mode '{mode_value}' (expected one of: {', '.join(sorted(valid_write_modes))})",
+                            "location": f"{location}.{'write_mode' if write_mode else 'mode'}",
+                        }
+                    )
+
         # Reserved keys that don't need to be in component spec
         reserved_keys = {"connection"}
 

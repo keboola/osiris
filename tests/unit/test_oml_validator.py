@@ -370,6 +370,175 @@ class TestOMLValidator:
         # 'connection' should NOT be flagged as unknown
         assert not any("connection" in e["message"] and "Unknown configuration key" in e["message"] for e in errors)
 
+    def test_primary_key_required_for_upsert_supabase(self):
+        """Test that primary_key is required for Supabase writer with upsert mode."""
+        oml = {
+            "oml_version": "0.1.0",
+            "name": "test-pipeline",
+            "steps": [
+                {
+                    "id": "step1",
+                    "component": "supabase.writer",
+                    "mode": "write",
+                    "config": {
+                        "connection": "@supabase.test_db",
+                        "table": "users",
+                        "write_mode": "upsert",
+                        # Missing primary_key - should fail
+                    },
+                }
+            ],
+        }
+
+        validator = OMLValidator()
+        is_valid, errors, warnings = validator.validate(oml)
+
+        # Should fail due to missing primary_key
+        assert is_valid is False
+        assert any(
+            e["type"] == "missing_required_field" and "primary_key" in e["message"] and "upsert" in e["message"]
+            for e in errors
+        )
+
+    def test_primary_key_required_for_replace_supabase(self):
+        """Test that primary_key is required for Supabase writer with replace mode."""
+        oml = {
+            "oml_version": "0.1.0",
+            "name": "test-pipeline",
+            "steps": [
+                {
+                    "id": "step1",
+                    "component": "supabase.writer",
+                    "mode": "write",
+                    "config": {
+                        "connection": "@supabase.test_db",
+                        "table": "users",
+                        "write_mode": "replace",
+                        # Missing primary_key - should fail
+                    },
+                }
+            ],
+        }
+
+        validator = OMLValidator()
+        is_valid, errors, warnings = validator.validate(oml)
+
+        # Should fail due to missing primary_key
+        assert is_valid is False
+        assert any(
+            e["type"] == "missing_required_field" and "primary_key" in e["message"] and "replace" in e["message"]
+            for e in errors
+        )
+
+    def test_primary_key_required_for_upsert_mysql(self):
+        """Test that primary_key is required for MySQL writer with upsert mode (uses 'mode' field)."""
+        oml = {
+            "oml_version": "0.1.0",
+            "name": "test-pipeline",
+            "steps": [
+                {
+                    "id": "step1",
+                    "component": "mysql.writer",
+                    "mode": "write",
+                    "config": {
+                        "connection": "@mysql.test_db",
+                        "table": "users",
+                        "mode": "upsert",  # MySQL uses 'mode' not 'write_mode'
+                        # Missing primary_key - should fail
+                    },
+                }
+            ],
+        }
+
+        validator = OMLValidator()
+        is_valid, errors, warnings = validator.validate(oml)
+
+        # Should fail due to missing primary_key
+        assert is_valid is False
+        assert any(
+            e["type"] == "missing_required_field" and "primary_key" in e["message"] and "upsert" in e["message"]
+            for e in errors
+        )
+
+    def test_primary_key_optional_for_append_mode(self):
+        """Test that primary_key is not required for append mode."""
+        oml = {
+            "oml_version": "0.1.0",
+            "name": "test-pipeline",
+            "steps": [
+                {
+                    "id": "step1",
+                    "component": "supabase.writer",
+                    "mode": "write",
+                    "config": {
+                        "connection": "@supabase.test_db",
+                        "table": "users",
+                        "write_mode": "append",
+                        # No primary_key - should be OK for append
+                    },
+                }
+            ],
+        }
+
+        validator = OMLValidator()
+        is_valid, errors, warnings = validator.validate(oml)
+
+        # Should be valid - primary_key not required for append
+        assert is_valid is True
+        assert not any("primary_key" in e.get("message", "") for e in errors)
+
+    def test_primary_key_valid_when_present_with_upsert(self):
+        """Test that validation passes when primary_key is present with upsert."""
+        oml = {
+            "oml_version": "0.1.0",
+            "name": "test-pipeline",
+            "steps": [
+                {
+                    "id": "step1",
+                    "component": "supabase.writer",
+                    "mode": "write",
+                    "config": {
+                        "connection": "@supabase.test_db",
+                        "table": "users",
+                        "write_mode": "upsert",
+                        "primary_key": "id",  # primary_key present - should be OK
+                    },
+                }
+            ],
+        }
+
+        validator = OMLValidator()
+        is_valid, errors, warnings = validator.validate(oml)
+
+        # Should be valid - primary_key is present
+        assert is_valid is True
+        assert not any("primary_key" in e.get("message", "") for e in errors)
+
+    def test_unknown_write_mode_warning(self):
+        """Test that unknown write modes generate a warning."""
+        oml = {
+            "oml_version": "0.1.0",
+            "name": "test-pipeline",
+            "steps": [
+                {
+                    "id": "step1",
+                    "component": "supabase.writer",
+                    "mode": "write",
+                    "config": {
+                        "connection": "@supabase.test_db",
+                        "table": "users",
+                        "write_mode": "merge",  # Unknown mode
+                    },
+                }
+            ],
+        }
+
+        validator = OMLValidator()
+        is_valid, errors, warnings = validator.validate(oml)
+
+        # Should have a warning about unknown write mode
+        assert any(w["type"] == "unknown_write_mode" and "merge" in w["message"] for w in warnings)
+
 
 class TestConnectionFieldsOverride:
     """Test x-connection-fields override behavior and merge strategy."""

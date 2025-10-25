@@ -76,6 +76,7 @@ class GuideTools:
                     "has_error_report": has_error_report,
                 },
                 "recommendations": recommendations,
+                "workflow_instructions": self._get_workflow_instructions(),
                 "status": "success",
             }
 
@@ -254,4 +255,58 @@ steps:
     config:
       path: output/users.csv
     depends_on: [transform-data]
+"""
+
+    def _get_workflow_instructions(self) -> str:
+        """
+        Get comprehensive workflow instructions for OML authoring.
+
+        These instructions are CRITICAL for LLM clients to follow the correct workflow.
+        This content matches the osiris://instructions/workflow resource.
+        """
+        return """# Osiris MCP Workflow - CRITICAL INSTRUCTIONS
+
+## Step 1: ALWAYS Get OML Schema First
+Before creating ANY pipeline, you MUST call `oml_schema_get` to understand OML v0.1.0 structure.
+
+## Step 2: Ask Clarifying Questions (REQUIRED)
+NEVER assume business logic. ALWAYS ask the user to define:
+- "TOP X" → Top by WHAT metric? (sales, rating, revenue, date)
+- "recent" → What EXACT timeframe? (last day, week, month, year)
+- "best" → Best according to WHAT criteria?
+- ALL filters and transformations must be EXPLICIT
+
+## Step 3: Discovery (if needed)
+Use `discovery_request` to explore database schemas and sample data
+
+## Step 4: Create OML Draft
+Draft the pipeline following the schema structure from Step 1
+
+## Step 5: ALWAYS Validate Before Saving
+Call `oml_validate` to verify the OML. NEVER skip this step.
+
+## Step 6: Save ONLY After Validation Passes
+Only call `oml_save` if validation was successful
+
+## Step 7: Capture Learnings
+Use `memory_capture` to save successful patterns, business decisions, user preferences
+
+## Validation Rules (CRITICAL)
+- Steps with write_mode='replace' or 'upsert' REQUIRE 'primary_key' field
+- Connection references MUST use '@family.alias' format
+- All step IDs MUST be unique
+
+## Common Mistakes to AVOID
+❌ Skipping oml_schema_get (NEVER do this!)
+❌ Skipping oml_validate (NEVER do this!)
+❌ Assuming what "top" means without asking
+❌ Not asking clarifying questions about ambiguous terms
+❌ Saving OML without validation
+
+## Success Pattern
+✅ Call oml_schema_get first
+✅ Ask clarifying questions about ALL ambiguous terms
+✅ Create OML draft based on schema
+✅ Call oml_validate
+✅ Only save if validation passes
 """

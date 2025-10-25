@@ -97,6 +97,7 @@ MCP Server (NO SECRETS) → CLI Bridge → CLI Subcommands (HAS SECRETS)
 - **Delegation Pattern**: MCP tools call CLI via `run_cli_json()`
 - **Filesystem Contract**: All paths MUST be config-driven, never hardcoded (`Path.home()` forbidden)
 - **Override Control**: Component specs use `x-connection-fields` to declare which fields can be overridden (see `docs/reference/x-connection-fields.md`)
+- **Handshake Instructions**: MCP server provides usage instructions during initialize handshake, guiding LLMs on proper OML workflow and validation requirements
 
 Example:
 ```python
@@ -148,6 +149,11 @@ Key suppression codes:
 - `E402` - Module import not at top (required order)
 - `PLR0915` - Too many statements (>50 lines)
 
+### OML Validation Architecture
+- **3-Layer Validation**: Schema → Semantic → Runtime
+- **Business Logic**: Validator enforces requirements (e.g., primary_key for replace/upsert modes)
+- **Reference**: See `docs/reference/oml-validation.md` for complete validation architecture
+
 ### Common Issues
 - ~43 tests skip without credentials (normal)
 - Supabase isolation: `pytest -m "not supabase"`
@@ -177,7 +183,7 @@ Key suppression codes:
   - `30-verification.md` - Tests, metrics
   - `40-retrospective.md` - Learnings
   - `attachments/` - Reports, coverage data
-- **Reference**: `docs/reference/` - Stable specifications
+- **Reference**: `docs/reference/` - Stable specifications (e.g., `oml-validation.md`, `x-connection-fields.md`)
 - **Design**: `docs/design/` - Work-in-progress technical designs
 - **Reports**: `docs/reports/<date>-<topic>/` - One-off reports
 - **Archive**: `docs/archive/<slug>-v<semver>/` - Completed initiatives
@@ -236,6 +242,7 @@ MYSQL_PASSWORD="value" osiris run ... # Option 3: Inline
 - Use pytest fixtures
 - Run from `testing_env/`
 - Create PRs for all changes
+- Ensure validator checks business logic (e.g., primary_key for replace/upsert modes)
 
 ## Project Structure
 

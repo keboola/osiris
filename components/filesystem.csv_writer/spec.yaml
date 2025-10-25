@@ -73,8 +73,6 @@ configSchema:
 
 secrets: []  # No secrets needed for filesystem operations
 
-x-connection-fields: []  # No connection fields for filesystem
-
 constraints:
   required:
     - when:

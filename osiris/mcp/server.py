@@ -195,7 +195,7 @@ class OsirisMCPServer:
             # Discovery tool
             types.Tool(
                 name="discovery_request",
-                description="Discover database schema and optionally sample data",
+                description="Discover database schema and optionally sample data. 💡 Use this to explore database schemas before creating pipelines. Helps understand table structure and relationships.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -224,7 +224,7 @@ class OsirisMCPServer:
             # OML tools
             types.Tool(
                 name="oml_schema_get",
-                description="Get the OML v0.1.0 JSON schema",
+                description="Get the OML v0.1.0 JSON schema. ⚠️ CALL THIS FIRST before creating any OML pipeline. Returns the complete OML v0.1.0 JSON schema.",
                 inputSchema={
                     "type": "object",
                     "properties": {},
@@ -232,7 +232,7 @@ class OsirisMCPServer:
             ),
             types.Tool(
                 name="oml_validate",
-                description="Validate an OML pipeline definition",
+                description="Validate an OML pipeline definition. ⚠️ ALWAYS call this before oml_save. Validates OML structure, connections, and business logic.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -244,7 +244,7 @@ class OsirisMCPServer:
             ),
             types.Tool(
                 name="oml_save",
-                description="Save an OML pipeline draft",
+                description="Save an OML pipeline draft. ⚠️ ONLY call after successful oml_validate. Saves the validated OML pipeline draft.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -258,7 +258,7 @@ class OsirisMCPServer:
             # Guide tool
             types.Tool(
                 name="guide_start",
-                description="Get guided next steps for OML authoring",
+                description="⚠️ REQUIRED: Call this FIRST when starting any OML pipeline task. Returns complete workflow instructions, validation requirements, and guided next steps. Contains critical rules you MUST follow.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -737,6 +737,33 @@ class OsirisMCPServer:
 
         try:
             async with stdio_server() as (read_stream, write_stream):
+                # Prepare server instructions for LLM clients
+                instructions = (
+                    "Osiris MCP Server - Usage Instructions:\n\n"
+                    "WORKFLOW:\n"
+                    "1. List connections: Use 'connections.list' to see available data sources\n"
+                    "2. Get OML schema: ALWAYS call 'oml.schema.get' FIRST to understand OML v0.1.0 structure\n"
+                    "3. Clarify business logic: Before creating OML, ask user to define ambiguous terms:\n"
+                    "   - 'TOP products' → Top by what metric? (sales, rating, date)\n"
+                    "   - 'recent data' → What timeframe? (last day, week, month)\n"
+                    "   - Ensure transformations and filters are well-defined\n"
+                    "4. Create OML: Draft pipeline following schema structure (use 'duckdb.processor' for SQL transformations)\n"
+                    "5. Validate: ALWAYS call 'oml.validate' to verify OML before saving\n"
+                    "6. Save: Only call 'oml.save' if validation passes\n"
+                    "7. Capture learnings: Use 'memory.capture' to save successful patterns, business decisions, user preferences\n\n"
+                    "VALIDATION RULES:\n"
+                    "- Steps with write_mode='replace' or 'upsert' REQUIRE 'primary_key' field\n"
+                    "- Connection references must use '@family.alias' format\n"
+                    "- All step IDs must be unique\n\n"
+                    "DISCOVERY:\n"
+                    "- Use 'discovery.request' to explore database schemas and tables\n"
+                    "- Progressive discovery helps understand data structure before creating pipelines\n\n"
+                    "TRANSFORMATIONS & OUTPUT:\n"
+                    "- Use 'duckdb.processor' for in-memory SQL transformations (joins, aggregations, filters)\n"
+                    "- Use 'filesystem.csv_writer' for local CSV file output\n\n"
+                    "For detailed guidance, use 'guide.get' with specific topics."
+                )
+
                 await self.server.run(
                     read_stream,
                     write_stream,
@@ -746,6 +773,7 @@ class OsirisMCPServer:
                         capabilities=self.server.get_capabilities(
                             notification_options=NotificationOptions(), experimental_capabilities={}
                         ),
+                        instructions=instructions,
                     ),
                 )
         finally:

@@ -86,6 +86,7 @@ venv.bak/
 .Trashes
 ehthumbs.db
 Thumbs.db
+.bmad-core/
 
 # Temporary files
 *.tmp
