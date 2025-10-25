@@ -66,6 +66,24 @@ Skills are specialized tools invoked via the Skill tool when needed:
 
 Usage: "Use the codex skill to [task]" or "Invoke codex skill"
 
+## AI Component Development
+
+For building new Osiris components with AI assistance:
+
+**Entry Point:** `docs/developer-guide/ai/START-HERE.md`
+- Task-based routing for component development
+- Decision trees (API type, auth, pagination)
+- Working recipes (REST, GraphQL, SQL)
+- 57 validation rules (COMPONENT_AI_CHECKLIST.md)
+
+**Key Documentation:**
+- E2B compatibility: `docs/developer-guide/ai/e2b-compatibility.md` (792 lines, 100% coverage)
+- Error patterns: `docs/developer-guide/ai/error-patterns.md` (18+ common errors with fixes)
+- Dependencies: `docs/developer-guide/ai/dependency-management.md` (requirements.txt, venv, E2B)
+- Recipes: `docs/developer-guide/ai/recipes/` (REST, GraphQL, SQL templates)
+
+**Coverage:** 98% of critical topics (metrics, secrets, filesystem contract, data passing, E2B, dependencies)
+
 ## Architecture
 
 ### Core Modules
@@ -184,6 +202,9 @@ Key suppression codes:
   - `40-retrospective.md` - Learnings
   - `attachments/` - Reports, coverage data
 - **Reference**: `docs/reference/` - Stable specifications (e.g., `oml-validation.md`, `x-connection-fields.md`)
+- **AI Guides**: `docs/developer-guide/ai/` - AI-assisted component development
+  - START-HERE.md - Entry point with task routing
+  - Decision trees, recipes, error patterns, E2B guide
 - **Design**: `docs/design/` - Work-in-progress technical designs
 - **Reports**: `docs/reports/<date>-<topic>/` - One-off reports
 - **Archive**: `docs/archive/<slug>-v<semver>/` - Completed initiatives
@@ -243,6 +264,9 @@ MYSQL_PASSWORD="value" osiris run ... # Option 3: Inline
 - Run from `testing_env/`
 - Create PRs for all changes
 - Ensure validator checks business logic (e.g., primary_key for replace/upsert modes)
+- For component development, start with `docs/developer-guide/ai/START-HERE.md`
+- Test components with `--e2b` flag for cloud compatibility
+- Follow 57 validation rules in COMPONENT_AI_CHECKLIST.md
 
 ## Project Structure
 
