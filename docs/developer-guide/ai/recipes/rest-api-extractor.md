@@ -76,10 +76,8 @@ File: `osiris/drivers/myservice_extractor_driver.py`
 """MyService REST API Extractor Driver."""
 
 import logging
-from typing import Any, Iterator
+from typing import Any
 import requests
-
-from osiris.core.driver_context import DriverContext
 
 logger = logging.getLogger(__name__)
 
@@ -87,33 +85,42 @@ logger = logging.getLogger(__name__)
 class MyServiceExtractorDriver:
     """Extract data from MyService REST API with cursor pagination."""
 
-    def __init__(self, *, context: DriverContext):
-        """Initialize driver with context."""
-        self.context = context
+    def __init__(self):
+        """Initialize driver."""
         self.session = requests.Session()
 
-    def extract(
+    def run(
         self,
         *,
-        base_url: str = "https://api.myservice.com",
-        endpoint: str,
-        api_key: str,
-        query: str | None = None,
-        page_size: int = 100,
-    ) -> Iterator[dict[str, Any]]:
+        step_id: str,
+        config: dict,
+        inputs: dict | None = None,  # noqa: ARG002
+        ctx: Any = None,
+    ) -> dict:
         """
         Extract data from MyService API.
 
         Args:
-            base_url: API base URL
-            endpoint: API endpoint path
-            api_key: API authentication key
-            query: Optional query filter
-            page_size: Records per page
+            step_id: Step identifier
+            config: Configuration containing base_url, endpoint, api_key, etc.
+            inputs: Not used for extractors
+            ctx: Execution context for logging metrics
 
-        Yields:
-            Records from the API
+        Returns:
+            {"df": DataFrame} with extracted data
         """
+        # Extract config values
+        base_url = config.get("base_url", "https://api.myservice.com")
+        endpoint = config.get("endpoint")
+        api_key = config.get("api_key")
+        query = config.get("query")
+        page_size = config.get("page_size", 100)
+
+        if not endpoint:
+            raise ValueError(f"Step {step_id}: 'endpoint' is required in config")
+        if not api_key:
+            raise ValueError(f"Step {step_id}: 'api_key' is required in config")
+
         # Set auth headers
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -128,70 +135,73 @@ class MyServiceExtractorDriver:
 
         cursor = None
         page = 0
-
-        while True:
-            # Add cursor if present
-            if cursor:
-                params["cursor"] = cursor
-
-            # Make request
-            logger.info(f"Fetching page {page + 1} from {endpoint}")
-            response = self.session.get(url, headers=headers, params=params)
-            response.raise_for_status()
-
-            data = response.json()
-            items = data.get("data", [])
-
-            if not items:
-                logger.info(f"No more data. Extracted {page} pages.")
-                break
-
-            # Yield records
-            for item in items:
-                yield item
-
-            # Log metrics
-            self.context.log_metric(
-                "records_extracted",
-                len(items),
-                tags={"endpoint": endpoint, "page": page + 1},
-            )
-
-            # Check for next page
-            cursor = data.get("pagination", {}).get("next_cursor")
-            if not cursor:
-                logger.info(f"Reached last page. Total pages: {page + 1}")
-                break
-
-            page += 1
-
-    def healthcheck(self, *, base_url: str, api_key: str) -> dict[str, Any]:
-        """
-        Check API connectivity and auth.
-
-        Args:
-            base_url: API base URL
-            api_key: API authentication key
-
-        Returns:
-            Health check result
-        """
-        url = f"{base_url}/health"
-        headers = {"Authorization": f"Bearer {api_key}"}
+        all_records = []
 
         try:
-            response = self.session.get(url, headers=headers, timeout=5)
-            response.raise_for_status()
-            return {
-                "status": "healthy",
-                "latency_ms": response.elapsed.total_seconds() * 1000,
-            }
+            while True:
+                # Add cursor if present
+                if cursor:
+                    params["cursor"] = cursor
+
+                # Make request
+                logger.info(f"Step {step_id}: Fetching page {page + 1} from {endpoint}")
+                response = self.session.get(url, headers=headers, params=params)
+                response.raise_for_status()
+
+                data = response.json()
+                items = data.get("data", [])
+
+                if not items:
+                    logger.info(f"Step {step_id}: No more data. Extracted {page} pages.")
+                    break
+
+                # Collect records
+                all_records.extend(items)
+
+                # Log metrics
+                if ctx and hasattr(ctx, "log_metric"):
+                    ctx.log_metric(
+                        "records_extracted",
+                        len(items),
+                        tags={"endpoint": endpoint, "page": page + 1},
+                    )
+
+                # Check for next page
+                cursor = data.get("pagination", {}).get("next_cursor")
+                if not cursor:
+                    logger.info(f"Step {step_id}: Reached last page. Total pages: {page + 1}")
+                    break
+
+                page += 1
+
+            # Convert to DataFrame
+            import pandas as pd  # noqa: PLC0415
+
+            df = pd.DataFrame(all_records)
+
+            # Log final metrics
+            rows_read = len(df)
+            logger.info(f"Step {step_id}: Extracted {rows_read} rows from {endpoint}")
+
+            if ctx and hasattr(ctx, "log_metric"):
+                ctx.log_metric("rows_read", rows_read)
+
+            return {"df": df}
+
         except requests.exceptions.RequestException as e:
-            return {
-                "status": "unhealthy",
-                "error": str(e),
-                "category": "network",
-            }
+            error_msg = f"API request failed: {str(e)}"
+            logger.error(f"Step {step_id}: {error_msg}")
+            raise RuntimeError(error_msg) from e
+
+        except Exception as e:
+            error_msg = f"Extraction failed: {type(e).__name__}: {str(e)}"
+            logger.error(f"Step {step_id}: {error_msg}")
+            raise RuntimeError(error_msg) from e
+
+        finally:
+            if self.session:
+                self.session.close()
+
 ```
 
 ### 3. Tests
@@ -209,13 +219,20 @@ from osiris.core.driver_context import DriverContext
 
 @pytest.fixture
 def driver():
-    """Create driver instance with mocked context."""
-    context = Mock(spec=DriverContext)
-    return MyServiceExtractorDriver(context=context)
+    """Create driver instance."""
+    return MyServiceExtractorDriver()
+
+
+@pytest.fixture
+def mock_ctx():
+    """Create mock execution context."""
+    ctx = Mock()
+    ctx.log_metric = Mock()
+    return ctx
 
 
 @patch("requests.Session.get")
-def test_extract_single_page(mock_get, driver):
+def test_extract_single_page(mock_get, driver, mock_ctx):
     """Test extraction with single page of results."""
     mock_response = Mock()
     mock_response.json.return_value = {
@@ -225,22 +242,24 @@ def test_extract_single_page(mock_get, driver):
     mock_response.raise_for_status.return_value = None
     mock_get.return_value = mock_response
 
-    results = list(
-        driver.extract(
-            base_url="https://api.test.com",
-            endpoint="/customers",
-            api_key="test_key",  # pragma: allowlist secret
-            page_size=100,
-        )
-    )
+    config = {
+        "base_url": "https://api.test.com",
+        "endpoint": "/customers",
+        "api_key": "test_key",  # pragma: allowlist secret
+        "page_size": 100,
+    }
 
-    assert len(results) == 2
-    assert results[0]["name"] == "Alice"
-    assert results[1]["name"] == "Bob"
+    result = driver.run(step_id="test_step", config=config, ctx=mock_ctx)
+
+    assert "df" in result
+    df = result["df"]
+    assert len(df) == 2
+    assert df.iloc[0]["name"] == "Alice"
+    assert df.iloc[1]["name"] == "Bob"
 
 
 @patch("requests.Session.get")
-def test_extract_multiple_pages(mock_get, driver):
+def test_extract_multiple_pages(mock_get, driver, mock_ctx):
     """Test extraction with multiple pages."""
     # Page 1
     page1 = Mock()
@@ -260,21 +279,23 @@ def test_extract_multiple_pages(mock_get, driver):
 
     mock_get.side_effect = [page1, page2]
 
-    results = list(
-        driver.extract(
-            base_url="https://api.test.com",
-            endpoint="/items",
-            api_key="test_key",  # pragma: allowlist secret
-        )
-    )
+    config = {
+        "base_url": "https://api.test.com",
+        "endpoint": "/items",
+        "api_key": "test_key",  # pragma: allowlist secret
+    }
 
-    assert len(results) == 4
-    assert results[0]["id"] == 1
-    assert results[3]["id"] == 4
+    result = driver.run(step_id="test_step", config=config, ctx=mock_ctx)
+
+    assert "df" in result
+    df = result["df"]
+    assert len(df) == 4
+    assert df.iloc[0]["id"] == 1
+    assert df.iloc[3]["id"] == 4
 
 
 @patch("requests.Session.get")
-def test_extract_empty_results(mock_get, driver):
+def test_extract_empty_results(mock_get, driver, mock_ctx):
     """Test extraction with no results."""
     mock_response = Mock()
     mock_response.json.return_value = {
@@ -284,19 +305,20 @@ def test_extract_empty_results(mock_get, driver):
     mock_response.raise_for_status.return_value = None
     mock_get.return_value = mock_response
 
-    results = list(
-        driver.extract(
-            base_url="https://api.test.com",
-            endpoint="/empty",
-            api_key="test_key",  # pragma: allowlist secret
-        )
-    )
+    config = {
+        "base_url": "https://api.test.com",
+        "endpoint": "/empty",
+        "api_key": "test_key",  # pragma: allowlist secret
+    }
 
-    assert len(results) == 0
+    result = driver.run(step_id="test_step", config=config, ctx=mock_ctx)
+
+    assert "df" in result
+    assert len(result["df"]) == 0
 
 
 @patch("requests.Session.get")
-def test_extract_with_query_filter(mock_get, driver):
+def test_extract_with_query_filter(mock_get, driver, mock_ctx):
     """Test extraction with query parameter."""
     mock_response = Mock()
     mock_response.json.return_value = {
@@ -306,53 +328,38 @@ def test_extract_with_query_filter(mock_get, driver):
     mock_response.raise_for_status.return_value = None
     mock_get.return_value = mock_response
 
-    results = list(
-        driver.extract(
-            base_url="https://api.test.com",
-            endpoint="/users",
-            api_key="test_key",  # pragma: allowlist secret
-            query="status=active",
-        )
-    )
+    config = {
+        "base_url": "https://api.test.com",
+        "endpoint": "/users",
+        "api_key": "test_key",  # pragma: allowlist secret
+        "query": "status=active",
+    }
 
-    assert len(results) == 1
+    result = driver.run(step_id="test_step", config=config, ctx=mock_ctx)
+
+    assert "df" in result
+    df = result["df"]
+    assert len(df) == 1
     mock_get.assert_called_once()
     call_args = mock_get.call_args
     assert call_args[1]["params"]["filter"] == "status=active"
 
 
 @patch("requests.Session.get")
-def test_healthcheck_success(mock_get, driver):
-    """Test successful health check."""
-    mock_response = Mock()
-    mock_response.raise_for_status.return_value = None
-    mock_response.elapsed.total_seconds.return_value = 0.05
-    mock_get.return_value = mock_response
-
-    result = driver.healthcheck(
-        base_url="https://api.test.com",
-        api_key="test_key",  # pragma: allowlist secret
-    )
-
-    assert result["status"] == "healthy"
-    assert result["latency_ms"] == 50
-
-
-@patch("requests.Session.get")
-def test_healthcheck_failure(mock_get, driver):
-    """Test health check with network error."""
+def test_error_handling(mock_get, driver, mock_ctx):
+    """Test error handling with network failure."""
     import requests
 
     mock_get.side_effect = requests.exceptions.ConnectionError("Network error")
 
-    result = driver.healthcheck(
-        base_url="https://api.test.com",
-        api_key="test_key",  # pragma: allowlist secret
-    )
+    config = {
+        "base_url": "https://api.test.com",
+        "endpoint": "/test",
+        "api_key": "test_key",  # pragma: allowlist secret
+    }
 
-    assert result["status"] == "unhealthy"
-    assert "Network error" in result["error"]
-    assert result["category"] == "network"
+    with pytest.raises(RuntimeError, match="API request failed"):
+        driver.run(step_id="test_step", config=config, ctx=mock_ctx)
 ```
 
 ## Validation Checklist
@@ -361,13 +368,14 @@ Before committing:
 - [ ] spec.yaml validates against schema
 - [ ] All secrets declared in `secrets` array
 - [ ] x-connection-fields has override policies
-- [ ] Driver uses keyword-only args (`*,`)
+- [ ] Driver uses run() method with step_id, config, inputs, ctx
+- [ ] Driver returns {"df": DataFrame}
 - [ ] Tests include secret suppressions (`# pragma: allowlist secret`)
-- [ ] Healthcheck returns proper error categories
+- [ ] Error handling wraps exceptions with RuntimeError
 - [ ] Pagination handles empty results
-- [ ] Logs use masked URLs
+- [ ] Logs include step_id in messages
 - [ ] Tests mock all external API calls
-- [ ] Driver logs metrics via context
+- [ ] Driver logs metrics via ctx.log_metric()
 
 ## Common Variations
 

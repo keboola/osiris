@@ -47,6 +47,193 @@ Connector                  → Where/how to connect?
 
 ---
 
+## Key Concepts You MUST Understand
+
+These are fundamental concepts referenced throughout component development. Read this before proceeding.
+
+### Metrics & Telemetry
+**Why it matters:** Every component must emit metrics for observability.
+
+**Required metrics:**
+- `rows_read` - Number of rows extracted (extractors)
+- `rows_written` - Number of rows written (writers)
+- `rows_processed` - Number of rows transformed (transformers)
+
+**How to emit:**
+```python
+ctx.log_metric("rows_read", count, tags={"step": step_id, "table": table_name})
+```
+
+**Units:** rows, ms (milliseconds), bytes, seconds, files, code
+**Reference:** checklists/metrics_events_contract.md (MET-001 to MET-003)
+
+---
+
+### Secrets & Security
+**Why it matters:** Prevent credential leaks in logs and specs.
+
+**Rules:**
+1. Declare secrets in spec.yaml: `secrets: ["/config/password"]`
+2. Never log secrets: Use `mask_url()` or `mask_connection_for_display()`
+3. Use JSON Pointers: `/config/api_key`, `/connection/password`
+4. Test with suppressions: `# pragma: allowlist secret`
+
+**x-connection-fields override policies:**
+- `forbidden` - Security fields (password, token) → NEVER override
+- `allowed` - Infrastructure (host, port) → Can override
+- `warning` - Ambiguous (headers) → Warn if overridden
+
+**Reference:** reference/x-connection-fields.md
+
+---
+
+### Filesystem Contract
+**Why it matters:** Components must work in both local AND E2B cloud.
+
+**CRITICAL RULE:** NEVER hardcode paths!
+
+```python
+# ❌ WRONG
+Path.home() / ".osiris"
+/Users/padak/data
+
+# ✅ CORRECT
+ctx.base_path / ".osiris"
+config["output_dir"]
+```
+
+**All paths must be:**
+- Config-driven (from config or ctx.base_path)
+- Relative to base_path
+- Never use Path.home(), absolute paths
+
+**Reference:** CLAUDE.md Filesystem Contract, e2b-compatibility.md
+
+---
+
+### Data Passing Between Steps
+**Why it matters:** Components communicate via standardized data structures.
+
+**Standard format:**
+```python
+# Output from step
+return {
+    "data": dataframe,  # pandas DataFrame
+    "metadata": {...}   # Optional
+}
+
+# Input to next step
+def run(self, *, inputs, ...):
+    upstream_df = inputs["previous_step_id"]["data"]
+```
+
+**Rules:**
+- Always use pandas DataFrame for tabular data
+- Access via `inputs[step_id]["data"]`
+- Never mutate inputs (immutable)
+
+**Reference:** llms/drivers.md (DRV-007, DRV-008)
+
+---
+
+### Driver Protocol (run method)
+**Why it matters:** All drivers MUST implement this exact interface.
+
+**Signature:**
+```python
+def run(self, *, step_id: str, config: dict, inputs: dict, ctx: DriverContext) -> dict:
+    """
+    Execute component logic.
+
+    Args:
+        step_id: Unique step identifier
+        config: Resolved configuration (secrets included)
+        inputs: Outputs from upstream steps
+        ctx: Context for logging, metrics, base_path
+
+    Returns:
+        {"data": DataFrame, "metadata": {}}
+    """
+```
+
+**Critical:** Note the `*` (keyword-only args)!
+
+**Reference:** llms/drivers.md (DRV-001 to DRV-029)
+
+---
+
+### Discovery Mode
+**Why it matters:** Components help AI design pipelines by discovering available data.
+
+**Requirements:**
+- Mode: `"discover"` in spec.yaml
+- Capability: `discover: true`
+- Deterministic output (same order every time)
+- Include `discovered_at` timestamp
+- Return sorted results
+
+**Example output:**
+```json
+{
+    "tables": [
+        {"name": "customers", "row_count": 1000},
+        {"name": "orders", "row_count": 5000}
+    ],
+    "discovered_at": "2025-10-26T10:00:00Z"
+}
+```
+
+**Reference:** checklists/discovery_contract.md (DISC-001 to DISC-006)
+
+---
+
+### Connection Doctor (Healthcheck)
+**Why it matters:** Validate connections before pipeline execution.
+
+**Requirements:**
+- Implement `doctor()` method
+- Return error categories: `auth`, `network`, `permission`, `timeout`, `ok`
+- Measure latency_ms
+- Never leak secrets in errors
+
+**Example:**
+```python
+def doctor(self, *, connection, timeout=2.0):
+    try:
+        # Test connection
+        return (True, {"status": "ok", "latency_ms": 50})
+    except Exception as e:
+        return (False, {"status": "error", "category": "auth", "message": str(e)})
+```
+
+**Reference:** checklists/connections_doctor_contract.md
+
+---
+
+### Validation Rules (57 Total)
+**Why it matters:** Comprehensive checklist ensures production-ready components.
+
+**11 Rule Domains:**
+- SPEC (10 rules) - Specification structure
+- CAP (4) - Capabilities
+- DISC (6) - Discovery
+- CONN (4) - Connections
+- LOG (6) - Logging & metrics
+- DRIVER (6) - Driver implementation
+- HEALTH (3) - Connection doctor
+- PKG (5) - Packaging
+- RETRY (3) - Retries
+- DET (3) - Determinism
+- AI (7) - AI-specific
+
+**Reference:** checklists/COMPONENT_AI_CHECKLIST.md
+
+---
+
+**After understanding these concepts**, proceed to Task Router below.
+
+---
+
 ## Task Router
 
 ### Task 1: "Build a new component from scratch"
@@ -72,7 +259,12 @@ Connector                  → Where/how to connect?
    - Run through all validation steps
    - Ensure nothing is missed
 
-6. **Final build** → Read `build-new-component.md`
+6. **Ensure E2B compatibility** → Read `e2b-compatibility.md`
+   - Critical for production deployments
+   - Components must work locally AND in cloud sandbox
+   - Test with `--e2b` flag
+
+7. **Final build** → Read `build-new-component.md`
    - Complete implementation guide
    - All required files and structure
 
@@ -154,6 +346,8 @@ Connector                  → Where/how to connect?
 
 | Question | Document to Read |
 |----------|-----------------|
+| "What metrics must I emit?" | See "Key Concepts" → Metrics & Telemetry above |
+| "How do I avoid leaking secrets?" | See "Key Concepts" → Secrets & Security above |
 | "What auth type should I use?" | `decision-trees/auth-selector.md` |
 | "How do I implement pagination?" | `decision-trees/pagination-selector.md` |
 | "What API type is this?" | `decision-trees/api-type-selector.md` |
@@ -164,6 +358,9 @@ Connector                  → Where/how to connect?
 | "What does component doctor check?" | `checklists/connections_doctor_contract.md` |
 | "How do I structure driver code?" | `recipes/[api-type]-extractor.md` |
 | "What's the complete spec schema?" | `../../reference/components-spec.md` |
+| "How do I make my component work in E2B?" | `e2b-compatibility.md` |
+| "Why does my component fail in E2B?" | `e2b-compatibility.md` → Common E2B Errors |
+| "What are the E2B best practices?" | `e2b-compatibility.md` → Best Practices |
 
 ## Document Index (Organized by Purpose)
 
@@ -179,6 +376,8 @@ Connector                  → Where/how to connect?
 
 ### Step-by-Step Guides
 - `build-new-component.md` - Complete build guide (all steps)
+- `e2b-compatibility.md` - E2B cloud sandbox compatibility (CRITICAL for production)
+- `dependency-management.md` - Dependency and package management
 - `error-patterns.md` - Common errors and fixes
 
 ### Validation (Check Your Work)
@@ -208,6 +407,8 @@ Connector                  → Where/how to connect?
 
 ❌ **Don't skip discovery mode** - It's required for Osiris chat to work
 
+❌ **Don't skip E2B testing** - Components MUST work in cloud sandbox for production
+
 ## Pro Tips
 
 ✅ **Start with decision trees** - They ask the right questions upfront
@@ -221,6 +422,8 @@ Connector                  → Where/how to connect?
 ✅ **Test with real credentials** - Never use fake test data
 
 ✅ **Follow the contracts** - Discovery and doctor contracts are non-negotiable
+
+✅ **Test E2B early** - Use `--e2b` flag to catch compatibility issues early
 
 ## Typical Workflow Example
 
