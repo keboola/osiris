@@ -90,6 +90,9 @@ class ResourceResolver:
         """
         Get the physical file path for a URI.
 
+        Validates that resolved path stays within the allowed root directory
+        to prevent path traversal attacks (CWE-22).
+
         Args:
             uri: Osiris URI
 
@@ -97,20 +100,23 @@ class ResourceResolver:
             Physical file path
 
         Raises:
-            OsirisError: If resource type is unknown
+            OsirisError: If resource type is unknown or path escapes sandbox
         """
         resource_type, relative_path = self._parse_uri(uri)
 
         # Map resource types to directories
         if resource_type in ["schemas", "prompts", "usecases"]:
             # Read-only data resources (from package)
-            return self.data_dir / resource_type / relative_path
+            allowed_root = self.data_dir / resource_type
+            physical_path = allowed_root / relative_path
         elif resource_type in ["discovery", "drafts"]:
             # Runtime cache resources (from config)
-            return self.cache_dir / relative_path
+            allowed_root = self.cache_dir
+            physical_path = allowed_root / relative_path
         elif resource_type == "memory":
             # Memory resources (from config)
-            return self.memory_dir / relative_path
+            allowed_root = self.memory_dir
+            physical_path = allowed_root / relative_path
         else:
             raise OsirisError(
                 ErrorFamily.SEMANTIC,
@@ -118,6 +124,33 @@ class ResourceResolver:
                 path=["uri", "type"],
                 suggest="Valid types: schemas, prompts, usecases, discovery, drafts, memory",
             )
+
+        # Normalize path to resolve .. and symlinks, then validate containment
+        try:
+            resolved_path = physical_path.resolve()
+            allowed_root_resolved = allowed_root.resolve()
+        except (OSError, RuntimeError) as e:
+            raise OsirisError(
+                ErrorFamily.SEMANTIC,
+                f"Failed to resolve path: {str(e)}",
+                path=["uri"],
+                suggest="Check for invalid symlinks or filesystem issues",
+            ) from e
+
+        # Validate path stays within allowed root (prevent path traversal)
+        try:
+            # Check if resolved path is relative to allowed root
+            resolved_path.relative_to(allowed_root_resolved)
+        except ValueError:
+            # Path is outside allowed root - path traversal attempt detected
+            raise OsirisError(
+                ErrorFamily.POLICY,
+                f"Path traversal attempt detected: {uri}",
+                path=["uri", "path"],
+                suggest="URIs must not escape the resource directory using .. or absolute paths",
+            )
+
+        return physical_path
 
     async def list_resources(self) -> list[types.Resource]:
         """
