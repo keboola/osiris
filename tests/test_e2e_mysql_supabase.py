@@ -174,8 +174,9 @@ def test_mysql_to_supabase_e2e_flow():
 
                 # Verify DataFrame was passed from extractor to writer
                 supabase_inputs = mock_supabase_driver.run.call_args.kwargs["inputs"]
-                assert "df" in supabase_inputs
-                assert len(supabase_inputs["df"]) == 3  # 3 rows
+                # After multi-input fix, DataFrames use df_<step_id> pattern
+                assert "df_extract_data" in supabase_inputs
+                assert len(supabase_inputs["df_extract_data"]) == 3  # 3 rows
 
                 # Verify cleaned configs were saved as artifacts
                 extract_cleaned = output_dir / "extract-data" / "cleaned_config.json"
