@@ -1,12 +1,12 @@
-# Osiris Pipeline v0.2.0 — Quick Start
+# Osiris Pipeline v0.5.2 — Quick Start
 
-A 10‑minute happy‑path to run your first pipeline locally and (optionally) in an E2B sandbox. We’ll move a small table from MySQL to a CSV file.
+A 10‑minute happy‑path to run your first pipeline locally and (optionally) in an E2B sandbox. We'll move a small table from MySQL to a CSV file.
 
 ---
 
 ## 1) Prerequisites
 
-- **Python 3.10+**
+- **Python 3.11+**
 - **Git**
 - **MySQL** database you can read from (host/user/password)
 - (Optional) **E2B** account if you want to try cloud sandbox runs

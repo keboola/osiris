@@ -28,7 +28,7 @@ Run these commands to verify production readiness:
 ```bash
 # 1. Verify Python environment
 python --version
-# Expected: Python 3.10+ (3.10, 3.11, 3.12 supported)
+# Expected: Python 3.11+ (3.11, 3.12, 3.13 supported)
 
 # 2. Activate virtual environment
 source .venv/bin/activate

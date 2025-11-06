@@ -282,9 +282,9 @@ osiris/
 ```
 
 ## Version Info
-- Current: v0.5.0 (Production Ready)
+- Current: v0.5.2 (Production Ready)
 - Model: Opus 4.1 (claude-opus-4-1-20250805)
-- Python: 3.8+ required
+- Python: 3.11+ required
 - Test Suite: ~196 seconds full run
 
 For detailed information, see documentation in `docs/`.

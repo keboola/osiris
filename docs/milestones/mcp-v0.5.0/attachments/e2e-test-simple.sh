@@ -50,7 +50,7 @@ for arg in "$@"; do
             echo "Prerequisites:"
             echo "  • Virtual environment activated"
             echo "  • testing_env/ initialized with osiris.yaml"
-            echo "  • Python 3.9+ installed"
+            echo "  • Python 3.11+ installed"
             echo ""
             exit 0
             ;;

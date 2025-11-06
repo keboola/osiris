@@ -106,7 +106,7 @@ class MCPConfig:
 
     # Protocol configuration
     PROTOCOL_VERSION = "2024-11-05"  # MCP protocol spec version
-    SERVER_VERSION = "0.5.2"  # Osiris server version
+    SERVER_VERSION = "0.5.3"  # Osiris server version
     SERVER_NAME = "osiris-mcp-server"
 
     # Payload limits

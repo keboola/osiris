@@ -110,5 +110,5 @@ class TestServerBoot:
         from osiris.mcp.config import MCPConfig
 
         config = MCPConfig()
-        assert config.SERVER_VERSION == "0.5.2"
+        assert config.SERVER_VERSION == "0.5.3"
         assert config.PROTOCOL_VERSION == "2024-11-05"  # MCP protocol spec version

@@ -442,8 +442,8 @@ class RunnerV0:
                 def __init__(self, output_dir):
                     self.output_dir = output_dir
 
-                def log_metric(self, name: str, value: Any):
-                    log_metric(name, value)
+                def log_metric(self, name: str, value: Any, **kwargs):
+                    log_metric(name, value, **kwargs)
 
             ctx = RunnerContext(output_dir)
 
