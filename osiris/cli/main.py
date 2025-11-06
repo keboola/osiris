@@ -179,10 +179,11 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
 
     if args.version:
+        from osiris import __version__
         if json_output:
-            print(json.dumps({"version": "v0.5.0"}))
+            print(json.dumps({"version": f"v{__version__}"}))
         else:
-            console.print("Osiris v0.5.0")
+            console.print(f"Osiris v{__version__}")
         return
 
     # Handle commands first, then help
