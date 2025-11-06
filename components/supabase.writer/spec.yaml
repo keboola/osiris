@@ -63,8 +63,8 @@ configSchema:
       default: minimal
     create_if_missing:
       type: boolean
-      description: Auto-create table if it doesn't exist (shows SQL, doesn't execute)
-      default: false
+      description: Auto-create table if it doesn't exist (recommended for prototyping, set false for production with strict schema control)
+      default: true
     batch_size:
       type: integer
       description: Number of rows per API request
