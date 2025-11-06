@@ -3,7 +3,6 @@
 import hashlib
 import logging
 import re
-from typing import Dict
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +32,7 @@ def sanitize_step_id(step_id: str) -> str:
     original = step_id
 
     # Replace invalid characters with underscore
-    sanitized = re.sub(r'[^0-9a-zA-Z_]', '_', step_id)
+    sanitized = re.sub(r"[^0-9a-zA-Z_]", "_", step_id)
 
     # Prefix with underscore if starts with digit
     if sanitized and sanitized[0].isdigit():
@@ -41,14 +40,12 @@ def sanitize_step_id(step_id: str) -> str:
 
     # Warn if changed
     if sanitized != original:
-        logger.warning(
-            f"Step ID '{original}' sanitized to '{sanitized}' for SQL table name"
-        )
+        logger.warning(f"Step ID '{original}' sanitized to '{sanitized}' for SQL table name")
 
     return sanitized
 
 
-def build_dataframe_keys(step_ids: list[str]) -> Dict[str, str]:
+def build_dataframe_keys(step_ids: list[str]) -> dict[str, str]:
     """Build safe DataFrame keys for multiple step IDs, detecting collisions.
 
     This function sanitizes step IDs and detects when multiple steps would
@@ -75,19 +72,22 @@ def build_dataframe_keys(step_ids: list[str]) -> Dict[str, str]:
         return {}
 
     # First pass: sanitize all IDs
-    sanitized_map: Dict[str, str] = {}
+    sanitized_map: dict[str, str] = {}
     for step_id in step_ids:
         sanitized_map[step_id] = sanitize_step_id(step_id)
 
     # Second pass: detect collisions
-    sanitized_to_originals: Dict[str, list[str]] = {}
+    sanitized_to_originals: dict[str, list[str]] = {}
     for original, sanitized in sanitized_map.items():
         if sanitized not in sanitized_to_originals:
             sanitized_to_originals[sanitized] = []
         sanitized_to_originals[sanitized].append(original)
 
     # Third pass: build final keys with collision detection
-    result: Dict[str, str] = {}
+    result: dict[str, str] = {}
+    logged_collisions: set = set()
+
+    # First, build all result keys without logging
     for original, sanitized in sanitized_map.items():
         colliding_originals = sanitized_to_originals[sanitized]
 
@@ -101,10 +101,16 @@ def build_dataframe_keys(step_ids: list[str]) -> Dict[str, str]:
             key = f"df_{sanitized}_{hash_suffix}"
             result[original] = key
 
-            # Log collision detection
-            logger.warning(
-                f"Step ID collision detected: {colliding_originals} all sanitize to '{sanitized}'. "
-                f"Using unique keys: {', '.join(f'{o}→{result[o]}' for o in colliding_originals)}"
-            )
+    # Then, log collisions after all keys are built (avoids KeyError on result[o] access)
+    for sanitized, colliding_originals in sanitized_to_originals.items():
+        if len(colliding_originals) > 1:
+            # Use tuple to ensure we only log each collision once
+            collision_key = tuple(sorted(colliding_originals))
+            if collision_key not in logged_collisions:
+                logger.warning(
+                    f"Step ID collision detected: {colliding_originals} all sanitize to '{sanitized}'. "
+                    f"Using unique keys: {', '.join(f'{o}→{result[o]}' for o in colliding_originals)}"
+                )
+                logged_collisions.add(collision_key)
 
     return result

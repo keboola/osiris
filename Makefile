@@ -313,6 +313,38 @@ build: ## Build package distribution
 	python -m build
 	@echo "✅ Build complete! Check dist/ folder"
 
+check-dist: ## Check distribution packages with twine
+	@echo "🔍 Checking distribution packages..."
+	@if [ ! -d "dist" ] || [ -z "$$(ls -A dist)" ]; then \
+		echo "❌ No distribution files found. Run 'make build' first."; \
+		exit 1; \
+	fi
+	twine check dist/*
+	@echo "✅ Distribution check complete!"
+
+upload-test: clean build check-dist ## Upload to TestPyPI
+	@echo "🧪 Uploading to TestPyPI..."
+	@echo "⚠️  This will publish to TestPyPI (https://test.pypi.org)"
+	twine upload --repository testpypi dist/*
+	@echo "✅ Upload to TestPyPI complete!"
+	@echo "📝 Test installation with:"
+	@echo "   pip install --index-url https://test.pypi.org/simple/ osiris-pipeline"
+
+upload-pypi: clean build check-dist ## Upload to PyPI (PRODUCTION)
+	@echo "🚀 Uploading to PyPI..."
+	@echo "⚠️⚠️⚠️  THIS WILL PUBLISH TO PRODUCTION PyPI! ⚠️⚠️⚠️"
+	@echo ""
+	@read -p "Are you ABSOLUTELY SURE you want to publish to PyPI? Type 'yes' to confirm: " confirm; \
+	if [ "$$confirm" != "yes" ]; then \
+		echo "❌ Upload cancelled."; \
+		exit 1; \
+	fi
+	twine upload dist/*
+	@echo "✅ Upload to PyPI complete!"
+	@echo "📝 Users can now install with:"
+	@echo "   pip install osiris-pipeline"
+	@echo "   uvx osiris-pipeline init"
+
 # Development workflow helpers
 pre-commit-install: ## Install pre-commit hooks
 	@echo "🔧 Installing pre-commit hooks..."

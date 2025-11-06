@@ -48,9 +48,7 @@ class DuckDBProcessorDriver:
                     if key.startswith("df_") and isinstance(value, pd.DataFrame):
                         conn.register(key, value)
                         registered.append(key)
-                        self.logger.debug(
-                            f"Step {step_id}: Registered table '{key}' with {len(value)} rows"
-                        )
+                        self.logger.debug(f"Step {step_id}: Registered table '{key}' with {len(value)} rows")
 
             # Allow empty inputs for data generation queries (e.g., generate_series)
             if registered:
@@ -71,9 +69,7 @@ class DuckDBProcessorDriver:
                 ctx.log_metric("rows_read", total_rows_read)
                 ctx.log_metric("rows_written", len(result))
 
-            self.logger.info(
-                f"Step {step_id}: Transformed {total_rows_read} rows -> {len(result)} rows"
-            )
+            self.logger.info(f"Step {step_id}: Transformed {total_rows_read} rows -> {len(result)} rows")
 
             return {"df": result}
 

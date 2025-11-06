@@ -63,8 +63,11 @@ def setup_environment():
     # Set environment variable for child processes
     os.environ["OSIRIS_HOME"] = str(osiris_home)
 
-    # Set PYTHONPATH if not already set
-    if "PYTHONPATH" not in os.environ:
+    # Set PYTHONPATH, appending to existing value if present
+    existing_pythonpath = os.environ.get("PYTHONPATH", "").strip()
+    if existing_pythonpath:
+        os.environ["PYTHONPATH"] = str(repo_root) + ":" + existing_pythonpath
+    else:
         os.environ["PYTHONPATH"] = str(repo_root)
 
     return repo_root, osiris_home

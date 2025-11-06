@@ -1,0 +1,78 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Publish target'
+        required: true
+        type: choice
+        options:
+          - testpypi
+          - pypi
+
+jobs:
+  publish:
+    name: Build and publish to PyPI
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # For trusted publishing (OIDC)
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Build package
+        run: python -m build
+
+      - name: Check distribution
+        run: twine check dist/*
+
+      - name: List distribution contents
+        run: |
+          echo "📦 Distribution files:"
+          ls -lh dist/
+          echo ""
+          echo "📋 Wheel contents (component specs):"
+          unzip -l dist/*.whl | grep -E "(components/|\.yaml|\.yml)" || echo "⚠️  No component specs found in wheel!"
+
+      - name: Publish to TestPyPI
+        if: github.event.inputs.target == 'testpypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          print-hash: true
+
+      - name: Publish to PyPI (Production)
+        if: github.event_name == 'release' || github.event.inputs.target == 'pypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          print-hash: true
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "✅ Package published successfully!"
+          if [ "${{ github.event.inputs.target }}" == "testpypi" ]; then
+            echo "🧪 Published to TestPyPI"
+            echo "📝 Test with: pip install --index-url https://test.pypi.org/simple/ osiris-pipeline"
+          else
+            echo "🚀 Published to PyPI"
+            echo "📝 Install with: pip install osiris-pipeline"
+            echo "📝 Run with: uvx osiris-pipeline init"
+          fi

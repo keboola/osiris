@@ -416,16 +416,22 @@ def cmd_oml(args):
         return
 
     if parsed_args.action == "schema":
-        # Return OML JSON schema
+        # Return OML JSON schema that matches validator requirements
+        # Must align with osiris/core/oml_schema_guard.py validation rules
         schema = {
             "version": "0.1.0",
             "schema": {
                 "$schema": "http://json-schema.org/draft-07/schema#",
-                "version": "0.1.0",
+                "title": "OML Pipeline Schema",
+                "description": "Osiris Markup Language v0.1.0 pipeline specification",
                 "type": "object",
-                "required": ["version", "name", "steps"],
+                "required": ["oml_version", "name", "steps"],  # FIX: Changed from "version" to "oml_version"
                 "properties": {
-                    "version": {"type": "string", "enum": ["0.1.0"], "description": "OML schema version"},
+                    "oml_version": {  # FIX: Changed from "version" to "oml_version"
+                        "type": "string",
+                        "const": "0.1.0",
+                        "description": "OML schema version",
+                    },
                     "name": {"type": "string", "description": "Pipeline name"},
                     "description": {"type": "string", "description": "Pipeline description"},
                     "steps": {
@@ -433,13 +439,25 @@ def cmd_oml(args):
                         "description": "Pipeline steps",
                         "items": {
                             "type": "object",
-                            "required": ["name", "component"],
+                            "required": ["id", "component", "mode", "config"],  # FIX: Added "id" and "mode"
                             "properties": {
-                                "id": {"type": "string"},
-                                "name": {"type": "string"},
-                                "component": {"type": "string"},
-                                "config": {"type": "object"},
-                                "depends_on": {"type": "array", "items": {"type": "string"}},
+                                "id": {"type": "string", "description": "Step identifier"},
+                                "name": {"type": "string", "description": "Human-readable step name (optional)"},
+                                "component": {
+                                    "type": "string",
+                                    "description": "Component reference (e.g., mysql.extractor)",
+                                },
+                                "mode": {
+                                    "type": "string",
+                                    "enum": ["read", "write", "transform"],
+                                    "description": "Step mode",
+                                },
+                                "config": {"type": "object", "description": "Step configuration"},
+                                "depends_on": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Step IDs this step depends on",
+                                },
                             },
                         },
                     },
@@ -456,7 +474,9 @@ def cmd_oml(args):
         from osiris.cli.oml_validate import validate_oml_command  # noqa: PLC0415  # Lazy import for CLI performance
 
         # Call the existing function with correct parameters
-        validate_oml_command(parsed_args.pipeline, json_output=True, verbose=False)
+        # FIX: Capture exit code and propagate it (was: ignored return value)
+        exit_code = validate_oml_command(parsed_args.pipeline, json_output=True, verbose=False)
+        sys.exit(exit_code)
     elif parsed_args.action == "save":
         console.print("[yellow]Save command requires pipeline data via stdin (stub)[/yellow]")
         sys.exit(1)

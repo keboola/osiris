@@ -13,6 +13,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.5.1] - 2025-11-06
+
+**Critical Bug Fixes Batch 2 + PyPI Publishing Support**
+
+This release fixes 5 HIGH priority bugs from code review (PR #50) and adds full PyPI packaging infrastructure, making Osiris installable via `pip install osiris-pipeline` and `uvx osiris-pipeline`.
+
+### Fixed
+
+**Batch 2: Critical Bug Fixes** (5 HIGH priority issues from code review)
+
+1. **Guide Sample Pipeline - Outdated OML Format** (`osiris/mcp/tools/guide.py:216`)
+   - Fixed 5 critical errors in sample OML returned by MCP guide tool
+   - Changed `version: 0.1.0` → `oml_version: "0.1.0"`
+   - Added missing `mode` fields (read/write/transform) to all steps
+   - Changed `depends_on` → `needs` for correct dependency syntax
+   - Quoted connection references (`"@mysql.default"`)
+   - Updated tip text to reflect current OML v0.1.0 syntax
+   - Added comprehensive test validating sample passes OML validator
+
+2. **OSIRIS_HOME Hardcoded Path** (`osiris/mcp/clients_config.py:38`)
+   - Fixed hardcoded `/testing_env` path that doesn't exist in production
+   - Changed from `f"{base_path}/testing_env"` to just `base_path`
+   - MCP now respects Filesystem Contract v1 where base_path is project root
+   - Claude Desktop MCP configuration now works in production environments
+
+3. **Windows Shell Compatibility** (`osiris/mcp/clients_config.py:47`)
+   - Added platform detection for cross-platform shell compatibility
+   - Windows: Uses `cmd.exe` with `/c` flag and `cd /d` for drive-aware changes
+   - Unix/macOS: Uses `/bin/bash` with `-lc` flag and `exec` for proper process handling
+   - Added 9 comprehensive platform-specific tests with 100% coverage
+   - Claude Desktop MCP now works on Windows systems
+
+4. **PYTHONPATH Extension Bug** (`osiris/cli/mcp_entrypoint.py:67-68`)
+   - Fixed bug where pre-existing PYTHONPATH was ignored instead of extended
+   - Now properly appends repo_root to beginning of existing PYTHONPATH
+   - Handles edge cases (empty strings, whitespace-only values)
+   - Added 7 tests covering all scenarios including pre-existing PYTHONPATH
+   - Prevents ModuleNotFoundError when users have pre-configured PYTHONPATH
+
+5. **Guide References Return Value Ignored** (`osiris/mcp/tools/guide.py:57,79`)
+   - Fixed ignored return value from `_get_relevant_references(next_step)`
+   - Added `"references": references` field to result dictionary
+   - Users/LLMs now get proper "here's what to read next" context
+   - Added test validating references field is present and populated correctly
+
+### Added
+
+- **PyPI Publishing Infrastructure**: Complete packaging setup for distribution on PyPI
+  - Proper `pyproject.toml` configuration with all metadata
+  - `MANIFEST.in` for including component specs in distribution
+  - Makefile targets: `make build`, `make upload-test`, `make upload-pypi`
+  - GitHub Actions workflow for automated publishing on releases
+  - Release documentation in `docs/developer-guide/releasing.md`
+- **uvx Support**: Package works with `uvx osiris-pipeline` out of the box
+- **Component Packaging**: All 8 component specs now properly included in wheel distribution
+
+### Fixed (Infrastructure)
+
+- **ComponentRegistry Package Detection**: Fixed component discovery to work with installed packages
+  - Registry now looks for components relative to package installation directory
+  - Supports both development mode (local directory) and installed package (site-packages)
+  - Eliminates "Components directory not found" warnings when installed from PyPI
+
+### Tests
+
+- **Added 18 new tests** for batch 2 fixes:
+  - 2 tests for guide OML sample validation
+  - 3 tests for OSIRIS_HOME path handling
+  - 9 tests for Windows/Unix shell platform compatibility
+  - 7 tests for PYTHONPATH extension behavior
+  - 1 test for guide references inclusion
+- **All tests passing**: 1401 passed, 88 skipped (100% functional pass rate)
+
+### Infrastructure
+
+- Added `twine>=4.0.0` to dev dependencies for package publishing
+- Created comprehensive release documentation with TestPyPI workflow
+- GitHub Actions workflow with trusted publishing support
+
 ## [0.5.0] - 2025-11-06
 
 **Major Release: MCP v0.5.0 Production Ready + DuckDB Multi-Input Fix + CSV Extractor**

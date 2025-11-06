@@ -13,7 +13,6 @@ from ..components.registry import ComponentRegistry
 from .config import ConfigError, parse_connection_ref, resolve_connection
 from .driver import DriverRegistry
 from .session_logging import log_event, log_metric
-from .step_naming import sanitize_step_id
 
 logger = logging.getLogger(__name__)
 
@@ -429,9 +428,7 @@ class RunnerV0:
 
                             # Log for debugging
                             rows = self._count_rows(upstream_result["df"])
-                            logger.debug(
-                                f"Step {step_id}: Registered {safe_key} with {rows} rows from {upstream_id}"
-                            )
+                            logger.debug(f"Step {step_id}: Registered {safe_key} with {rows} rows from {upstream_id}")
                             self._emit_inputs_resolved(
                                 step_id=step_id,
                                 from_step=upstream_id,

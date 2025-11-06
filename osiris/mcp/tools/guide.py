@@ -54,7 +54,7 @@ class GuideTools:
             )
 
             # Get relevant references
-            self._get_relevant_references(next_step)
+            references = self._get_relevant_references(next_step)
 
             # Format next steps as array per spec
             next_steps = []
@@ -76,6 +76,7 @@ class GuideTools:
                     "has_error_report": has_error_report,
                 },
                 "recommendations": recommendations,
+                "references": references,
                 "workflow_instructions": self._get_workflow_instructions(),
                 "status": "success",
             }
@@ -214,8 +215,8 @@ class GuideTools:
             ],
             "create_oml": [
                 "Start with a simple pipeline and iterate",
-                "Each step needs a unique ID",
-                "Use depends_on to control execution order",
+                "Each step needs a unique ID and mode (read/write/transform)",
+                "Use needs array to control execution order",
             ],
             "validate_oml": [
                 "Validation checks schema compliance and semantic correctness",
@@ -233,28 +234,31 @@ class GuideTools:
 
     def _get_sample_oml(self) -> str:
         """Get a sample OML pipeline for demonstration."""
-        return """version: 0.1.0
+        return """oml_version: "0.1.0"
 name: my_first_pipeline
 description: Extract and transform data
 
 steps:
   - id: extract-data
     component: mysql.extractor
+    mode: read
     config:
-      connection: @mysql.default
+      connection: "@mysql.default"
       query: "SELECT * FROM users LIMIT 100"
 
   - id: transform-data
     component: duckdb.processor
+    mode: transform
     config:
-      query: "SELECT * FROM df WHERE active = true"
-    depends_on: [extract-data]
+      query: "SELECT * FROM input_df WHERE active = true"
+    needs: [extract-data]
 
   - id: save-results
     component: filesystem.csv_writer
+    mode: write
     config:
       path: output/users.csv
-    depends_on: [transform-data]
+    needs: [transform-data]
 """
 
     def _get_workflow_instructions(self) -> str:

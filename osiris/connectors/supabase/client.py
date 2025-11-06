@@ -91,9 +91,7 @@ class SupabaseClient:
             try:
                 asyncio.get_running_loop()
                 # We're in an async context - this shouldn't happen in normal usage
-                raise RuntimeError(
-                    "connect_sync() called from async context. Use 'await connect()' instead."
-                )
+                raise RuntimeError("connect_sync() called from async context. Use 'await connect()' instead.")
             except RuntimeError:
                 # No running loop - good, we can create one
                 pass

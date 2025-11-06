@@ -12,6 +12,7 @@ Security Model:
 - Errors are mapped to MCP-compatible format
 """
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -250,8 +251,10 @@ async def run_cli_json(
     logger.debug(f"Correlation ID: {correlation_id}")
 
     try:
-        # Execute command with timeout
-        result = subprocess.run(
+        # Execute command with timeout in thread pool (non-blocking to event loop)
+        # This prevents the async event loop from freezing and enables parallelization
+        result = await asyncio.to_thread(
+            subprocess.run,
             cmd,
             check=False,
             capture_output=True,
