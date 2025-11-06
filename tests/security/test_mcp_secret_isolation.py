@@ -119,7 +119,11 @@ class TestMCPSecretIsolation:
                 "_meta": {"correlation_id": "test-123", "duration_ms": 10},
             }
 
-            with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_result) as mock_cli:
+            # Mock needs to be async
+            async def async_mock_result(*args, **kwargs):
+                return mock_result
+
+            with patch("osiris.mcp.cli_bridge.run_cli_json", side_effect=async_mock_result) as mock_cli:
                 tools = ConnectionsTools(audit_logger=mock_audit_logger)
                 result = await tools.list({})
 
@@ -180,7 +184,10 @@ class TestMCPSecretIsolation:
                 "_meta": {"correlation_id": "test-456", "duration_ms": 15},
             }
 
-            with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_result):
+            async def async_mock_result_func(*args, **kwargs):
+                return mock_result
+
+            with patch("osiris.mcp.cli_bridge.run_cli_json", side_effect=async_mock_result_func):
                 tools = ConnectionsTools(audit_logger=mock_audit_logger)
                 result = await tools.doctor({"connection": malicious_input["connection_id"]})
 
@@ -223,7 +230,11 @@ class TestMCPSecretIsolation:
             "_meta": {"correlation_id": "test-conn", "duration_ms": 10},
         }
 
-        with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_connections):
+        # Create async mock
+        async def async_mock_connections(*args, **kwargs):
+            return mock_connections
+
+        with patch("osiris.mcp.cli_bridge.run_cli_json", side_effect=async_mock_connections):
             conn_tools = ConnectionsTools(audit_logger=mock_audit_logger)
             result = await conn_tools.list({})
             assert result["connections"][0]["config"]["password"] == "***MASKED***"
@@ -240,7 +251,10 @@ class TestMCPSecretIsolation:
             "_meta": {"correlation_id": "test-disc", "duration_ms": 100},
         }
 
-        with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_discovery):
+        async def async_mock_discovery(*args, **kwargs):
+            return mock_discovery
+
+        with patch("osiris.mcp.cli_bridge.run_cli_json", side_effect=async_mock_discovery):
             disc_tools = DiscoveryTools(audit_logger=mock_audit_logger)
             result = await disc_tools.request(
                 {"connection": "@mysql.default", "component": "mysql.extractor", "samples": 5}
@@ -255,7 +269,7 @@ class TestMCPSecretIsolation:
         oml_tools = OMLTools(audit_logger=mock_audit_logger)
         result = await oml_tools.validate(
             {
-                "oml_content": "version: 0.1.0\nname: test_pipeline\nsteps:\n  - id: step1\n    name: extract\n    component: mysql.extractor\n    config:\n      connection: '@mysql.default'\n      query: 'SELECT * FROM users'"  # noqa: E501
+                "oml_content": "oml_version: 0.1.0\nname: test-pipeline\nsteps:\n  - id: step1\n    name: extract\n    component: mysql.extractor\n    mode: read\n    config:\n      connection: '@mysql.default'\n      query: 'SELECT * FROM users'"  # noqa: E501
             }
         )
         # Verify clean output (no secrets should appear in validation results)
@@ -277,7 +291,10 @@ class TestMCPSecretIsolation:
             "_meta": {"correlation_id": "test-mem", "duration_ms": 15},
         }
 
-        with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_memory):
+        async def async_mock_memory(*args, **kwargs):
+            return mock_memory
+
+        with patch("osiris.mcp.cli_bridge.run_cli_json", side_effect=async_mock_memory):
             mem_tools = MemoryTools(audit_logger=mock_audit_logger)
             result = await mem_tools.capture(
                 {
@@ -344,7 +361,10 @@ class TestMCPSecretIsolation:
             "_meta": {"correlation_id": "test-aiop", "duration_ms": 10},
         }
 
-        with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_aiop):
+        async def async_mock_aiop(*args, **kwargs):
+            return mock_aiop
+
+        with patch("osiris.mcp.cli_bridge.run_cli_json", side_effect=async_mock_aiop):
             aiop_tools = AIOPTools(audit_logger=mock_audit_logger)
             result = await aiop_tools.list({})
             assert "count" in result
@@ -373,8 +393,8 @@ class TestMCPSecretIsolation:
         Key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload
         """  # pragma: allowlist secret
 
-        # Mock CLI to raise OsirisError
-        def mock_cli_error(*args, **kwargs):
+        # Mock CLI to raise OsirisError (needs to be async)
+        async def mock_cli_error(*args, **kwargs):
             # CLI bridge should sanitize errors before raising
             raise OsirisError(
                 ErrorFamily.SEMANTIC,
@@ -425,7 +445,10 @@ class TestMCPSecretIsolation:
 
             # This test verifies that MCP tools pass through CLI-redacted data
             # without accidentally adding unredacted secrets
-            with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_result):
+            async def async_mock_dsn_result(*args, **kwargs):
+                return mock_result
+
+            with patch("osiris.mcp.cli_bridge.run_cli_json", side_effect=async_mock_dsn_result):
                 tools = ConnectionsTools(audit_logger=mock_audit_logger)
 
                 # Check that redacted DSN is preserved

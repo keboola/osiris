@@ -52,13 +52,11 @@ class DuckDBProcessorDriver:
                             f"Step {step_id}: Registered table '{key}' with {len(value)} rows"
                         )
 
-            if not registered:
-                raise ValueError(
-                    f"Step {step_id}: No DataFrames found in inputs. "
-                    f"Expected keys starting with 'df_'. Got: {list(inputs.keys()) if inputs else '(empty)'}"
-                )
-
-            self.logger.info(f"Step {step_id}: Registered {len(registered)} tables: {registered}")
+            # Allow empty inputs for data generation queries (e.g., generate_series)
+            if registered:
+                self.logger.info(f"Step {step_id}: Registered {len(registered)} tables: {registered}")
+            else:
+                self.logger.info(f"Step {step_id}: No input tables (data generation query)")
 
             # Execute the SQL query
             self.logger.debug(f"Step {step_id}: Executing DuckDB query")

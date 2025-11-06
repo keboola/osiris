@@ -53,11 +53,12 @@ def test_runner_emits_inputs_resolved_for_memory_inputs(tmp_path, monkeypatch):
     inputs_event = runner_events[0]["data"]
     assert inputs_event.get("step_id") == "process-step"
     assert inputs_event.get("from_step") == "extract-step"
-    assert inputs_event.get("key") == "df"
+    assert inputs_event.get("key") == "df_extract_step"  # Changed to new df_<step_id> format
     assert inputs_event.get("from_memory") is True
     assert inputs_event.get("rows") == 3
 
     assert driver.calls, "Driver should have been invoked"
     call_inputs = driver.calls[0][2]
-    assert "df" in call_inputs
-    assert list(call_inputs["df"]["value"]) == [1, 2, 3]
+    # Check for df_extract_step key (new format)
+    assert "df_extract_step" in call_inputs
+    assert list(call_inputs["df_extract_step"]["value"]) == [1, 2, 3]

@@ -480,17 +480,21 @@ class TestClaudeDesktopSimulation:
         assert result2_data["result"]["discovery_id"].startswith("disc_")
 
         oml_content = """
-version: 0.1.0
-name: test
+oml_version: 0.1.0
+name: test-pipeline
 steps:
   - id: step1
-    component: "@mysql/extractor"
+    component: "mysql.extractor"
+    mode: "read"
     config:
       connection: "@mysql.db1"
+      query: "SELECT * FROM users"
   - id: step2
-    component: "@supabase/writer"
+    component: "supabase.writer"
+    mode: "write"
     config:
       connection: "@supabase.target"
+      table: "users"
 """
 
         result3 = await mcp_server._call_tool("oml_validate", {"oml_content": oml_content})
