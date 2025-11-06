@@ -148,7 +148,7 @@ class ResourceResolver:
                 f"Path traversal attempt detected: {uri}",
                 path=["uri", "path"],
                 suggest="URIs must not escape the resource directory using .. or absolute paths",
-            )
+            ) from None
 
         return physical_path
 

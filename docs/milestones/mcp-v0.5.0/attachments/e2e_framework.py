@@ -115,7 +115,7 @@ class TestContext:
                 if path.is_file():
                     path.unlink()
                 elif path.is_dir():
-                    import shutil
+                    import shutil  # noqa: PLC0415
 
                     shutil.rmtree(path)
 
@@ -405,7 +405,7 @@ def assert_json_valid(text: str) -> None:
     try:
         json.loads(text)
     except json.JSONDecodeError as e:
-        raise AssertionError(f"Invalid JSON: {e}")
+        raise AssertionError(f"Invalid JSON: {e}") from e
 
 
 # ============================================================================
@@ -487,7 +487,7 @@ def oml_schema() -> ToolResult:
 def oml_validate(yaml_content: str) -> ToolResult:
     """Validate OML YAML content."""
     # Write to temp file
-    import tempfile
+    import tempfile  # noqa: PLC0415
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(yaml_content)
@@ -502,7 +502,7 @@ def oml_validate(yaml_content: str) -> ToolResult:
 
 def oml_save(yaml_content: str, session_id: str) -> ToolResult:
     """Save OML draft."""
-    import tempfile
+    import tempfile  # noqa: PLC0415
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         f.write(yaml_content)
@@ -594,7 +594,7 @@ def calculate_percentiles(latencies: list[float]) -> dict[str, float]:
 def measure_memory_usage() -> dict[str, int] | None:
     """Measure memory usage (requires psutil)."""
     try:
-        import psutil
+        import psutil  # noqa: PLC0415
 
         process = psutil.Process()
         mem_info = process.memory_info()
@@ -752,7 +752,7 @@ _DEBUG_ENABLED = False
 
 def enable_debug_logging() -> None:
     """Enable verbose output."""
-    global _DEBUG_ENABLED
+    global _DEBUG_ENABLED  # noqa: PLW0603
     _DEBUG_ENABLED = True
 
 
@@ -777,7 +777,7 @@ def log_assertion_failure(assertion: str, expected: Any, actual: Any) -> None:
 
 def enable_secret_scanning() -> None:
     """Log any secrets found in outputs."""
-    global _DEBUG_ENABLED
+    global _DEBUG_ENABLED  # noqa: PLW0603
     _DEBUG_ENABLED = True
 
 

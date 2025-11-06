@@ -349,7 +349,8 @@ class FilesystemCsvExtractorDriver:
                 next(f, None)
 
                 # Count remaining lines until timeout
-                for line_count, _ in enumerate(f, start=1):
+                for _ in f:
+                    line_count += 1
                     if time.time() - start_time > timeout:
                         # Timeout: return unknown
                         logger.debug(f"Row counting timeout for {csv_file.name}, " "returning 'unknown'")
