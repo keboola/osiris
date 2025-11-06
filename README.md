@@ -1,4 +1,4 @@
-# Osiris Pipeline v0.5.1
+# Osiris Pipeline v0.5.2
 
 **The deterministic compiler for AI-native data pipelines.**
 You describe outcomes in plain English; Osiris compiles them into **reproducible, production-ready manifests** that run with the **same behavior everywhere** (local or cloud).
@@ -128,7 +128,7 @@ For comprehensive documentation, visit the **[Documentation Hub](docs/README.md)
 - **v0.3.0** ✅ - AI Operation Package (AIOP) for LLM-friendly debugging
 - **v0.3.1** ✅ - Fixed validation warnings for ADR-0020 compliant configs
 - **v0.3.5** ✅ - GraphQL extractor, DuckDB processor, test infrastructure improvements
-- **v0.5.1 (Current)** ✅ - Critical bug fixes batch 2: OML sample, OSIRIS_HOME, Windows shell, PYTHONPATH, Guide references
+- **v0.5.2 (Current)** ✅ - Critical bug fixes batch 3: Path traversal (CWE-22), collision detection, OML schema, CSV extractor, Windows compatibility
 - **M2** - Production workflows, approvals, orchestrator integration
 - **M3** - Streaming, parallelism, enterprise scale
 - **M4** - Iceberg tables, intelligent DWH agent

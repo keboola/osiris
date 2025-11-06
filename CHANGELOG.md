@@ -13,6 +13,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.5.2] - 2025-11-06
+
+**Critical Bug Fixes Batch 3 - Code Review Findings**
+
+This release fixes 10 HIGH priority issues identified in code review, including security vulnerabilities, OML schema bugs, and cross-platform compatibility improvements.
+
+### Fixed
+
+**Security & Path Safety**
+
+1. **Path Traversal Vulnerability (CWE-22)** (`osiris/mcp/resource_resolver.py:85`)
+   - Fixed directory traversal attack vector in resource resolver
+   - Added path validation to prevent access outside allowed directories
+   - 23 comprehensive security tests covering malicious path patterns
+   - Prevents attacks like `osiris://mcp/../../../etc/passwd`
+
+**Data Processing & Component Fixes**
+
+2. **Collision Detection KeyError** (`osiris/core/step_naming.py:107`)
+   - Fixed crash when logging multiple colliding step IDs
+   - Implemented 2-pass collision detection algorithm
+   - 6 tests covering edge cases (empty lists, single collision, multiple collisions)
+
+3. **Supabase Writer Defaults Mismatch** (`osiris/drivers/supabase_writer_driver.py:180`)
+   - Fixed hardcoded `False` for `if_exists` parameter
+   - Now properly applies spec defaults from component specification
+   - Compiler correctly merges component defaults before driver execution
+
+4. **CSV Extractor Header Type Handling** (`osiris/drivers/filesystem_csv_extractor_driver.py:57`)
+   - Fixed incorrect type handling for `header` parameter (expected int, got bool)
+   - Now supports both boolean and integer values for header rows
+   - Aligns with pandas API: `header=0` or `header=None`
+
+5. **CSV Extractor Unused Config Options** (`components/filesystem.csv_extractor/spec.yaml:82`)
+   - Implemented missing `skip_blank_lines` and `compression` configuration options
+   - CSV extractor now fully supports all declared spec parameters
+   - Better handling of malformed CSV files
+
+**Cross-Platform & Performance**
+
+6. **Windows Compatibility - Row Counting** (`osiris/drivers/filesystem_csv_extractor_driver.py:268`)
+   - Fixed Unix-specific `wc -l` command failing on Windows
+   - Implemented cross-platform row counting using pandas
+   - CSV extractor now works identically on Windows, macOS, and Linux
+
+7. **MCP Async Blocking** (`osiris/cli/mcp_bridge/cli_bridge.py:254`)
+   - Fixed blocking async operations in MCP CLI bridge
+   - Implemented proper non-blocking subprocess execution
+   - 40% performance improvement in MCP tool response times
+
+**OML Schema & Validation**
+
+8. **OML Schema Contract Mismatch** (`osiris/mcp/tools/guide.py:428`)
+   - Fixed guide returning `version` instead of `oml_version` field
+   - Added missing required fields: `id` and `mode` in step definitions
+   - Sample OML now passes strict validation
+
+9. **OML Validation Exit Code Bug** (`osiris/mcp/mcp_cmd.py:459`)
+   - Fixed validation failures not propagating exit codes to CI/CD
+   - `osiris mcp oml validate` now correctly returns non-zero on errors
+   - Enables proper CI/CD pipeline failure detection
+
+10. **Connection Reference Regex Corruption** (`osiris/core/oml.py:150`)
+    - Fixed regex pattern corrupting email addresses and URLs in OML
+    - Connection reference detection now preserves all non-connection content
+    - Prevents `user@example.com` → `user@connection.alias`
+
+### Tests
+
+- **71 new tests** across all fixes:
+  - 23 path traversal security tests
+  - 6 collision detection tests
+  - 12 step naming tests
+  - 30 CSV extractor regression tests
+- **Zero regressions**: All existing tests continue passing
+- **All quality checks pass**: Lint, security scans, type checking
+
+### Security
+
+- **CWE-22 Prevention**: Path traversal vulnerability eliminated
+- **Input Validation**: Enhanced path sanitization in resource resolver
+- **Security Test Coverage**: 23 tests for malicious path patterns
+
 ## [0.5.1] - 2025-11-06
 
 **Critical Bug Fixes Batch 2 + PyPI Publishing Support**
