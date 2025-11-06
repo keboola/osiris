@@ -13,6 +13,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.5.4] - 2025-11-06
+
+**Hotfix - CLI Version Display**
+
+This hotfix corrects the CLI version display which was hardcoded instead of reading from the package version.
+
+### Fixed
+
+1. **Hardcoded Version in CLI** (`osiris/cli/main.py:183-185`)
+   - Fixed `osiris --version` showing hardcoded "v0.5.0" instead of actual package version
+   - Changed from `print("Osiris v0.5.0")` to reading from `osiris.__version__`
+   - Both JSON and text output now correctly display current version
+   - File: `osiris/cli/main.py` lines 182-187
+
+### Impact
+
+- **Fixed**: `osiris --version` now correctly shows v0.5.4 (was showing v0.5.0 regardless of installed version)
+- Users can now reliably verify their installed Osiris version
+
 ## [0.5.3] - 2025-11-06
 
 **Bug Fixes - Python Version & Runtime**
