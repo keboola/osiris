@@ -361,6 +361,17 @@ class CompilerV0:
 
                 step_config[key] = value
 
+            # Apply component spec defaults for missing keys
+            # This ensures component spec defaults are used when config values aren't provided
+            if component_spec:
+                schema = component_spec.get("configSchema", {}) or {}
+                properties = schema.get("properties", {}) or {}
+                for field_name, field_schema in properties.items():
+                    if isinstance(field_schema, dict) and "default" in field_schema:
+                        # Skip reserved/derived fields (mode is computed, not stored)
+                        if field_name not in step_config and field_name != "mode":
+                            step_config[field_name] = field_schema["default"]
+
             write_mode_value = config.get("write_mode", config.get("mode"))
             if write_mode_value in {"replace", "upsert"}:
                 if "primary_key" not in config:
