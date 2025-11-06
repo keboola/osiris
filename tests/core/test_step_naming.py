@@ -1,6 +1,5 @@
 """Tests for step naming utilities."""
 
-import pytest
 from osiris.core.step_naming import build_dataframe_keys, sanitize_step_id
 
 

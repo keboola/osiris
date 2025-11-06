@@ -3,7 +3,6 @@
 import hashlib
 import logging
 import re
-from typing import Dict
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +47,7 @@ def sanitize_step_id(step_id: str) -> str:
     return sanitized
 
 
-def build_dataframe_keys(step_ids: list[str]) -> Dict[str, str]:
+def build_dataframe_keys(step_ids: list[str]) -> dict[str, str]:
     """Build safe DataFrame keys for multiple step IDs, detecting collisions.
 
     This function sanitizes step IDs and detects when multiple steps would
@@ -75,19 +74,19 @@ def build_dataframe_keys(step_ids: list[str]) -> Dict[str, str]:
         return {}
 
     # First pass: sanitize all IDs
-    sanitized_map: Dict[str, str] = {}
+    sanitized_map: dict[str, str] = {}
     for step_id in step_ids:
         sanitized_map[step_id] = sanitize_step_id(step_id)
 
     # Second pass: detect collisions
-    sanitized_to_originals: Dict[str, list[str]] = {}
+    sanitized_to_originals: dict[str, list[str]] = {}
     for original, sanitized in sanitized_map.items():
         if sanitized not in sanitized_to_originals:
             sanitized_to_originals[sanitized] = []
         sanitized_to_originals[sanitized].append(original)
 
     # Third pass: build final keys with collision detection
-    result: Dict[str, str] = {}
+    result: dict[str, str] = {}
     logged_collisions: set = set()
 
     # First, build all result keys without logging

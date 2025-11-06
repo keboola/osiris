@@ -13,7 +13,6 @@ from ..components.registry import ComponentRegistry
 from .config import ConfigError, parse_connection_ref, resolve_connection
 from .driver import DriverRegistry
 from .session_logging import log_event, log_metric
-from .step_naming import sanitize_step_id
 
 logger = logging.getLogger(__name__)
 
