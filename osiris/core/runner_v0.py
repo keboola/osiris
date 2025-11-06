@@ -406,8 +406,15 @@ class RunnerV0:
             # Prepare inputs based on step dependencies
             inputs = None
             if "needs" in step and step["needs"]:
+                from .step_naming import build_dataframe_keys
+
                 # Collect inputs from upstream steps
                 inputs = {}
+
+                # Build safe DataFrame keys with collision detection
+                upstream_ids = [uid for uid in step["needs"] if uid in self.results]
+                df_keys = build_dataframe_keys(upstream_ids)
+
                 for upstream_id in step["needs"]:
                     if upstream_id in self.results:
                         upstream_result = self.results[upstream_id]
@@ -415,20 +422,20 @@ class RunnerV0:
                         # Store full upstream result by step_id
                         inputs[upstream_id] = upstream_result
 
-                        # If result contains DataFrame, also register with df_ prefix
+                        # If result contains DataFrame, also register with safe key
                         if "df" in upstream_result:
-                            safe_id = sanitize_step_id(upstream_id)
-                            inputs[f"df_{safe_id}"] = upstream_result["df"]
+                            safe_key = df_keys[upstream_id]
+                            inputs[safe_key] = upstream_result["df"]
 
                             # Log for debugging
                             rows = self._count_rows(upstream_result["df"])
                             logger.debug(
-                                f"Step {step_id}: Registered df_{safe_id} with {rows} rows from {upstream_id}"
+                                f"Step {step_id}: Registered {safe_key} with {rows} rows from {upstream_id}"
                             )
                             self._emit_inputs_resolved(
                                 step_id=step_id,
                                 from_step=upstream_id,
-                                key=f"df_{safe_id}",
+                                key=safe_key,
                                 rows=rows,
                                 from_memory=True,
                             )

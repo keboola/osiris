@@ -57,7 +57,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Filesystem CSV Extractor Component** (`filesystem.csv_extractor`) - Complete CSV data extraction component
+  - Component spec: `components/filesystem.csv_extractor/spec.yaml` with comprehensive configuration options
+  - Driver: `osiris/drivers/filesystem_csv_extractor_driver.py` for reading CSV files with advanced parsing
+  - **Core Features**:
+    - Basic CSV/TSV reading with configurable delimiter, encoding, and header handling
+    - Column selection with preserved ordering
+    - Advanced parsing: date parsing, custom data types (dtype), NA value handling
+    - Skip rows and row limit options for large file handling
+    - Comment line handling for annotated CSV files
+  - **Operational Features**:
+    - Discovery mode to list CSV files in directories
+    - Doctor health checks for file validation and accessibility
+    - E2B cloud-compatible path resolution (never uses `Path.home()`)
+    - Error modes: strict (fail fast) or skip (tolerant parsing)
+    - Empty file handling returns empty DataFrame
+  - **Testing**: 30/30 tests passing (100% pass rate)
+  - **Validation**: Strict component validation passed
+  - **E2E Verified**: Full extraction pipeline tested with column selection
+
 - **Step naming utilities** - New `osiris/core/step_naming.py` module with `sanitize_step_id()` function for SQL-safe identifier generation
+  - Enhanced DataFrame key generation with collision detection
+  - Safe identifier handling in runner for SQL-compatible table names
 - **Multi-input DataFrame support** - Runner now properly handles multiple upstream DataFrames with unique keys
 - **Enhanced logging** - DuckDB processor logs registered tables and row counts for better observability
 

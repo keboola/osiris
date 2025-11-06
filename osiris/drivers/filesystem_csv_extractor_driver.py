@@ -37,6 +37,10 @@ class FilesystemCsvExtractorDriver:
         if not file_path:
             raise ValueError(f"Step {step_id}: 'path' is required in config")
 
+        # Check if discovery mode is requested
+        if config.get("discovery", False):
+            return self.discover(config)
+
         # Resolve path
         resolved_path = self._resolve_path(file_path, ctx)
 
@@ -57,6 +61,8 @@ class FilesystemCsvExtractorDriver:
         parse_dates = config.get("parse_dates")
         dtype = config.get("dtype")
         na_values = config.get("na_values")
+        comment = config.get("comment")
+        on_bad_lines = config.get("on_bad_lines", "error")
 
         try:
             # Build pandas read_csv parameters
@@ -70,7 +76,7 @@ class FilesystemCsvExtractorDriver:
             # Add optional parameters only if specified
             if columns is not None:
                 read_params["usecols"] = columns
-            if skip_rows is not None:
+            if skip_rows is not None and skip_rows > 0:
                 read_params["skiprows"] = skip_rows
             if limit is not None:
                 read_params["nrows"] = limit
@@ -80,10 +86,19 @@ class FilesystemCsvExtractorDriver:
                 read_params["dtype"] = dtype
             if na_values is not None:
                 read_params["na_values"] = na_values
+            if comment is not None:
+                read_params["comment"] = comment
+            if on_bad_lines != "error":
+                read_params["on_bad_lines"] = on_bad_lines
 
             # Read CSV file
             logger.info(f"Step {step_id}: Reading CSV from {resolved_path}")
             df = pd.read_csv(**read_params)
+
+            # Reorder columns if specific columns were requested
+            if columns is not None and isinstance(columns, list):
+                # Preserve the order specified in columns parameter
+                df = df[columns]
 
             # Log metrics
             rows_read = len(df)
@@ -94,10 +109,15 @@ class FilesystemCsvExtractorDriver:
 
             return {"df": df}
 
-        except pd.errors.EmptyDataError as e:
-            error_msg = f"CSV file is empty: {resolved_path}"
-            logger.error(f"Step {step_id}: {error_msg}")
-            raise RuntimeError(error_msg) from e
+        except pd.errors.EmptyDataError:
+            # Return empty DataFrame for empty files
+            logger.warning(f"Step {step_id}: CSV file is empty: {resolved_path}")
+            df = pd.DataFrame()
+
+            if ctx and hasattr(ctx, "log_metric"):
+                ctx.log_metric("rows_read", 0, tags={"step": step_id})
+
+            return {"df": df}
 
         except pd.errors.ParserError as e:
             error_msg = f"CSV parsing failed: {str(e)}"
