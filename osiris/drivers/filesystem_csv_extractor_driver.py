@@ -1,8 +1,8 @@
 """Filesystem CSV extractor driver implementation."""
 
 import logging
-import subprocess
 from pathlib import Path
+import subprocess
 from typing import Any
 
 import pandas as pd
@@ -344,7 +344,7 @@ class FilesystemCsvExtractorDriver:
             start_time = time.time()
             line_count = 0
 
-            with open(csv_file, "r", encoding="utf-8", errors="ignore") as f:
+            with open(csv_file, encoding="utf-8", errors="ignore") as f:
                 # Skip header
                 next(f, None)
 
@@ -352,10 +352,7 @@ class FilesystemCsvExtractorDriver:
                 for line_count, _ in enumerate(f, start=1):
                     if time.time() - start_time > timeout:
                         # Timeout: return unknown
-                        logger.debug(
-                            f"Row counting timeout for {csv_file.name}, "
-                            "returning 'unknown'"
-                        )
+                        logger.debug(f"Row counting timeout for {csv_file.name}, " "returning 'unknown'")
                         return "unknown"
 
             return max(0, line_count)

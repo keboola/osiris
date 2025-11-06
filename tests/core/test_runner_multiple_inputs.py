@@ -2,21 +2,13 @@
 
 import pandas as pd
 import pytest
-from pathlib import Path
-from osiris.core.runner_v0 import RunnerV0
 
 
 @pytest.fixture
 def sample_dataframes():
     """Create sample DataFrames for testing."""
-    df_movies = pd.DataFrame({
-        "id": [1, 2, 3],
-        "title": ["Movie A", "Movie B", "Movie C"]
-    })
-    df_reviews = pd.DataFrame({
-        "movie_id": [1, 1, 2, 3],
-        "rating": [5, 4, 3, 5]
-    })
+    df_movies = pd.DataFrame({"id": [1, 2, 3], "title": ["Movie A", "Movie B", "Movie C"]})
+    df_reviews = pd.DataFrame({"movie_id": [1, 1, 2, 3], "rating": [5, 4, 3, 5]})
     return {"movies": df_movies, "reviews": df_reviews}
 
 
@@ -45,6 +37,7 @@ def test_runner_stores_multiple_dataframes(tmp_path, sample_dataframes):
             inputs[upstream_id] = upstream_result
             if "df" in upstream_result:
                 from osiris.core.step_naming import sanitize_step_id
+
                 safe_id = sanitize_step_id(upstream_id)
                 inputs[f"df_{safe_id}"] = upstream_result["df"]
 

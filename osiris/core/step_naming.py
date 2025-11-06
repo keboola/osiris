@@ -32,7 +32,7 @@ def sanitize_step_id(step_id: str) -> str:
     original = step_id
 
     # Replace invalid characters with underscore
-    sanitized = re.sub(r'[^0-9a-zA-Z_]', '_', step_id)
+    sanitized = re.sub(r"[^0-9a-zA-Z_]", "_", step_id)
 
     # Prefix with underscore if starts with digit
     if sanitized and sanitized[0].isdigit():
@@ -40,9 +40,7 @@ def sanitize_step_id(step_id: str) -> str:
 
     # Warn if changed
     if sanitized != original:
-        logger.warning(
-            f"Step ID '{original}' sanitized to '{sanitized}' for SQL table name"
-        )
+        logger.warning(f"Step ID '{original}' sanitized to '{sanitized}' for SQL table name")
 
     return sanitized
 

@@ -1,0 +1,21 @@
+# Include component specifications
+recursive-include components *.yaml
+recursive-include components *.yml
+recursive-include components *.json
+
+# Include documentation
+include README.md
+include LICENSE
+include CHANGELOG.md
+
+# Exclude development and test files
+recursive-exclude tests *
+recursive-exclude testing_env *
+recursive-exclude docs *
+recursive-exclude examples *
+exclude .gitignore
+exclude .pre-commit-config.yaml
+exclude pytest.ini
+exclude Makefile
+exclude CLAUDE.md
+exclude CONTRIBUTING.md

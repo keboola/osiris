@@ -428,9 +428,7 @@ class RunnerV0:
 
                             # Log for debugging
                             rows = self._count_rows(upstream_result["df"])
-                            logger.debug(
-                                f"Step {step_id}: Registered {safe_key} with {rows} rows from {upstream_id}"
-                            )
+                            logger.debug(f"Step {step_id}: Registered {safe_key} with {rows} rows from {upstream_id}")
                             self._emit_inputs_resolved(
                                 step_id=step_id,
                                 from_step=upstream_id,

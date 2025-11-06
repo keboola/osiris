@@ -13,16 +13,16 @@ Usage:
     assert_no_secrets(result)
 """
 
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import datetime
 import json
+import os
+from pathlib import Path
 import re
 import subprocess
 import time
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
-from datetime import datetime
-import sys
-import os
+from typing import Any
 
 # Error code mappings (all 33 codes)
 ERROR_CODES = {
@@ -84,10 +84,10 @@ class TestContext:
     """Context for E2E test execution with cleanup utilities."""
 
     base_path: str
-    connection_id: Optional[str] = None
-    session_id: Optional[str] = None
-    discovery_id: Optional[str] = None
-    _temp_files: List[Path] = field(default_factory=list)
+    connection_id: str | None = None
+    session_id: str | None = None
+    discovery_id: str | None = None
+    _temp_files: list[Path] = field(default_factory=list)
 
     @property
     def mcp_logs_dir(self) -> Path:
@@ -125,10 +125,10 @@ class ToolResult:
     """Structured result from tool execution."""
 
     status: str  # "success" or "error"
-    data: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-    error_code: Optional[str] = None
-    duration_ms: Optional[float] = None
+    data: dict[str, Any] | None = None
+    error: str | None = None
+    error_code: str | None = None
+    duration_ms: float | None = None
     exit_code: int = 0
 
 
@@ -141,8 +141,8 @@ class TestReport:
     fail_count: int = 0
     skip_count: int = 0
     runtime_seconds: float = 0.0
-    scenarios: List[Dict[str, Any]] = field(default_factory=list)
-    start_time: Optional[datetime] = None
+    scenarios: list[dict[str, Any]] = field(default_factory=list)
+    start_time: datetime | None = None
 
     def start(self) -> None:
         """Start test timing."""
@@ -153,13 +153,13 @@ class TestReport:
         if self.start_time:
             self.runtime_seconds = (datetime.utcnow() - self.start_time).total_seconds()
 
-    def add_passed(self, name: str, duration_ms: Optional[float] = None) -> None:
+    def add_passed(self, name: str, duration_ms: float | None = None) -> None:
         """Record passed test."""
         self.test_count += 1
         self.pass_count += 1
         self.scenarios.append({"name": name, "status": "passed", "duration_ms": duration_ms})
 
-    def add_failed(self, name: str, reason: str, duration_ms: Optional[float] = None) -> None:
+    def add_failed(self, name: str, reason: str, duration_ms: float | None = None) -> None:
         """Record failed test."""
         self.test_count += 1
         self.fail_count += 1
@@ -225,7 +225,7 @@ class TestReport:
 
 
 def run_tool(
-    tool_name: str, args: Optional[Dict[str, Any]] = None, timeout: int = 30, env: Optional[Dict[str, str]] = None
+    tool_name: str, args: dict[str, Any] | None = None, timeout: int = 30, env: dict[str, str] | None = None
 ) -> ToolResult:
     """
     Execute MCP tool via CLI subprocess.
@@ -264,7 +264,7 @@ def run_tool(
 
     try:
         result = subprocess.run(
-            cmd_parts, capture_output=True, text=True, timeout=timeout, env=proc_env, cwd=os.getcwd()
+            cmd_parts, check=False, capture_output=True, text=True, timeout=timeout, env=proc_env, cwd=os.getcwd()
         )
 
         duration_ms = (time.time() - start_time) * 1000
@@ -304,7 +304,7 @@ def run_tool(
         return ToolResult(status="error", error=str(e), error_code="SYS001", duration_ms=duration_ms, exit_code=1)
 
 
-def _tool_name_to_cmd(tool_name: str) -> List[str]:
+def _tool_name_to_cmd(tool_name: str) -> list[str]:
     """Map tool name to CLI command parts."""
     mapping = {
         "connections_list": ["connections", "list"],
@@ -352,7 +352,7 @@ def assert_tool_success(result: ToolResult) -> None:
 def assert_tool_error(result: ToolResult, error_code: str) -> None:
     """Assert tool returned specific error code."""
     if result.status != "error":
-        raise AssertionError(f"Expected error, got success")
+        raise AssertionError("Expected error, got success")
     if result.error_code != error_code:
         raise AssertionError(f"Expected error {error_code}, got {result.error_code}")
 
@@ -413,7 +413,7 @@ def assert_json_valid(text: str) -> None:
 # ============================================================================
 
 
-def scan_for_secrets(text: str) -> List[str]:
+def scan_for_secrets(text: str) -> list[str]:
     """Find credential patterns in text."""
     found = []
     for pattern in SECRET_PATTERNS:
@@ -429,7 +429,7 @@ def verify_masking(text: str, pattern: str) -> bool:
     return len(secrets) == 0
 
 
-def check_credential_patterns(text: str) -> List[str]:
+def check_credential_patterns(text: str) -> list[str]:
     """DSN, password, key patterns."""
     patterns = [
         r"mysql://[^:]+:[^@]+@",
@@ -452,7 +452,7 @@ def validate_cli_delegation(subprocess_call: subprocess.CompletedProcess) -> boo
     return subprocess_call.returncode is not None
 
 
-def verify_env_inheritance(subprocess_env: Dict[str, str]) -> bool:
+def verify_env_inheritance(subprocess_env: dict[str, str]) -> bool:
     """Check environment vars passed to subprocess."""
     # Verify common vars inherited
     required_vars = ["PATH", "HOME"]
@@ -565,7 +565,7 @@ def measure_latency(func: Callable) -> Callable:
     return wrapper
 
 
-def run_n_times(func: Callable, n: int) -> List[float]:
+def run_n_times(func: Callable, n: int) -> list[float]:
     """Run tool N times, collect latencies."""
     latencies = []
     for _ in range(n):
@@ -576,7 +576,7 @@ def run_n_times(func: Callable, n: int) -> List[float]:
     return latencies
 
 
-def calculate_percentiles(latencies: List[float]) -> Dict[str, float]:
+def calculate_percentiles(latencies: list[float]) -> dict[str, float]:
     """Calculate p50, p95, p99."""
     sorted_latencies = sorted(latencies)
     n = len(sorted_latencies)
@@ -591,7 +591,7 @@ def calculate_percentiles(latencies: List[float]) -> Dict[str, float]:
     }
 
 
-def measure_memory_usage() -> Optional[Dict[str, int]]:
+def measure_memory_usage() -> dict[str, int] | None:
     """Measure memory usage (requires psutil)."""
     try:
         import psutil
@@ -608,7 +608,7 @@ def measure_memory_usage() -> Optional[Dict[str, int]]:
 # ============================================================================
 
 
-def resolve_resource_uri(uri: str, base_path: str) -> Optional[Path]:
+def resolve_resource_uri(uri: str, base_path: str) -> Path | None:
     """Map resource URI to file path."""
     if not uri.startswith("osiris://mcp/"):
         return None
@@ -631,7 +631,7 @@ def resolve_resource_uri(uri: str, base_path: str) -> Optional[Path]:
     return path
 
 
-def read_resource(uri: str, base_path: str) -> Optional[str]:
+def read_resource(uri: str, base_path: str) -> str | None:
     """Read resource file contents."""
     path = resolve_resource_uri(uri, base_path)
     if path and path.exists():
@@ -645,7 +645,7 @@ def verify_resource_valid(uri: str, base_path: str) -> bool:
     return path is not None and path.exists()
 
 
-def list_resources(resource_type: str, base_path: str) -> List[str]:
+def list_resources(resource_type: str, base_path: str) -> list[str]:
     """List all URIs of given type."""
     base = Path(base_path) / ".osiris" / "mcp" / "logs"
 
@@ -684,12 +684,12 @@ def list_resources(resource_type: str, base_path: str) -> List[str]:
 # ============================================================================
 
 
-def mock_subprocess_call(cmd: List[str], stdout: str, exit_code: int = 0) -> subprocess.CompletedProcess:
+def mock_subprocess_call(cmd: list[str], stdout: str, exit_code: int = 0) -> subprocess.CompletedProcess:
     """Simulate CLI subprocess call."""
     return subprocess.CompletedProcess(args=cmd, returncode=exit_code, stdout=stdout, stderr="")
 
 
-def create_test_connection(name: str, family: str) -> Dict[str, Any]:
+def create_test_connection(name: str, family: str) -> dict[str, Any]:
     """Create test connection configuration."""
     configs = {
         "mysql": {"host": "localhost", "port": 3306, "user": "test", "password": "***MASKED***", "database": "testdb"},
@@ -756,7 +756,7 @@ def enable_debug_logging() -> None:
     _DEBUG_ENABLED = True
 
 
-def log_tool_call(tool: str, args: Dict[str, Any], result: ToolResult) -> None:
+def log_tool_call(tool: str, args: dict[str, Any], result: ToolResult) -> None:
     """Log each tool call."""
     if _DEBUG_ENABLED:
         print(f"[DEBUG] Tool: {tool}")

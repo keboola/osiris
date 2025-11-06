@@ -3,7 +3,9 @@ Test guide.start tool for OML authoring guidance.
 """
 
 import pytest
+import yaml
 
+from osiris.core.oml_validator import OMLValidator
 from osiris.mcp.tools.guide import GuideTools
 
 
@@ -133,3 +135,72 @@ class TestGuideTools:
         except Exception as e:
             # Should be a meaningful error
             assert "intent" in str(e).lower()
+
+    @pytest.mark.asyncio
+    async def test_guide_includes_references(self, guide_tools):
+        """Test guide includes references in result."""
+        result = await guide_tools.start({"intent": "I want to extract data from MySQL"})
+
+        assert result["status"] == "success"
+        assert "references" in result
+        assert isinstance(result["references"], list)
+
+        # Test different next_step scenarios to ensure references are populated
+        scenarios = [
+            {"intent": "Build pipeline", "known_connections": []},  # list_connections
+            {"intent": "Build pipeline", "known_connections": ["@mysql.db"], "has_discovery": False},  # run_discovery
+            {"intent": "Build pipeline", "known_connections": ["@mysql.db"], "has_discovery": True},  # create_oml
+            {"intent": "Fix errors", "has_previous_oml": True, "has_error_report": True},  # validate_oml
+        ]
+
+        for scenario in scenarios:
+            result = await guide_tools.start(scenario)
+            assert result["status"] == "success"
+            assert "references" in result
+            assert isinstance(result["references"], list)
+
+    def test_sample_oml_validates(self, guide_tools):
+        """Test that the sample OML returned by _get_sample_oml passes OML validation."""
+        # Get the sample OML
+        sample_oml_str = guide_tools._get_sample_oml()
+
+        # Parse YAML
+        sample_oml = yaml.safe_load(sample_oml_str)
+
+        # Validate using OMLValidator
+        validator = OMLValidator()
+        is_valid, errors, warnings = validator.validate(sample_oml)
+
+        # Assert validation passes
+        assert is_valid, f"Sample OML validation failed with errors: {errors}"
+        assert len(errors) == 0, f"Sample OML has validation errors: {errors}"
+
+        # Verify correct OML v0.1.0 structure
+        assert sample_oml["oml_version"] == "0.1.0", "Should use oml_version not version"
+        assert "name" in sample_oml
+        assert "steps" in sample_oml
+        assert len(sample_oml["steps"]) > 0
+
+        # Verify all steps have required fields
+        for step in sample_oml["steps"]:
+            assert "id" in step, f"Step missing 'id': {step}"
+            assert "component" in step, f"Step missing 'component': {step}"
+            assert "mode" in step, f"Step missing 'mode': {step}"
+            assert step["mode"] in ["read", "write", "transform"], f"Invalid mode: {step['mode']}"
+            assert "config" in step, f"Step missing 'config': {step}"
+
+        # Verify dependencies use 'needs' not 'depends_on'
+        for step in sample_oml["steps"]:
+            assert "depends_on" not in step, f"Step uses deprecated 'depends_on': {step['id']}"
+            if "needs" in step:
+                assert isinstance(step["needs"], list), f"'needs' must be a list: {step['id']}"
+
+        # Verify connection references are quoted strings
+        for step in sample_oml["steps"]:
+            config = step.get("config", {})
+            if "connection" in config:
+                conn = config["connection"]
+                assert isinstance(conn, str), f"Connection reference must be string: {conn}"
+                if conn.startswith("@"):
+                    # Verify it's a quoted string (not bare YAML identifier)
+                    assert conn == config["connection"], f"Connection reference not properly quoted: {conn}"

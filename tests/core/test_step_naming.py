@@ -107,21 +107,26 @@ def test_build_dataframe_keys_collision_digit_prefix():
 
 def test_build_dataframe_keys_multiple_collisions():
     """Multiple sets of collisions should each get unique hashes."""
-    result = build_dataframe_keys([
-        "extract-movies",
-        "extract_movies",
-        "extract.reviews",
-        "extract-reviews",
-    ])
+    result = build_dataframe_keys(
+        [
+            "extract-movies",
+            "extract_movies",
+            "extract.reviews",
+            "extract-reviews",
+        ]
+    )
 
     # All keys should exist
     assert len(result) == 4
-    assert all(key in result for key in [
-        "extract-movies",
-        "extract_movies",
-        "extract.reviews",
-        "extract-reviews",
-    ])
+    assert all(
+        key in result
+        for key in [
+            "extract-movies",
+            "extract_movies",
+            "extract.reviews",
+            "extract-reviews",
+        ]
+    )
 
     # extract-movies and extract_movies collide → should have hash suffixes
     # Both should have format: df_extract_movies_<8-hex-chars>

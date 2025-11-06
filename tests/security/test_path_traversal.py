@@ -11,8 +11,7 @@ Security Requirements:
 - All resource types (schemas, memory, discovery, drafts, prompts, usecases) are protected
 """
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -58,9 +57,7 @@ class TestPathTraversalPrevention:
 
         # Use the real _parse_uri and _get_physical_path methods
         resolver._parse_uri = ResourceResolver._parse_uri.__get__(resolver)
-        resolver._get_physical_path = ResourceResolver._get_physical_path.__get__(
-            resolver
-        )
+        resolver._get_physical_path = ResourceResolver._get_physical_path.__get__(resolver)
 
         return resolver
 
@@ -275,9 +272,7 @@ class TestPathTraversalErrorHandling:
         resolver.memory_dir = tmp_path / "memory"
 
         resolver._parse_uri = ResourceResolver._parse_uri.__get__(resolver)
-        resolver._get_physical_path = ResourceResolver._get_physical_path.__get__(
-            resolver
-        )
+        resolver._get_physical_path = ResourceResolver._get_physical_path.__get__(resolver)
 
         return resolver
 

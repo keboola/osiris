@@ -29,17 +29,31 @@ class ComponentRegistry:
             root: Root directory containing component specs. Defaults to 'components/'.
             session_context: Optional session context for logging integration.
         """
-        self.root = Path(root) if root else Path("components")
+        if root:
+            self.root = Path(root)
+        else:
+            # Default: look for components/ relative to package installation
+            # This supports both development (cwd) and installed package (site-packages)
+            package_dir = Path(__file__).parent.parent.parent  # osiris/components/registry.py -> project root
+            installed_components = package_dir / "components"
+
+            if installed_components.exists():
+                # Found in installed package location (site-packages/components/)
+                self.root = installed_components
+            elif Path("components").exists():
+                # Development mode: components/ in current directory
+                self.root = Path("components")
+            elif (Path("..") / "components").exists():
+                # Testing mode: components/ in parent directory
+                self.root = Path("..") / "components"
+            else:
+                # Fallback to default (will warn later if not found)
+                self.root = Path("components")
+
         self.session_context = session_context
         self._cache: dict[str, dict[str, Any]] = {}
         self._mtime_cache: dict[str, float] = {}
         self._schema: dict[str, Any] | None = None
-
-        # Try parent directory if components not found (common in testing_env)
-        if not self.root.exists():
-            parent_root = Path("..") / "components"
-            if parent_root.exists():
-                self.root = parent_root
 
         # Load the JSON Schema for validation
         self._load_schema()

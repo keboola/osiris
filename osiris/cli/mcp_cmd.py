@@ -430,16 +430,10 @@ def cmd_oml(args):
                     "oml_version": {  # FIX: Changed from "version" to "oml_version"
                         "type": "string",
                         "const": "0.1.0",
-                        "description": "OML schema version"
+                        "description": "OML schema version",
                     },
-                    "name": {
-                        "type": "string",
-                        "description": "Pipeline name"
-                    },
-                    "description": {
-                        "type": "string",
-                        "description": "Pipeline description"
-                    },
+                    "name": {"type": "string", "description": "Pipeline name"},
+                    "description": {"type": "string", "description": "Pipeline description"},
                     "steps": {
                         "type": "array",
                         "description": "Pipeline steps",
@@ -447,31 +441,22 @@ def cmd_oml(args):
                             "type": "object",
                             "required": ["id", "component", "mode", "config"],  # FIX: Added "id" and "mode"
                             "properties": {
-                                "id": {
-                                    "type": "string",
-                                    "description": "Step identifier"
-                                },
-                                "name": {
-                                    "type": "string",
-                                    "description": "Human-readable step name (optional)"
-                                },
+                                "id": {"type": "string", "description": "Step identifier"},
+                                "name": {"type": "string", "description": "Human-readable step name (optional)"},
                                 "component": {
                                     "type": "string",
-                                    "description": "Component reference (e.g., mysql.extractor)"
+                                    "description": "Component reference (e.g., mysql.extractor)",
                                 },
                                 "mode": {
                                     "type": "string",
                                     "enum": ["read", "write", "transform"],
-                                    "description": "Step mode"
+                                    "description": "Step mode",
                                 },
-                                "config": {
-                                    "type": "object",
-                                    "description": "Step configuration"
-                                },
+                                "config": {"type": "object", "description": "Step configuration"},
                                 "depends_on": {
                                     "type": "array",
                                     "items": {"type": "string"},
-                                    "description": "Step IDs this step depends on"
+                                    "description": "Step IDs this step depends on",
                                 },
                             },
                         },
