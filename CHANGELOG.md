@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Fixed
+
+## [0.5.0] - 2025-11-06
+
+**Major Release: MCP v0.5.0 Production Ready + DuckDB Multi-Input Fix + CSV Extractor**
+
+This release delivers a production-ready Model Context Protocol (MCP) server with CLI-first security architecture, comprehensive testing, and full documentation. All four phases complete with 490 new tests, 78.4% coverage, and zero credential leakage verified.
+
+Additionally includes critical DuckDB multi-input fix for proper DataFrame handling and new filesystem.csv_extractor component.
+
 ### Breaking Changes
 
 **DuckDB Multi-Input Table Naming** - Pipeline steps with multiple upstream dependencies now use step-id-based table names
@@ -55,59 +69,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Fix**: Runner now stores each upstream DataFrame separately, DuckDB registers all tables with step-id names.
 
-### Added
+---
 
-- **Filesystem CSV Extractor Component** (`filesystem.csv_extractor`) - Complete CSV data extraction component
-  - Component spec: `components/filesystem.csv_extractor/spec.yaml` with comprehensive configuration options
-  - Driver: `osiris/drivers/filesystem_csv_extractor_driver.py` for reading CSV files with advanced parsing
-  - **Core Features**:
-    - Basic CSV/TSV reading with configurable delimiter, encoding, and header handling
-    - Column selection with preserved ordering
-    - Advanced parsing: date parsing, custom data types (dtype), NA value handling
-    - Skip rows and row limit options for large file handling
-    - Comment line handling for annotated CSV files
-  - **Operational Features**:
-    - Discovery mode to list CSV files in directories
-    - Doctor health checks for file validation and accessibility
-    - E2B cloud-compatible path resolution (never uses `Path.home()`)
-    - Error modes: strict (fail fast) or skip (tolerant parsing)
-    - Empty file handling returns empty DataFrame
-  - **Testing**: 30/30 tests passing (100% pass rate)
-  - **Validation**: Strict component validation passed
-  - **E2E Verified**: Full extraction pipeline tested with column selection
-
-- **Step naming utilities** - New `osiris/core/step_naming.py` module with `sanitize_step_id()` function for SQL-safe identifier generation
-  - Enhanced DataFrame key generation with collision detection
-  - Safe identifier handling in runner for SQL-compatible table names
-- **Multi-input DataFrame support** - Runner now properly handles multiple upstream DataFrames with unique keys
-- **Enhanced logging** - DuckDB processor logs registered tables and row counts for better observability
-
-### Changed
-
-- **Writer drivers updated** - `SupabaseWriterDriver` and `FilesystemCsvWriterDriver` now read from `df_*` keys instead of single `df` key
-- **Runner input handling** - Stores full upstream results by step_id plus DataFrame aliases with `df_` prefix
-
-### Fixed
-
-- **Supabase context manager protocol** - Added synchronous `__enter__`/`__exit__` methods to `SupabaseClient` class
-  - Issue: `with supabase_client as client:` failed with "'SupabaseClient' object does not support the context manager protocol"
-  - Fix: Added `connect_sync()` helper and sync context manager methods alongside existing async methods
-  - Impact: Supabase writer now works correctly in synchronous pipeline execution
-- **Multiple upstream inputs bug** - Fixed runner overwriting DataFrames when step has multiple dependencies
-  - Issue: Steps with `needs: [step1, step2]` only received data from last step
-  - Root cause: Runner stored all DataFrames in same `inputs["df"]` key, overwriting previous values
-  - Fix: Each upstream result now stored with unique key `df_<sanitized_step_id>`
-- **DuckDB multi-table registration** - DuckDB processor now registers all upstream DataFrames as separate tables
-  - Issue: Only single `input_df` table was available, breaking JOINs across multiple sources
-  - Fix: Iterates all `df_*` keys and registers each as named table in DuckDB connection
-
-## [0.5.0] - 2025-10-20
-
-**Major Release: MCP v0.5.0 Production Ready**
-
-This release delivers a production-ready Model Context Protocol (MCP) server with CLI-first security architecture, comprehensive testing, and full documentation. All four phases complete with 490 new tests, 78.4% coverage, and zero credential leakage verified.
-
-### Breaking Changes
+### Breaking Changes (MCP)
 
 **⚠️ IMPORTANT: Migration Required**
 
@@ -130,6 +94,35 @@ This release delivers a production-ready Model Context Protocol (MCP) server wit
 See `docs/migration/mcp-v0.5-migration.md` for complete migration guide.
 
 ### Added
+
+#### Filesystem CSV Extractor Component
+
+- **Filesystem CSV Extractor Component** (`filesystem.csv_extractor`) - Complete CSV data extraction component
+  - Component spec: `components/filesystem.csv_extractor/spec.yaml` with comprehensive configuration options
+  - Driver: `osiris/drivers/filesystem_csv_extractor_driver.py` for reading CSV files with advanced parsing
+  - **Core Features**:
+    - Basic CSV/TSV reading with configurable delimiter, encoding, and header handling
+    - Column selection with preserved ordering
+    - Advanced parsing: date parsing, custom data types (dtype), NA value handling
+    - Skip rows and row limit options for large file handling
+    - Comment line handling for annotated CSV files
+  - **Operational Features**:
+    - Discovery mode to list CSV files in directories
+    - Doctor health checks for file validation and accessibility
+    - E2B cloud-compatible path resolution (never uses `Path.home()`)
+    - Error modes: strict (fail fast) or skip (tolerant parsing)
+    - Empty file handling returns empty DataFrame
+  - **Testing**: 30/30 tests passing (100% pass rate)
+  - **Validation**: Strict component validation passed
+  - **E2E Verified**: Full extraction pipeline tested with column selection
+
+#### Step Naming and Multi-Input Support
+
+- **Step naming utilities** - New `osiris/core/step_naming.py` module with `sanitize_step_id()` function for SQL-safe identifier generation
+  - Enhanced DataFrame key generation with collision detection
+  - Safe identifier handling in runner for SQL-compatible table names
+- **Multi-input DataFrame support** - Runner now properly handles multiple upstream DataFrames with unique keys
+- **Enhanced logging** - DuckDB processor logs registered tables and row counts for better observability
 
 #### MCP v0.5.0 - Phase 1-4 Summary
 
@@ -337,6 +330,9 @@ See `docs/migration/mcp-v0.5-migration.md` for complete migration guide.
 
 ### Changed
 
+- **Writer drivers updated** - `SupabaseWriterDriver` and `FilesystemCsvWriterDriver` now read from `df_*` keys instead of single `df` key
+- **Runner input handling** - Stores full upstream results by step_id plus DataFrame aliases with `df_` prefix
+
 - **Connection Secret Masking** - Now spec-aware using ComponentRegistry
   - Automatically detects secret fields from component `x-secret` declarations
   - Falls back to common secret names for unknown families
@@ -347,6 +343,20 @@ See `docs/migration/mcp-v0.5-migration.md` for complete migration guide.
   - `osiris init` sets `filesystem.base_path` to absolute path of current directory
   - Ensures predictable artifact isolation without manual configuration
   - Example: Running in `testing_env/` creates `base_path: "/Users/padak/github/osiris/testing_env"`
+
+### Fixed
+
+- **Supabase context manager protocol** - Added synchronous `__enter__`/`__exit__` methods to `SupabaseClient` class
+  - Issue: `with supabase_client as client:` failed with "'SupabaseClient' object does not support the context manager protocol"
+  - Fix: Added `connect_sync()` helper and sync context manager methods alongside existing async methods
+  - Impact: Supabase writer now works correctly in synchronous pipeline execution
+- **Multiple upstream inputs bug** - Fixed runner overwriting DataFrames when step has multiple dependencies
+  - Issue: Steps with `needs: [step1, step2]` only received data from last step
+  - Root cause: Runner stored all DataFrames in same `inputs["df"]` key, overwriting previous values
+  - Fix: Each upstream result now stored with unique key `df_<sanitized_step_id>`
+- **DuckDB multi-table registration** - DuckDB processor now registers all upstream DataFrames as separate tables
+  - Issue: Only single `input_df` table was available, breaking JOINs across multiple sources
+  - Fix: Iterates all `df_*` keys and registers each as named table in DuckDB connection
 
 ### Security
 
