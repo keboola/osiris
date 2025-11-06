@@ -1,3 +1,108 @@
+# AI Component Development - README
+
+## ⚡ Quick Start
+
+**Building a component?** → [START-HERE.md](START-HERE.md)
+This is the ONLY place you need to start. It will route you to exactly what you need.
+
+## What's in This Directory
+
+```
+ai/
+├── START-HERE.md                    ⭐ START HERE - Entry point for all tasks
+├── README.md                        📄 This file
+│
+├── decision-trees/                  🌳 Help AI choose approach
+│   ├── api-type-selector.md        (REST vs GraphQL vs SQL)
+│   ├── auth-selector.md            (OAuth vs API Key vs Basic)
+│   └── pagination-selector.md      (Offset vs Cursor vs Link)
+│
+├── recipes/                         📖 Complete working examples
+│   ├── rest-api-extractor.md       (REST API template)
+│   ├── graphql-extractor.md        (GraphQL template)
+│   ├── sql-extractor.md            (SQL database template)
+│   └── pagination-cursor.md        (Cursor pagination pattern)
+│
+├── build-new-component.md           📋 Complete implementation checklist
+├── e2b-compatibility.md             ☁️  Cloud sandbox requirements
+├── error-patterns.md                🔧 Common errors and fixes
+├── dependency-management.md         📦 requirements.txt and venv
+│
+├── checklists/                      ✅ Validation rules
+│   ├── COMPONENT_AI_CHECKLIST.md   (57 validation rules)
+│   ├── discovery_contract.md       (Discovery requirements)
+│   ├── connections_doctor_contract.md (Healthcheck)
+│   └── metrics_events_contract.md  (Telemetry)
+│
+└── llms/                            🤖 Detailed contracts
+    ├── components.md                (Component spec patterns)
+    ├── drivers.md                   (Driver implementation)
+    ├── testing.md                   (Test patterns)
+    └── overview.md                  (Determinism principles)
+```
+
+## How to Use This Directory
+
+### For Building Components
+1. Start with [START-HERE.md](START-HERE.md)
+2. It will route you based on your task
+3. You'll only read 4-6 docs (not all 20+)
+
+### For Understanding Architecture
+1. Read [START-HERE.md](START-HERE.md) → Prerequisites section
+2. Follow link to `../human/CONCEPTS.md`
+3. Return to START-HERE and choose your task
+
+### For Debugging
+1. Read [error-patterns.md](error-patterns.md)
+2. Find your error
+3. Apply the fix
+4. Validate with checklist
+
+## When to Use Which Document
+
+| Your Task | Start Here | Then Read |
+|-----------|------------|-----------|
+| Build new component | START-HERE.md | Decision trees → Recipes → Checklist |
+| Debug failing component | START-HERE.md → error-patterns.md | Apply fix → Validate |
+| Understand architecture | START-HERE.md → Prerequisites | ../human/CONCEPTS.md |
+| Add capability | build-new-component.md | Relevant checklist |
+| Review component PR | COMPONENT_AI_CHECKLIST.md | Verify all 57 rules |
+
+## Navigation Tips
+
+**DON'T:**
+- ❌ Read all 20+ documents
+- ❌ Start with llms/ directory (too detailed)
+- ❌ Skip START-HERE.md
+
+**DO:**
+- ✅ Always start with START-HERE.md
+- ✅ Follow the task-based routing
+- ✅ Use decision trees before coding
+- ✅ Validate with checklists
+
+## Document Quality Standards
+
+All docs in ai/ directory follow:
+- Task-oriented structure (not reference dumps)
+- Machine-verifiable rules (SPEC-001, DRV-002, etc.)
+- Working code examples (copy-paste ready)
+- Cross-references (no dead links)
+- Version tracking (Last Updated dates)
+
+## Related Documentation
+
+- [../human/](../human/) - Human-friendly guides with explanations
+- [../../reference/](../../reference/) - Complete schema references
+- [../../adr/](../../adr/) - Architecture decision records
+
+---
+
+**Remember:** When in doubt, [START-HERE.md](START-HERE.md) is your answer. It routes to everything you need.
+
+---
+
 # Osiris AI Agent Router
 
 **Purpose**: Route AI agents to the correct documentation based on development intent.

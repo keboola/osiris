@@ -23,7 +23,7 @@ This document provides strict, machine-verifiable rules for Osiris component dev
 - **AI Agents**: Generate code compliant with these rules
 - **Developers**: Reference for compliance requirements
 
-**Companion Document**: [`COMPONENT_DEVELOPER_AUDIT.md`](COMPONENT_DEVELOPER_AUDIT.md) (human-friendly guide)
+**Companion Document**: [`../../human/BUILD_A_COMPONENT.md`](../../human/BUILD_A_COMPONENT.md) (human-friendly guide)
 
 ---
 
@@ -565,10 +565,10 @@ This checklist must be updated when:
 
 ## See Also
 
-- **Human Guide**: [`COMPONENT_DEVELOPER_AUDIT.md`](COMPONENT_DEVELOPER_AUDIT.md)
-- **Core Concepts**: [`docs/developer-guide/CONCEPTS.md`](developer-guide/CONCEPTS.md)
-- **Reference**: [`docs/reference/components-spec.md`](reference/components-spec.md)
-- **ADRs**: [`docs/adr/`](adr/)
+- **Human Guide**: [`../../human/BUILD_A_COMPONENT.md`](../../human/BUILD_A_COMPONENT.md)
+- **Core Concepts**: [`../../human/CONCEPTS.md`](../../human/CONCEPTS.md)
+- **Reference**: [`../../../reference/components-spec.md`](../../../reference/components-spec.md)
+- **ADRs**: [`../../../adr/`](../../../adr/)
 
 ---
 

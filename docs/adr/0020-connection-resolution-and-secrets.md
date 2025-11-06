@@ -169,6 +169,34 @@ osiris connections add mysql --alias prod --set-default
 - Apply to all logging, stdout, and debug output
 - Connection resolution logs show alias names, not resolved values
 
+### Component-Level Override Policies (x-connection-fields)
+
+Components can declare which fields are provided by connections and control whether they can be overridden in pipeline step configs using the `x-connection-fields` specification field.
+
+**Purpose**: Prevents accidental credential leakage while allowing infrastructure fields to be overridden for testing.
+
+**Override Policies**:
+- `allowed`: Step config can override (e.g., host, port for testing)
+- `forbidden`: Step config cannot override (e.g., password, api_key for security)
+- `warning`: Step config can override but emits warning (e.g., headers that might contain auth)
+
+**Example Component Spec**:
+```yaml
+name: mysql.extractor
+x-connection-fields:
+  - name: host
+    override: allowed      # Can use different host for testing
+  - name: password
+    override: forbidden    # Security: cannot override password
+```
+
+**Validation Behavior**:
+- Validator checks override policies when connection reference used
+- Forbidden overrides cause validation errors
+- Warning overrides emit warnings but allow execution
+
+**See Also**: [x-connection-fields Specification](../reference/x-connection-fields.md) for full documentation.
+
 ### Testing Strategy
 
 **Unit Tests**:
@@ -240,6 +268,7 @@ osiris connections add mysql --alias prod --set-default
 - Issue #M1c: Connection resolution requirements
 - `osiris/core/config.py` - Implementation location
 - `osiris/core/secrets_masking.py` - Redaction implementation
+- [x-connection-fields Specification](../reference/x-connection-fields.md) - Component-level override policies for connection fields
 
 ## Notes on Milestone M1
 

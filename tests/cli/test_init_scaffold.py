@@ -58,7 +58,8 @@ def test_init_creates_osiris_yaml(tmp_path):
 
     # Verify filesystem subsections
     fs = config["filesystem"]
-    assert fs["base_path"] == ""
+    # base_path should be set to the absolute path of the init directory
+    assert fs["base_path"] == str(tmp_path)
     assert fs["pipelines_dir"] == "pipelines"
     assert fs["build_dir"] == "build"
     assert fs["aiop_dir"] == "aiop"

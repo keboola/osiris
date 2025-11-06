@@ -146,6 +146,39 @@
     "limits": {
       "$ref": "#/$defs/limits"
     },
+    "x-connection-fields": {
+      "description": "Fields that are provided by connection reference and should not be required in step config. Supports simple array format or advanced format with override control.",
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Simple list of connection field names (all overridable by default)"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Field name"
+              },
+              "override": {
+                "type": "string",
+                "enum": ["allowed", "forbidden", "warning"],
+                "default": "allowed",
+                "description": "Whether step config can override connection value"
+              }
+            },
+            "required": ["name"],
+            "additionalProperties": false
+          },
+          "description": "Advanced format with per-field override control"
+        }
+      ]
+    },
     "x-runtime": {
       "type": "object",
       "description": "Runtime implementation metadata (vendor extensions)",

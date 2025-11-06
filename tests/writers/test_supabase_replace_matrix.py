@@ -78,7 +78,7 @@ def test_replace_mode_invokes_cleanup(monkeypatch):
             "primary_key": ["id"],
             "ddl_channel": "http_sql",
         },
-        inputs={"df": df},
+        inputs={"df_upstream": df},
         ctx=None,
     )
 

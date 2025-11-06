@@ -40,9 +40,9 @@ def show_main_help():
     """Display clean main help using simple Rich formatting."""
 
     console.print()
-    console.print("[bold green]Osiris v0.2.0 - LLM-first Conversational ETL Pipeline Generator[/bold green]")
-    console.print("🤖 Your AI data engineering buddy that discovers, analyzes, and executes")
-    console.print("production-ready ETL pipelines through natural conversation.")
+    console.print("[bold green]Osiris v0.5.0 - MCP-based ETL Pipeline Generator[/bold green]")
+    console.print("🤖 Your AI data engineering assistant for building")
+    console.print("production-ready ETL pipelines via Model Context Protocol.")
     console.print()
 
     # Usage
@@ -52,7 +52,7 @@ def show_main_help():
     # Quick Start
     console.print("[bold blue]💡 Quick Start[/bold blue]")
     console.print("  [cyan]1.[/cyan] [green]osiris init[/green]      Create configuration files")
-    console.print("  [cyan]2.[/cyan] [green]osiris chat[/green]     Start conversational pipeline generation")
+    console.print("  [cyan]2.[/cyan] [green]osiris mcp[/green]      Start MCP server for AI integration")
     console.print("  [cyan]3.[/cyan] [green]osiris validate[/green] Check your setup")
     console.print()
 
@@ -60,7 +60,6 @@ def show_main_help():
     console.print("[bold blue]Commands[/bold blue]")
     console.print("  [cyan]init[/cyan]         Initialize a new Osiris project with sample configuration")
     console.print("  [cyan]validate[/cyan]     Validate Osiris configuration file and environment setup")
-    console.print("  [cyan]chat[/cyan]         Conversational pipeline generation with LLM")
     console.print("  [cyan]compile[/cyan]      Compile OML pipeline to deterministic manifest")
     console.print("  [cyan]run[/cyan]          Execute pipeline (OML or compiled manifest)")
     console.print("  [cyan]logs[/cyan]         Manage session logs (list, show, bundle, gc)")
@@ -68,6 +67,7 @@ def show_main_help():
     console.print("  [cyan]components[/cyan]   Manage and inspect Osiris components")
     console.print("  [cyan]connections[/cyan]  Manage database connections")
     console.print("  [cyan]oml[/cyan]          Validate OML (Osiris Markup Language) files")
+    console.print("  [cyan]mcp[/cyan]          Run MCP (Model Context Protocol) server for AI integration")
     console.print(
         "  [cyan]dump-prompts[/cyan] Export LLM system prompts for customization (pro mode)\n"
         "  [cyan]prompts[/cyan]      Manage component context for LLM"
@@ -96,7 +96,6 @@ def parse_main_args():
         if not arg.startswith("-") and arg in [
             "init",
             "validate",
-            "chat",
             "run",
             "runs",  # deprecated but still supported
             "compile",
@@ -105,7 +104,9 @@ def parse_main_args():
             "test",
             "components",
             "connections",
+            "discovery",
             "oml",
+            "mcp",
             "dump-prompts",
             "prompts",
         ]:
@@ -125,7 +126,7 @@ def parse_main_args():
 
     # Parse global arguments
     parser = argparse.ArgumentParser(
-        description="Osiris v0.2.0 - LLM-first Conversational ETL Pipeline Generator",
+        description="Osiris v0.5.0 - MCP-based ETL Pipeline Generator",
         add_help=False,
         prog="osiris.py",
     )
@@ -160,14 +161,14 @@ def main():
     """Main CLI entry point with Rich formatting."""
     global json_output
 
-    # Special handling for chat command to preserve argument order
+    # Special handling for deprecated chat command
     if len(sys.argv) > 1 and sys.argv[1] == "chat":
-        from .chat import chat
+        from .chat_deprecation import handle_chat_deprecation
 
-        # Pass all arguments after "chat" directly
-        chat_args = sys.argv[2:]  # Skip "osiris.py" and "chat"
-        chat(chat_args)
-        return
+        # Check if JSON flag is present
+        json_flag = "--json" in sys.argv
+        exit_code = handle_chat_deprecation(json_output=json_flag)
+        sys.exit(exit_code)
 
     args, unknown = parse_main_args()
 
@@ -179,9 +180,9 @@ def main():
 
     if args.version:
         if json_output:
-            print(json.dumps({"version": "v0.2.0"}))
+            print(json.dumps({"version": "v0.5.0"}))
         else:
-            console.print("Osiris v0.2.0")
+            console.print("Osiris v0.5.0")
         return
 
     # Handle commands first, then help
@@ -208,6 +209,8 @@ def main():
         components_command(command_args)
     elif args.command == "connections":
         connections_command(command_args)
+    elif args.command == "discovery":
+        discovery_command(command_args)
     elif args.command == "oml":
         oml_command(command_args)
     elif args.command == "compile":
@@ -222,9 +225,11 @@ def main():
         from .maintenance import maintenance_command
 
         maintenance_command(command_args)
-    elif args.command == "chat":
-        # This case is now handled early in main() to preserve argument order
-        pass
+    elif args.command == "mcp":
+        # MCP server command - dispatch to mcp_cmd module
+        from .mcp_cmd import main as mcp_main
+
+        mcp_main(command_args)
     elif args.help or not args.command:
         if json_output:
             print(
@@ -234,7 +239,6 @@ def main():
                         "available_commands": [
                             "init",
                             "validate",
-                            "chat",
                             "compile",
                             "run",
                             "logs",
@@ -258,7 +262,6 @@ def main():
                         "available_commands": [
                             "init",
                             "validate",
-                            "chat",
                             "compile",
                             "run",
                             "logs",
@@ -1252,6 +1255,103 @@ def connections_command(args: list) -> None:
         console.print("Use 'osiris connections --help' for detailed help.")
 
 
+def discovery_command(args: list) -> None:
+    """Run database schema discovery."""
+
+    def show_discovery_help():
+        """Show discovery command help."""
+        if json_output:
+            help_data = {
+                "command": "discovery",
+                "description": "Discover database schema and sample data",
+                "subcommands": {
+                    "run": {
+                        "description": "Run discovery on a connection",
+                        "required": ["connection_id"],
+                        "options": {
+                            "--samples N": "Number of sample rows (default: 10)",
+                            "--json": "Output in JSON format",
+                        },
+                    }
+                },
+            }
+            print(json.dumps(help_data, indent=2))
+        else:
+            console.print()
+            console.print("[bold green]osiris discovery - Database Schema Discovery[/bold green]")
+            console.print("🔍 Discover database schemas and sample data")
+            console.print()
+            console.print("[bold]Usage:[/bold] osiris discovery run <connection_id> [OPTIONS]")
+            console.print()
+            console.print("[bold blue]Arguments[/bold blue]")
+            console.print("  [cyan]connection_id[/cyan]   Connection reference (e.g., @mysql.main)")
+            console.print()
+            console.print("[bold blue]Options[/bold blue]")
+            console.print("  [cyan]--samples N[/cyan]      Number of sample rows per table (default: 10)")
+            console.print("  [cyan]--json[/cyan]           Output in JSON format")
+            console.print()
+            console.print("[bold blue]Examples[/bold blue]")
+            console.print("  [green]osiris discovery run @mysql.main[/green]")
+            console.print("  [green]osiris discovery run @supabase.db --samples 100[/green]")
+            console.print("  [green]osiris discovery run @mysql.main --json[/green]")
+            console.print()
+
+    if not args or args[0] in ["--help", "-h"]:
+        show_discovery_help()
+        return
+
+    # Import the discovery function
+    try:
+        from .discovery_cmd import discovery_run
+    except ImportError as e:
+        console.print(f"❌ Failed to import discovery module: {e}")
+        sys.exit(1)
+
+    # Parse arguments
+    subcommand = args[0] if args else None
+
+    if subcommand == "run":
+        # Parse run-specific arguments
+        if len(args) < 2:
+            console.print("[red]Error: connection_id required[/red]")
+            console.print("Usage: osiris discovery run <connection_id> [--samples N] [--json]")
+            sys.exit(2)
+
+        connection_id = args[1]
+        samples = 10
+        use_json = json_output
+
+        # Parse options
+        i = 2
+        while i < len(args):
+            if args[i] == "--samples" and i + 1 < len(args):
+                try:
+                    samples = int(args[i + 1])
+                    i += 2
+                except ValueError:
+                    console.print(f"[red]Error: Invalid samples value '{args[i+1]}'[/red]")
+                    sys.exit(2)
+            elif args[i] == "--json":
+                use_json = True
+                i += 1
+            else:
+                console.print(f"[yellow]Warning: Unknown option '{args[i]}'[/yellow]")
+                i += 1
+
+        # Run discovery
+        exit_code = discovery_run(
+            connection_id=connection_id,
+            samples=samples,
+            json_output=use_json,
+        )
+        sys.exit(exit_code)
+    else:
+        console.print(f"❌ Unknown subcommand: {subcommand}")
+        console.print("Available subcommands: run")
+        console.print("Use 'osiris discovery --help' for detailed help.")
+        sys.exit(1)
+
+
 def logs_command(args: list) -> None:
     """Manage session logs (list, show, bundle, gc, html, open, aiop)."""
     from .logs import (
@@ -1519,8 +1619,8 @@ def prompts_command(args: list):
     if subcommand == "build-context":
         # Parse arguments for build-context
         import os
-        import time
         from pathlib import Path
+        import time
 
         from ..core.session_logging import SessionContext, set_current_session
 

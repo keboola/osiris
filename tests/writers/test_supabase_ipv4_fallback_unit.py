@@ -83,7 +83,7 @@ def test_psycopg2_failure_triggers_http_fallback(monkeypatch):
                     MockClient.return_value = mock_client_instance
 
                     # Execute the write operation
-                    result = driver.run(step_id="test_step", config=config, inputs={"df": df}, ctx=ctx)
+                    result = driver.run(step_id="test_step", config=config, inputs={"df_upstream": df}, ctx=ctx)
 
     # Assertions
     assert result == {}

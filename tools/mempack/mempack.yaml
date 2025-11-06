@@ -2,8 +2,9 @@
 output: ./mempack.txt
 
 notes: |
-  Osiris – active milestone M1c (feature/m1c). Prioritize compiler+runner + chat flow fixes.
-  Pack only deterministic, review-friendly sources. No secrets / no heavy logs / no run artifacts.
+  Osiris – active milestone M2b (feature/mcp-server-opus).
+  Prioritize MCP server stabilization (Phase 3) + verification.
+  Pack deterministic, review-friendly sources. No secrets / no heavy logs / no runtime artifacts.
 
 include:
 # Core src
@@ -11,318 +12,207 @@ include:
 - pyproject.toml
 - requirements.txt
 - setup.py
-- osiris/cli/*.py
-- osiris/core/*.py
-- osiris/connectors/**/**/*.py
+- osiris/cli/**/*.py
+- osiris/mcp/**/*.py
+- osiris/core/**/*.py
 - osiris/components/*.py
-- osiris/prompts/*
-- osiris/runtime/*.py
-- osiris/remote/*.py
-- osiris/drivers/graphql_extractor_driver.py # added GraphQL driver
+- osiris/drivers/graphql_extractor_driver.py
 
 # Components registry/specs
 - components/spec.schema.json
 - components/*/**/spec.yaml
-- components/graphql.extractor/spec.yaml # added GraphQL component spec
+- components/graphql.extractor/spec.yaml
 
-# Docs – keep ADRs, milestones, roadmap + top-level docs + examples
-- docs/**/*.md
-- docs/**/*.yaml
+# Docs – ADRs, milestones, reports, roadmap
+- docs/adr/*.md
+- docs/milestones/*.md
+- docs/reports/**/*.md
+- docs/mcp/**/*.md
+- docs/security/**/*.md
+- docs/testing/**/*.md
+- docs/deployment/**/*.md
+- docs/migration/**/*.md
+- docs/CLAUDE.md
+- docs/README.md
 
-# E2B docs + CI skripty
-- docs/testing/e2b-testing-guide.md
-- .github/workflows/e2b-tests.yml
-- .github/workflows/e2b-manual.yml
+# CI & tools
+- .github/workflows/*.yml
 - .github/scripts/verify_redaction.py
-
-# Test coverage research (exclude HTML)
-- docs/testing/research/coverage-*/README.md
-- docs/testing/research/coverage-*/coverage.md
-- docs/testing/research/coverage-*/gaps-matrix.md
-- docs/testing/research/coverage-*/tests-inventory.md
-- docs/testing/research/coverage-*/coverage.json
-
-# Tests (unit+integration+chat)
-- tests/**/**/*.py
-- tests/core/test_run_export_v2_*.py
-- tests/integration/test_aiop_e2e.py
-
-# Tools needed for context
-- tools/mempack/*
+- tools/mempack/**
 - tools/validation/*.py
 - tools/validation/README.md
-- tools/validation/coverage_summary.py
 
-# System prompts (prompt dumps from manual runs)
-- testing_env/.osiris_prompts/**
+# Tests (core + integration + perf)
+- tests/mcp/**/*.py
+- tests/integration/**/*.py
+- tests/performance/**/*.py
+- tests/security/**/*.py
+- tests/load/**/*.py
+- tests/core/**/*.py
 
-# Repo meta (helps reviewers)
+# Repo meta
 - CHANGELOG.md
-- CLAUDE.md
-- SECURITY.md
 - LICENSE
+- SECURITY.md
 - Makefile
 - README.md
 - pytest.ini
 
 exclude:
-# Coverage HTML reports (too large)
-- "docs/testing/research/coverage-*/html/**"
-
-# Archived docs
-- "docs/archive/**"
-
-# Python noise (still needed since .gitignore doesn't have these)
+# Large or transient
 - "**/__pycache__/**"
 - "**/*.pyc"
-
-# Additional exclusions not in .gitignore
-- "**/events.jsonl"
-- "**/metrics.jsonl"
 - "**/*.log"
+- "**/*.ndjson*"
+- "**/*.jsonl"
 - "artifacts/**"
 - "logs/**"
-- "testing_env/logs/**"
-- "**/compiled/**"
-- "**/artifacts/**"
-- "demo/out/**"
 - "output/**"
+- "testing_env/logs/**"
 - "testing_env/dist/**"
-- "osiris/tmp/**/artifacts/**"
+- "osiris/tmp/**"
+- "docs/archive/**"
+- ".venv/**"
+- ".vscode/**"
+- ".pytest_cache/**"
+- ".git/**"
+- "osiris_pipeline.egg-info/**"
 
-- ".aiop-annex/**"
-- "**/*.ndjson"
-- "**/*.ndjson.gz"
-
-# Repo internals not in .gitignore
-- .git/**
-- osiris_pipeline.egg-info/**
-- uv.lock
-- .venv/**
-- .vscode/**
-- .pytest_cache/**
-
-# Note: Most other exclusions are now handled by .gitignore:
-# - testing_env/ artifacts (handled by .gitignore)
-# - output/ directories (handled by .gitignore)
-# - compiled/ and _artifacts/ (handled by .gitignore)
-# - mempack.txt itself (handled by .gitignore)
-
-# Also embed a fresh project tree (so I can see structure at-a-glance)
 embed_tree: true
-
-# Automatically exclude files/dirs from .gitignore
-# When true, patterns from .gitignore are applied before explicit excludes
-# Include patterns can override gitignore/exclude patterns (include wins)
 use_gitignore: true
-
-# Safety: cap the size so we don't over-feed the model by accident
-max_bytes: 6000000 # ~6 MB, uprav když bude potřeba
+max_bytes: 6000000 # ~6 MB limit
 
 # ----------------------------------------------------------
 # Commands: run before packing and include their stdout files
 # ----------------------------------------------------------
 commands:
-- output_path: tools/mempack/gen/osiris-components-list.json
+# MCP components list
+- output_path: tools/mempack/gen/mcp-components-list.json
   run: |
     source .venv/bin/activate
     cd testing_env
-    python ../osiris.py components list --json
+    python ../osiris.py mcp components list --json
   with_cmd: true
   shell: bash
   timeout: 30s
   on_error: fail
 
-- output_path: tools/mempack/gen/osiris-connections-list.json
+# MCP discovery sample
+- output_path: tools/mempack/gen/mcp-discovery-sample.json
   run: |
     source .venv/bin/activate
     cd testing_env
-    python ../osiris.py connections list --json
-  with_cmd: true
-  shell: bash
-  timeout: 30s
-  on_error: fail
-
-- output_path: tools/mempack/gen/osiris.json
-  run: |
-    source .venv/bin/activate
-    cd testing_env
-    python ../osiris.py --help
-  with_cmd: true
-  shell: bash
-  timeout: 30s
-  on_error: keep # Keep output even if it fails (might not have connections configured)
-
-- output_path: tools/mempack/gen/osiris-compile.json
-  run: |
-    source .venv/bin/activate
-    cd testing_env
-    python ../osiris.py compile --help
-  with_cmd: true
-  shell: bash
-  timeout: 30s
-  on_error: keep # Keep output even if it fails (might not have connections configured)
-
-- output_path: tools/mempack/gen/osiris-run.json
-  run: |
-    source .venv/bin/activate
-    cd testing_env
-    python ../osiris.py run --help
-  with_cmd: true
-  shell: bash
-  timeout: 30s
-  on_error: keep # Keep output even if it fails (might not have connections configured)
-
-- output_path: tools/mempack/gen/osiris-logs.json
-  run: |
-    source .venv/bin/activate
-    cd testing_env
-    python ../osiris.py logs --help
-  with_cmd: true
-  shell: bash
-  timeout: 30s
-  on_error: keep # Keep output even if it fails (might not have connections configured)
-
-- output_path: tools/mempack/gen/osiris-test.json
-  run: |
-    source .venv/bin/activate
-    cd testing_env
-    python ../osiris.py test --help
-  with_cmd: true
-  shell: bash
-  timeout: 30s
-  on_error: keep # Keep output even if it fails (might not have connections configured)
-
-- output_path: tools/mempack/gen/osiris-connections.json
-  run: |
-    source .venv/bin/activate
-    cd testing_env
-    python ../osiris.py connections --help
-  with_cmd: true
-  shell: bash
-  timeout: 30s
-  on_error: keep # Keep output even if it fails (might not have connections configured)
-
-- output_path: tools/mempack/gen/osiris-components.json
-  run: |
-    source .venv/bin/activate
-    cd testing_env
-    python ../osiris.py components --help
-  with_cmd: true
-  shell: bash
-  timeout: 30s
-  on_error: keep # Keep output even if it fails (might not have connections configured)
-
-- output_path: tools/mempack/gen/osiris-oml.json
-  run: |
-    source .venv/bin/activate
-    cd testing_env
-    python ../osiris.py oml --help
-  with_cmd: true
-  shell: bash
-  timeout: 30s
-  on_error: keep # Keep output even if it fails (might not have connections configured)
-
-- output_path: tools/mempack/gen/osiris-dump-prompts.json
-  run: |
-    source .venv/bin/activate
-    cd testing_env
-    python ../osiris.py dump-prompts --help
-  with_cmd: true
-  shell: bash
-  timeout: 30s
-  on_error: keep # Keep output even if it fails (might not have connections configured)
-
-- output_path: tools/mempack/gen/osiris-prompts.json
-  run: |
-    source .venv/bin/activate
-    cd testing_env
-    python ../osiris.py prompts --help
-  with_cmd: true
-  shell: bash
-  timeout: 30s
-  on_error: keep # Keep output even if it fails (might not have connections configured)
-
-- output_path: tools/mempack/gen/osiris-logs-aiop.json
-  run: |
-    source .venv/bin/activate
-    cd testing_env
-    python ../osiris.py logs aiop --help
-  with_cmd: true
-  shell: bash
-  timeout: 30s
-  on_error: keep
-
-# AIOP Core JSON (typický výstup)
-- output_path: tools/mempack/gen/aiop.core.json
-  run: |
-    source .venv/bin/activate
-    cd testing_env
-    python ../osiris.py logs aiop --last --format json > ../tools/mempack/gen/aiop.core.json
-  with_cmd: true
-  shell: bash
-  timeout: 45s
-  on_error: keep
-
-# AIOP Markdown run-card
-- output_path: tools/mempack/gen/aiop.runcard.md
-  run: |
-    source .venv/bin/activate
-    cd testing_env
-    python ../osiris.py logs aiop --last --format md > ../tools/mempack/gen/aiop.runcard.md
-  with_cmd: true
-  shell: bash
-  timeout: 45s
-  on_error: keep
-
-# AIOP Core s truncation (ověření markerů + exit=4; necháme keep, ať máme případně částečný výstup)
-- output_path: tools/mempack/gen/aiop.core.small.json
-  run: |
-    source .venv/bin/activate
-    cd testing_env
-    (python ../osiris.py logs aiop --last --format json --max-core-bytes 1500 > ../tools/mempack/gen/aiop.core.small.json) || true
-  with_cmd: true
-  shell: bash
-  timeout: 45s
-  on_error: keep
-
-# AIOP Annex (manifest v Core; vlastní NDJSON/GZ shards nechceme do mempacku tahat)
-- output_path: tools/mempack/gen/aiop.annex.json
-  run: |
-    source .venv/bin/activate
-    cd testing_env
-    rm -rf .aiop-annex
-    python ../osiris.py logs aiop --last --format json --policy annex --annex-dir .aiop-annex --compress gzip > ../tools/mempack/gen/aiop.annex.json
+    python ../osiris.py mcp discovery run --connection-id @mysql.db_movies --json
   with_cmd: true
   shell: bash
   timeout: 60s
   on_error: keep
 
-# AIOP config precedence echo (CLI > ENV > YAML > defaults)
-- output_path: tools/mempack/gen/aiop.config_effective.json
+# MCP memory capture (consent)
+- output_path: tools/mempack/gen/mcp-memory-sample.json
   run: |
     source .venv/bin/activate
     cd testing_env
-    export OSIRIS_AIOP_TIMELINE_DENSITY=high
-    python ../osiris.py logs aiop --last --format json --timeline-density low > ../tools/mempack/gen/aiop.config_effective.json
-    unset OSIRIS_AIOP_TIMELINE_DENSITY
-  with_cmd: true
-  shell: bash
-  timeout: 45s
-  on_error: keep
-
-- output_path: tools/mempack/gen/tests-e2b-inventory.txt
-  run: |
-    source .venv/bin/activate
-    pytest --collect-only -q -m e2b_smoke > ../tools/mempack/gen/tests-e2b-inventory.txt || true
-    echo "" >> ../tools/mempack/gen/tests-e2b-inventory.txt
-    echo "---- PARITY ----" >> ../tools/mempack/gen/tests-e2b-inventory.txt
-    pytest --collect-only -q -m parity >> ../tools/mempack/gen/tests-e2b-inventory.txt || true
+    python ../osiris.py mcp memory capture --session-id demo --text "Note for mempack" --consent --json
   with_cmd: true
   shell: bash
   timeout: 30s
   on_error: keep
 
+# MCP AIOP list
+- output_path: tools/mempack/gen/mcp-aiop-list.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    python ../osiris.py mcp aiop list --json
+  with_cmd: true
+  shell: bash
+  timeout: 45s
+  on_error: keep
+
+# MCP AIOP show (first run id)
+- output_path: tools/mempack/gen/mcp-aiop-show.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    rid=$(python ../osiris.py mcp aiop list --json | jq -r '.[0].run_id // empty' 2>/dev/null || echo "")
+    if [ -n "$rid" ]; then
+      python ../osiris.py mcp aiop show --run "$rid" --json
+    fi
+  with_cmd: true
+  shell: bash
+  timeout: 45s
+  on_error: keep
+
+# MCP selftest
+- output_path: tools/mempack/gen/mcp-selftest.txt
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    time python ../osiris.py mcp run --selftest
+  with_cmd: true
+  shell: bash
+  timeout: 60s
+  on_error: keep
+
+# Protocol & version sanity
+- output_path: tools/mempack/gen/mcp-version.json
+  run: |
+    source .venv/bin/activate
+    python - <<'PYCODE'
+    from osiris.mcp import config
+    import json
+    print(json.dumps({
+      "PROTOCOL_VERSION": getattr(config, "PROTOCOL_VERSION", None),
+      "SERVER_VERSION": getattr(config, "SERVER_VERSION", None)
+    }))
+    PYCODE
+  with_cmd: true
+  shell: bash
+  timeout: 10s
+  on_error: keep
+
+# Policy guard: oversized payload test
+- output_path: tools/mempack/gen/mcp-policy-oversize.json
+  run: |
+    source .venv/bin/activate
+    cd testing_env
+    python - <<'PYCODE'
+    import json, subprocess
+    big = {"data": "x" * (17 * 1024 * 1024)}  # 17MB payload
+    p = subprocess.run(
+        ["python", "../osiris.py", "mcp", "connections", "list", "--json"],
+        input=json.dumps(big).encode(),
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    print(p.stdout.decode() or p.stderr.decode())
+    PYCODE
+  with_cmd: true
+  shell: bash
+  timeout: 60s
+  on_error: keep
+
+# Quick test run summary
+- output_path: tools/mempack/gen/tests-summary.txt
+  run: |
+    source .venv/bin/activate
+    pytest -q --maxfail=1 --disable-warnings > ../tools/mempack/gen/tests-summary.txt || true
+  with_cmd: true
+  shell: bash
+  timeout: 180s
+  on_error: keep
+
+# MCP performance smoke
+- output_path: tools/mempack/gen/tests-perf-smoke.txt
+  run: |
+    source .venv/bin/activate
+    pytest tests/performance/test_mcp_overhead.py -q -k baseline > ../tools/mempack/gen/tests-perf-smoke.txt || true
+  with_cmd: true
+  shell: bash
+  timeout: 120s
+  on_error: keep
+
+# MCP markers inventory
 - output_path: tools/mempack/gen/pytest-markers.txt
   run: |
     source .venv/bin/activate
@@ -332,21 +222,11 @@ commands:
   timeout: 15s
   on_error: keep
 
-# --- Split-run summary (short reports for non-supabase and supabase suites) ---
-- output_path: tools/mempack/gen/tests-splitrun-non-supabase.txt
+# Project tree snapshot
+- output_path: tools/mempack/gen/tree.txt
   run: |
-    source .venv/bin/activate
-    pytest -m "not supabase" -q > ../tools/mempack/gen/tests-splitrun-non-supabase.txt || true
-  with_cmd: true
+    tree -L 3 -a > tools/mempack/gen/tree.txt
+  with_cmd: false
   shell: bash
-  timeout: 120s
-  on_error: keep
-
-- output_path: tools/mempack/gen/tests-splitrun-supabase.txt
-  run: |
-    source .venv/bin/activate
-    pytest -m supabase -q > ../tools/mempack/gen/tests-splitrun-supabase.txt || true
-  with_cmd: true
-  shell: bash
-  timeout: 60s
+  timeout: 10s
   on_error: keep

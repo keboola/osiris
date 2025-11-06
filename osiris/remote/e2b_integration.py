@@ -1,7 +1,7 @@
 """E2B CLI integration shim for argument parsing and help text."""
 
-import os
 from dataclasses import dataclass
+import os
 
 
 @dataclass

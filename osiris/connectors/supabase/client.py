@@ -57,14 +57,16 @@ class SupabaseClient:
         if not self.url or not self.key:
             raise ValueError("Supabase URL and key are required (config or env vars)")
 
-    def connect(self) -> Client:
+    async def connect(self) -> Client:
         """Connect to Supabase and return client."""
         if self._initialized and self.client:
             return self.client
 
         try:
-            # Create Supabase client
-            self.client = create_client(self.url, self.key)
+            # Create Supabase client in thread pool (sync SDK operation)
+            import asyncio  # noqa: PLC0415  # Lazy import for async operations
+
+            self.client = await asyncio.to_thread(create_client, self.url, self.key)
             self._initialized = True
             logger.info("Connected to Supabase project")
             return self.client
@@ -73,19 +75,70 @@ class SupabaseClient:
             logger.error(f"Failed to connect to Supabase: {e}")
             raise
 
-    def disconnect(self) -> None:
+    def connect_sync(self) -> Client:
+        """Synchronous wrapper for async connect().
+
+        Returns:
+            Connected Supabase client
+
+        Raises:
+            RuntimeError: If called from within an async context
+        """
+        import asyncio  # noqa: PLC0415
+
+        try:
+            # Try to get the running loop
+            try:
+                asyncio.get_running_loop()
+                # We're in an async context - this shouldn't happen in normal usage
+                raise RuntimeError(
+                    "connect_sync() called from async context. Use 'await connect()' instead."
+                )
+            except RuntimeError:
+                # No running loop - good, we can create one
+                pass
+
+            # Run the async connect in a new event loop
+            return asyncio.run(self.connect())
+
+        except Exception as e:
+            logger.error(f"Failed to connect to Supabase (sync): {e}")
+            raise
+
+    def __enter__(self) -> Client:
+        """Synchronous context manager entry.
+
+        Returns:
+            Connected Supabase client
+        """
+        return self.connect_sync()
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Synchronous context manager exit.
+
+        Args:
+            exc_type: Exception type if an exception occurred
+            exc_val: Exception value if an exception occurred
+            exc_tb: Exception traceback if an exception occurred
+        """
+        # Supabase client doesn't need explicit cleanup
+        # Just clear the reference
+        self.client = None
+        self._initialized = False
+
+    async def disconnect(self) -> None:
         """Close Supabase connection."""
         # Supabase client doesn't need explicit disconnect
         self.client = None
         self._initialized = False
         logger.debug("Supabase connection closed")
 
-    def __enter__(self) -> Client:
-        """Context manager entry."""
-        return self.connect()
+    async def __aenter__(self) -> Client:
+        """Async context manager entry."""
+        return await self.connect()
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Context manager exit."""
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Async context manager exit."""
         # Supabase client doesn't need explicit cleanup
         pass
 

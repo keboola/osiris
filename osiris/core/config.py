@@ -17,8 +17,8 @@
 import contextlib
 import datetime
 import os
-import re
 from pathlib import Path
+import re
 from typing import Any
 
 import yaml
@@ -54,13 +54,16 @@ def load_config(config_path: str = ".osiris.yaml") -> dict[str, Any]:
     return config or {}
 
 
-def create_sample_config(config_path: str = "osiris.yaml", no_comments: bool = False, to_stdout: bool = False) -> str:
+def create_sample_config(
+    config_path: str = "osiris.yaml", no_comments: bool = False, to_stdout: bool = False, base_path: str = ""
+) -> str:
     """Create a sample configuration file with Filesystem Contract v1.
 
     Args:
         config_path: Path where to create the config file
         no_comments: If True, remove comment lines
         to_stdout: If True, return content instead of writing to file
+        base_path: Base path for the filesystem contract (default: empty string, uses CWD)
 
     Returns:
         Generated config content if to_stdout is True, else empty string
@@ -75,7 +78,7 @@ def create_sample_config(config_path: str = "osiris.yaml", no_comments: bool = F
 filesystem:
   # Absolute root for all Osiris project files (useful for servers/CI).
   # Example: "/srv/osiris/acme" or leave empty to use the repo root.
-  base_path: ""
+  base_path: "__BASE_PATH_PLACEHOLDER__"
 
   # Profiles: explicitly list allowed profile names and the default.
   # When enabled, Osiris injects a "{profile}/" path segment in build/aiop/run_logs.
@@ -104,9 +107,11 @@ filesystem:
   # sessions: conversational/chat session state for Osiris chat/agents
   # cache:    discovery/profiling cache (table schemas, sampled stats)
   # index:    append-only run indexes and counters for fast listing/queries
+  # mcp_logs: MCP server logs (audit, telemetry, cache)
   sessions_dir: ".osiris/sessions"
   cache_dir: ".osiris/cache"
   index_dir: ".osiris/index"
+  mcp_logs_dir: ".osiris/mcp/logs"
 
   # Naming templates (human-friendly yet machine-stable).
   # Available tokens:
@@ -367,6 +372,9 @@ aiop:
       redact_pii: true     # PII removal before Annex inclusion
 """
 
+    # Replace base_path placeholder with actual value
+    config_content = config_content.replace("__BASE_PATH_PLACEHOLDER__", base_path)
+
     # Process content based on flags
     if no_comments:
         # Remove lines starting with # (comments) but keep YAML comments after values
@@ -472,19 +480,32 @@ def load_connections_yaml(substitute_env: bool = True) -> dict[str, Any]:
                        If False, return raw config with ${VAR} patterns intact.
 
     Searches for osiris_connections.yaml in:
-    1. Current working directory
-    2. Repository root (parent directories)
+    1. OSIRIS_HOME (if set)
+    2. Current working directory
+    3. Repository root (parent directories)
 
     Returns:
         Dict structure {family: {alias: {fields}}}
         Returns empty dict if no connections file found
     """
+    import os
+
     # Search for connections file
-    search_paths = [
-        Path.cwd() / "osiris_connections.yaml",
-        Path.cwd().parent / "osiris_connections.yaml",
-        Path(__file__).parent.parent.parent / "osiris_connections.yaml",  # Repo root from osiris/core/
-    ]
+    search_paths = []
+
+    # 1. Check OSIRIS_HOME first (highest priority)
+    osiris_home = os.environ.get("OSIRIS_HOME", "").strip()
+    if osiris_home:
+        search_paths.append(Path(osiris_home) / "osiris_connections.yaml")
+
+    # 2. Check current working directory
+    search_paths.append(Path.cwd() / "osiris_connections.yaml")
+
+    # 3. Check parent of current working directory
+    search_paths.append(Path.cwd().parent / "osiris_connections.yaml")
+
+    # 4. Check repository root (from osiris/core/)
+    search_paths.append(Path(__file__).parent.parent.parent / "osiris_connections.yaml")
 
     connections_file = None
     for path in search_paths:

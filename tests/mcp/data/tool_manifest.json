@@ -1,0 +1,46 @@
+{
+  "tools": [
+    {
+      "name": "connections.list",
+      "description": "List all configured database connections"
+    },
+    {
+      "name": "connections.doctor",
+      "description": "Diagnose connection issues"
+    },
+    {
+      "name": "components.list",
+      "description": "List available pipeline components"
+    },
+    {
+      "name": "discovery.request",
+      "description": "Discover database schema and optionally sample data"
+    },
+    {
+      "name": "usecases.list",
+      "description": "List available OML use case templates"
+    },
+    {
+      "name": "oml.schema.get",
+      "description": "Get the OML v0.1.0 JSON schema"
+    },
+    {
+      "name": "oml.validate",
+      "description": "Validate an OML pipeline definition"
+    },
+    {
+      "name": "oml.save",
+      "description": "Save an OML pipeline draft"
+    },
+    {
+      "name": "guide.start",
+      "description": "Get guided next steps for OML authoring"
+    },
+    {
+      "name": "memory.capture",
+      "description": "Capture session memory with consent"
+    }
+  ],
+  "protocol_version": "0.5",
+  "server_version": "0.5.0"
+}

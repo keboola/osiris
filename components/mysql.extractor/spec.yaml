@@ -102,6 +102,20 @@ x-secret:
   - /password
   - /resolved_connection/password
 
+x-connection-fields:
+  - name: host
+    override: allowed
+  - name: port
+    override: allowed
+  - name: database
+    override: forbidden  # Security: cannot change DB
+  - name: user
+    override: forbidden  # Security: cannot change user
+  - name: password
+    override: forbidden  # Security: cannot override password
+  - name: schema
+    override: allowed
+
 redaction:
   strategy: mask
   mask: "****"

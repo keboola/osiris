@@ -1,8 +1,8 @@
 """Tests for run ID generation (ADR-0028)."""
 
-import tempfile
 from datetime import datetime
 from pathlib import Path
+import tempfile
 
 from osiris.core.run_ids import CounterStore, RunIdGenerator
 

@@ -4,6 +4,24 @@
 
 **Usage**: Copy this template, replace placeholders (`<COMPONENT_NAME>`, `<API_OR_RESOURCE>`, `<connection_fields>`), and provide to an LLM like Claude.
 
+## Quick Navigation
+
+**NEW DEVELOPER?** Start here: [START-HERE.md](START-HERE.md) - Router to right docs for your task
+
+**DECISION TREES:**
+- [API Type Selector](decision-trees/api-type-selector.md) - Choose REST/GraphQL/SQL
+- [Auth Selector](decision-trees/auth-selector.md) - Choose authentication method
+- [Pagination Selector](decision-trees/pagination-selector.md) - Choose pagination strategy
+
+**WORKING EXAMPLES:**
+- [REST API Extractor Recipe](recipes/rest-api-extractor.md) - Complete template
+- [Cursor Pagination Pattern](recipes/pagination-cursor.md) - Implementation guide
+
+**THIS DOCUMENT:**
+- Complete component template with all artifacts
+- Use after you've made decisions from trees above
+- Contains 700+ lines of copy-paste ready code
+
 ---
 
 ## Goal

@@ -1,8 +1,8 @@
 """E2E test for MySQL to Supabase pipeline."""
 
 import json
-import tempfile
 from pathlib import Path
+import tempfile
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -263,7 +263,7 @@ def test_supabase_writer_ddl_plan_generation(monkeypatch):
                     "write_mode": "append",
                     "create_if_missing": True,
                 },
-                inputs={"df": df},
+                inputs={"df_upstream": df},
                 ctx=mock_ctx,
             )
 

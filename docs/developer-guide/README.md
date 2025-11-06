@@ -78,7 +78,6 @@ Machine-readable contracts and validation rules for code generation:
 ## Migration Notice
 
 **Previous documentation locations have moved**:
-- `docs/COMPONENT_DEVELOPER_AUDIT.md` → [`human/BUILD_A_COMPONENT.md`](human/BUILD_A_COMPONENT.md)
 - `docs/COMPONENT_AI_CHECKLIST.md` → [`ai/checklists/COMPONENT_AI_CHECKLIST.md`](ai/checklists/COMPONENT_AI_CHECKLIST.md)
 - `docs/developer-guide/CONCEPTS.md` → [`human/CONCEPTS.md`](human/CONCEPTS.md)
 - `docs/developer-guide/module-*.md` → [`human/modules/*.md`](human/modules/)

@@ -1,7 +1,7 @@
 """Test for run command with last-compile features."""
 
-import tempfile
 from pathlib import Path
+import tempfile
 
 import yaml
 

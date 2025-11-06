@@ -51,7 +51,10 @@ class MySQLExtractorDriver:
         if not database:
             raise ValueError(f"Step {step_id}: 'database' is required in connection")
 
-        # Create engine
+        # Create engine with separate URLs for logging and connection
+        # Masked URL for logging/errors (SAFE to log)
+        masked_url = f"mysql+pymysql://{user}:***@{host}:{port}/{database}"  # noqa: F841  # Reserved for stack traces
+        # Real URL for connection ONLY (NEVER log this!)
         connection_url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
         engine = sa.create_engine(connection_url)
 
@@ -77,9 +80,14 @@ class MySQLExtractorDriver:
             return {"df": df}
 
         except sa.exc.OperationalError as e:
-            # Connection/network issues
-            error_msg = f"MySQL connection failed for {user}@{host}:{port}/{database}: {str(e)}"
-            logger.error(f"Step {step_id}: {error_msg}")
+            # Connection/network issues - use generic error + masked debug logging
+            error_msg = f"MySQL connection failed for step {step_id}"
+            logger.error(error_msg)
+
+            # Log details separately with masking
+            from osiris.core.secrets_masking import mask_sensitive_string  # noqa: PLC0415
+
+            logger.debug(f"Connection error details: {mask_sensitive_string(str(e))}")
             raise RuntimeError(error_msg) from e
 
         except sa.exc.ProgrammingError as e:

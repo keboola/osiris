@@ -1,0 +1,306 @@
+name: MCP CI
+
+on:
+  push:
+    branches: [main, feature/mcp-*]
+    paths:
+      - 'osiris/mcp/**'
+      - 'tests/mcp/**'
+      - 'requirements.txt'
+      - '.github/workflows/ci-mcp.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'osiris/mcp/**'
+      - 'tests/mcp/**'
+      - 'requirements.txt'
+      - '.github/workflows/ci-mcp.yml'
+
+jobs:
+  test-mcp:
+    name: Test MCP Server
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov
+
+      - name: Run MCP tests
+        run: |
+          pytest -q tests/mcp \
+            --cov=osiris.mcp \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            -v
+
+      - name: Run MCP selftest
+        run: |
+          python -m osiris.cli.mcp_entrypoint --selftest
+        timeout-minutes: 2
+
+      - name: Verify chat command deprecated
+        run: |
+          # Test that chat command returns error
+          ! python osiris.py chat
+
+          # Test deprecation message appears
+          python osiris.py chat 2>&1 | grep -i "deprecated"
+
+          # Test JSON mode deprecation
+          python osiris.py chat --json 2>&1 | grep '"error".*"deprecated"'
+
+      - name: Test help has no chat
+        run: |
+          # Ensure chat not listed as a command
+          ! python osiris.py --help | grep -E "^\s+chat\s+.*Conversational"
+
+      - name: Run no-chat regression tests
+        run: |
+          pytest -q tests/cli/test_no_chat.py -v
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.10'
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: mcp
+          name: mcp-coverage
+
+  docs-check:
+    name: Documentation Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Check for chat references in docs
+        run: |
+          # Find any remaining "osiris chat" references
+          if grep -r "osiris chat" README.md docs/quickstart.md docs/user-guide/ 2>/dev/null; then
+            echo "ERROR: Found 'osiris chat' references in documentation"
+            echo "These should be updated to reference MCP instead"
+            exit 1
+          fi
+          echo "✓ No 'osiris chat' references found in user docs"
+
+  validate-manifest:
+    name: Validate Tool Manifest
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate tool manifest stability
+        run: |
+          python -c "
+import json
+import sys
+from osiris.mcp.server import OsirisMCPServer
+import asyncio
+
+async def check_manifest():
+    server = OsirisMCPServer()
+    tools = await server._list_tools()
+
+    # Load expected manifest
+    with open('tests/mcp/data/tool_manifest.json') as f:
+        expected = json.load(f)
+
+    # Build actual manifest
+    actual_tools = [
+        {'name': t.name, 'description': t.description}
+        for t in sorted(tools, key=lambda x: x.name)
+    ]
+
+    # Compare
+    expected_tools = sorted(expected['tools'], key=lambda x: x['name'])
+
+    if actual_tools != expected_tools:
+        print('Tool manifest mismatch!')
+        print('Expected:', json.dumps(expected_tools, indent=2))
+        print('Actual:', json.dumps(actual_tools, indent=2))
+        return False
+
+    print('✅ Tool manifest is stable')
+    return True
+
+success = asyncio.run(check_manifest())
+sys.exit(0 if success else 1)
+          "
+
+  lint-mcp:
+    name: Lint MCP Code
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install linting tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff black isort mypy
+
+      - name: Run Black formatter check
+        run: |
+          black --check --line-length=120 osiris/mcp/
+
+      - name: Run isort import checker
+        run: |
+          isort --check-only --profile black --line-length 120 osiris/mcp/
+
+      - name: Run Ruff linter
+        run: |
+          ruff check osiris/mcp/
+
+      - name: Run mypy type checker
+        run: |
+          pip install -r requirements.txt
+          mypy osiris/mcp/ --ignore-missing-imports || true
+
+  integration-test:
+    name: MCP Integration Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Test MCP server startup
+        run: |
+          python -c "
+import asyncio
+import subprocess
+import sys
+import json
+import time
+
+async def test_server():
+    # Start server
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, '-m', 'osiris.cli.mcp_entrypoint',
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL
+    )
+
+    try:
+        # Send initialize
+        request = {
+            'jsonrpc': '2.0',
+            'method': 'initialize',
+            'params': {
+                'protocolVersion': '2024-11-05',
+                'capabilities': {},
+                'clientInfo': {'name': 'ci-test', 'version': '1.0.0'}
+            },
+            'id': 1
+        }
+
+        request_str = json.dumps(request)
+        request_bytes = request_str.encode('utf-8')
+        header = f'Content-Length: {len(request_bytes)}\r\n\r\n'
+
+        proc.stdin.write(header.encode('utf-8'))
+        proc.stdin.write(request_bytes)
+        await proc.stdin.drain()
+
+        # Read response
+        start = time.time()
+        header_line = await asyncio.wait_for(proc.stdout.readline(), timeout=5.0)
+
+        if header_line.startswith(b'Content-Length:'):
+            elapsed = time.time() - start
+            print(f'✅ Server responded in {elapsed:.3f}s')
+            return elapsed < 2.0
+        else:
+            print(f'❌ Invalid response: {header_line}')
+            return False
+
+    except asyncio.TimeoutError:
+        print('❌ Server timeout')
+        return False
+    finally:
+        proc.terminate()
+        await proc.wait()
+
+success = asyncio.run(test_server())
+sys.exit(0 if success else 1)
+          "
+        timeout-minutes: 1
+
+      - name: Test CLI alias
+        run: |
+          # Test that 'osiris mcp run --selftest' works
+          python osiris.py mcp run --selftest
+        timeout-minutes: 2
+
+  security-check:
+    name: Security Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit safety
+
+      - name: Run Bandit security scanner
+        run: |
+          bandit -r osiris/mcp/ -ll
+
+      - name: Check dependencies for vulnerabilities
+        run: |
+          pip install -r requirements.txt
+          safety check --json || true

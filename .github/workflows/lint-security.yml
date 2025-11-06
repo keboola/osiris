@@ -18,11 +18,13 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install --upgrade pip
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev]" detect-secrets
       - name: Ruff (strict, no-fix)
         run: ruff check .
       - name: Black check
         run: black --check --line-length=120 .
+      - name: Detect secrets
+        run: detect-secrets scan --baseline .secrets.baseline
 
   security:
     runs-on: ubuntu-latest

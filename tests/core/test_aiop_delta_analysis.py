@@ -1,8 +1,8 @@
 """Tests for AIOP Delta Analysis functionality."""
 
 import json
-import tempfile
 from pathlib import Path
+import tempfile
 from unittest.mock import patch
 
 from osiris.core.run_export_v2 import _find_previous_run_by_manifest, calculate_delta

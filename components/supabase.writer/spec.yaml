@@ -63,8 +63,8 @@ configSchema:
       default: minimal
     create_if_missing:
       type: boolean
-      description: Auto-create table if it doesn't exist (shows SQL, doesn't execute)
-      default: false
+      description: Auto-create table if it doesn't exist (recommended for prototyping, set false for production with strict schema control)
+      default: true
     batch_size:
       type: integer
       description: Number of rows per API request
@@ -116,6 +116,14 @@ x-secret:
   - /resolved_connection/service_role_key
   - /resolved_connection/pg_dsn
   - /resolved_connection/password
+
+x-connection-fields:
+  - name: url
+    override: allowed
+  - name: project_id
+    override: allowed
+  - name: key
+    override: forbidden  # Security: API key cannot be overridden
 
 redaction:
   strategy: mask

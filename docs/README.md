@@ -1,103 +1,77 @@
-# Osiris Documentation Hub
+# Osiris Documentation
 
-Welcome to the Osiris Pipeline documentation. Osiris is an LLM-first ETL pipeline system that uses AI to help you create and run data pipelines.
+**Start here.** This repository uses a structured docs governance model to keep documentation organized and maintainable.
 
-## 🚀 Quick Navigation
+## Documentation Structure
 
-### Getting Started
-- **[Quickstart](quickstart.md)** - Get up and running with Osiris in 5 minutes
-- **[Overview](overview.md)** - What is Osiris and how it works (non-technical)
-- **[Architecture](architecture.md)** - Technical deep-dive with detailed diagrams:
-  - Conversational Agent architecture (7 focused diagrams)
-  - Compilation and execution flows
-  - E2B transparent proxy design
+- **ADRs** → `docs/adr/` — Concise, stable architectural decisions (with Status field).
+- **Milestones (Initiatives)** → `docs/milestones/<slug>/`
+  - `00-initiative.md` — Index, goal, Definition of Done (DoD), KPIs
+  - `10-plan.md` — Scope, risks, effort estimates
+  - `20-execution.md` — Checklists, sub-agents, PR/issues links
+  - `30-verification.md` — Tests, metrics, verification commands
+  - `40-retrospective.md` — What went well / areas to improve
+  - `attachments/` — Bulky reports, coverage data, detailed audits
+- **Design (Work-in-Progress)** → `docs/design/` — Technical designs pending acceptance
+- **Reference (Stable Specs)** → `docs/reference/` — Specifications, schema, formats
+- **Guides (How-To)** → `docs/guides/` — User and operator guides
+- **Reports (One-Off)** → `docs/reports/<date>-<topic>/` — Analysis, audits, findings
+- **Archive (Completed)** → `docs/archive/<slug>-v<semver>/` — Completed initiatives (kept for history)
+
+## Current Initiatives
+
+### MCP v0.5.0
+- **ADR**: [`docs/adr/0036-mcp-interface.md`](adr/0036-mcp-interface.md) — CLI-first security architecture
+- **Milestone**: [`docs/milestones/mcp-finish-plan.md`](milestones/mcp-finish-plan.md)
+- **Phase 1-3**: ✅ Complete (CLI security, functional parity, comprehensive testing)
+- **Phase 4**: 📋 In Progress (Documentation & Release Preparation)
+- **Reference**: [`docs/reference/mcp-tool-reference.md`](reference/mcp-tool-reference.md)
+- **Reports**: [`docs/reports/`](reports/)
+
+### AIOP (AI Operation Package)
+- **ADR**: [`docs/adr/0027-aiop.md`](adr/0027-aiop.md)
+- **Milestone**: [`docs/milestones/m2a-aiop.md`](milestones/m2a-aiop.md) — ✅ Complete
+- **Reference**: [`docs/reference/aiop.schema.json`](reference/aiop.schema.json)
+
+## Legacy Navigation (for reference)
+
+### 🚀 Getting Started
+- **[Quickstart](quickstart.md)** - Get up and running in 5 minutes
+- **[Overview](overview.md)** - What is Osiris and how it works
+- **[Architecture](architecture.md)** - Technical deep-dive with diagrams
 
 ### 📚 Guides
+- **[User Guide](user-guide/user-guide.md)** - For end users
+- **[Developer Guide](developer-guide/README.md)** - For contributors
+- **[LLM Contracts](developer-guide/)** - Machine-readable patterns for AI
 
-#### For Users
-- **[User Guide](user-guide/user-guide.md)** - Complete guide covering:
-  - Connections & secrets management
-  - Running pipelines (local and E2B)
-  - Understanding logs and troubleshooting
-  - Common issues and solutions
-  - Best practices
-- **[AI Assistant Guide](user-guide/llms.txt)** - Instructions for ChatGPT/Claude to generate pipelines
-
-#### For Developers
-- **[Developer Guide](developer-guide/README.md)** - Comprehensive development documentation:
-  - Module architecture (7 modules documented)
-  - LLM contracts for AI-assisted development
-  - Testing patterns and guidelines
-  - Contributing guidelines
-- **[LLM Contracts](developer-guide/)** - Machine-readable instructions:
-  - [`llms.txt`](developer-guide/llms.txt) - Main development contract
-  - [`llms-drivers.txt`](developer-guide/llms-drivers.txt) - Driver patterns
-  - [`llms-cli.txt`](developer-guide/llms-cli.txt) - CLI patterns
-  - [`llms-testing.txt`](developer-guide/llms-testing.txt) - Test patterns
-
-### 📖 Reference Documentation
+### 📖 Reference
 - **[Pipeline Format (OML)](reference/pipeline-format.md)** - OML v0.1.0 specification
-- **[CLI Reference](reference/cli.md)** - All command-line options and flags
-- **[Component Specifications](reference/components-spec.md)** - Component spec format and schema
-- **[SQL Safety Rules](reference/sql-safety.md)** - Context-specific SQL validation
-- **[Events & Metrics Schema](reference/events_and_metrics_schema.md)** - Log format and observability
-- **[AIOP Architecture](architecture/aiop.md)** - AI Operation Package technical documentation
-- **[AIOP Schema](reference/aiop.schema.json)** - AIOP JSON-LD schema and context
+- **[CLI Reference](reference/cli.md)** - Command-line options
+- **[Component Specifications](reference/components-spec.md)** - Component spec format
+- **[SQL Safety Rules](reference/sql-safety.md)** - SQL validation rules
+- **[Events & Metrics Schema](reference/events_and_metrics_schema.md)** - Log formats
 
-### 💡 Examples & Future Plans
-- **[Example Pipelines](examples/)** - Ready-to-use pipeline examples:
-  - MySQL to CSV export
-  - MySQL to Supabase replication
-- **[Roadmap](roadmap/)** - Future development plans:
-  - [M2: Scheduling & Planning](roadmap/milestone-m2-planning.md)
-  - [M3: Scale & Performance](roadmap/milestone-m3-technical-scale.md)
-  - [M4: Data Warehouse Agent](roadmap/milestone-m4-dwh-agent.md)
-- **[Milestones](milestones/README.md)** - Milestone methodology and tracking
+### 💡 Examples & Roadmap
+- **[Example Pipelines](examples/)** - Ready-to-use pipeline examples
+- **[Roadmap](roadmap/)** - Future development plans
 
-### 🏛️ Architecture & History
-- **[Architecture Decision Records](adr/)** - 33 ADRs documenting all design decisions
-- **[Archive](archive/)** - Historical documentation and early implementations
+### 🏛️ Architecture & Decisions
+- **[Architecture Decision Records](adr/)** - All design decisions (35+ ADRs)
+- **[Archive](archive/)** - Historical documentation
 
-## 📦 Current Version
+## Contributor Guidelines
 
-**v0.3.0** (Released: 2025-09-27)
-- ✅ AI Operation Package (AIOP) for LLM-friendly debugging
-- ✅ Four-layer semantic architecture for AI understanding
-- ✅ Automatic export after every pipeline run
-- ✅ Delta analysis with "Since last run" comparisons
-- ✅ Comprehensive secret redaction with DSN masking
-- ✅ 921 tests passing with production-ready quality
+- **Update initiative indices** (`00-initiative.md`) when scope or DoD changes.
+- **Link reports** from the initiative's `attachments/` or `docs/reports/` with back-references.
+- **Keep ADRs short** — Link to milestones for implementation details.
+- **Prefer incremental docs** — Small, focused documents over giant monoliths.
+- **Archive on completion** — Move completed initiatives to `docs/archive/<slug>-v<semver>/` to keep active folders clean.
 
-## 📚 Documentation Highlights
+## Version Status
 
-### Recently Updated
-- **AIOP Documentation** - Complete AI Operation Package architecture and usage
-- **Architecture diagrams** - New layered Conversational Agent diagrams
-- **User Guide** - Added AIOP quickstart, troubleshooting, and best practices
-- **Developer Guide** - AIOP development workflow and team operations guide
-- **Milestone M2a** - Marked complete with production-ready AIOP system
+**Current Release**: v0.5.0 (in progress)
+- ✅ Phase 1-3: Security, Functionality, Testing
+- 📋 Phase 4: Documentation & Release Preparation
 
-## 🗺️ Documentation Map
-
-```
-For Users:
-  Start Here → Quickstart → User Guide → Examples
-  Need Help? → User Guide (Common Issues) → CLI Reference
-
-For Developers:
-  Start Here → Developer Guide → Module Docs → LLM Contracts
-  Contributing? → ADRs → Testing Patterns → Module Docs
-
-For AI Assistants:
-  Users → user-guide/llms.txt
-  Developers → developer-guide/llms*.txt
-```
-
-## 🔍 Finding Information
-
-- **How to run a pipeline?** → [Quickstart](quickstart.md) or [User Guide](user-guide/user-guide.md)
-- **Connection setup?** → [User Guide: Connections](user-guide/user-guide.md#1-connections--secrets)
-- **Understanding logs?** → [User Guide: Observability](user-guide/user-guide.md#3-observability)
-- **Adding a new driver?** → [Developer Guide: Drivers](developer-guide/module-drivers.md)
-- **Design decisions?** → [ADRs](adr/)
-- **Future features?** → [Roadmap](roadmap/)
+**Previous Release**: v0.3.1 (2025-09-27) - AIOP + Full testing suite

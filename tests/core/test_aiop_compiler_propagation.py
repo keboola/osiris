@@ -1,7 +1,7 @@
 """Tests for OML metadata propagation through compilation to AIOP."""
 
-import tempfile
 from pathlib import Path
+import tempfile
 from unittest.mock import patch
 
 import pytest

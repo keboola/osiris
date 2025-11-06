@@ -14,9 +14,9 @@
 
 """Supabase data writer for loading operations."""
 
-import logging
 from datetime import datetime
 from decimal import Decimal
+import logging
 from typing import Any
 
 import numpy as np
@@ -234,8 +234,10 @@ class SupabaseWriter(ILoader):
             True if table exists
         """
         try:
+            import asyncio  # noqa: PLC0415  # Lazy import for async operations
+
             # Try to query the table with limit 0 to check existence
-            self.client.table(table_name).select("*").limit(0).execute()
+            await asyncio.to_thread(lambda: self.client.table(table_name).select("*").limit(0).execute())
             return True
         except Exception as e:
             # If we get a "table not found" error, the table doesn't exist
@@ -294,12 +296,12 @@ class SupabaseWriter(ILoader):
         if self._initialized:
             return
 
-        self.client = self.base_client.connect()
+        self.client = await self.base_client.connect()
         self._initialized = True
 
     async def disconnect(self) -> None:
         """Close Supabase connection."""
-        self.base_client.disconnect()
+        await self.base_client.disconnect()
         self.client = None
         self._initialized = False
 
@@ -325,9 +327,12 @@ class SupabaseWriter(ILoader):
                 await self._create_table_if_not_exists(table_name, serialized_data)
 
             # Process in batches for large datasets
+            import asyncio  # noqa: PLC0415  # Lazy import for async operations
+
             for i in range(0, len(serialized_data), self.batch_size):
                 batch = serialized_data[i : i + self.batch_size]
-                self.client.table(table_name).insert(batch).execute()
+                # Execute sync Supabase call in thread pool (bind batch variable to avoid B023)
+                await asyncio.to_thread(lambda b=batch: self.client.table(table_name).insert(b).execute())
                 logger.debug(f"Inserted batch {i // self.batch_size + 1} ({len(batch)} rows)")
 
             logger.info(f"Successfully inserted {len(data)} rows into {table_name}")
@@ -385,13 +390,16 @@ class SupabaseWriter(ILoader):
                 await self._create_table_if_not_exists(table_name, serialized_data)
 
             # Process in batches
+            import asyncio  # noqa: PLC0415  # Lazy import for async operations
+
             for i in range(0, len(serialized_data), self.batch_size):
                 batch = serialized_data[i : i + self.batch_size]
 
                 # Supabase upsert handles conflicts based on table's primary key
                 # Log which columns are being used for conflict resolution
                 logger.debug(f"Upserting with primary_key: {primary_key}")
-                self.client.table(table_name).upsert(batch).execute()
+                # Execute sync Supabase call in thread pool (bind batch variable to avoid B023)
+                await asyncio.to_thread(lambda b=batch: self.client.table(table_name).upsert(b).execute())
                 logger.debug(f"Upserted batch {i // self.batch_size + 1} ({len(batch)} rows)")
 
             logger.info(f"Successfully upserted {len(data)} rows into {table_name}")
@@ -417,9 +425,12 @@ class SupabaseWriter(ILoader):
             await self.connect()
 
         try:
+            import asyncio  # noqa: PLC0415  # Lazy import for async operations
+
             # Delete all existing data (be very careful!)
             logger.warning(f"Deleting all data from {table_name}")
-            (self.client.table(table_name).delete().neq("id", -999999).execute())  # Trick to delete all rows
+            # Trick to delete all rows (execute sync call in thread pool)
+            await asyncio.to_thread(lambda: self.client.table(table_name).delete().neq("id", -999999).execute())
 
             # Insert new data
             await self.insert_data(table_name, data)
@@ -446,13 +457,16 @@ class SupabaseWriter(ILoader):
             await self.connect()
 
         try:
+            import asyncio  # noqa: PLC0415  # Lazy import for async operations
+
             query = self.client.table(table_name).update(updates)
 
             # Apply filters
             for key, value in filters.items():
                 query = query.eq(key, value)
 
-            query.execute()
+            # Execute sync Supabase call in thread pool
+            await asyncio.to_thread(query.execute)
             logger.info(f"Updated rows in {table_name} where {filters}")
             return True
 
@@ -474,13 +488,16 @@ class SupabaseWriter(ILoader):
             await self.connect()
 
         try:
+            import asyncio  # noqa: PLC0415  # Lazy import for async operations
+
             query = self.client.table(table_name).delete()
 
             # Apply filters
             for key, value in filters.items():
                 query = query.eq(key, value)
 
-            query.execute()
+            # Execute sync Supabase call in thread pool
+            await asyncio.to_thread(query.execute)
             logger.info(f"Deleted rows from {table_name} where {filters}")
             return True
 

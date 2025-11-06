@@ -1,7 +1,7 @@
 """Regression test: ban legacy path literals across codebase."""
 
-import re
 from pathlib import Path
+import re
 
 import pytest
 

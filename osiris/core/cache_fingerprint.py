@@ -18,10 +18,10 @@ This module implements SHA-256 fingerprinting for component specs and input opti
 to eliminate stale discovery reuse when configurations change.
 """
 
-import hashlib
-import json
 from dataclasses import dataclass
 from datetime import datetime
+import hashlib
+import json
 from typing import Any
 
 

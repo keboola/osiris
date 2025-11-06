@@ -4,12 +4,12 @@ This module extracts essential component information from the registry
 and creates a compact JSON context optimized for token efficiency.
 """
 
+from datetime import UTC, datetime
 import hashlib
 import json
 import logging
-import re
-from datetime import UTC, datetime
 from pathlib import Path
+import re
 from typing import Any
 
 from jsonschema import Draft202012Validator, ValidationError

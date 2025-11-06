@@ -136,6 +136,16 @@ secrets:
   - /auth_username
   - /headers
 
+x-connection-fields:
+  - name: endpoint
+    override: allowed
+  - name: auth_token
+    override: forbidden  # Security: token cannot be overridden
+  - name: auth_username
+    override: forbidden  # Security
+  - name: headers
+    override: warning  # Allow but warn (headers might contain auth)
+
 redaction:
   strategy: mask
   mask: "***"

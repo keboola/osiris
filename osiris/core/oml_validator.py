@@ -99,6 +99,48 @@ class OMLValidator:
                 }
             )
 
+    def _get_connection_fields_info(self, component_spec: dict) -> dict:
+        """
+        Extract connection fields from component spec with override policies.
+
+        Returns:
+            {
+                "fields": set of field names,
+                "overrides": dict of {field_name: override_policy}
+            }
+        """
+        if "x-connection-fields" not in component_spec:
+            # Fallback to secrets for backward compatibility
+            secrets = set()
+            for secret_path in component_spec.get("secrets", []):
+                field = secret_path.lstrip("/").split("/")[0]
+                secrets.add(field)
+            for secret_path in component_spec.get("x-secret", []):
+                field = secret_path.lstrip("/").split("/")[0]
+                secrets.add(field)
+            return {"fields": secrets, "overrides": {f: "forbidden" for f in secrets}}
+
+        conn_fields_def = component_spec["x-connection-fields"]
+
+        # Handle simple array format: ["host", "port", ...]
+        if isinstance(conn_fields_def, list) and len(conn_fields_def) > 0 and isinstance(conn_fields_def[0], str):
+            return {"fields": set(conn_fields_def), "overrides": {f: "allowed" for f in conn_fields_def}}
+
+        # Handle advanced format: [{name: "host", override: "allowed"}, ...]
+        fields = set()
+        overrides = {}
+        for field_def in conn_fields_def:
+            if isinstance(field_def, dict):
+                name = field_def["name"]
+                fields.add(name)
+                overrides[name] = field_def.get("override", "allowed")
+            else:
+                # Fallback for mixed format
+                fields.add(field_def)
+                overrides[field_def] = "allowed"
+
+        return {"fields": fields, "overrides": overrides}
+
     def _validate_version(self, oml: dict[str, Any]) -> None:
         """Validate OML version."""
         version = oml.get("oml_version")
@@ -352,6 +394,130 @@ class OMLValidator:
                     "location": f"{location}.connection",
                 }
             )
+
+        # Business Logic Validation
+        # ------------------------
+        # These validations match the compiler's business rules to provide early feedback
+        # and prevent "valid OML" that fails at compilation time.
+
+        if component:
+            # 1. Primary Key Requirement for Writers with replace/upsert modes
+            # Components that support write_mode: mysql.writer, supabase.writer, duckdb.writer
+            # Note: mysql.writer uses "mode" field, while supabase.writer uses "write_mode"
+            writer_components = {
+                "mysql.writer",
+                "supabase.writer",
+                "duckdb.writer",
+                "filesystem.csv_writer",  # if it supports write_mode
+            }
+
+            if component in writer_components:
+                # Check both "write_mode" (Supabase) and "mode" (MySQL) fields
+                write_mode_value = config.get("write_mode", config.get("mode"))
+
+                if write_mode_value in {"replace", "upsert"}:
+                    # Primary key is required for replace and upsert operations
+                    if "primary_key" not in config:
+                        self.errors.append(
+                            {
+                                "type": "missing_required_field",
+                                "message": f"'primary_key' is required when write_mode is '{write_mode_value}'",
+                                "location": f"{location}.primary_key",
+                            }
+                        )
+
+            # 2. Write Mode Validation
+            # Warn about unknown write modes (valid values: append, replace, upsert, truncate)
+            write_mode = config.get("write_mode")
+            mode = config.get("mode")
+            mode_value = write_mode or mode
+
+            if mode_value is not None:
+                valid_write_modes = {"append", "replace", "upsert", "truncate"}
+                if mode_value not in valid_write_modes:
+                    self.warnings.append(
+                        {
+                            "type": "unknown_write_mode",
+                            "message": f"Unknown write mode '{mode_value}' (expected one of: {', '.join(sorted(valid_write_modes))})",
+                            "location": f"{location}.{'write_mode' if write_mode else 'mode'}",
+                        }
+                    )
+
+        # Reserved keys that don't need to be in component spec
+        reserved_keys = {"connection"}
+
+        # Validate config keys against component spec
+        if component:
+            component_spec = self.registry.get_component(component)
+            if component_spec and "configSchema" in component_spec:
+                schema = component_spec["configSchema"]
+                allowed_fields = set(schema.get("properties", {}).keys())
+                required_fields = set(schema.get("required", []))
+
+                # Check for unknown keys
+                for key in config:
+                    if key not in allowed_fields and key not in reserved_keys:
+                        self.errors.append(
+                            {
+                                "type": "unknown_config_key",
+                                "message": f"Unknown configuration key '{key}' for component '{component}'",
+                                "location": f"{location}.{key}",
+                            }
+                        )
+
+                # Check for missing required keys
+                # If connection reference is provided, skip validation of connection-provided fields
+                has_connection_ref = (
+                    "connection" in config
+                    and isinstance(config["connection"], str)
+                    and config["connection"].startswith("@")
+                )
+
+                if has_connection_ref and component:
+                    # Get connection fields from spec
+                    conn_info = self._get_connection_fields_info(component_spec)
+                    connection_provided = conn_info["fields"]
+                    override_policies = conn_info["overrides"]
+
+                    # Check for invalid overrides
+                    for key in config:
+                        if key in override_policies:
+                            policy = override_policies[key]
+                            if policy == "forbidden":
+                                self.errors.append(
+                                    {
+                                        "type": "forbidden_override",
+                                        "message": f"Cannot override connection field '{key}' (policy: forbidden)",
+                                        "location": f"{location}.{key}",
+                                    }
+                                )
+                            elif policy == "warning":
+                                self.warnings.append(
+                                    {
+                                        "type": "override_warning",
+                                        "message": f"Overriding connection field '{key}' (consider using connection value)",
+                                        "location": f"{location}.{key}",
+                                    }
+                                )
+                else:
+                    connection_provided = set()
+
+                for req_key in required_fields:
+                    # Skip if it's a reserved key
+                    if req_key in reserved_keys:
+                        continue
+                    # Skip connection-provided fields when connection ref is used
+                    if has_connection_ref and req_key in connection_provided:
+                        continue
+                    # Otherwise check if required key is missing
+                    if req_key not in config:
+                        self.errors.append(
+                            {
+                                "type": "missing_config_key",
+                                "message": f"Missing required configuration key '{req_key}' for component '{component}'",
+                                "location": f"{location}.{req_key}",
+                            }
+                        )
 
         # Component-specific validation
         if component == "filesystem.csv_writer":
