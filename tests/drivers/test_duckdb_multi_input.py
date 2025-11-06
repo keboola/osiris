@@ -56,16 +56,24 @@ def test_duckdb_registers_multiple_tables(duckdb_driver, multi_input_dataframes,
 
 
 def test_duckdb_fails_with_no_dataframes(duckdb_driver, tmp_path):
-    """DuckDB should fail if no DataFrames in inputs."""
-    config = {"query": "SELECT 1"}
+    """DuckDB now allows empty inputs for data generation queries (e.g., SELECT 1).
 
-    with pytest.raises(RuntimeError, match="No DataFrames found"):
-        duckdb_driver.run(
-            step_id="test-step",
-            config=config,
-            inputs={},  # Empty inputs
-            ctx=None
-        )
+    This test verifies that DuckDB can handle data generation queries without
+    requiring input DataFrames. This is useful for generating synthetic data.
+    """
+    config = {"query": "SELECT 1 as value"}
+
+    result = duckdb_driver.run(
+        step_id="test-step",
+        config=config,
+        inputs={},  # Empty inputs - now allowed for data generation
+        ctx=None
+    )
+
+    # Should successfully generate data without input tables
+    assert "df" in result
+    assert len(result["df"]) == 1
+    assert list(result["df"].columns) == ["value"]
 
 
 def test_duckdb_ignores_non_df_keys(duckdb_driver, tmp_path):

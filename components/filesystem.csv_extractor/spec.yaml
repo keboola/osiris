@@ -1,0 +1,239 @@
+# Filesystem CSV Extractor Component Specification
+name: filesystem.csv_extractor
+version: 1.0.0
+title: Filesystem CSV Extractor
+description: Extract data from CSV files with configurable parsing options and discovery support
+
+modes:
+  - extract
+  - discover
+
+capabilities:
+  discover: true          # Supports discovery mode for finding CSV files
+  adHocAnalytics: false   # No ad-hoc query support
+  inMemoryMove: false     # No direct move API
+  streaming: true         # Supports streaming reads
+  bulkOperations: true    # Handles batches efficiently
+  transactions: false     # No transaction support for files
+  partitioning: false     # No partitioning support
+  customTransforms: false # No custom transforms
+
+configSchema:
+  type: object
+  properties:
+    path:
+      type: string
+      description: CSV file path or directory path for discovery mode
+      minLength: 1
+    delimiter:
+      type: string
+      description: Field delimiter character
+      default: ","
+      maxLength: 1
+    encoding:
+      type: string
+      description: File encoding
+      default: "utf-8"
+      enum:
+        - "utf-8"
+        - "utf-16"
+        - "ascii"
+        - "latin-1"
+        - "iso-8859-1"
+    header:
+      oneOf:
+        - type: boolean
+        - type: integer
+      description: "Header row: true=first row, false=no header, number=row index"
+      default: true
+    columns:
+      type: array
+      description: Specific columns to extract (default all columns)
+      items:
+        type: string
+      uniqueItems: true
+    skip_rows:
+      type: integer
+      description: Number of rows to skip at the start
+      default: 0
+      minimum: 0
+    limit:
+      type: integer
+      description: Maximum number of rows to read
+      minimum: 1
+    parse_dates:
+      oneOf:
+        - type: boolean
+        - type: array
+          items:
+            type: string
+      description: Parse date columns (true=auto-detect, array=specific columns)
+      default: false
+    dtype:
+      type: object
+      description: 'Column data types as dict (e.g., {"col1":"int64", "col2":"float64"})'
+      additionalProperties: true
+    na_values:
+      type: array
+      description: Additional values to treat as NA/null
+      items:
+        type: string
+      uniqueItems: true
+    chunk_size:
+      type: integer
+      description: Number of rows to read per chunk for streaming
+      default: 10000
+      minimum: 100
+      maximum: 1000000
+    skip_blank_lines:
+      type: boolean
+      description: Skip blank lines during parsing
+      default: true
+    comment:
+      type: string
+      description: Character indicating comment lines to skip
+      maxLength: 1
+    compression:
+      type: string
+      description: Compression type (auto-detect from extension)
+      enum:
+        - "infer"
+        - "gzip"
+        - "bz2"
+        - "zip"
+        - "xz"
+      default: "infer"
+  required:
+    - path
+  additionalProperties: false
+
+secrets: []  # No secrets needed for filesystem operations
+
+constraints:
+  required:
+    - when:
+        delimiter: "\t"
+      must:
+        encoding: "utf-8"
+      error: "Tab delimiter works best with UTF-8 encoding"
+
+examples:
+  - title: Basic CSV extraction
+    config:
+      path: "data/customers.csv"
+      delimiter: ","
+      header: true
+      encoding: "utf-8"
+    notes: Extract all data from CSV with headers
+
+  - title: Column selection with date parsing
+    config:
+      path: "data/transactions.csv"
+      columns:
+        - "id"
+        - "customer_id"
+        - "amount"
+        - "created_at"
+      parse_dates:
+        - "created_at"
+      limit: 10000
+    notes: Extract specific columns and parse dates
+
+  - title: TSV extraction with custom settings
+    config:
+      path: "exports/data.tsv"
+      delimiter: "\t"
+      encoding: "utf-8"
+      header: false
+      skip_rows: 2
+      na_values:
+        - "N/A"
+        - "null"
+        - "-"
+    notes: Tab-separated file without headers, skip first 2 rows
+
+  - title: Discovery mode
+    config:
+      path: "data/"
+    notes: Discover all CSV files in directory
+
+compatibility:
+  requires:
+    - python>=3.8
+  platforms:
+    - linux
+    - darwin
+    - windows
+    - docker
+
+llmHints:
+  inputAliases:
+    path:
+      - file_path
+      - csv_path
+      - input_file
+      - csv_file
+      - source_path
+    delimiter:
+      - separator
+      - field_separator
+      - delim
+      - sep
+    header:
+      - headers
+      - has_header
+      - include_headers
+    columns:
+      - select
+      - fields
+      - column_names
+  promptGuidance: |
+    Use filesystem.csv_extractor to read data from CSV files.
+    Path is required - can be a file or directory (for discovery).
+    Default is comma-delimited with headers and UTF-8 encoding.
+    Supports column selection, date parsing, and chunked reads.
+    Use discovery mode to find CSV files in a directory.
+  yamlSnippets:
+    - "component: filesystem.csv_extractor"
+    - "mode: extract"
+    - "path: data/input.csv"
+    - "delimiter: ','"
+    - "header: true"
+  commonPatterns:
+    - pattern: standard_csv
+      description: Comma-delimited with headers
+    - pattern: tsv_import
+      description: Tab-separated values
+    - pattern: selective_columns
+      description: Extract specific columns only
+    - pattern: date_aware
+      description: Parse date columns automatically
+    - pattern: discovery
+      description: Find CSV files in directory
+
+loggingPolicy:
+  sensitivePaths: []
+  eventDefaults:
+    - extraction.start
+    - extraction.progress
+    - extraction.complete
+    - discovery.start
+    - discovery.complete
+  metricsToCapture:
+    - rows_read
+    - bytes_processed
+    - duration_ms
+
+limits:
+  maxRows: 100000000      # 100M rows
+  maxSizeMB: 10240        # 10GB
+  maxDurationSeconds: 3600 # 1 hour
+  maxConcurrency: 1       # Single file reads
+
+x-runtime:
+  driver: osiris.drivers.filesystem_csv_extractor_driver.FilesystemCsvExtractorDriver
+  requirements:
+    imports:
+      - pandas
+    packages:
+      - pandas
