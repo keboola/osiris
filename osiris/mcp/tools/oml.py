@@ -145,9 +145,16 @@ class OMLTools:
 
             # Pre-process YAML to handle @ symbols in connection references
             # This is a common pattern in OML files
+            # IMPORTANT: Use careful regex to avoid corrupting emails and URLs
+            # Matches: @family.alias (connection reference)
+            # Avoids: user@example.com (email), https://api@host.com (URL)
             import re  # noqa: PLC0415  # Lazy import for performance
 
-            preprocessed = re.sub(r"(@[\w\.]+)(?=\s|$)", r'"\1"', oml_content)
+            # FIX: Use negative lookbehind to prevent matching emails/URLs
+            # (?<![.\w]) - Not preceded by dot or word char (prevents email/URL false positives)
+            # @[\w]+(?:\.[\w]+)* - Proper family[.alias] format
+            # (?=\s|$) - Followed by whitespace or EOL
+            preprocessed = re.sub(r"(?<![.\w])@[\w]+(?:\.[\w]+)*(?=\s|$)", r'"\g<0>"', oml_content)
 
             # Parse YAML
             try:
