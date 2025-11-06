@@ -13,6 +13,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.5.3] - 2025-11-06
+
+**Bug Fixes - Python Version & Runtime**
+
+This release corrects Python version requirements and fixes a critical runtime bug preventing CSV extractor execution.
+
+### Fixed
+
+1. **Python Version Requirement (Issue #52)**
+   - Corrected `requires-python` from `>=3.9` to `>=3.11` in PyPI metadata
+   - Updated all documentation to reflect Python 3.11+ requirement
+   - Removed Python 3.9/3.10 classifiers, added Python 3.13
+   - Files updated: pyproject.toml, CLAUDE.md, docs/quickstart.md, docs/guides/mcp-production.md, e2e-test-simple.sh
+
+2. **RunnerContext.log_metric() Missing **kwargs (Issue #51)**
+   - Fixed signature mismatch causing TypeError when drivers use tags parameter
+   - Changed `def log_metric(self, name: str, value: Any):` to accept `**kwargs`
+   - CSV extractor and other components now execute without TypeError
+   - File: `osiris/core/runner_v0.py:448-449`
+
+### Impact
+
+- **Breaking**: Python 3.9 and 3.10 are no longer supported (use Python 3.11+)
+- **Fixed**: CSV extraction pipelines now work correctly with metric tags
+
 ## [0.5.2] - 2025-11-06
 
 **Critical Bug Fixes Batch 3 - Code Review Findings**
