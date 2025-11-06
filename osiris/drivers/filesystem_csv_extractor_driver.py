@@ -54,7 +54,16 @@ class FilesystemCsvExtractorDriver:
         # Extract CSV parsing options with defaults
         delimiter = config.get("delimiter", ",")
         encoding = config.get("encoding", "utf-8")
-        header = 0 if config.get("header", True) else None
+
+        # Handle header: boolean (true=0, false=None) or integer (row number)
+        # Spec supports: true (row 0), false (no header), or integer (specific row)
+        header_config = config.get("header", True)
+        if isinstance(header_config, bool):
+            header = 0 if header_config else None
+        else:
+            # Integer row index to use as header
+            header = header_config
+
         columns = config.get("columns")
         skip_rows = config.get("skip_rows")
         limit = config.get("limit")
@@ -63,6 +72,10 @@ class FilesystemCsvExtractorDriver:
         na_values = config.get("na_values")
         comment = config.get("comment")
         on_bad_lines = config.get("on_bad_lines", "error")
+
+        # Additional pandas options exposed in spec
+        skip_blank_lines = config.get("skip_blank_lines", True)
+        compression = config.get("compression", "infer")
 
         try:
             # Build pandas read_csv parameters
@@ -90,6 +103,12 @@ class FilesystemCsvExtractorDriver:
                 read_params["comment"] = comment
             if on_bad_lines != "error":
                 read_params["on_bad_lines"] = on_bad_lines
+
+            # Add additional pandas options if not default
+            if not skip_blank_lines:  # Only include if False (default is True)
+                read_params["skip_blank_lines"] = skip_blank_lines
+            if compression != "infer":  # Only include if not the default
+                read_params["compression"] = compression
 
             # Read CSV file
             logger.info(f"Step {step_id}: Reading CSV from {resolved_path}")
@@ -265,27 +284,16 @@ class FilesystemCsvExtractorDriver:
                     "size": csv_file.stat().st_size,
                 }
 
-                # Estimate row count using wc -l (fast for large files)
+                # Estimate row count using cross-platform approach
+                file_info["estimated_rows"] = self._estimate_row_count(csv_file)
+
+                # Try to get column count from sample
                 try:
-                    result = subprocess.run(
-                        ["wc", "-l", str(csv_file)],  # noqa: S603, S607
-                        capture_output=True,
-                        text=True,
-                        check=True,
-                        timeout=5,
-                    )
-                    line_count = int(result.stdout.split()[0])
-                    # Subtract 1 for header if present (assume header by default)
-                    file_info["estimated_rows"] = max(0, line_count - 1)
-                except (subprocess.SubprocessError, ValueError, IndexError):
-                    # Fallback: try reading first few rows to estimate
-                    try:
-                        df_sample = pd.read_csv(csv_file, nrows=5)
-                        file_info["estimated_rows"] = "unknown"
-                        file_info["columns"] = len(df_sample.columns)
-                    except Exception:  # noqa: S110
-                        # Can't read file, skip details
-                        pass
+                    df_sample = pd.read_csv(csv_file, nrows=1)
+                    file_info["columns"] = len(df_sample.columns)
+                except Exception:  # noqa: S110
+                    # Can't read file, skip details
+                    pass
 
                 results["files"].append(file_info)
 
@@ -298,3 +306,60 @@ class FilesystemCsvExtractorDriver:
             logger.error(f"CSV discovery error: {e}")
 
         return results
+
+    def _estimate_row_count(self, csv_file: Path, timeout: int = 5) -> int | str:
+        """Estimate row count for CSV file using cross-platform approach.
+
+        Uses fast 'wc -l' on Unix-like systems, falls back to Python counting on Windows.
+        Respects timeout to prevent hanging on huge files.
+
+        Args:
+            csv_file: Path to CSV file
+            timeout: Maximum seconds to spend on estimation
+
+        Returns:
+            Estimated row count (int) or "unknown" if estimation fails/times out
+        """
+        import os
+        import time
+
+        # Try fast path first: use wc -l on Unix-like systems (not Windows)
+        if hasattr(os, "name") and os.name != "nt":
+            try:
+                result = subprocess.run(
+                    ["wc", "-l", str(csv_file)],  # noqa: S603, S607
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=timeout,
+                )
+                line_count = int(result.stdout.split()[0])
+                # Subtract 1 for header if present
+                return max(0, line_count - 1)
+            except (subprocess.SubprocessError, ValueError, IndexError):
+                pass
+
+        # Fallback: Python-only approach (cross-platform, works on Windows)
+        try:
+            start_time = time.time()
+            line_count = 0
+
+            with open(csv_file, "r", encoding="utf-8", errors="ignore") as f:
+                # Skip header
+                next(f, None)
+
+                # Count remaining lines until timeout
+                for line_count, _ in enumerate(f, start=1):
+                    if time.time() - start_time > timeout:
+                        # Timeout: return unknown
+                        logger.debug(
+                            f"Row counting timeout for {csv_file.name}, "
+                            "returning 'unknown'"
+                        )
+                        return "unknown"
+
+            return max(0, line_count)
+
+        except Exception as e:
+            logger.debug(f"Row count estimation failed: {e}")
+            return "unknown"
