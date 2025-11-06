@@ -263,7 +263,7 @@ def test_supabase_writer_ddl_plan_generation(monkeypatch):
                     "write_mode": "append",
                     "create_if_missing": True,
                 },
-                inputs={"df": df},
+                inputs={"df_upstream": df},
                 ctx=mock_ctx,
             )
 

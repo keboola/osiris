@@ -238,6 +238,66 @@ steps:
 
 ---
 
+## DuckDB Processor Table Naming
+
+When a DuckDB processor step has multiple upstream dependencies, each dependency's DataFrame is registered as a separate table in the DuckDB connection.
+
+**Table Naming Convention**:
+- Format: `df_<step_id>` where `<step_id>` is the sanitized upstream step ID
+- Sanitization rules:
+  - Replace any non-alphanumeric characters (except underscore) with underscore
+  - Prefix with underscore if step ID starts with a digit
+  - Original step ID preserved in runner logs for observability
+
+**Example**:
+
+```yaml
+steps:
+  - id: extract-movies
+    component: mysql.extractor
+    mode: read
+    config:
+      connection: "@mysql.production"
+      table: movies
+
+  - id: extract-reviews
+    component: mysql.extractor
+    mode: read
+    config:
+      connection: "@mysql.production"
+      table: reviews
+
+  - id: calculate-success
+    component: duckdb.processor
+    mode: transform
+    needs:
+      - extract-movies
+      - extract-reviews
+    config:
+      transformation: |
+        SELECT
+          m.title,
+          AVG(r.rating) as avg_rating,
+          COUNT(r.rating) as review_count
+        FROM df_extract_reviews r
+        JOIN df_extract_movies m ON r.movie_id = m.id
+        GROUP BY m.title
+        HAVING COUNT(r.rating) >= 3
+        ORDER BY avg_rating DESC
+```
+
+**Available Tables**:
+- `df_extract_movies` (from step `extract-movies`)
+- `df_extract_reviews` (from step `extract-reviews`)
+
+**Sanitization Examples**:
+- `extract-movies` → `df_extract_movies`
+- `get.users` → `df_get_users`
+- `123_records` → `df_123_records`
+- `api-v2.data` → `df_api_v2_data`
+
+---
+
 ## Validation Flow Diagram
 
 ```

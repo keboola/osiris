@@ -101,13 +101,26 @@ class SupabaseWriterDriver(Driver):
             ValueError: If configuration is invalid or inputs missing
             RuntimeError: If write operation fails
         """
-        # Validate inputs
-        if not inputs or "df" not in inputs:
-            raise ValueError(f"Step {step_id}: SupabaseWriterDriver requires 'df' input")
+        # Validate inputs - find DataFrame in df_* keys
+        if not inputs:
+            raise ValueError(f"Step {step_id}: SupabaseWriterDriver requires inputs with DataFrame")
 
-        df = inputs["df"]
-        if not isinstance(df, pd.DataFrame):
-            raise ValueError(f"Step {step_id}: Input 'df' must be a pandas DataFrame")
+        # Find the DataFrame (should be in df_* key from upstream processor/extractor)
+        df = None
+        df_key = None
+        for key, value in inputs.items():
+            if key.startswith("df_") and isinstance(value, pd.DataFrame):
+                df = value
+                df_key = key
+                break
+
+        if df is None:
+            raise ValueError(
+                f"Step {step_id}: SupabaseWriterDriver requires DataFrame input. "
+                f"Expected key starting with 'df_'. Got: {list(inputs.keys())}"
+            )
+
+        logger.debug(f"Step {step_id}: Using DataFrame from {df_key} ({len(df)} rows)")
 
         # Extract configuration (strict - reject unknown keys)
         known_keys = {

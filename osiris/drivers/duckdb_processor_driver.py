@@ -26,7 +26,7 @@ class DuckDBProcessorDriver:
         Args:
             step_id: Step identifier
             config: Configuration containing 'query' SQL string
-            inputs: Optional inputs with 'df' key containing input DataFrame
+            inputs: Optional inputs with keys starting with 'df_' containing input DataFrames
             ctx: Execution context for logging metrics
 
         Returns:
@@ -37,21 +37,28 @@ class DuckDBProcessorDriver:
         if not query:
             raise ValueError(f"Step {step_id}: Missing 'query' in config")
 
-        # Get input DataFrame if provided
-        input_df = None
-        if inputs and "df" in inputs:
-            input_df = inputs["df"]
-            if not isinstance(input_df, pd.DataFrame):
-                raise TypeError(f"Step {step_id}: Input 'df' must be a pandas DataFrame")
-
         try:
             # Create in-memory DuckDB connection
             conn = duckdb.connect(":memory:")
 
-            # Register input DataFrame if provided
-            if input_df is not None:
-                conn.register("input_df", input_df)
-                self.logger.debug(f"Step {step_id}: Registered input_df with {len(input_df)} rows")
+            # Register all DataFrames from inputs dict
+            registered = []
+            if inputs:
+                for key, value in inputs.items():
+                    if key.startswith("df_") and isinstance(value, pd.DataFrame):
+                        conn.register(key, value)
+                        registered.append(key)
+                        self.logger.debug(
+                            f"Step {step_id}: Registered table '{key}' with {len(value)} rows"
+                        )
+
+            if not registered:
+                raise ValueError(
+                    f"Step {step_id}: No DataFrames found in inputs. "
+                    f"Expected keys starting with 'df_'. Got: {list(inputs.keys()) if inputs else '(empty)'}"
+                )
+
+            self.logger.info(f"Step {step_id}: Registered {len(registered)} tables: {registered}")
 
             # Execute the SQL query
             self.logger.debug(f"Step {step_id}: Executing DuckDB query")
@@ -61,12 +68,13 @@ class DuckDBProcessorDriver:
             conn.close()
 
             # Log metrics
+            total_rows_read = sum(len(inputs[key]) for key in registered) if registered else 0
             if hasattr(ctx, "log_metric"):
-                ctx.log_metric("rows_read", len(input_df) if input_df is not None else 0)
+                ctx.log_metric("rows_read", total_rows_read)
                 ctx.log_metric("rows_written", len(result))
 
             self.logger.info(
-                f"Step {step_id}: Transformed {len(input_df) if input_df is not None else 0} rows -> {len(result)} rows"
+                f"Step {step_id}: Transformed {total_rows_read} rows -> {len(result)} rows"
             )
 
             return {"df": result}

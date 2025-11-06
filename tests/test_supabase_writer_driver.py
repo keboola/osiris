@@ -20,15 +20,15 @@ class TestSupabaseWriterDriver:
         driver = SupabaseWriterDriver()
 
         # No inputs
-        with pytest.raises(ValueError, match="requires 'df' input"):
+        with pytest.raises(ValueError, match="requires inputs with DataFrame"):
             driver.run(step_id="test", config={}, inputs=None)
 
         # Empty inputs
-        with pytest.raises(ValueError, match="requires 'df' input"):
+        with pytest.raises(ValueError, match="requires inputs with DataFrame"):
             driver.run(step_id="test", config={}, inputs={})
 
-        # Wrong input type
-        with pytest.raises(ValueError, match="must be a pandas DataFrame"):
+        # Wrong input type (not a DataFrame)
+        with pytest.raises(ValueError, match="requires DataFrame input"):
             driver.run(step_id="test", config={}, inputs={"df": "not a dataframe"})
 
     def test_driver_requires_resolved_connection(self):
@@ -37,7 +37,7 @@ class TestSupabaseWriterDriver:
         df = pd.DataFrame({"col1": [1, 2, 3]})
 
         with pytest.raises(ValueError, match="Missing resolved_connection"):
-            driver.run(step_id="test", config={"table": "test_table"}, inputs={"df": df})
+            driver.run(step_id="test", config={"table": "test_table"}, inputs={"df_upstream": df})
 
     def test_driver_requires_table_name(self):
         """Test that driver requires table name in config."""
@@ -48,7 +48,7 @@ class TestSupabaseWriterDriver:
             driver.run(
                 step_id="test",
                 config={"resolved_connection": {"url": "http://test", "key": "test"}},
-                inputs={"df": df},
+                inputs={"df_upstream": df},
             )
 
     def test_driver_rejects_unknown_config_keys(self):
@@ -64,7 +64,7 @@ class TestSupabaseWriterDriver:
                     "table": "test_table",
                     "unknown_key": "value",
                 },
-                inputs={"df": df},
+                inputs={"df_upstream": df},
             )
 
     def test_upsert_requires_primary_key(self):
@@ -80,7 +80,7 @@ class TestSupabaseWriterDriver:
                     "table": "test_table",
                     "write_mode": "upsert",
                 },
-                inputs={"df": df},
+                inputs={"df_upstream": df},
             )
 
     def test_prepare_records_handles_types(self):
@@ -147,7 +147,7 @@ class TestSupabaseWriterDriver:
                     "table": "test_table",
                     "mode": "append",  # OML uses 'mode' not 'write_mode'
                 },
-                inputs={"df": df},
+                inputs={"df_upstream": df},
                 ctx=mock_context,
             )
 
@@ -188,7 +188,7 @@ class TestSupabaseWriterDriver:
                     "table": "test_table",
                     "batch_size": 3,  # Small batch size
                 },
-                inputs={"df": df},
+                inputs={"df_upstream": df},
             )
 
             # Should be called 4 times (10 rows / 3 per batch = 4 batches)
@@ -228,7 +228,7 @@ class TestSupabaseWriterDriver:
                     "write_mode": "upsert",
                     "primary_key": "id",  # String, not list
                 },
-                inputs={"df": df},
+                inputs={"df_upstream": df},
             )
 
             # Check upsert was called with proper on_conflict
@@ -274,7 +274,7 @@ class TestSupabaseWriterDriver:
                     "resolved_connection": {"url": "http://test", "key": "test"},
                     "table": "test_table",
                 },
-                inputs={"df": df},
+                inputs={"df_upstream": df},
                 ctx=mock_ctx,
             )
 
@@ -327,7 +327,7 @@ class TestSupabaseWriterDriver:
                     "resolved_connection": {"url": "http://test", "key": "test"},
                     "table": "test_table",
                 },
-                inputs={"df": df},
+                inputs={"df_upstream": df},
             )
 
             # Verify context manager was used

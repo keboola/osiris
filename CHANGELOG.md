@@ -7,13 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking Changes
+
+**DuckDB Multi-Input Table Naming** - Pipeline steps with multiple upstream dependencies now use step-id-based table names
+
+- **What changed**: DuckDB processor steps now register input DataFrames as `df_<step_id>` tables instead of single `input_df` table
+- **Why**: Fixed bug where multiple upstream inputs overwrote each other, causing only the last DataFrame to be available
+- **Impact**: Any DuckDB transformations must now reference tables by their step IDs
+- **Migration**: Update SQL queries in DuckDB processor steps to use new naming convention
+
+**Before** (broken for multi-input):
+```yaml
+- id: calculate
+  component: duckdb.processor
+  needs:
+    - extract-movies
+    - extract-reviews
+  transformation: |
+    SELECT * FROM input_df  # ❌ Only worked with single input
+```
+
+**After** (works with multi-input):
+```yaml
+- id: calculate
+  component: duckdb.processor
+  needs:
+    - extract-movies
+    - extract-reviews
+  transformation: |
+    SELECT
+      m.title,
+      AVG(r.rating) as avg_rating
+    FROM df_extract_reviews r
+    JOIN df_extract_movies m ON r.movie_id = m.id
+```
+
+**Table Naming Rules**:
+- Format: `df_<sanitized_step_id>`
+- Invalid SQL characters (hyphens, dots) replaced with underscores
+- Leading digits prefixed with underscore
+- Examples:
+  - `extract-movies` → `df_extract_movies`
+  - `get.data` → `df_get_data`
+  - `123records` → `df_123records`
+
+**Root Cause**: Runner was overwriting `inputs["df"]` for each upstream step, DuckDB driver only registered single `input_df` table.
+
+**Fix**: Runner now stores each upstream DataFrame separately, DuckDB registers all tables with step-id names.
+
 ### Added
 
-(No unreleased changes yet)
+- **Step naming utilities** - New `osiris/core/step_naming.py` module with `sanitize_step_id()` function for SQL-safe identifier generation
+- **Multi-input DataFrame support** - Runner now properly handles multiple upstream DataFrames with unique keys
+- **Enhanced logging** - DuckDB processor logs registered tables and row counts for better observability
 
 ### Changed
 
-(No unreleased changes yet)
+- **Writer drivers updated** - `SupabaseWriterDriver` and `FilesystemCsvWriterDriver` now read from `df_*` keys instead of single `df` key
+- **Runner input handling** - Stores full upstream results by step_id plus DataFrame aliases with `df_` prefix
+
+### Fixed
+
+- **Supabase context manager protocol** - Added synchronous `__enter__`/`__exit__` methods to `SupabaseClient` class
+  - Issue: `with supabase_client as client:` failed with "'SupabaseClient' object does not support the context manager protocol"
+  - Fix: Added `connect_sync()` helper and sync context manager methods alongside existing async methods
+  - Impact: Supabase writer now works correctly in synchronous pipeline execution
+- **Multiple upstream inputs bug** - Fixed runner overwriting DataFrames when step has multiple dependencies
+  - Issue: Steps with `needs: [step1, step2]` only received data from last step
+  - Root cause: Runner stored all DataFrames in same `inputs["df"]` key, overwriting previous values
+  - Fix: Each upstream result now stored with unique key `df_<sanitized_step_id>`
+- **DuckDB multi-table registration** - DuckDB processor now registers all upstream DataFrames as separate tables
+  - Issue: Only single `input_df` table was available, breaking JOINs across multiple sources
+  - Fix: Iterates all `df_*` keys and registers each as named table in DuckDB connection
 
 ## [0.5.0] - 2025-10-20
 

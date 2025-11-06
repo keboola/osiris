@@ -13,6 +13,7 @@ from ..components.registry import ComponentRegistry
 from .config import ConfigError, parse_connection_ref, resolve_connection
 from .driver import DriverRegistry
 from .session_logging import log_event, log_metric
+from .step_naming import sanitize_step_id
 
 logger = logging.getLogger(__name__)
 
@@ -410,15 +411,24 @@ class RunnerV0:
                 for upstream_id in step["needs"]:
                     if upstream_id in self.results:
                         upstream_result = self.results[upstream_id]
+
+                        # Store full upstream result by step_id
+                        inputs[upstream_id] = upstream_result
+
+                        # If result contains DataFrame, also register with df_ prefix
                         if "df" in upstream_result:
-                            # For now, assume single upstream for writers
-                            df_value = upstream_result["df"]
-                            inputs["df"] = df_value
-                            rows = self._count_rows(df_value)
+                            safe_id = sanitize_step_id(upstream_id)
+                            inputs[f"df_{safe_id}"] = upstream_result["df"]
+
+                            # Log for debugging
+                            rows = self._count_rows(upstream_result["df"])
+                            logger.debug(
+                                f"Step {step_id}: Registered df_{safe_id} with {rows} rows from {upstream_id}"
+                            )
                             self._emit_inputs_resolved(
                                 step_id=step_id,
                                 from_step=upstream_id,
-                                key="df",
+                                key=f"df_{safe_id}",
                                 rows=rows,
                                 from_memory=True,
                             )

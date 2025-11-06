@@ -4,6 +4,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,14 +24,26 @@ class FilesystemCsvWriterDriver:
         Returns:
             {} (empty dict for writers)
         """
-        # Validate inputs
-        if not inputs or "df" not in inputs:
+        # Validate inputs - find DataFrame in df_* keys
+        if not inputs:
+            raise ValueError(f"Step {step_id}: FilesystemCsvWriterDriver requires inputs with DataFrame")
+
+        # Find the DataFrame (should be in df_* key from upstream processor/extractor)
+        df = None
+        df_key = None
+        for key, value in inputs.items():
+            if key.startswith("df_") and isinstance(value, pd.DataFrame):
+                df = value
+                df_key = key
+                break
+
+        if df is None:
             raise ValueError(
-                f"Step {step_id}: FilesystemCsvWriterDriver requires 'df' in inputs. "
-                f"Got: {list(inputs.keys()) if inputs else '(none)'}"
+                f"Step {step_id}: FilesystemCsvWriterDriver requires DataFrame input. "
+                f"Expected key starting with 'df_'. Got: {list(inputs.keys())}"
             )
 
-        df = inputs["df"]
+        logger.debug(f"Step {step_id}: Using DataFrame from {df_key} ({len(df)} rows)")
 
         # Get configuration
         file_path = config.get("path")

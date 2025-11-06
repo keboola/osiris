@@ -130,7 +130,7 @@ class TestSupabaseDDLGeneration:
                             "table": "test_table",
                             "create_if_missing": True,
                         },
-                        inputs={"df": df},
+                        inputs={"df_upstream": df},
                         ctx=mock_ctx,
                     )
                     # Expected to fail since table doesn't exist and we can't create it
@@ -212,7 +212,7 @@ class TestSupabaseDDLGeneration:
                             "table": "test_table",
                             "create_if_missing": True,
                         },
-                        inputs={"df": df},
+                        inputs={"df_upstream": df},
                         ctx=mock_ctx,
                     )
 
@@ -278,7 +278,7 @@ class TestSupabaseDDLGeneration:
                         "table": "test_table",
                         "create_if_missing": True,
                     },
-                    inputs={"df": df},
+                    inputs={"df_upstream": df},
                     ctx=mock_ctx,
                 )
 
@@ -325,7 +325,7 @@ class TestSupabaseDDLGeneration:
                     "table": "test_table",
                     "create_if_missing": True,  # Even with this flag
                 },
-                inputs={"df": df},
+                inputs={"df_upstream": df},
                 ctx=MagicMock(),
             )
 

@@ -75,6 +75,57 @@ class SupabaseClient:
             logger.error(f"Failed to connect to Supabase: {e}")
             raise
 
+    def connect_sync(self) -> Client:
+        """Synchronous wrapper for async connect().
+
+        Returns:
+            Connected Supabase client
+
+        Raises:
+            RuntimeError: If called from within an async context
+        """
+        import asyncio  # noqa: PLC0415
+
+        try:
+            # Try to get the running loop
+            try:
+                asyncio.get_running_loop()
+                # We're in an async context - this shouldn't happen in normal usage
+                raise RuntimeError(
+                    "connect_sync() called from async context. Use 'await connect()' instead."
+                )
+            except RuntimeError:
+                # No running loop - good, we can create one
+                pass
+
+            # Run the async connect in a new event loop
+            return asyncio.run(self.connect())
+
+        except Exception as e:
+            logger.error(f"Failed to connect to Supabase (sync): {e}")
+            raise
+
+    def __enter__(self) -> Client:
+        """Synchronous context manager entry.
+
+        Returns:
+            Connected Supabase client
+        """
+        return self.connect_sync()
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Synchronous context manager exit.
+
+        Args:
+            exc_type: Exception type if an exception occurred
+            exc_val: Exception value if an exception occurred
+            exc_tb: Exception traceback if an exception occurred
+        """
+        # Supabase client doesn't need explicit cleanup
+        # Just clear the reference
+        self.client = None
+        self._initialized = False
+
     async def disconnect(self) -> None:
         """Close Supabase connection."""
         # Supabase client doesn't need explicit disconnect
