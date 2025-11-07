@@ -9,9 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Version Hardcoding Audit Report** (`docs/reports/2025-11-06-version-hardcoding-audit.md`)
+  - Comprehensive 413-line audit of all version references across codebase
+  - Identifies single source of truth, stale references, and automation opportunities
+  - Provides detailed recommendations for version management improvements
+
 ### Changed
 
+- **Version Management - Single Source of Truth** (Refactoring)
+  - `osiris/__init__.py` now dynamically reads `__version__` from `pyproject.toml` using native `tomllib`
+  - All CLI banners updated to use dynamic `__version__` instead of hardcoded strings
+  - Files updated:
+    - `osiris/__init__.py:17-26` - Dynamic version reading with fallback
+    - `osiris/cli/main.py:43,129` - Banner and description use f-strings
+    - `osiris/cli/mcp_entrypoint.py:118` - MCP server startup log uses dynamic version
+    - `osiris/cli/chat_deprecation.py:28` - Deprecation notice uses dynamic version
+  - Benefits: Only `pyproject.toml` needs updating on version bumps
+
+- **Documentation Version Updates**
+  - `CLAUDE.md` - Updated all stale references (v0.5.0, v0.5.2 → v0.5.4)
+  - `README.md` - Removed version from title to prevent staleness
+  - `docs/quickstart.md` - Removed version from title
+
 ### Fixed
+
+- **Test Assertions with Hardcoded Versions**
+  - `tests/cli/test_no_chat.py:19` - Now uses dynamic `osiris.__version__` instead of "v0.5.0"
+  - `tests/mcp/test_server_boot.py:113` - Now compares against `osiris.__version__` dynamically
+  - Tests now resilient to version changes, won't break on version bumps
 
 ## [0.5.4] - 2025-11-06
 
