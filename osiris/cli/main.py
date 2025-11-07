@@ -38,9 +38,10 @@ json_output = False
 
 def show_main_help():
     """Display clean main help using simple Rich formatting."""
+    from osiris import __version__
 
     console.print()
-    console.print("[bold green]Osiris v0.5.0 - MCP-based ETL Pipeline Generator[/bold green]")
+    console.print(f"[bold green]Osiris v{__version__} - MCP-based ETL Pipeline Generator[/bold green]")
     console.print("🤖 Your AI data engineering assistant for building")
     console.print("production-ready ETL pipelines via Model Context Protocol.")
     console.print()
@@ -125,8 +126,10 @@ def parse_main_args():
         global_args = sys.argv[1:]  # No command found, everything is global
 
     # Parse global arguments
+    from osiris import __version__
+
     parser = argparse.ArgumentParser(
-        description="Osiris v0.5.0 - MCP-based ETL Pipeline Generator",
+        description=f"Osiris v{__version__} - MCP-based ETL Pipeline Generator",
         add_help=False,
         prog="osiris.py",
     )

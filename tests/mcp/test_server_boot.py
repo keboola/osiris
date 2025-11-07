@@ -107,8 +107,9 @@ class TestServerBoot:
 
     def test_server_version(self):
         """Test server version matches configuration."""
+        import osiris
         from osiris.mcp.config import MCPConfig
 
         config = MCPConfig()
-        assert config.SERVER_VERSION == "0.5.4"
+        assert config.SERVER_VERSION == osiris.__version__
         assert config.PROTOCOL_VERSION == "2024-11-05"  # MCP protocol spec version

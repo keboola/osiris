@@ -114,7 +114,8 @@ def main():
     setup_logging(debug)
 
     logger = logging.getLogger(__name__)
-    logger.info("Starting Osiris MCP Server v0.5.0")
+    from osiris import __version__
+    logger.info(f"Starting Osiris MCP Server v{__version__}")
 
     # Log environment configuration
     logger.info(f"Repository root: {repo_root}")

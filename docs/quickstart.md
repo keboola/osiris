@@ -1,4 +1,4 @@
-# Osiris Pipeline v0.5.2 — Quick Start
+# Osiris Pipeline — Quick Start
 
 A 10‑minute happy‑path to run your first pipeline locally and (optionally) in an E2B sandbox. We'll move a small table from MySQL to a CSV file.
 
