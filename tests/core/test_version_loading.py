@@ -6,8 +6,8 @@ This module tests the three-tier fallback strategy:
 3. Unknown fallback: Return "unknown" if both fail (last resort)
 """
 
-import sys
 from pathlib import Path
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest

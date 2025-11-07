@@ -189,6 +189,9 @@ def cmd_clients(args):
     """Show Claude Desktop configuration snippet."""
     from osiris.mcp.clients_config import build_claude_clients_snippet  # noqa: PLC0415, I001  # Lazy import
 
+    # Check for verbose flag
+    verbose = "--verbose" in args or "-v" in args
+
     info = get_repo_info()
 
     # Show warning if no config exists
@@ -212,16 +215,18 @@ def cmd_clients(args):
     # Print formatted JSON
     print(json.dumps(config, indent=2))
 
-    console.print()
-    console.print("[dim]Configuration details:[/dim]")
-    console.print(f"  [cyan]Installation type:[/cyan] {info['installation_type']}")
-    console.print(f"  [cyan]OSIRIS_HOME source:[/cyan] {info['config_source']}")
-    console.print(f"  [cyan]OSIRIS_HOME path:[/cyan] {info['osiris_home']}")
-    console.print(f"  [cyan]Python executable:[/cyan] {info['venv_python']}")
-    if info["venv_path"]:
-        console.print(f"  [cyan]Virtual env:[/cyan] {info['venv_path']}")
-    console.print()
+    # Show configuration details only in verbose mode
+    if verbose:
+        console.print()
+        console.print("[dim]Configuration details:[/dim]")
+        console.print(f"  [cyan]Installation type:[/cyan] {info['installation_type']}")
+        console.print(f"  [cyan]OSIRIS_HOME source:[/cyan] {info['config_source']}")
+        console.print(f"  [cyan]OSIRIS_HOME path:[/cyan] {info['osiris_home']}")
+        console.print(f"  [cyan]Python executable:[/cyan] {info['venv_python']}")
+        if info["venv_path"]:
+            console.print(f"  [cyan]Virtual env:[/cyan] {info['venv_path']}")
 
+    console.print()
     # Add helpful note about multiple MCP servers
     console.print("[dim]💡 Tip: You can run multiple Osiris MCP servers by using different[/dim]")
     console.print("[dim]   --base-path values. No environment variable conflicts![/dim]")

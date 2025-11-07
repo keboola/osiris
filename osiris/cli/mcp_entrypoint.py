@@ -87,6 +87,11 @@ def setup_environment(base_path: str | None = None):
     # Create OSIRIS_HOME if it doesn't exist
     osiris_home.mkdir(parents=True, exist_ok=True)
 
+    # Change working directory to OSIRIS_HOME
+    # This ensures all relative path lookups (osiris.yaml, osiris_connections.yaml, etc.)
+    # work correctly when MCP client launches server from a different CWD
+    os.chdir(osiris_home)
+
     # Set environment variable for child processes
     os.environ["OSIRIS_HOME"] = str(osiris_home)
 
