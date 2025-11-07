@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Portable MCP Configuration with --base-path Parameter**
+  - MCP entrypoint now accepts `--base-path` parameter for explicit project directory specification
+  - Enables multiple MCP servers on the same machine without environment variable conflicts
+  - Configuration hierarchy: `--base-path` (CLI) > `OSIRIS_HOME` (env) > `osiris.yaml` (config) > fallback
+  - Files updated:
+    - `osiris/cli/mcp_entrypoint.py` - Added `--base-path` parameter parsing and precedence handling
+    - `osiris/mcp/clients_config.py` - Removed bash wrapper, generates portable config
+    - `osiris/cli/mcp_cmd.py` - Config-first detection with installation type awareness
+
 - **Version Hardcoding Audit Report** (`docs/reports/2025-11-06-version-hardcoding-audit.md`)
   - Comprehensive 413-line audit of all version references across codebase
   - Identifies single source of truth, stale references, and automation opportunities
@@ -20,6 +29,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Ensures version detection works correctly in both editable and wheel installations
 
 ### Changed
+
+- **MCP Client Configuration Generation** (`osiris mcp clients`)
+  - **BREAKING**: Generated config now uses `--base-path` parameter instead of environment variables
+  - Removed bash wrapper with `cd` command - portable across any working directory
+  - Config now uses direct Python module invocation: `python -m osiris.cli.mcp_entrypoint --base-path /project`
+  - Auto-detects installation type (pip vs editable) and config source (config/env/fallback)
+  - Shows helpful warnings when `osiris.yaml` is missing
+  - **Migration**: Replace existing MCP configs with output from `osiris mcp clients`
+  - **Benefits**:
+    - Multiple MCP servers can coexist without `OSIRIS_HOME` conflicts
+    - Works with both `pip install osiris-pipeline` and development installations
+    - Simple setup: `osiris init && osiris mcp clients` → copy config snippet
+    - Each project can have independent MCP server configuration
 
 - **Version Management - Single Source of Truth** (Refactoring)
   - `osiris/__init__.py` now dynamically reads `__version__` from `pyproject.toml` using native `tomllib`
