@@ -194,9 +194,7 @@ def cmd_clients(args):
     # Show warning if no config exists
     if info["config_source"] == "fallback":
         console.print()
-        console.print(
-            "[yellow]⚠️  Warning: No osiris.yaml found. Run 'osiris init' to create configuration.[/yellow]"
-        )
+        console.print("[yellow]⚠️  Warning: No osiris.yaml found. Run 'osiris init' to create configuration.[/yellow]")
         console.print("[dim]   Using fallback configuration for development mode.[/dim]")
 
     # Build config snippet using dedicated module
