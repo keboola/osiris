@@ -51,37 +51,62 @@ def get_repo_info():
     Detect repository path, venv, and OSIRIS_HOME.
 
     Resolution order for OSIRIS_HOME:
-    1. If env OSIRIS_HOME is set and non-empty: use Path(env["OSIRIS_HOME"]).resolve()
-    2. Else: OSIRIS_HOME = (repo_root / "testing_env").resolve()
+    1. Load osiris.yaml config and use filesystem.base_path (pip install scenario)
+    2. Else if env OSIRIS_HOME is set: use that
+    3. Else: Fallback to repo_root/testing_env (dev mode)
 
     Returns:
-        dict: Configuration with resolved absolute paths
+        dict: Configuration with resolved absolute paths and metadata
+            - osiris_home: Resolved OSIRIS_HOME path
+            - venv_python: Python executable to use
+            - config_source: Where OSIRIS_HOME came from ("config"|"env"|"fallback")
+            - installation_type: "pip" or "editable"
     """
-    repo_root = find_repo_root()
+    # Detect installation type
+    current_file = Path(__file__).resolve()
+    is_pip_install = "site-packages" in str(current_file)
+    installation_type = "pip" if is_pip_install else "editable"
 
-    # Detect virtual environment
+    # Try to load config first (recommended approach for pip installs)
+    config_source = "fallback"
+    osiris_home = None
+
+    try:
+        from osiris.core.fs_config import load_osiris_config  # noqa: PLC0415  # Lazy import
+
+        fs_config, _, _ = load_osiris_config()
+        if fs_config.base_path:
+            osiris_home = Path(fs_config.base_path).resolve()
+            config_source = "config"
+    except (FileNotFoundError, ImportError):
+        # No config file found - this is OK for dev mode
+        pass
+    except Exception as e:
+        # Config exists but is invalid - warn but don't fail
+        console.print(f"[yellow]Warning: Failed to load osiris.yaml: {e}[/yellow]")
+
+    # Fallback to environment variable
+    if not osiris_home:
+        osiris_home_env = os.environ.get("OSIRIS_HOME", "").strip()
+        if osiris_home_env:
+            osiris_home = Path(osiris_home_env).resolve()
+            config_source = "env"
+
+    # Final fallback: use repo_root/testing_env (dev mode)
+    if not osiris_home:
+        repo_root = find_repo_root()
+        osiris_home = (repo_root / "testing_env").resolve()
+        config_source = "fallback"
+
+    # Detect virtual environment - ALWAYS use sys.executable as the authoritative source
+    # sys.executable is the Python interpreter that's currently running this code
+    venv_python = sys.executable
+
+    # Detect if we're in a virtual environment
     venv_path = None
-    venv_python = sys.executable  # Default to current Python
-
     if hasattr(sys, "real_prefix") or (hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix):
         # We're in a virtual environment
         venv_path = Path(sys.prefix).resolve()
-        venv_python = str(venv_path / "bin" / "python")
-    else:
-        # Check common venv locations
-        for venv_name in [".venv", "venv", "env"]:
-            candidate = repo_root / venv_name
-            if candidate.exists() and (candidate / "bin" / "python").exists():
-                venv_path = candidate.resolve()
-                venv_python = str(venv_path / "bin" / "python")
-                break
-
-    # Resolve OSIRIS_HOME with proper precedence
-    osiris_home_env = os.environ.get("OSIRIS_HOME", "").strip()
-    if osiris_home_env:
-        osiris_home = Path(osiris_home_env).resolve()
-    else:
-        osiris_home = (repo_root / "testing_env").resolve()
 
     # Resolve OSIRIS_LOGS_DIR (suggest if not set)
     osiris_logs_dir = os.environ.get("OSIRIS_LOGS_DIR", "").strip()
@@ -89,11 +114,12 @@ def get_repo_info():
         osiris_logs_dir = str(osiris_home / "logs")
 
     return {
-        "repo_root": str(repo_root),
+        "osiris_home": str(osiris_home),
         "venv_path": str(venv_path) if venv_path else None,
         "venv_python": venv_python,
-        "osiris_home": str(osiris_home),
         "osiris_logs_dir": osiris_logs_dir,
+        "config_source": config_source,
+        "installation_type": installation_type,
     }
 
 
@@ -165,8 +191,16 @@ def cmd_clients(args):
 
     info = get_repo_info()
 
+    # Show warning if no config exists
+    if info["config_source"] == "fallback":
+        console.print()
+        console.print(
+            "[yellow]⚠️  Warning: No osiris.yaml found. Run 'osiris init' to create configuration.[/yellow]"
+        )
+        console.print("[dim]   Using fallback configuration for development mode.[/dim]")
+
     # Build config snippet using dedicated module
-    config = build_claude_clients_snippet(base_path=info["repo_root"], venv_python=info["venv_python"])
+    config = build_claude_clients_snippet(base_path=info["osiris_home"], venv_python=info["venv_python"])
 
     console.print()
     console.print("[bold green]Claude Desktop Configuration[/bold green]")
@@ -181,12 +215,18 @@ def cmd_clients(args):
     print(json.dumps(config, indent=2))
 
     console.print()
-    console.print("[dim]Detected configuration (resolved absolute paths):[/dim]")
-    console.print(f"  [cyan]Repository:[/cyan] {info['repo_root']}")
-    console.print(f"  [cyan]Virtual env:[/cyan] {info['venv_path'] or 'None (using system Python)'}")
+    console.print("[dim]Configuration details:[/dim]")
+    console.print(f"  [cyan]Installation type:[/cyan] {info['installation_type']}")
+    console.print(f"  [cyan]OSIRIS_HOME source:[/cyan] {info['config_source']}")
+    console.print(f"  [cyan]OSIRIS_HOME path:[/cyan] {info['osiris_home']}")
     console.print(f"  [cyan]Python executable:[/cyan] {info['venv_python']}")
-    console.print(f"  [cyan]OSIRIS_HOME:[/cyan] {info['osiris_home']}")
-    console.print(f"  [cyan]OSIRIS_LOGS_DIR:[/cyan] {info['osiris_logs_dir']} [dim](suggested)[/dim]")
+    if info["venv_path"]:
+        console.print(f"  [cyan]Virtual env:[/cyan] {info['venv_path']}")
+    console.print()
+
+    # Add helpful note about multiple MCP servers
+    console.print("[dim]💡 Tip: You can run multiple Osiris MCP servers by using different[/dim]")
+    console.print("[dim]   --base-path values. No environment variable conflicts![/dim]")
     console.print()
 
 
