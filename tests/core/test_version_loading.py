@@ -68,6 +68,7 @@ def test_fallback_to_unknown_when_all_fail(monkeypatch):
 
     This is the last resort fallback that should rarely happen in practice.
     """
+
     # Mock both fallback mechanisms to fail
     def mock_read_text():
         raise FileNotFoundError("pyproject.toml not found")

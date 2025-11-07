@@ -27,6 +27,7 @@ except Exception:
     # Production mode: read from installed package metadata
     try:
         from importlib.metadata import version
+
         __version__ = version("osiris-pipeline")
     except Exception:
         # Last resort fallback (should never happen in normal usage)
