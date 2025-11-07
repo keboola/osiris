@@ -38,7 +38,8 @@ coverage.xml
 htmlcov/
 
 # Internal tools
-.claude/
+.claude/*
+!.claude/skills/
 .audit/
 .playwright-mcp/
 
