@@ -21,19 +21,27 @@ _project_root = Path(__file__).parent.parent
 _pyproject = _project_root / "pyproject.toml"
 
 try:
+    # Development mode: read from pyproject.toml
     __version__ = tomllib.loads(_pyproject.read_text())["project"]["version"]
 except Exception:
-    __version__ = "0.5.4"  # Fallback for installed package
+    # Production mode: read from installed package metadata
+    try:
+        from importlib.metadata import version
+
+        __version__ = version("osiris-pipeline")
+    except Exception:
+        # Last resort fallback (should never happen in normal usage)
+        __version__ = "unknown"
 
 __author__ = "Osiris Team"
 __description__ = "LLM-first conversational ETL pipeline generator"
 
 # Database connectors
-from .connectors import MySQLExtractor, MySQLWriter, SupabaseExtractor, SupabaseWriter
-from .core.discovery import ExtractorFactory, ProgressiveDiscovery, WriterFactory
+from .connectors import MySQLExtractor, MySQLWriter, SupabaseExtractor, SupabaseWriter  # noqa: E402
+from .core.discovery import ExtractorFactory, ProgressiveDiscovery, WriterFactory  # noqa: E402
 
 # Core interfaces
-from .core.interfaces import (
+from .core.interfaces import (  # noqa: E402
     IDiscovery,
     IExtractor,
     ILoader,
@@ -42,7 +50,7 @@ from .core.interfaces import (
 )
 
 # Core implementations
-from .core.state_store import SQLiteStateStore
+from .core.state_store import SQLiteStateStore  # noqa: E402
 
 __all__ = [
     # Interfaces

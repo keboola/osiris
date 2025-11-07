@@ -14,17 +14,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Identifies single source of truth, stale references, and automation opportunities
   - Provides detailed recommendations for version management improvements
 
+- **Version Loading Tests** (`tests/core/test_version_loading.py`)
+  - Comprehensive test suite for three-tier version loading strategy
+  - Tests development mode (pyproject.toml), production mode (importlib.metadata), and fallback scenarios
+  - Ensures version detection works correctly in both editable and wheel installations
+
 ### Changed
 
 - **Version Management - Single Source of Truth** (Refactoring)
   - `osiris/__init__.py` now dynamically reads `__version__` from `pyproject.toml` using native `tomllib`
+  - **Three-tier fallback strategy** for production robustness:
+    1. Development mode: Read from `pyproject.toml` (primary)
+    2. Production mode: Read from package metadata via `importlib.metadata` (fallback for wheel installs)
+    3. Last resort: Return `"unknown"` if both fail (should never happen in normal usage)
   - All CLI banners updated to use dynamic `__version__` instead of hardcoded strings
   - Files updated:
-    - `osiris/__init__.py:17-26` - Dynamic version reading with fallback
+    - `osiris/__init__.py:17-33` - Three-tier version loading with intelligent fallbacks
     - `osiris/cli/main.py:43,129` - Banner and description use f-strings
     - `osiris/cli/mcp_entrypoint.py:118` - MCP server startup log uses dynamic version
     - `osiris/cli/chat_deprecation.py:28` - Deprecation notice uses dynamic version
-  - Benefits: Only `pyproject.toml` needs updating on version bumps
+  - **Benefits**:
+    - Development: Reads from `pyproject.toml` (always current)
+    - Production: Reads from wheel metadata (correct for installed version)
+    - Only `pyproject.toml` needs updating on version bumps
 
 - **Documentation Version Updates**
   - `CLAUDE.md` - Updated all stale references (v0.5.0, v0.5.2 → v0.5.4)
@@ -37,6 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `tests/cli/test_no_chat.py:19` - Now uses dynamic `osiris.__version__` instead of "v0.5.0"
   - `tests/mcp/test_server_boot.py:113` - Now compares against `osiris.__version__` dynamically
   - Tests now resilient to version changes, won't break on version bumps
+
+- **Production Version Detection** (Critical Fix)
+  - Fixed version fallback to use `importlib.metadata.version()` instead of hardcoded string
+  - Wheels don't include `pyproject.toml`, so previous fallback would show stale version (0.5.4) for all future releases
+  - Now correctly reads version from installed package metadata in production
+  - Addresses code review feedback from Codex
 
 ## [0.5.4] - 2025-11-06
 

@@ -183,6 +183,7 @@ def main():
 
     if args.version:
         from osiris import __version__
+
         if json_output:
             print(json.dumps({"version": f"v{__version__}"}))
         else:
