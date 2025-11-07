@@ -114,7 +114,7 @@ def main():
     setup_logging(debug)
 
     logger = logging.getLogger(__name__)
-    from osiris import __version__
+    from osiris import __version__  # noqa: PLC0415 - Lazy import after environment setup
     logger.info(f"Starting Osiris MCP Server v{__version__}")
 
     # Log environment configuration

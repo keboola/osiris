@@ -36,11 +36,11 @@ __author__ = "Osiris Team"
 __description__ = "LLM-first conversational ETL pipeline generator"
 
 # Database connectors
-from .connectors import MySQLExtractor, MySQLWriter, SupabaseExtractor, SupabaseWriter
-from .core.discovery import ExtractorFactory, ProgressiveDiscovery, WriterFactory
+from .connectors import MySQLExtractor, MySQLWriter, SupabaseExtractor, SupabaseWriter  # noqa: E402
+from .core.discovery import ExtractorFactory, ProgressiveDiscovery, WriterFactory  # noqa: E402
 
 # Core interfaces
-from .core.interfaces import (
+from .core.interfaces import (  # noqa: E402
     IDiscovery,
     IExtractor,
     ILoader,
@@ -49,7 +49,7 @@ from .core.interfaces import (
 )
 
 # Core implementations
-from .core.state_store import SQLiteStateStore
+from .core.state_store import SQLiteStateStore  # noqa: E402
 
 __all__ = [
     # Interfaces
