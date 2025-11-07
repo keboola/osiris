@@ -15,10 +15,10 @@ Osiris MVP is an **LLM-first conversational ETL pipeline generator** that uses A
 6. **Optional execution**: Approved pipelines run locally or in E2B cloud
 
 ### Current Status
-- **Version**: v0.5.0 PRODUCTION READY (October 2025)
+- **Version**: v0.5.4 PRODUCTION READY (October 2025)
 - **Testing**: 1577+ tests passing (98.1% pass rate)
 - **Coverage**: 78.4% overall (85.1% adjusted)
-- **Features**: E2B Integration, Component Registry, Rich CLI, AIOP System, MCP v0.5.0
+- **Features**: E2B Integration, Component Registry, Rich CLI, AIOP System, MCP v0.5.4
 
 ## Quick Setup
 
@@ -41,7 +41,7 @@ make chat                      # Main conversational interface
 osiris run pipeline.yaml --e2b # Run in E2B cloud sandbox
 osiris logs aiop --last        # Export AIOP for LLM analysis
 
-# MCP operations (v0.5.0+)
+# MCP operations (v0.5.4+)
 osiris mcp run --selftest      # Server self-test (<1.3s)
 osiris mcp connections list --json
 osiris mcp aiop list --json
@@ -282,7 +282,7 @@ osiris/
 ```
 
 ## Version Info
-- Current: v0.5.2 (Production Ready)
+- Current: v0.5.4 (Production Ready)
 - Model: Opus 4.1 (claude-opus-4-1-20250805)
 - Python: 3.11+ required
 - Test Suite: ~196 seconds full run

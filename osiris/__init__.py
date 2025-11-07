@@ -14,7 +14,17 @@
 
 """Osiris MVP - Conversational ETL pipeline generator."""
 
-__version__ = "0.5.4"
+import tomllib
+from pathlib import Path
+
+_project_root = Path(__file__).parent.parent
+_pyproject = _project_root / "pyproject.toml"
+
+try:
+    __version__ = tomllib.loads(_pyproject.read_text())["project"]["version"]
+except Exception:
+    __version__ = "0.5.4"  # Fallback for installed package
+
 __author__ = "Osiris Team"
 __description__ = "LLM-first conversational ETL pipeline generator"
 

@@ -1,4 +1,4 @@
-# Osiris Pipeline v0.5.4
+# Osiris Pipeline
 
 **The deterministic compiler for AI-native data pipelines.**
 You describe outcomes in plain English; Osiris compiles them into **reproducible, production-ready manifests** that run with the **same behavior everywhere** (local or cloud).

@@ -6,6 +6,8 @@ import json
 import subprocess
 import sys
 
+import osiris
+
 
 def test_chat_command_deprecated():
     """Test that chat command returns deprecation error."""
@@ -16,7 +18,7 @@ def test_chat_command_deprecated():
 
     # Should show deprecation message
     assert "deprecated" in result.stdout.lower()
-    assert "osiris v0.5.0" in result.stdout.lower()
+    assert f"osiris v{osiris.__version__}" in result.stdout.lower()
 
 
 def test_chat_command_deprecated_json():
