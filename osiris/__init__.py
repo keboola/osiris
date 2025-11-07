@@ -14,8 +14,8 @@
 
 """Osiris MVP - Conversational ETL pipeline generator."""
 
-import tomllib
 from pathlib import Path
+import tomllib
 
 _project_root = Path(__file__).parent.parent
 _pyproject = _project_root / "pyproject.toml"
