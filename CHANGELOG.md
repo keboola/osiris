@@ -9,14 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.5.5] - 2025-11-07
+
+**MCP Configuration Improvements - Portable Setup for Pip Users**
+
+This release fixes MCP configuration for pip-installed users and enables multiple MCP servers per machine without environment variable conflicts.
+
+### Added
+
 - **Portable MCP Configuration with --base-path Parameter**
   - MCP entrypoint now accepts `--base-path` parameter for explicit project directory specification
   - Enables multiple MCP servers on the same machine without environment variable conflicts
   - Configuration hierarchy: `--base-path` (CLI) > `OSIRIS_HOME` (env) > `osiris.yaml` (config) > fallback
+  - MCP server changes working directory to OSIRIS_HOME to ensure config files are found
   - Files updated:
-    - `osiris/cli/mcp_entrypoint.py` - Added `--base-path` parameter parsing and precedence handling
+    - `osiris/cli/mcp_entrypoint.py` - Added `--base-path` parameter parsing, precedence handling, and CWD change
     - `osiris/mcp/clients_config.py` - Removed bash wrapper, generates portable config
-    - `osiris/cli/mcp_cmd.py` - Config-first detection with installation type awareness
+    - `osiris/cli/mcp_cmd.py` - Config-first detection with installation type awareness, `--verbose` flag
 
 - **Version Hardcoding Audit Report** (`docs/reports/2025-11-06-version-hardcoding-audit.md`)
   - Comprehensive 413-line audit of all version references across codebase
@@ -36,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Config now uses direct Python module invocation: `python -m osiris.cli.mcp_entrypoint --base-path /project`
   - Auto-detects installation type (pip vs editable) and config source (config/env/fallback)
   - Shows helpful warnings when `osiris.yaml` is missing
+  - Configuration details now hidden by default, shown with `--verbose` or `-v` flag
   - **Migration**: Replace existing MCP configs with output from `osiris mcp clients`
   - **Benefits**:
     - Multiple MCP servers can coexist without `OSIRIS_HOME` conflicts
