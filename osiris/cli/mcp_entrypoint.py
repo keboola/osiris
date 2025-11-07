@@ -34,15 +34,20 @@ def find_repo_root():
     return Path(__file__).resolve().parents[2]
 
 
-def setup_environment():
+def setup_environment(base_path: str | None = None):
     """
     Setup OSIRIS_HOME and PYTHONPATH before importing osiris modules.
 
     Resolution order for OSIRIS_HOME:
-    1. If env OSIRIS_HOME is set and non-empty: use Path(env["OSIRIS_HOME"]).resolve()
-    2. Else: OSIRIS_HOME = (repo_root / "testing_env").resolve()
+    1. If base_path parameter is provided: use it
+    2. Else if env OSIRIS_HOME is set and non-empty: use Path(env["OSIRIS_HOME"]).resolve()
+    3. Else: Load from osiris.yaml config (filesystem.base_path)
+    4. Else: OSIRIS_HOME = (repo_root / "testing_env").resolve()
 
     Creates OSIRIS_HOME directory if it doesn't exist.
+
+    Args:
+        base_path: Optional explicit base path (overrides all other sources)
     """
     repo_root = find_repo_root()
 
@@ -51,10 +56,32 @@ def setup_environment():
         sys.path.insert(0, str(repo_root))
 
     # Resolve OSIRIS_HOME with proper precedence
-    osiris_home_env = os.environ.get("OSIRIS_HOME", "").strip()
-    if osiris_home_env:
-        osiris_home = Path(osiris_home_env).resolve()
-    else:
+    osiris_home = None
+
+    # 1. Explicit parameter (highest priority)
+    if base_path:
+        osiris_home = Path(base_path).resolve()
+
+    # 2. Environment variable
+    if not osiris_home:
+        osiris_home_env = os.environ.get("OSIRIS_HOME", "").strip()
+        if osiris_home_env:
+            osiris_home = Path(osiris_home_env).resolve()
+
+    # 3. Load from config
+    if not osiris_home:
+        try:
+            from osiris.core.fs_config import load_osiris_config  # noqa: PLC0415  # Lazy import
+
+            fs_config, _, _ = load_osiris_config()
+            if fs_config.base_path:
+                osiris_home = Path(fs_config.base_path).resolve()
+        except (FileNotFoundError, ImportError):
+            # No config file - OK for dev mode
+            pass
+
+    # 4. Fallback to repo_root/testing_env
+    if not osiris_home:
         osiris_home = (repo_root / "testing_env").resolve()
 
     # Create OSIRIS_HOME if it doesn't exist
@@ -73,8 +100,15 @@ def setup_environment():
     return repo_root, osiris_home
 
 
+# Parse --base-path early before importing osiris modules
+base_path_arg = None
+for i, arg in enumerate(sys.argv):
+    if arg == "--base-path" and i + 1 < len(sys.argv):
+        base_path_arg = sys.argv[i + 1]
+        break
+
 # Setup environment before importing osiris modules
-repo_root, osiris_home = setup_environment()
+repo_root, osiris_home = setup_environment(base_path=base_path_arg)
 
 from osiris.mcp.server import OsirisMCPServer  # noqa: E402  # Must import after setup_environment()
 
