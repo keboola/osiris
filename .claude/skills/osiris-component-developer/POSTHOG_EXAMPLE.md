@@ -91,10 +91,14 @@ modes:
   - discover
 
 capabilities:
-  - discover
-  - healthcheck
-  - pagination
-  - filtering
+  discover: true            # Supports discovery mode
+  adHocAnalytics: false     # No ad-hoc query support
+  inMemoryMove: false       # Returns DataFrame but no direct move API
+  streaming: false          # Batch processing only
+  bulkOperations: true      # Supports pagination for large datasets
+  transactions: false       # REST API doesn't support transactions
+  partitioning: false       # No partitioning support
+  customTransforms: false   # No custom transforms
 
 configSchema:
   type: object

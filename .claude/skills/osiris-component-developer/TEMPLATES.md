@@ -15,8 +15,14 @@ modes:
   - extract  # or: write, transform, discover
 
 capabilities:
-  - discover
-  - healthcheck
+  discover: true
+  adHocAnalytics: false
+  inMemoryMove: false
+  streaming: false
+  bulkOperations: true
+  transactions: false
+  partitioning: false
+  customTransforms: false
 
 configSchema:
   type: object
