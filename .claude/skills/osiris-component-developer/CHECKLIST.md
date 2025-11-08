@@ -17,10 +17,10 @@ All Osiris components must pass these 57 validation rules before distribution.
 
 ## CAPABILITIES (4 rules)
 
-- [ ] **CAP-001**: Declares `capabilities` array
-- [ ] **CAP-002**: Has `discover` capability if mode includes `discover`
-- [ ] **CAP-003**: Has `healthcheck` capability (recommended for all components)
-- [ ] **CAP-004**: All declared capabilities are actually implemented in driver
+- [ ] **CAP-001**: Declares `capabilities` object (not array) with boolean flags
+- [ ] **CAP-002**: Sets `discover: true` if mode includes `discover`
+- [ ] **CAP-003**: Declares all 8 standard capabilities (discover, adHocAnalytics, inMemoryMove, streaming, bulkOperations, transactions, partitioning, customTransforms)
+- [ ] **CAP-004**: All capabilities set to `true` are actually implemented in driver
 
 ## DISCOVERY (6 rules)
 

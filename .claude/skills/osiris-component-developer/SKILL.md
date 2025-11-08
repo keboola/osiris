@@ -1,6 +1,6 @@
 ---
 name: osiris-component-developer
-description: Create production-ready Osiris ETL components (extractors, writers, processors). Use when building new components, implementing discovery/doctor capabilities, packaging for distribution, validating against 57-rule checklist, or ensuring E2B cloud compatibility. Supports third-party component development in isolated projects.
+description: Create production-ready Osiris ETL components (extractors, writers, processors). Use when building new components, implementing capabilities (discover, streaming, bulkOperations), adding doctor/healthcheck methods, packaging for distribution, validating against 57-rule checklist, or ensuring E2B cloud compatibility. Supports third-party component development in isolated projects.
 ---
 
 # Osiris Component Developer
@@ -23,7 +23,7 @@ You are an AI assistant specialized in developing components for the Osiris LLM-
 - **Component (spec.yaml)**: Self-describing declarative specification
 - **Driver**: Python implementation of operations
 - **Registry**: Validates and serves component metadata
-- **Capabilities**: Discovery, doctor, bulkOperations, transactions
+- **Capabilities**: discover, adHocAnalytics, inMemoryMove, streaming, bulkOperations, transactions, partitioning, customTransforms (all boolean flags)
 - **Modes**: extract, write, transform, discover
 
 ### Required Files Structure
@@ -77,8 +77,14 @@ modes:
   - extract  # or write, transform, discover
 
 capabilities:
-  - discover
-  - healthcheck
+  discover: true            # Supports schema/metadata discovery
+  adHocAnalytics: false     # Supports ad-hoc analytical queries
+  inMemoryMove: false       # Supports in-memory data movement
+  streaming: false          # Supports streaming/incremental processing
+  bulkOperations: true      # Supports bulk insert/update operations
+  transactions: false       # Supports transactional operations
+  partitioning: false       # Supports partitioned processing
+  customTransforms: false   # Supports custom transformation logic
 
 configSchema:
   type: object
@@ -152,7 +158,7 @@ class ProviderComponentDriver:
             pass
 
     def discover(self, connection: dict, timeout: float = 10.0) -> dict:
-        """Discover available resources (if capability: discover)."""
+        """Discover available resources (if capabilities.discover: true)."""
         import hashlib
         import json
         from datetime import datetime
@@ -174,7 +180,7 @@ class ProviderComponentDriver:
         }
 
     def doctor(self, connection: dict, timeout: float = 2.0) -> tuple[bool, dict]:
-        """Health check (if capability: healthcheck)."""
+        """Health check for connection (optional method for connection testing)."""
         import time
 
         start = time.time()
