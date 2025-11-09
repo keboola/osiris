@@ -498,27 +498,17 @@ def validate_command(args: list):
             validation_results["sections"]["logging"] = {"status": "missing"}
             logger.warning("Logging section missing from configuration")
 
-        # Output section
-        if "output" in config_data:
-            output_cfg = config_data["output"]
-            validation_results["sections"]["output"] = {
+        # Filesystem contract section (replaces old output/sessions)
+        if "filesystem" in config_data:
+            filesystem_cfg = config_data["filesystem"]
+            validation_results["sections"]["filesystem"] = {
                 "status": "configured",
-                "format": output_cfg.get("format", "csv"),
-                "directory": output_cfg.get("directory", "output/"),
+                "base_path": filesystem_cfg.get("base_path", ""),
+                "outputs_dir": filesystem_cfg.get("outputs", {}).get("directory", "output"),
+                "run_logs_dir": filesystem_cfg.get("run_logs_dir", "run_logs"),
             }
         else:
-            validation_results["sections"]["output"] = {"status": "missing"}
-
-        # Sessions section
-        if "sessions" in config_data:
-            sessions_cfg = config_data["sessions"]
-            validation_results["sections"]["sessions"] = {
-                "status": "configured",
-                "cleanup_days": sessions_cfg.get("cleanup_days", 30),
-                "cache_ttl": sessions_cfg.get("cache_ttl", 3600),
-            }
-        else:
-            validation_results["sections"]["sessions"] = {"status": "missing"}
+            validation_results["sections"]["filesystem"] = {"status": "missing"}
 
         # Discovery section
         if "discovery" in config_data:
@@ -584,65 +574,40 @@ def validate_command(args: list):
             walk_dict(config_dict)
             return list(env_vars)
 
-        # Check MySQL connections
-        mysql_connections = connections.get("mysql", {})
-        mysql_raw = raw_connections.get("mysql", {})
-        if mysql_connections:
-            # Get env vars used in MySQL connections
-            all_mysql_vars = set()
-            for _alias, config in mysql_raw.items():
-                vars_for_alias = extract_env_vars(config)
-                all_mysql_vars.update(vars_for_alias)
+        # Check all connection families dynamically
+        for family in connections.keys():
+            family_connections = connections.get(family, {})
+            family_raw = raw_connections.get(family, {})
 
-            missing_mysql_vars = [var for var in all_mysql_vars if not os.environ.get(var)]
+            if family_connections:
+                # Get env vars used in this family's connections
+                all_family_vars = set()
+                for _alias, config in family_raw.items():
+                    vars_for_alias = extract_env_vars(config)
+                    all_family_vars.update(vars_for_alias)
 
-            validation_results["database_connections"]["mysql"] = {
-                "configured": len(missing_mysql_vars) == 0,
-                "missing_vars": missing_mysql_vars,
-                "aliases": list(mysql_connections.keys()),
-            }
+                # Filter out OSIRIS_HOME as it's optional (has default behavior)
+                missing_family_vars = [
+                    var for var in all_family_vars if not os.environ.get(var) and var != "OSIRIS_HOME"
+                ]
 
-            if missing_mysql_vars:
-                logger.warning(f"MySQL missing env vars: {missing_mysql_vars}")
+                validation_results["database_connections"][family] = {
+                    "configured": len(missing_family_vars) == 0,
+                    "missing_vars": missing_family_vars,
+                    "aliases": list(family_connections.keys()),
+                }
+
+                if missing_family_vars:
+                    logger.warning(f"{family} missing env vars: {missing_family_vars}")
+                else:
+                    logger.debug(f"{family} connections found: {list(family_connections.keys())}")
             else:
-                logger.debug(f"MySQL connections found: {list(mysql_connections.keys())}")
-        else:
-            validation_results["database_connections"]["mysql"] = {
-                "configured": False,
-                "missing_vars": [],
-                "aliases": [],
-                "note": "No MySQL connections defined in osiris_connections.yaml",
-            }
-
-        # Check Supabase connections
-        supabase_connections = connections.get("supabase", {})
-        supabase_raw = raw_connections.get("supabase", {})
-        if supabase_connections:
-            # Get env vars used in Supabase connections
-            all_supabase_vars = set()
-            for _alias, config in supabase_raw.items():
-                vars_for_alias = extract_env_vars(config)
-                all_supabase_vars.update(vars_for_alias)
-
-            missing_supabase_vars = [var for var in all_supabase_vars if not os.environ.get(var)]
-
-            validation_results["database_connections"]["supabase"] = {
-                "configured": len(missing_supabase_vars) == 0,
-                "missing_vars": missing_supabase_vars,
-                "aliases": list(supabase_connections.keys()),
-            }
-
-            if missing_supabase_vars:
-                logger.warning(f"Supabase missing env vars: {missing_supabase_vars}")
-            else:
-                logger.debug(f"Supabase connections found: {list(supabase_connections.keys())}")
-        else:
-            validation_results["database_connections"]["supabase"] = {
-                "configured": False,
-                "missing_vars": [],
-                "aliases": [],
-                "note": "No Supabase connections defined in osiris_connections.yaml",
-            }
+                validation_results["database_connections"][family] = {
+                    "configured": False,
+                    "missing_vars": [],
+                    "aliases": [],
+                    "note": f"No {family} connections defined in osiris_connections.yaml",
+                }
 
         # LLM API Keys
         llm_keys = {
@@ -667,9 +632,11 @@ def validate_command(args: list):
 
         # Test connection configurations if they exist in osiris_connections.yaml
         # Validate each configured connection using the new validator
+        # Note: Only mysql and supabase have formal validators, others are skipped
         for family, aliases in connections.items():
-            if family in ["mysql", "supabase"]:  # Only validate supported types
-                for alias, config in aliases.items():
+            for alias, config in aliases.items():
+                # Only validate families that have validator support
+                if family in ["mysql", "supabase"]:
                     # Add the type field that the validator expects
                     config_with_type = {"type": family, **config}
 
@@ -682,6 +649,64 @@ def validate_command(args: list):
                         "errors": [{"path": e.path, "message": e.message, "fix": e.fix} for e in result.errors],
                         "warnings": [{"path": w.path, "message": w.message, "fix": w.fix} for w in result.warnings],
                     }
+                elif family == "posthog":
+                    # Basic posthog validation
+                    conn_key = f"{family}.{alias}"
+                    errors = []
+                    warnings = []
+
+                    # Check for required fields
+                    if "api_key" not in config or not config["api_key"]:
+                        errors.append({
+                            "path": f"{family}.{alias}.api_key",
+                            "message": "Missing api_key",
+                            "fix": "Set POSTHOG_API_KEY environment variable or configure api_key",
+                        })
+                    if "project_id" not in config or not config["project_id"]:
+                        errors.append({
+                            "path": f"{family}.{alias}.project_id",
+                            "message": "Missing project_id",
+                            "fix": "Set POSTHOG_PROJECT_ID environment variable or configure project_id",
+                        })
+
+                    validation_results["connection_validation"][conn_key] = {
+                        "is_valid": len(errors) == 0,
+                        "errors": errors,
+                        "warnings": warnings,
+                    }
+                elif family == "filesystem":
+                    # Basic filesystem validation
+                    conn_key = f"{family}.{alias}"
+                    errors = []
+                    warnings = []
+
+                    # Check for base_dir field
+                    if "base_dir" not in config or not config["base_dir"]:
+                        errors.append({
+                            "path": f"{family}.{alias}.base_dir",
+                            "message": "Missing base_dir",
+                            "fix": "Configure base_dir for filesystem connection",
+                        })
+                    else:
+                        base_dir = config["base_dir"]
+                        # Only validate path if not using env var
+                        if not (base_dir.startswith("${") and base_dir.endswith("}")):
+                            from pathlib import Path
+
+                            path_obj = Path(base_dir)
+                            if not path_obj.is_absolute() and not base_dir.startswith("./"):
+                                warnings.append({
+                                    "path": f"{family}.{alias}.base_dir",
+                                    "message": "Relative path without ./ prefix",
+                                    "fix": f"Consider using absolute path or ./{base_dir}",
+                                })
+
+                    validation_results["connection_validation"][conn_key] = {
+                        "is_valid": len(errors) == 0,
+                        "errors": errors,
+                        "warnings": warnings,
+                    }
+                # Other families (future extensions) are silently skipped
 
         # Set validation mode in results for reference
         validation_results["validation_mode"] = validation_mode.value
