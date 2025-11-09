@@ -383,6 +383,19 @@ connections:
     memory:
       default: true
       database: ":memory:"
+
+  # Filesystem connections
+  # base_dir is used for discovery and data storage
+  filesystem:
+    local:
+      default: true
+      base_dir: "${OSIRIS_HOME}/data"
+      description: "Local filesystem data directory"
+
+    exports:
+      default: false
+      base_dir: "${OSIRIS_HOME}/exports"
+      description: "Export files directory"
 """
 
 

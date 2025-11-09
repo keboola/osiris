@@ -21,9 +21,12 @@ capabilities:
 configSchema:
   type: object
   properties:
+    connection:
+      type: string
+      description: Connection reference in @family.alias format (e.g., @filesystem.local)
     path:
       type: string
-      description: CSV file path or directory path for discovery mode
+      description: CSV file path or directory path for discovery mode (relative to connection base_dir if connection provided)
       minLength: 1
     delimiter:
       type: string
@@ -108,6 +111,10 @@ configSchema:
   additionalProperties: false
 
 secrets: []  # No secrets needed for filesystem operations
+
+x-connection-fields:
+  - name: base_dir
+    override: allowed  # Infrastructure field - can be overridden for testing
 
 constraints:
   required:

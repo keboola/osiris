@@ -200,3 +200,104 @@ class TestEnvLoader:
         finally:
             os.chdir(original_cwd)
             os.environ.pop("TEST_VAR_IDEMPOTENT", None)
+
+    def test_osiris_home_takes_priority(self, tmp_path):
+        """Test that OSIRIS_HOME/.env takes priority over CWD/.env."""
+        # Create OSIRIS_HOME directory with .env
+        osiris_home = tmp_path / "osiris_home"
+        osiris_home.mkdir()
+        home_env = osiris_home / ".env"
+        home_env.write_text("TEST_VAR_HOME=from_osiris_home\n")
+
+        # Create a different directory with its own .env
+        work_dir = tmp_path / "work_dir"
+        work_dir.mkdir()
+        work_env = work_dir / ".env"
+        work_env.write_text("TEST_VAR_HOME=from_cwd\n")
+
+        original_cwd = Path.cwd()
+        original_osiris_home = os.environ.get("OSIRIS_HOME")
+        try:
+            # Set OSIRIS_HOME and work from different directory
+            os.environ["OSIRIS_HOME"] = str(osiris_home)
+            os.chdir(work_dir)
+
+            # Load env
+            loaded = load_env()
+
+            # OSIRIS_HOME/.env should be loaded first
+            assert str(home_env) in loaded
+            # CWD/.env should also be loaded (if different from OSIRIS_HOME)
+            assert str(work_env) in loaded
+            # OSIRIS_HOME value should win (loaded first, override=False)
+            assert os.environ.get("TEST_VAR_HOME") == "from_osiris_home"
+
+        finally:
+            os.chdir(original_cwd)
+            if original_osiris_home is None:
+                os.environ.pop("OSIRIS_HOME", None)
+            else:
+                os.environ["OSIRIS_HOME"] = original_osiris_home
+            os.environ.pop("TEST_VAR_HOME", None)
+
+    def test_osiris_home_fallback_to_cwd(self, tmp_path):
+        """Test that if OSIRIS_HOME/.env doesn't exist, CWD/.env is used."""
+        # Create OSIRIS_HOME directory without .env
+        osiris_home = tmp_path / "osiris_home"
+        osiris_home.mkdir()
+
+        # Create work directory with .env
+        work_dir = tmp_path / "work_dir"
+        work_dir.mkdir()
+        work_env = work_dir / ".env"
+        work_env.write_text("TEST_VAR_FALLBACK=from_cwd\n")
+
+        original_cwd = Path.cwd()
+        original_osiris_home = os.environ.get("OSIRIS_HOME")
+        try:
+            # Set OSIRIS_HOME (but no .env there)
+            os.environ["OSIRIS_HOME"] = str(osiris_home)
+            os.chdir(work_dir)
+
+            # Load env
+            loaded = load_env()
+
+            # Only CWD/.env should be loaded
+            assert str(work_env) in loaded
+            assert os.environ.get("TEST_VAR_FALLBACK") == "from_cwd"
+
+        finally:
+            os.chdir(original_cwd)
+            if original_osiris_home is None:
+                os.environ.pop("OSIRIS_HOME", None)
+            else:
+                os.environ["OSIRIS_HOME"] = original_osiris_home
+            os.environ.pop("TEST_VAR_FALLBACK", None)
+
+    def test_osiris_home_not_set(self, tmp_path):
+        """Test that when OSIRIS_HOME is not set, behavior is unchanged."""
+        # Create work directory with .env
+        work_dir = tmp_path / "work_dir"
+        work_dir.mkdir()
+        work_env = work_dir / ".env"
+        work_env.write_text("TEST_VAR_NO_HOME=from_cwd\n")
+
+        original_cwd = Path.cwd()
+        original_osiris_home = os.environ.get("OSIRIS_HOME")
+        try:
+            # Ensure OSIRIS_HOME is not set
+            os.environ.pop("OSIRIS_HOME", None)
+            os.chdir(work_dir)
+
+            # Load env
+            loaded = load_env()
+
+            # CWD/.env should be loaded
+            assert str(work_env) in loaded
+            assert os.environ.get("TEST_VAR_NO_HOME") == "from_cwd"
+
+        finally:
+            os.chdir(original_cwd)
+            if original_osiris_home is not None:
+                os.environ["OSIRIS_HOME"] = original_osiris_home
+            os.environ.pop("TEST_VAR_NO_HOME", None)

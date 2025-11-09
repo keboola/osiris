@@ -26,13 +26,13 @@ class TestValidateCommand:
   level: INFO
   file: osiris.log
 
-output:
-  format: csv
-  directory: output/
-
-sessions:
-  cleanup_days: 30
-  cache_ttl: 3600
+filesystem:
+  base_path: /tmp/osiris_test
+  outputs:
+    directory: output
+    format: csv
+  run_logs_dir: run_logs
+  sessions_dir: .osiris/sessions
 
 discovery:
   sample_size: 10
@@ -162,14 +162,9 @@ CLAUDE_API_KEY=claude-test-key
         assert result["config_valid"] is True
         assert result["config_file"] == temp_config
 
-        # Check that database connections are not configured (ADR-0020 behavior)
-        assert result["database_connections"]["mysql"]["configured"] is False
-        assert result["database_connections"]["mysql"]["aliases"] == []
-        assert "No MySQL connections defined" in result["database_connections"]["mysql"]["note"]
-
-        assert result["database_connections"]["supabase"]["configured"] is False
-        assert result["database_connections"]["supabase"]["aliases"] == []
-        assert "No Supabase connections defined" in result["database_connections"]["supabase"]["note"]
+        # Check that database_connections is empty when no osiris_connections.yaml exists
+        # With the new dynamic loading, if the file doesn't exist, we get an empty dict
+        assert result["database_connections"] == {}
 
         # Check that LLM providers are not configured
         assert result["llm_providers"]["openai"]["configured"] is False
@@ -278,7 +273,8 @@ CLAUDE_API_KEY=claude-test-key
         monkeypatch.setenv("MYSQL_HOST", "partial-host.example.com")
         monkeypatch.setenv("MYSQL_USER", "partialuser")
         monkeypatch.setenv("MYSQL_DATABASE", "partialdb")
-        # Intentionally NOT setting MYSQL_PASSWORD
+        # Intentionally NOT setting MYSQL_PASSWORD - actually delete it if it exists
+        monkeypatch.delenv("MYSQL_PASSWORD", raising=False)
 
         # Clear Supabase variables
         monkeypatch.delenv("SUPABASE_URL", raising=False)
@@ -360,9 +356,8 @@ CLAUDE_API_KEY=claude-test-key
         assert "sections" in result
         assert result["sections"]["logging"]["status"] == "configured"
         assert result["sections"]["logging"]["level"] == "INFO"
-        assert result["sections"]["output"]["status"] == "configured"
-        assert result["sections"]["output"]["format"] == "csv"
-        assert result["sections"]["sessions"]["status"] == "configured"
+        assert result["sections"]["filesystem"]["status"] == "configured"
+        assert result["sections"]["filesystem"]["outputs_dir"] == "output"
         assert result["sections"]["discovery"]["status"] == "configured"
         assert result["sections"]["llm"]["status"] == "configured"
         assert result["sections"]["llm"]["provider"] == "openai"

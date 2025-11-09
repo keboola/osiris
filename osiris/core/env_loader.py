@@ -1,5 +1,6 @@
 """Unified environment loading for Osiris."""
 
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -11,9 +12,10 @@ def load_env(dotenv_paths: list[str] | None = None) -> list[str]:
     Loads process env (no-op for already exported vars) + optionally .env files.
 
     Default search order:
-    1. CWD (.env)
-    2. Project root where osiris.py lives (.env)
-    3. testing_env/.env if CWD is testing_env/
+    1. $OSIRIS_HOME/.env (if OSIRIS_HOME environment variable is set)
+    2. CWD (.env)
+    3. Project root where osiris.py lives (.env)
+    4. testing_env/.env if CWD is testing_env/
 
     Args:
         dotenv_paths: Optional list of specific .env paths to load.
@@ -26,6 +28,8 @@ def load_env(dotenv_paths: list[str] | None = None) -> list[str]:
         - Idempotent (safe to call multiple times)
         - Already exported env vars take precedence over .env files
         - Empty strings in env vars are treated as unset
+        - OSIRIS_HOME takes highest priority to ensure env vars are loaded from
+          the project directory regardless of where the command is run from
     """
     loaded_paths = []
 
@@ -39,13 +43,21 @@ def load_env(dotenv_paths: list[str] | None = None) -> list[str]:
         # Default search order
         cwd = Path.cwd()
 
-        # 1. CWD/.env
+        # 1. $OSIRIS_HOME/.env (highest priority if set)
+        osiris_home = os.environ.get("OSIRIS_HOME")
+        if osiris_home:
+            osiris_home_env = Path(osiris_home) / ".env"
+            if osiris_home_env.exists():
+                load_dotenv(osiris_home_env, override=False)
+                loaded_paths.append(str(osiris_home_env))
+
+        # 2. CWD/.env
         cwd_env = cwd / ".env"
-        if cwd_env.exists():
+        if cwd_env.exists() and str(cwd_env) not in loaded_paths:
             load_dotenv(cwd_env, override=False)
             loaded_paths.append(str(cwd_env))
 
-        # 2. Project root (where osiris.py lives)
+        # 3. Project root (where osiris.py lives)
         # Walk up to find osiris.py
         current = cwd
         while current != current.parent:
@@ -57,7 +69,7 @@ def load_env(dotenv_paths: list[str] | None = None) -> list[str]:
                 break
             current = current.parent
 
-        # 3. testing_env/.env if CWD is testing_env/
+        # 4. testing_env/.env if CWD is testing_env/
         if cwd.name == "testing_env":
             testing_env = cwd / ".env"
             if testing_env.exists() and str(testing_env) not in loaded_paths:

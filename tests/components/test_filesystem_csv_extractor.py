@@ -412,6 +412,38 @@ def test_discovery_sorted_output(csv_directory, mock_ctx):
     assert file_names == sorted(file_names)
 
 
+def test_discovery_includes_column_types(tmp_path, mock_ctx):
+    """Test discovery includes actual column data types."""
+    from osiris.drivers.filesystem_csv_extractor_driver import FilesystemCsvExtractorDriver
+
+    # Create CSV directory with typed data
+    csv_dir = tmp_path / "typed_csvs"
+    csv_dir.mkdir()
+
+    # Create CSV with various data types
+    actors_csv = csv_dir / "actors.csv"
+    actors_csv.write_text("actor_id,birth_year,name,rating\n1,1990,Alice,8.5\n2,1985,Bob,7.2\n")
+
+    config = {"path": str(csv_dir), "discovery": True}
+
+    driver = FilesystemCsvExtractorDriver()
+    result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
+
+    # Verify column_types are included
+    assert "files" in result
+    assert len(result["files"]) == 1
+
+    file_info = result["files"][0]
+    assert "column_types" in file_info, "Discovery should include column_types"
+
+    # Verify actual types (not "unknown")
+    types = file_info["column_types"]
+    assert types["actor_id"] == "integer"
+    assert types["birth_year"] == "integer"
+    assert types["name"] == "string"
+    assert types["rating"] == "float"
+
+
 # ============================================================================
 # Doctor/Health Check Tests
 # ============================================================================

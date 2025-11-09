@@ -238,14 +238,19 @@ Critical: Never change core function signatures without review.
 
 ```bash
 # Search order for .env files:
-1. Current directory
-2. Project root
-3. testing_env/ (when CWD)
+1. $OSIRIS_HOME/.env (if OSIRIS_HOME is set) - HIGHEST PRIORITY
+2. Current directory
+3. Project root
+4. testing_env/ (when CWD)
 
 # Setting secrets:
 export MYSQL_PASSWORD="value"         # Option 1: Export
 echo "MYSQL_PASSWORD=value" > .env    # Option 2: File
 MYSQL_PASSWORD="value" osiris run ... # Option 3: Inline
+
+# Using OSIRIS_HOME:
+export OSIRIS_HOME="/path/to/project" # Ensures .env is loaded from project directory
+osiris run pipeline.yaml               # Works from any directory
 ```
 
 ## Common Pitfalls

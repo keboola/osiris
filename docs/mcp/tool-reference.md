@@ -224,6 +224,64 @@ Discover database schema with optional sampling and caching.
 }
 ```
 
+**Example: Filesystem Discovery**
+
+Discover CSV files in a directory using a filesystem connection:
+
+```bash
+# 1. Configure filesystem connection in osiris_connections.yaml
+filesystem:
+  exports:
+    base_dir: ./data
+
+# 2. Run discovery
+osiris mcp discovery run \
+  --connection "@filesystem.exports" \
+  --component "filesystem.csv_extractor" \
+  --samples 5 \
+  --json
+```
+
+**Example Output:**
+
+```json
+{
+  "discovery_id": "disc_20240315_143022",
+  "cached": false,
+  "status": "success",
+  "artifacts": {
+    "overview": "file:///path/to/overview.json",
+    "files": "file:///path/to/files.json",
+    "samples": "file:///path/to/samples.json"
+  },
+  "summary": {
+    "file_count": 12,
+    "total_size_mb": 45.6,
+    "discovered_files": [
+      {
+        "path": "customers.csv",
+        "size_kb": 1024,
+        "columns": 8,
+        "sample_rows": 5
+      },
+      {
+        "path": "orders.csv",
+        "size_kb": 8192,
+        "columns": 12,
+        "sample_rows": 5
+      }
+    ]
+  }
+}
+```
+
+**Discovery Workflow:**
+
+1. Configure filesystem connection with `base_dir` in `osiris_connections.yaml`
+2. Run discovery to scan available files in the base directory
+3. Review discovered files, schemas, and sample data
+4. Create extraction pipeline using the discovered file paths (paths relative to `base_dir`)
+
 ## OML Operations
 
 ### oml_schema_get
