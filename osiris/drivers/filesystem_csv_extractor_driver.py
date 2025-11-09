@@ -357,7 +357,8 @@ class FilesystemCsvExtractorDriver:
                             for fmt in formats_to_try:
                                 try:
                                     converted = pd.to_datetime(df_types[col], format=fmt, errors="coerce")
-                                    if converted.notna().sum() / len(converted) > 0.8:
+                                    # Guard against empty columns (headers-only CSV)
+                                    if len(converted) > 0 and converted.notna().sum() / len(converted) > 0.8:
                                         df_types[col] = converted
                                         break
                                 except (ValueError, TypeError):
