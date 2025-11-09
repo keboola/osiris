@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CSV Discovery Datetime Detection** (`osiris/drivers/filesystem_csv_extractor_driver.py`)
+  - Fixed datetime columns (e.g., `created_at`, `updated_at`) incorrectly detected as "string" type
+  - Increased sample size from 1 to 100 rows for better type inference
+  - Added intelligent datetime detection with common format patterns (ISO datetime, ISO date)
+  - Eliminated pandas UserWarnings about datetime format inference
+  - Validates conversion success rate (>80%) before accepting as datetime type
+  - Example: `created_at: datetime` (was: `created_at: string`)
+
 ## [0.5.7] - 2025-11-09
 
 **Filesystem Connections & Enhanced Validation**
