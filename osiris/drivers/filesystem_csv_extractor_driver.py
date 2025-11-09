@@ -338,6 +338,10 @@ class FilesystemCsvExtractorDriver:
                     df_sample = pd.read_csv(csv_file, nrows=0)
                     file_info["column_names"] = list(df_sample.columns)
                     file_info["columns"] = len(df_sample.columns)
+
+                    # Read one row to get actual dtypes
+                    df_types = pd.read_csv(csv_file, nrows=1)
+                    file_info["column_types"] = {col: self._format_dtype(dtype) for col, dtype in df_types.dtypes.items()}
                 except Exception:  # noqa: S110
                     # Can't read file, skip details
                     pass
@@ -353,6 +357,42 @@ class FilesystemCsvExtractorDriver:
             logger.error(f"CSV discovery error: {e}")
 
         return results
+
+    def _format_dtype(self, dtype) -> str:
+        """Convert pandas dtype to user-friendly type name.
+
+        Args:
+            dtype: Pandas dtype object
+
+        Returns:
+            User-friendly type name
+        """
+        dtype_str = str(dtype)
+
+        # Map pandas dtypes to user-friendly names
+        type_mapping = {
+            "object": "string",
+            "int64": "integer",
+            "int32": "integer",
+            "int16": "integer",
+            "int8": "integer",
+            "float64": "float",
+            "float32": "float",
+            "bool": "boolean",
+            "datetime64[ns]": "datetime",
+            "datetime64": "datetime",
+            "timedelta64[ns]": "timedelta",
+            "category": "category",
+        }
+
+        # Check for datetime variants
+        if dtype_str.startswith("datetime64"):
+            return "datetime"
+        if dtype_str.startswith("timedelta64"):
+            return "timedelta"
+
+        # Return mapped name or original dtype string
+        return type_mapping.get(dtype_str, dtype_str)
 
     def _estimate_row_count(self, csv_file: Path, timeout: int = 5) -> int | str:
         """Estimate row count for CSV file using cross-platform approach.

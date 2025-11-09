@@ -198,6 +198,9 @@ def discovery_run(  # noqa: PLR0915  # CLI router function, naturally verbose
                                 col_count = file_data.get("columns")
                                 if col_count:
                                     self.columns = [f"column_{i}" for i in range(col_count)]
+                            # Use actual types if available
+                            if file_data.get("column_types"):
+                                self.column_types = file_data["column_types"]
 
                     tables.append(FileTable(file_info))
             elif discovery_result.get("status") == "error":

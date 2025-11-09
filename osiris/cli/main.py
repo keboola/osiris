@@ -333,9 +333,7 @@ def validate_command(args: list):
             console.print()
             console.print("[bold blue]Options[/bold blue]")
             console.print("  [cyan]--config FILE[/cyan]  Configuration file to validate (default: osiris.yaml)")
-            console.print(
-                "  [cyan]--mode MODE[/cyan]    Validation mode: warn (show warnings), strict (block on errors), off (disable)"
-            )
+            console.print("  [cyan]--mode MODE[/cyan]    Validation mode: warn, strict, or off")
             console.print("  [cyan]--json[/cyan]         Output in JSON format for programmatic use")
             console.print("  [cyan]--help[/cyan]         Show this help message")
             console.print()
@@ -403,8 +401,15 @@ def validate_command(args: list):
             # python-dotenv not installed, skip loading .env file
             pass
 
+        # Determine config file path - check OSIRIS_HOME first
+        osiris_home = os.environ.get("OSIRIS_HOME")
+        if osiris_home:
+            config_file = Path(osiris_home) / parsed_args.config
+        else:
+            config_file = Path.cwd() / parsed_args.config
+
         # Load config first to get logs_dir setting
-        config_data = load_config(parsed_args.config)
+        config_data = load_config(str(config_file))
 
         # Get logs directory from config, fallback to "logs"
         logs_dir = "logs"  # default
@@ -775,19 +780,28 @@ def validate_command(args: list):
 
     except FileNotFoundError:
         # Use safe logging since session may not be initialized yet
-        _safe_log_event(session, "validate_error", error_type="file_not_found", config_file=parsed_args.config)
+        _safe_log_event(session, "validate_error", error_type="file_not_found", config_file=str(config_file))
         if use_json:
-            print(
-                json.dumps(
-                    {
-                        "error": f"Configuration file '{parsed_args.config}' not found",
-                        "suggestion": "Run 'osiris init' to create a sample configuration",
-                    }
-                )
-            )
+            error_data = {
+                "error": f"Configuration file '{parsed_args.config}' not found",
+                "suggestion": "Run 'osiris init' to create a sample configuration",
+            }
+            if osiris_home:
+                error_data["searched_path"] = str(config_file)
+                error_data["osiris_home"] = osiris_home
+            print(json.dumps(error_data))
         else:
             # Print user-friendly error to stderr without traceback
-            print(f"Configuration file '{parsed_args.config}' not found.", file=sys.stderr)
+            if osiris_home:
+                print(
+                    f"Configuration file '{parsed_args.config}' not found in OSIRIS_HOME: {osiris_home}",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"Configuration file '{parsed_args.config}' not found in current directory.",
+                    file=sys.stderr,
+                )
         sys.exit(1)
     except Exception as e:
         # Use safe logging since session may not be initialized yet
