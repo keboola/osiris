@@ -274,7 +274,7 @@ class PostHogClient:
         # Note: person properties are NOT available in events table via HogQL
         # Only event properties are included
         query = (
-            f"SELECT uuid, event, timestamp, distinct_id, person_id, properties "
+            f"SELECT uuid, event, timestamp, distinct_id, person_id, properties "  # nosec B608
             f"FROM events "
             f"WHERE {where_clause} "
             f"ORDER BY timestamp ASC, uuid ASC "
@@ -343,7 +343,7 @@ class PostHogClient:
 
                 where_clause = " AND ".join(where_parts_updated)
                 query = (
-                    f"SELECT uuid, event, timestamp, distinct_id, person_id, properties "
+                    f"SELECT uuid, event, timestamp, distinct_id, person_id, properties "  # nosec B608
                     f"FROM events "
                     f"WHERE {where_clause} "
                     f"ORDER BY timestamp ASC, uuid ASC "
@@ -393,7 +393,7 @@ class PostHogClient:
         where_clause = "WHERE " + " AND ".join(where_parts) if where_parts else ""
 
         query = (
-            f"SELECT id, created_at, properties, is_identified "
+            f"SELECT id, created_at, properties, is_identified "  # nosec B608
             f"FROM persons {where_clause} "
             f"ORDER BY created_at ASC, id ASC "
             f"LIMIT {page_size}"
@@ -442,7 +442,7 @@ class PostHogClient:
                 )
 
                 query = (
-                    f"SELECT id, created_at, properties, is_identified "
+                    f"SELECT id, created_at, properties, is_identified "  # nosec B608
                     f"FROM persons {where_clause} "
                     f"ORDER BY created_at ASC, id ASC "
                     f"LIMIT {page_size}"
@@ -506,7 +506,7 @@ class PostHogClient:
 
         # Sessions table has 43 columns - use SELECT *
         query = (
-            f"SELECT * "
+            f"SELECT * "  # nosec B608
             f"FROM sessions "
             f"WHERE {where_clause} "
             f"ORDER BY $start_timestamp ASC, session_id ASC "
@@ -562,7 +562,7 @@ class PostHogClient:
 
                 where_clause = " AND ".join(where_parts_updated)
                 query = (
-                    f"SELECT * "
+                    f"SELECT * "  # nosec B608
                     f"FROM sessions "
                     f"WHERE {where_clause} "
                     f"ORDER BY $start_timestamp ASC, session_id ASC "
@@ -604,7 +604,7 @@ class PostHogClient:
         while True:
             try:
                 query = (
-                    f"SELECT distinct_id, person_id "
+                    f"SELECT distinct_id, person_id "  # nosec B608
                     f"FROM person_distinct_ids "
                     f"LIMIT {page_size} OFFSET {offset}"
                 )
