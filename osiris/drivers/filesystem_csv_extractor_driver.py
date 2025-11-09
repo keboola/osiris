@@ -368,8 +368,12 @@ class FilesystemCsvExtractorDriver:
                                 # Problem: pd.to_datetime() interprets numeric strings as Unix timestamps
                                 # Example: "12345" -> 1970-01-01 00:00:12.345 (WRONG!)
                                 # Solution: Only apply fallback if strings contain date separators
+                                #
+                                # CHANGE 1: Expanded separator regex to include dots and spaces
+                                # - Dots: European formats (17.03.2024)
+                                # - Spaces: Text month formats (Mar 5 2024), space-separated dates (2024 03 17)
                                 sample_values = df_types[col].dropna().astype(str).head(20)
-                                has_date_separators = sample_values.str.contains(r"[-/:]").any()
+                                has_date_separators = sample_values.str.contains(r"[-/:.\s]").any()
 
                                 if has_date_separators:
                                     try:
@@ -377,9 +381,35 @@ class FilesystemCsvExtractorDriver:
 
                                         with warnings.catch_warnings():
                                             warnings.filterwarnings("ignore", category=UserWarning)
-                                            converted = pd.to_datetime(df_types[col], errors="coerce")
-                                            if converted.notna().sum() / len(converted) > 0.8:
-                                                df_types[col] = converted
+
+                                            # CHANGE 2: Calculate conversion rate on non-null values only
+                                            # This handles sparse columns correctly:
+                                            # Sparse example: 20 nulls + 10 dates
+                                            # Old: 10/30 = 0.33 → rejected
+                                            # New: 10/10 = 1.0 → accepted
+                                            non_null_values = df_types[col].dropna()
+                                            if len(non_null_values) > 0:
+                                                # Convert only non-null values to check conversion rate
+                                                converted_sample = pd.to_datetime(non_null_values, errors="coerce")
+                                                conversion_rate = converted_sample.notna().sum() / len(non_null_values)
+
+                                                # CHANGE 3: Unix epoch sanity check
+                                                # Reject if all converted dates are in 1970 (likely numeric IDs)
+                                                if conversion_rate > 0.8:
+                                                    valid_dates = converted_sample.dropna()
+                                                    if len(valid_dates) > 0:
+                                                        # Check year range
+                                                        min_year = valid_dates.dt.year.min()
+                                                        max_year = valid_dates.dt.year.max()
+
+                                                        # Accept if dates are NOT exclusively in Unix epoch range
+                                                        if not (min_year == 1970 and max_year == 1970):
+                                                            # Convert the ENTIRE column (including nulls)
+                                                            # This ensures dtype is properly updated to datetime64
+                                                            df_types[col] = pd.to_datetime(
+                                                                df_types[col], errors="coerce"
+                                                            )
+
                                     except Exception:  # noqa: S110
                                         pass  # Keep original dtype
                                 # else: skip fallback, likely numeric IDs or other non-date strings
