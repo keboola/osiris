@@ -345,18 +345,18 @@ class FilesystemCsvExtractorDriver:
                     # Try to detect datetime columns by attempting conversion
                     # This catches columns like "created_at" that contain datetime strings
                     for col in df_types.columns:
-                        if df_types[col].dtype == 'object':  # Only try on string columns
+                        if df_types[col].dtype == "object":  # Only try on string columns
                             # Try common datetime formats first to avoid warnings
                             formats_to_try = [
-                                '%Y-%m-%d %H:%M:%S',  # ISO datetime: 2025-03-03 11:53:20
-                                '%Y-%m-%d',            # ISO date: 2025-03-03
-                                'ISO8601',             # pandas ISO8601 format
+                                "%Y-%m-%d %H:%M:%S",  # ISO datetime: 2025-03-03 11:53:20
+                                "%Y-%m-%d",  # ISO date: 2025-03-03
+                                "ISO8601",  # pandas ISO8601 format
                             ]
 
                             converted = None
                             for fmt in formats_to_try:
                                 try:
-                                    converted = pd.to_datetime(df_types[col], format=fmt, errors='coerce')
+                                    converted = pd.to_datetime(df_types[col], format=fmt, errors="coerce")
                                     if converted.notna().sum() / len(converted) > 0.8:
                                         df_types[col] = converted
                                         break
@@ -366,9 +366,10 @@ class FilesystemCsvExtractorDriver:
                                 # Fallback to dateutil parser (suppress warning about format inference)
                                 try:
                                     import warnings
+
                                     with warnings.catch_warnings():
-                                        warnings.filterwarnings('ignore', category=UserWarning)
-                                        converted = pd.to_datetime(df_types[col], errors='coerce')
+                                        warnings.filterwarnings("ignore", category=UserWarning)
+                                        converted = pd.to_datetime(df_types[col], errors="coerce")
                                         if converted.notna().sum() / len(converted) > 0.8:
                                             df_types[col] = converted
                                 except Exception:  # noqa: S110
