@@ -790,18 +790,17 @@ def validate_command(args: list):
                 error_data["searched_path"] = str(config_file)
                 error_data["osiris_home"] = osiris_home
             print(json.dumps(error_data))
+        # Print user-friendly error to stderr without traceback
+        elif osiris_home:
+            print(
+                f"Configuration file '{parsed_args.config}' not found in OSIRIS_HOME: {osiris_home}",
+                file=sys.stderr,
+            )
         else:
-            # Print user-friendly error to stderr without traceback
-            if osiris_home:
-                print(
-                    f"Configuration file '{parsed_args.config}' not found in OSIRIS_HOME: {osiris_home}",
-                    file=sys.stderr,
-                )
-            else:
-                print(
-                    f"Configuration file '{parsed_args.config}' not found in current directory.",
-                    file=sys.stderr,
-                )
+            print(
+                f"Configuration file '{parsed_args.config}' not found in current directory.",
+                file=sys.stderr,
+            )
         sys.exit(1)
     except Exception as e:
         # Use safe logging since session may not be initialized yet

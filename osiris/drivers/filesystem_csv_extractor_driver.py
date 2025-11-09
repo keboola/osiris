@@ -341,7 +341,9 @@ class FilesystemCsvExtractorDriver:
 
                     # Read one row to get actual dtypes
                     df_types = pd.read_csv(csv_file, nrows=1)
-                    file_info["column_types"] = {col: self._format_dtype(dtype) for col, dtype in df_types.dtypes.items()}
+                    file_info["column_types"] = {
+                        col: self._format_dtype(dtype) for col, dtype in df_types.dtypes.items()
+                    }
                 except Exception:  # noqa: S110
                     # Can't read file, skip details
                     pass
