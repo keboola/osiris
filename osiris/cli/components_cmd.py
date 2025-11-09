@@ -432,6 +432,25 @@ def discover_with_component(
     from ..core.driver import DriverRegistry
     from ..core.env_loader import load_env
 
+    # Deprecation warning for filesystem components
+    if component_name.startswith("filesystem."):
+        rprint("[yellow]⚠️  Deprecation Notice:[/yellow]")
+        rprint(f"  Command 'osiris components discover {component_name}' is deprecated for filesystem components.")
+        rprint()
+        rprint("[bold cyan]Use the new connection-based discovery instead:[/bold cyan]")
+        rprint("  1. Configure a filesystem connection in osiris_connections.yaml:")
+        rprint("     [dim]filesystem:[/dim]")
+        rprint("       [dim]output:[/dim]")
+        rprint("         [dim]base_dir: \"/path/to/directory\"[/dim]")
+        rprint("         [dim]default: true[/dim]")
+        rprint()
+        rprint("  2. Run discovery with connection reference:")
+        rprint(f"     [green]osiris discovery run @filesystem.output[/green]")
+        rprint()
+        rprint("[dim]See docs/guides/filesystem-connections.md for details.[/dim]")
+        rprint()
+        return
+
     registry = get_registry(session_context=session_context)
     spec = registry.get_component(component_name)
 
