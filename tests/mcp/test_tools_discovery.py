@@ -114,3 +114,37 @@ class TestDiscoveryTools:
         assert uris["overview"] == "osiris://mcp/discovery/disc_123/overview.json"
         assert uris["tables"] == "osiris://mcp/discovery/disc_123/tables.json"
         assert uris["samples"] == "osiris://mcp/discovery/disc_123/samples.json"
+
+    @pytest.mark.asyncio
+    async def test_discovery_request_filesystem_component(self, discovery_tools):
+        """Test discovery with filesystem component and connection."""
+        discovery_tools.cache.get = AsyncMock(return_value=None)
+        discovery_tools.cache.set = AsyncMock(return_value="disc_fs123")
+        discovery_tools.cache.get_discovery_uri = MagicMock(
+            side_effect=lambda disc_id, artifact: f"osiris://mcp/discovery/{disc_id}/{artifact}.json"
+        )
+
+        # Mock CLI delegation response for filesystem discovery
+        mock_cli_result = {
+            "discovery_id": "disc_fs123",
+            "status": "success",
+            "summary": {
+                "connection": "@filesystem.local",
+                "component": "filesystem_csv_extractor",
+                "total_files": 5,
+                "files_discovered": ["file1.csv", "file2.csv", "file3.csv"],
+                "base_dir": "/path/to/data",
+            },
+            "_meta": {"correlation_id": "test-fs-456", "duration_ms": 150},
+        }
+
+        with patch("osiris.mcp.cli_bridge.run_cli_json", return_value=mock_cli_result):
+            result = await discovery_tools.request(
+                {"connection": "@filesystem.local", "component": "filesystem_csv_extractor", "samples": 0}
+            )
+
+            assert result["status"] == "success"
+            assert result["discovery_id"] == "disc_fs123"
+            assert "summary" in result
+            assert result["summary"]["total_files"] == 5
+            assert "files_discovered" in result["summary"]

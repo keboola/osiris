@@ -7,6 +7,8 @@ from typing import Any
 
 import pandas as pd
 
+from osiris.core.config import parse_connection_ref, resolve_connection
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,13 +27,41 @@ class FilesystemCsvExtractorDriver:
 
         Args:
             step_id: Step identifier
-            config: Must contain 'path' and optional CSV parsing settings
+            config: Must contain 'path' and optional CSV parsing settings.
+                   May include 'connection' field for connection-based configuration.
             inputs: Not used for extractors
             ctx: Execution context for logging metrics
 
         Returns:
             {"df": DataFrame} with CSV data
         """
+        # Resolve connection if provided
+        base_dir = None
+        conn_ref = config.get("connection")
+
+        if conn_ref:
+            # Parse connection reference (format: @filesystem.alias)
+            if isinstance(conn_ref, str) and conn_ref.startswith("@"):
+                family, alias = parse_connection_ref(conn_ref)
+
+                # Validate family is filesystem
+                if family != "filesystem":
+                    raise ValueError(f"Step {step_id}: Connection family must be 'filesystem', got '{family}'")
+
+                # Resolve connection to get base_dir
+                try:
+                    connection_config = resolve_connection(family, alias)
+                    base_dir = connection_config.get("base_dir")
+
+                    if base_dir:
+                        logger.info(f"Step {step_id}: Using base_dir from connection: {base_dir}")
+                except Exception as e:
+                    raise ValueError(f"Step {step_id}: Failed to resolve connection '{conn_ref}': {e}") from e
+            else:
+                raise ValueError(
+                    f"Step {step_id}: Invalid connection format: '{conn_ref}'. Expected '@filesystem.alias'"
+                )
+
         # Get required path
         file_path = config.get("path")
         if not file_path:
@@ -39,10 +69,10 @@ class FilesystemCsvExtractorDriver:
 
         # Check if discovery mode is requested
         if config.get("discovery", False):
-            return self.discover(config)
+            return self.discover(config, base_dir=base_dir)
 
-        # Resolve path
-        resolved_path = self._resolve_path(file_path, ctx)
+        # Resolve path (with base_dir from connection if available)
+        resolved_path = self._resolve_path(file_path, ctx, base_dir=base_dir)
 
         # Validate file exists
         if not resolved_path.exists():
@@ -153,15 +183,20 @@ class FilesystemCsvExtractorDriver:
             logger.error(f"Step {step_id}: {error_msg}")
             raise RuntimeError(error_msg) from e
 
-    def _resolve_path(self, file_path: str, ctx: Any) -> Path:
+    def _resolve_path(self, file_path: str, ctx: Any, base_dir: str | None = None) -> Path:
         """Resolve file path to absolute Path object.
 
-        Uses ctx.base_path for relative paths if available, otherwise uses cwd.
+        Resolution order for relative paths:
+        1. base_dir from connection (if provided)
+        2. ctx.base_path (if available)
+        3. Current working directory (fallback)
+
         E2B COMPATIBLE - never uses Path.home().
 
         Args:
             file_path: Path string (absolute or relative)
             ctx: Execution context (may have base_path attribute)
+            base_dir: Base directory from connection config (optional)
 
         Returns:
             Resolved absolute Path object
@@ -172,11 +207,16 @@ class FilesystemCsvExtractorDriver:
         if path.is_absolute():
             return path
 
-        # For relative paths, resolve to ctx.base_path if available
+        # For relative paths, apply resolution order:
+        # 1. Connection base_dir takes highest priority
+        if base_dir:
+            return Path(base_dir) / path
+
+        # 2. Context base_path
         if ctx and hasattr(ctx, "base_path"):
             return ctx.base_path / path
 
-        # Fallback to current working directory
+        # 3. Fallback to current working directory
         return Path.cwd() / path
 
     def doctor(self, config: dict) -> dict:
@@ -244,11 +284,12 @@ class FilesystemCsvExtractorDriver:
 
         return results
 
-    def discover(self, config: dict) -> dict:
+    def discover(self, config: dict, base_dir: str | None = None) -> dict:
         """Discover CSV files in a directory.
 
         Args:
             config: Configuration dict with 'path' (directory path)
+            base_dir: Base directory from connection config (optional)
 
         Returns:
             Dict with discovered files and metadata
@@ -260,8 +301,12 @@ class FilesystemCsvExtractorDriver:
             dir_path = config.get("path", ".")
             directory = Path(dir_path)
 
+            # Resolve directory path using same logic as _resolve_path
             if not directory.is_absolute():
-                directory = Path.cwd() / directory
+                if base_dir:
+                    directory = Path(base_dir) / directory
+                else:
+                    directory = Path.cwd() / directory
 
             # Validate directory
             if not directory.exists():

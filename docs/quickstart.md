@@ -69,8 +69,15 @@ connections:
       password: ${MYSQL_PASSWORD}
   filesystem:
     local:
-      base_dir: ./out
+      base_dir: ./output      # Output directory for generated files
+    exports:
+      base_dir: ./data        # Input directory for reading CSV files
 ```
+
+The `base_dir` field specifies the root directory for file operations. When using filesystem connections:
+- Paths in pipeline steps are resolved relative to `base_dir`
+- Discovery mode scans the `base_dir` for available files
+- Multiple profiles (like `local`, `exports`) let you separate input/output locations
 
 Verify everything:
 
@@ -104,11 +111,17 @@ steps:
     mode: write
     inputs:
       df: "@extract-movies"
-    path: movies.csv           # will be created under filesystem.local base_dir
-    write_mode: replace        # replace file on each run
-    create_if_missing: true
-    connection: "@filesystem.local"
+    config:
+      path: movies.csv           # Resolved as ./output/movies.csv
+      write_mode: replace        # Replace file on each run
+      create_if_missing: true
+      connection: "@filesystem.local"
 ```
+
+**Using filesystem connections:**
+- The `connection: "@filesystem.local"` references the `filesystem.local` profile from `osiris_connections.yaml`
+- The file path is resolved relative to the connection's `base_dir` (./output)
+- Final path: `./output/movies.csv`
 
 > Notes
 > - Use `oml_version`, not `version`.

@@ -113,7 +113,13 @@ def discovery_run(  # noqa: PLR0915  # CLI router function, naturally verbose
             session.log_event("discovery_error", error=str(e), connection_id=connection_id)
             return 1
 
-        component_name = f"{family}.extractor"
+        # Determine component name
+        if family == "filesystem":
+            # Filesystem uses specific component name (filesystem.csv_extractor)
+            component_name = "filesystem.csv_extractor"
+        else:
+            # Database families use generic pattern
+            component_name = f"{family}.extractor"
 
         # Get component from registry
         registry = get_registry()
@@ -127,11 +133,15 @@ def discovery_run(  # noqa: PLR0915  # CLI router function, naturally verbose
         # Create extractor instance
         from osiris.connectors.mysql import MySQLExtractor  # noqa: PLC0415  # Lazy import for CLI performance
         from osiris.connectors.supabase import SupabaseExtractor  # noqa: PLC0415  # Lazy import for CLI performance
+        from osiris.drivers.filesystem_csv_extractor_driver import (  # noqa: PLC0415  # Lazy import for CLI performance
+            FilesystemCsvExtractorDriver,
+        )
 
         extractor_map = {
             "mysql": MySQLExtractor,
             "supabase": SupabaseExtractor,
             "postgresql": SupabaseExtractor,  # Alias
+            "filesystem": FilesystemCsvExtractorDriver,
         }
 
         extractor_class = extractor_map.get(family)
@@ -141,31 +151,78 @@ def discovery_run(  # noqa: PLR0915  # CLI router function, naturally verbose
             session.log_event("discovery_error", error="unsupported_family", family=family)
             return 1
 
-        # Initialize extractor
-        extractor = extractor_class(config)
+        # Initialize extractor/driver
+        if family == "filesystem":
+            # Filesystem driver doesn't take config in __init__
+            extractor = extractor_class()
+        else:
+            # Database extractors take config in __init__
+            extractor = extractor_class(config)
 
-        # Create discovery instance
-        discovery = ProgressiveDiscovery(
-            extractor=extractor,
-            cache_dir=".osiris_cache",
-            component_type=component_name,
-            component_version=spec.get("version", "0.1.0"),
-            connection_ref=connection_id,
-            session_id=session_id,
-        )
+        # Handle filesystem discovery differently (uses driver.discover instead of ProgressiveDiscovery)
+        if family == "filesystem":
+            # Filesystem discovery: call driver.discover() directly
+            if not json_output:
+                console.print(f"\n[bold cyan]Discovering CSV files for {connection_id}...[/bold cyan]")
+                console.print(f"[dim]Component: {component_name}[/dim]")
+                console.print(f"[dim]Directory: {config.get('base_dir', '.')}[/dim]\n")
 
-        # Discover all tables
-        if not json_output:
-            console.print(f"\n[bold cyan]Discovering schema for {connection_id}...[/bold cyan]")
-            console.print(f"[dim]Component: {component_name}[/dim]")
-            console.print(f"[dim]Samples per table: {samples}[/dim]\n")
+            # Get base_dir from connection config
+            base_dir = config.get("base_dir", ".")
+            discovery_result = extractor.discover({"path": base_dir})
 
-        # Note: discover_all_tables doesn't take sample_size, it uses progressive discovery
-        # We'll need to call discover_table for each table with specific sample size
-        import asyncio  # noqa: PLC0415  # Lazy import for CLI performance
+            # Transform filesystem discovery results to match database discovery format
+            # Filesystem returns: {"files": [...], "total_files": N, "status": "success"}
+            # We need to create a "tables" list where each file is treated as a table
+            tables = []
+            if discovery_result.get("status") == "success":
+                for file_info in discovery_result.get("files", []):
+                    # Create a table-like object for each CSV file
+                    class FileTable:
+                        def __init__(self, file_data):
+                            self.name = file_data.get("name", "unknown.csv")
+                            self.row_count = file_data.get("estimated_rows", "unknown")
+                            self.columns = []  # Will be populated if we have column info
+                            self.column_types = {}
+                            self.primary_keys = []
+                            self.sample_data = []
+                            # Store file metadata
+                            self.path = file_data.get("path")
+                            self.size = file_data.get("size", 0)
+                            # If we have column count, create placeholder column info
+                            col_count = file_data.get("columns")
+                            if col_count:
+                                self.columns = [f"column_{i}" for i in range(col_count)]
 
-        tables_dict = asyncio.run(discovery.discover_all_tables(max_tables=100))
-        tables = list(tables_dict.values())
+                    tables.append(FileTable(file_info))
+            elif discovery_result.get("status") == "error":
+                console.print(f"[red]Discovery failed: {discovery_result.get('error', 'Unknown error')}[/red]")
+                session.log_event("discovery_error", error=discovery_result.get("error"), connection_id=connection_id)
+                return 1
+        else:
+            # Database discovery: use ProgressiveDiscovery pattern
+            # Create discovery instance
+            discovery = ProgressiveDiscovery(
+                extractor=extractor,
+                cache_dir=".osiris_cache",
+                component_type=component_name,
+                component_version=spec.get("version", "0.1.0"),
+                connection_ref=connection_id,
+                session_id=session_id,
+            )
+
+            # Discover all tables
+            if not json_output:
+                console.print(f"\n[bold cyan]Discovering schema for {connection_id}...[/bold cyan]")
+                console.print(f"[dim]Component: {component_name}[/dim]")
+                console.print(f"[dim]Samples per table: {samples}[/dim]\n")
+
+            # Note: discover_all_tables doesn't take sample_size, it uses progressive discovery
+            # We'll need to call discover_table for each table with specific sample size
+            import asyncio  # noqa: PLC0415  # Lazy import for CLI performance
+
+            tables_dict = asyncio.run(discovery.discover_all_tables(max_tables=100))
+            tables = list(tables_dict.values())
 
         duration_ms = int((time.time() - start_time) * 1000)
 
