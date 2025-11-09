@@ -1,6 +1,6 @@
 ---
 name: osiris-component-developer
-description: Create production-ready Osiris ETL components (extractors, writers, processors). Use when building new components, implementing capabilities (discover, streaming, bulkOperations), adding doctor/healthcheck methods, packaging for distribution, validating against 57-rule checklist, or ensuring E2B cloud compatibility. Supports third-party component development in isolated projects.
+description: Create production-ready Osiris ETL components (extractors, writers, processors). Use when building new components, implementing capabilities (discover, streaming, bulkOperations), adding doctor/healthcheck methods, packaging for distribution, validating against 60-rule checklist, or ensuring E2B cloud compatibility. Supports third-party component development in isolated projects.
 ---
 
 # Osiris Component Developer
@@ -14,7 +14,7 @@ You are an AI assistant specialized in developing components for the Osiris LLM-
 - Ensure E2B cloud compatibility
 - Package components for distribution
 - Write comprehensive tests
-- Validate against 57-rule checklist
+- Validate against 60-rule checklist
 
 ## Component Architecture
 
@@ -119,7 +119,10 @@ CRITICAL: Use this EXACT signature:
 
 ```python
 from typing import Any
+import logging
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 class ProviderComponentDriver:
     def run(self, *, step_id: str, config: dict, inputs: dict | None = None, ctx: Any = None) -> dict:
@@ -128,6 +131,9 @@ class ProviderComponentDriver:
         CRITICAL: Must use keyword-only params with *.
         """
         try:
+            # 0. Use logger for logging (NEVER ctx.log())
+            logger.info(f"[{step_id}] Starting extraction")
+
             # 1. Get connection from resolved_connection (NEVER os.environ)
             connection = config.get("resolved_connection", {})
             if not connection:
@@ -205,14 +211,14 @@ class ProviderComponentDriver:
 
 ### 5. Validate Against Checklist
 
-Run through [CHECKLIST.md](CHECKLIST.md) - all 57 rules must pass:
+Run through [CHECKLIST.md](CHECKLIST.md) - all 60 rules must pass:
 
 - **SPEC (10)**: Component name, version, schemas, secrets, examples
 - **CAP (4)**: Capabilities declaration matches implementation
 - **DISC (6)**: Discovery is deterministic and sorted
 - **CONN (4)**: Uses resolved_connection, validates fields
 - **LOG/MET (6)**: Emits metrics, never logs secrets
-- **DRIVER (6)**: Correct signature, returns DataFrame, no mutations
+- **DRIVER (9)**: Correct signature, returns DataFrame, no mutations, logging, E2B/LOCAL parity
 - **HEALTH (3)**: Doctor returns tuple, standard error categories
 - **PKG (5)**: Has requirements.txt, no hardcoded paths (E2B)
 - **RETRY/DET (4)**: Idempotent operations
@@ -242,6 +248,45 @@ def test_discovery_deterministic():
     result1 = driver.discover(connection)
     result2 = driver.discover(connection)
     assert result1["fingerprint"] == result2["fingerprint"]
+
+def test_driver_uses_logging():
+    """Test driver uses logging module, not ctx.log()."""
+    import ast
+    import inspect
+    from your_component.driver import YourDriver
+
+    # Get source code
+    source = inspect.getsource(YourDriver.run)
+    tree = ast.parse(source)
+
+    # Check for ctx.log() calls (should not exist)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute):
+            if node.attr == "log" and isinstance(node.value, ast.Name):
+                if node.value.id == "ctx":
+                    raise AssertionError("Driver uses ctx.log() - use logging.getLogger(__name__) instead!")
+
+def test_driver_accepts_both_input_formats():
+    """Test driver accepts both E2B (df) and LOCAL (df_*) input formats."""
+    driver = YourDriver()
+
+    # Test E2B format
+    result_e2b = driver.run(
+        step_id="test",
+        config=test_config,
+        inputs={"df": test_dataframe},
+        ctx=None
+    )
+    assert result_e2b is not None
+
+    # Test LOCAL format
+    result_local = driver.run(
+        step_id="test",
+        config=test_config,
+        inputs={"df_previous_step": test_dataframe},
+        ctx=None
+    )
+    assert result_local is not None
 ```
 
 ### 7. Package for Distribution
@@ -304,6 +349,56 @@ tar -czf component-1.0.0.tgz spec.yaml driver.py __init__.py requirements.txt te
 - **SANITIZE** error messages (never leak secrets)
 - **TIMEOUT** all network operations
 
+## Driver Context API Contract (CRITICAL)
+
+Drivers receive a `ctx` object with MINIMAL interface:
+
+✅ **Available methods:**
+- `ctx.log_metric(name, value, **kwargs)` - Log metrics
+- `ctx.output_dir` - Artifacts directory (Path object)
+
+❌ **NOT available:**
+- `ctx.log()` - Does NOT exist!
+
+### Logging (REQUIRED)
+
+ALWAYS use standard logging module:
+
+```python
+import logging
+logger = logging.getLogger(__name__)
+
+def run(self, *, step_id, config, inputs, ctx):
+    logger.info(f"[{step_id}] Starting")  # ✅ CORRECT
+    ctx.log_metric("rows_read", 1000)     # ✅ CORRECT
+    # ctx.log("message")  # ❌ WRONG - will crash!
+```
+
+### E2B/LOCAL Input Parity (CRITICAL)
+
+Drivers MUST accept BOTH input key formats:
+- LOCAL: `df_<step_id>` (e.g., `df_extract_actors`)
+- E2B: `df` (plain)
+
+```python
+# ✅ CORRECT - Accept both
+for key, value in inputs.items():
+    if (key.startswith("df_") or key == "df") and isinstance(value, pd.DataFrame):
+        df = value
+        break
+```
+
+NEVER use only `key.startswith("df_")` - it breaks E2B!
+
+### Testing Requirements
+
+ALWAYS test in both environments:
+
+```bash
+osiris run pipeline.yaml                              # Local
+osiris run pipeline.yaml --e2b --e2b-install-deps    # E2B
+```
+
 ## E2B Cloud Compatibility (CRITICAL)
 
 For components to work in E2B cloud sandbox:
@@ -314,8 +409,35 @@ For components to work in E2B cloud sandbox:
 - ✅ USE `config["resolved_connection"]`
 - ❌ NO system-level dependencies
 - ✅ ALL dependencies in `requirements.txt` with versions
+- ❌ NO `ctx.log()` - Use `logging.getLogger(__name__)`
+- ✅ ACCEPT both `df` and `df_*` input keys for E2B/LOCAL parity
 
 ## Common Patterns
+
+### E2B/LOCAL Input Handling
+
+```python
+def run(self, *, step_id: str, config: dict, inputs: dict | None = None, ctx: Any = None) -> dict:
+    """Handle inputs from both LOCAL and E2B environments."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Extract DataFrame from inputs (supports both LOCAL and E2B formats)
+    df = None
+    if inputs:
+        for key, value in inputs.items():
+            # Accept both "df" (E2B) and "df_<step_id>" (LOCAL)
+            if (key.startswith("df_") or key == "df") and isinstance(value, pd.DataFrame):
+                df = value
+                logger.info(f"[{step_id}] Found input DataFrame with key: {key}")
+                break
+
+    if df is None:
+        raise ValueError(f"No input DataFrame found in inputs: {list(inputs.keys()) if inputs else []}")
+
+    # Process DataFrame...
+    return {"df": df}
+```
 
 ### REST API Extractor
 

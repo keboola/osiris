@@ -77,10 +77,11 @@ config:
 # On first run, this is empty
 # Subsequent runs use this to track progress
 inputs:
-  # State for each table being extracted
+  # State for each data type being extracted
   state:
-    # Key: table name (matches destination.table_name)
-    posthog_events:
+    # Data type-specific state (nested under {data_type}_state)
+    # Key: {data_type}_state (e.g., events_state, persons_state, sessions_state)
+    events_state:
       # High-watermark timestamp from last successful extraction
       # ISO8601 format: tracks the latest timestamp seen
       # Next run starts from this timestamp
@@ -90,14 +91,11 @@ inputs:
       # Used with last_timestamp to handle multiple events with same timestamp
       last_uuid: null
 
-      # Recent UUIDs seen in lookback window (for deduplication)
-      # Prevents processing duplicate events when there's data overlap
-      # Limited to last 1000 UUIDs (memory efficient)
-      recent_uuids: []
-
-      # Column names from last extraction
-      # Used to maintain consistent CSV schema
-      columns: null
+    # Recent UUIDs seen in lookback window (for deduplication)
+    # Shared across all data types (top-level, not nested in data type state)
+    # Prevents processing duplicate events when there's data overlap
+    # Limited to last 1000 UUIDs (memory efficient)
+    recent_uuids: []
 
 # Output specification
 # Osiris will write extracted data to stdout in JSONL format

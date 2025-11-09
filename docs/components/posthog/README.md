@@ -4,7 +4,7 @@ Extract analytics data from PostHog using HogQL Query API in isolated E2B sandbo
 
 ## Description
 
-This is an **Osiris-compliant component** for extracting PostHog events, persons, cohorts, and feature flags. Unlike the Keboola extractor that runs within Keboola infrastructure, this component is designed to execute in E2B sandboxed environments with full support for discovery, health checks, and streaming incremental loads.
+This is an **Osiris-compliant component** for extracting PostHog events and persons. Unlike the Keboola extractor that runs within Keboola infrastructure, this component is designed to execute in E2B sandboxed environments with full support for discovery, health checks, and streaming incremental loads.
 
 **Key Features:**
 - Full HogQL Query API support with automatic pagination
@@ -63,7 +63,7 @@ resolved_connection:
   custom_base_url: "https://posthog.example.com"  # Only for self_hosted
 
 # Extraction configuration
-data_type: "events"  # events, persons, cohorts, or feature_flags
+data_type: "events"  # events, persons, sessions, or person_distinct_ids
 event_types:
   - "$pageview"
   - "$click"
@@ -86,10 +86,10 @@ osiris discover posthog --config config.yaml
 ```json
 {
   "resources": [
-    {"name": "cohorts", "type": "table", "description": "PostHog cohorts"},
     {"name": "events", "type": "table", "description": "PostHog events with properties"},
-    {"name": "feature_flags", "type": "table", "description": "PostHog feature flags"},
-    {"name": "persons", "type": "table", "description": "PostHog persons with properties"}
+    {"name": "persons", "type": "table", "description": "PostHog persons with properties"},
+    {"name": "sessions", "type": "table", "description": "PostHog sessions data"},
+    {"name": "person_distinct_ids", "type": "table", "description": "PostHog person distinct IDs"}
   ],
   "fingerprint": "sha256_hash_of_resources",
   "discovered_at": "2025-11-08T10:30:45.123456Z"
@@ -220,7 +220,7 @@ This Osiris component declares the following capabilities:
 
 | Capability | Supported | Description |
 |------------|-----------|-------------|
-| **discover** | ✓ Yes | List available data types (events, persons, cohorts, feature_flags) |
+| **discover** | ✓ Yes | List available data types (events, persons, sessions, person_distinct_ids) |
 | **streaming** | ✓ Yes | Incremental extraction with state management (last_run, seen_uuids) |
 | **bulkOperations** | ✓ Yes | Full data extraction with multi-page support |
 | **adHocAnalytics** | ✗ No | Not applicable (component extracts, doesn't analyze) |
@@ -265,51 +265,70 @@ is_identified (boolean)  # Whether person is identified
 properties_* (various)   # Flattened person properties
 ```
 
-### cohorts
+### sessions
 
-User cohorts/segments.
-
-**Schema:**
-```
-id (string)
-name (string)
-description (string)
-created_at (datetime)
-```
-
-### feature_flags
-
-Feature flag definitions.
+PostHog session data.
 
 **Schema:**
 ```
-id (string)
-key (string)
-name (string)
-active (boolean)
-created_at (datetime)
+session_id (string)      # Unique session identifier
+distinct_id (string)     # Associated user identifier
+started_at (datetime)    # Session start timestamp
+ended_at (datetime)      # Session end timestamp
+duration_seconds (int)   # Session duration in seconds
 ```
+
+### person_distinct_ids
+
+Mapping between person IDs and distinct IDs.
+
+**Schema:**
+```
+person_id (string)       # Internal person ID
+distinct_id (string)     # User identifier
+created_at (datetime)    # Mapping creation timestamp
+```
+
+## Future Features (Phase 2)
+
+The following data types are planned for future releases:
+- `cohorts` - PostHog cohort definitions
+- `feature_flags` - Feature flag configurations
+
+See `IMPLEMENTATION_NOTES.md` for development roadmap.
 
 ## State Management
 
-The component tracks extraction state for incremental loading:
+The component tracks extraction state for incremental loading using a nested structure:
 
-```json
-{
-  "last_run": "2025-11-08T10:30:45.123456Z",
-  "seen_uuids": [
-    "uuid-1",
-    "uuid-2",
-    "..."
-  ]
-}
+```yaml
+state:
+  # Data type-specific state (nested under {data_type}_state)
+  events_state:
+    last_timestamp: "2025-11-08T10:30:45.123456Z"
+    last_uuid: "uuid-abc-123"
+
+  persons_state:
+    last_timestamp: "2025-11-08T09:15:30.123456Z"
+    last_person_id: "person-xyz-789"
+
+  sessions_state:
+    last_start_timestamp: "2025-11-08T10:00:00Z"
+    last_session_id: "session-def-456"
+
+  # UUID deduplication cache (top-level, shared across all data types)
+  recent_uuids:
+    - "uuid-1"
+    - "uuid-2"
+    - "uuid-3"
 ```
 
 **How it works:**
-1. First run: Extract all events since `initial_since` (or 30 days ago)
-2. Subsequent runs: Extract events since `last_run` minus `lookback_window_minutes`
-3. Lookback window catches events that arrived late due to ingestion delays
-4. UUID deduplication prevents double-counting (only if `deduplication_enabled: true`)
+1. First run: Extract all data since `initial_since` (or 30 days ago)
+2. Subsequent runs: Extract data since `last_timestamp` minus `lookback_window_minutes`
+3. Lookback window catches late-arriving data due to ingestion delays
+4. UUID deduplication prevents double-counting using shared `recent_uuids` list (top-level)
+5. Each data type maintains its own watermark state in `{data_type}_state`
 
 ## Error Categories
 
@@ -442,7 +461,8 @@ See `driver.py` for implementation details.
 
 ### 1.0.0 (2025-11-08)
 - Initial release
-- Support for events, persons data types (cohorts/feature_flags deferred to Phase 2)
+- Support for events, persons, sessions, and person_distinct_ids data types
+- Phase 2 planned: cohorts and feature_flags (see IMPLEMENTATION_NOTES.md)
 - Full HogQL Query API integration with SEEK-based pagination
 - **CRITICAL FIX: Streaming batch writer** (prevents OOM in E2B sandbox)
 - State management for incremental loads (high-watermark pattern)

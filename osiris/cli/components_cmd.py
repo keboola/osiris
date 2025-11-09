@@ -37,26 +37,21 @@ def list_components(
     filter_mode = None if mode == "all" else mode
     components = registry.list_components(mode=filter_mode)
 
-    # Check runtime driver availability if requested
-    if runnable or as_json:  # Always check for JSON output
-        import importlib
+    # SECURITY: Driver checking removed to prevent code execution on list
+    # Components should be listed based on metadata only (YAML spec files)
+    # Driver verification can be performed separately via 'osiris components discover'
+    # See: Fix for code execution vulnerability in components list --json
 
+    # Add metadata-only driver info if requested
+    if runnable or as_json:
         for component in components:
             spec = registry.get_component(component["name"])
             runtime_config = spec.get("x-runtime", {}) if spec else {}
             driver_path = runtime_config.get("driver")
 
-            has_driver = False
-            if driver_path:
-                try:
-                    module_path, class_name = driver_path.rsplit(".", 1)
-                    module = importlib.import_module(module_path)
-                    getattr(module, class_name)
-                    has_driver = True
-                except Exception:
-                    pass
-
-            component["runnable"] = has_driver
+            # Metadata-only: report if driver path is configured in spec
+            # Do NOT import or execute the driver module
+            component["runnable"] = bool(driver_path)  # Has driver configured
             component["runtime_driver"] = driver_path if driver_path else None
 
     # Filter by runnable if requested

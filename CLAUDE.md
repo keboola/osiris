@@ -268,6 +268,95 @@ MYSQL_PASSWORD="value" osiris run ... # Option 3: Inline
 - Test components with `--e2b` flag for cloud compatibility
 - Follow 57 validation rules in COMPONENT_AI_CHECKLIST.md
 
+## Driver Development Guidelines
+
+### Context API Contract
+
+Drivers receive a `ctx` object with a **minimal interface**. Do NOT assume other methods exist.
+
+**Available methods:**
+- ✅ `ctx.log_metric(name, value, **kwargs)` - Log metrics to metrics.jsonl
+- ✅ `ctx.output_dir` - Path to step's artifacts directory (Path object)
+
+**NOT available:**
+- ❌ `ctx.log()` - Does NOT exist! Use `logger.info()` instead
+
+### Logging (REQUIRED)
+
+ALWAYS use Python's standard logging module. Never use `ctx.log()`.
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+def run(*, step_id: str, config: dict, inputs: dict, ctx):
+    logger.info(f"[{step_id}] Starting extraction")
+    logger.error(f"[{step_id}] Failed: {error}")
+
+    # Metrics go via ctx
+    ctx.log_metric("rows_read", 1000)
+```
+
+### Input Keys - E2B/LOCAL Parity (CRITICAL)
+
+Drivers MUST accept **both** input key formats for E2B/LOCAL compatibility:
+- **LOCAL**: `df_<step_id>` (e.g., `df_extract_actors`) - uses `build_dataframe_keys()`
+- **E2B**: `df` (plain) - ProxyWorker uses simple key
+
+**Correct Pattern:**
+```python
+# ✅ CORRECT - Accept both formats
+df = None
+for key, value in inputs.items():
+    if (key.startswith("df_") or key == "df") and isinstance(value, pd.DataFrame):
+        df = value
+        break
+
+if df is None:
+    raise ValueError(
+        f"Step {step_id}: Driver requires DataFrame input. "
+        f"Expected key 'df' or starting with 'df_'. Got: {list(inputs.keys())}"
+    )
+```
+
+**Wrong Pattern:**
+```python
+# ❌ WRONG - Only accepts df_* (breaks E2B)
+if key.startswith("df_"):  # E2B will fail!
+```
+
+### Testing Requirements
+
+ALWAYS test drivers in **both** environments before committing:
+
+```bash
+# 1. Local execution
+osiris compile your_pipeline.yaml
+osiris run --last-compile
+
+# 2. E2B cloud execution
+osiris run --last-compile --e2b --e2b-install-deps
+```
+
+If a driver works locally but fails in E2B with input key errors, you likely forgot the `or key == "df"` check.
+
+### Component Spec Requirements
+
+Every component needs `x-runtime` dependencies declared:
+
+```yaml
+x-runtime:
+  driver: osiris.drivers.your_driver.YourDriver
+  requirements:
+    imports:
+      - pandas
+      - requests
+    packages:
+      - pandas
+      - requests>=2.0
+```
+
 ## Project Structure
 
 ```

@@ -6,10 +6,12 @@ Handles all interactions with PostHog API (HogQL Query API, Persons API, etc.)
 Implements SEEK-based pagination strategy (not OFFSET) to avoid performance
 degradation on large datasets. Uses timestamp + uuid for deterministic pagination.
 """
+
+from collections.abc import Iterator
+from datetime import UTC, datetime
 import logging
 import time
-from datetime import datetime, timezone
-from typing import Iterator, Any, Optional
+from typing import Any
 from urllib.parse import urljoin
 
 import requests
@@ -19,27 +21,61 @@ from urllib3.util.retry import Retry
 logger = logging.getLogger(__name__)
 
 
+def _validate_and_escape_event_type(event_type: str) -> str:
+    """
+    Validate and escape event type for safe HogQL interpolation.
+
+    PostHog event names can contain any characters (including special chars like :, /, parentheses).
+    To prevent HogQL injection, we escape single quotes by doubling them (SQL standard).
+
+    Args:
+        event_type: Event type string to validate and escape
+
+    Returns:
+        Escaped event type safe for HogQL interpolation
+
+    Raises:
+        ValueError: If event_type is empty or contains only whitespace
+
+    Examples:
+        Valid: "page_view" → "page_view"
+        Valid: "video:play" → "video:play"
+        Valid: "signup/complete" → "signup/complete"
+        Valid: "user's action" → "user''s action"  (escaped single quote)
+    """
+    # Only reject empty/whitespace-only strings
+    if not event_type or not event_type.strip():
+        raise ValueError("Event type cannot be empty or whitespace-only")
+
+    # Escape single quotes by doubling them (SQL standard)
+    # This prevents injection: "test' OR '1'='1" → "test'' OR ''1''=''1"
+    return event_type.replace("'", "''")
+
+
 # Custom exceptions
 class PostHogClientError(Exception):
     """Base exception for PostHog API errors"""
+
     pass
 
 
 class PostHogAuthenticationError(PostHogClientError):
     """Authentication failed (401/403)"""
+
     pass
 
 
 class PostHogRateLimitError(PostHogClientError):
     """Rate limit exceeded (429)"""
 
-    def __init__(self, message: str, retry_after: Optional[int] = None):
+    def __init__(self, message: str, retry_after: int | None = None):
         super().__init__(message)
         self.retry_after = retry_after
 
 
 class PostHogNetworkError(PostHogClientError):
     """Network connectivity failure"""
+
     pass
 
 
@@ -74,10 +110,7 @@ class PostHogClient:
 
         # Only retry on server errors (5xx), not on 429 (rate limit)
         retry_strategy = Retry(
-            total=3,
-            backoff_factor=1.0,
-            status_forcelist=[500, 502, 503, 504],
-            allowed_methods=["GET", "POST"]
+            total=3, backoff_factor=1.0, status_forcelist=[500, 502, 503, 504], allowed_methods=["GET", "POST"]
         )
 
         adapter = HTTPAdapter(max_retries=retry_strategy)
@@ -111,12 +144,7 @@ class PostHogClient:
         except requests.exceptions.ConnectionError as e:
             raise PostHogNetworkError(f"Connection failed: {e}") from e
 
-    def execute_hogql_query(
-        self,
-        query: str,
-        timeout: float = REQUEST_TIMEOUT,
-        max_retries: int = 5
-    ) -> dict[str, Any]:
+    def execute_hogql_query(self, query: str, timeout: float = REQUEST_TIMEOUT, max_retries: int = 5) -> dict[str, Any]:
         """
         Execute a HogQL query with exponential backoff on rate limit errors
 
@@ -136,12 +164,7 @@ class PostHogClient:
         url = urljoin(self.base_url, f"/api/projects/{self.project_id}/query/")
         headers = self._get_headers()
 
-        payload = {
-            "query": {
-                "kind": "HogQLQuery",
-                "query": query
-            }
-        }
+        payload = {"query": {"kind": "HogQLQuery", "query": query}}
 
         retry_count = 0
         while retry_count <= max_retries:
@@ -150,12 +173,7 @@ class PostHogClient:
                 self._check_rate_limit()
 
                 logger.debug(f"Executing HogQL query: {query[:100]}...")
-                response = self.session.post(
-                    url,
-                    headers=headers,
-                    json=payload,
-                    timeout=timeout
-                )
+                response = self.session.post(url, headers=headers, json=payload, timeout=timeout)
 
                 # Track request time for rate limiting
                 self._request_times.append(time.time())
@@ -169,14 +187,13 @@ class PostHogClient:
                 elif response.status_code == 429:
                     # Rate limit hit - exponential backoff
                     retry_after = self._get_retry_after(response)
-                    backoff = min(2 ** retry_count, 16)  # Cap at 16 seconds
+                    backoff = min(2**retry_count, 16)  # Cap at 16 seconds
                     sleep_time = max(backoff, retry_after)
 
                     retry_count += 1
                     if retry_count > max_retries:
                         raise PostHogRateLimitError(
-                            f"Rate limit exceeded after {max_retries} retries",
-                            retry_after=retry_after
+                            f"Rate limit exceeded after {max_retries} retries", retry_after=retry_after
                         )
 
                     logger.warning(
@@ -196,11 +213,16 @@ class PostHogClient:
                 raise PostHogNetworkError(f"Request timeout ({timeout}s): {e}") from e
             except requests.exceptions.ConnectionError as e:
                 raise PostHogNetworkError(f"Connection error: {e}") from e
-            except requests.exceptions.RequestException as e:
+            except requests.exceptions.HTTPError as e:
+                # HTTPError is raised by raise_for_status(), so response exists
                 if response.status_code >= 500:
-                    # Transient error - will retry via session retry logic
+                    # Transient server error - will retry via session retry logic
                     raise PostHogClientError(f"Server error {response.status_code}: {e}") from e
-                raise PostHogClientError(f"Request failed: {e}") from e
+                raise PostHogClientError(f"HTTP error {response.status_code}: {e}") from e
+            except requests.exceptions.RequestException as e:
+                # Generic network/request errors where response may not exist (DNS, TLS, etc.)
+                # This prevents UnboundLocalError when response was never created
+                raise PostHogNetworkError(f"Request failed: {e}") from e
 
         raise PostHogRateLimitError("Max retries exhausted on rate limit")
 
@@ -208,10 +230,10 @@ class PostHogClient:
         self,
         since: datetime,
         until: datetime,
-        event_types: Optional[list[str]] = None,
+        event_types: list[str] | None = None,
         page_size: int = 1000,
-        last_timestamp: Optional[str] = None,
-        last_uuid: Optional[str] = None
+        last_timestamp: str | None = None,
+        last_uuid: str | None = None,
     ) -> Iterator[dict[str, Any]]:
         """
         Iterate through events using SEEK-based pagination
@@ -240,23 +262,25 @@ class PostHogClient:
         since_iso = self._to_iso_string(since)
         until_iso = self._to_iso_string(until)
 
-        logger.info(
-            f"Starting event iteration: {since_iso} to {until_iso}, "
-            f"page_size={page_size}"
-        )
+        logger.info(f"Starting event iteration: {since_iso} to {until_iso}, " f"page_size={page_size}")
+
+        # Convert to UTC before formatting to ensure correct interpretation by ClickHouse
+        # ClickHouse interprets naive timestamps as UTC, so we must explicitly convert
+        # timezone-aware datetimes to UTC to prevent silent time window shifts
+        since_utc = since.astimezone(UTC) if since.tzinfo is not None else since
+        until_utc = until.astimezone(UTC) if until.tzinfo is not None else until
 
         # Format timestamps for HogQL (requires toDateTime() wrapper)
-        since_hogql = since.strftime('%Y-%m-%d %H:%M:%S')
-        until_hogql = until.strftime('%Y-%m-%d %H:%M:%S')
+        since_hogql = since_utc.strftime("%Y-%m-%d %H:%M:%S")
+        until_hogql = until_utc.strftime("%Y-%m-%d %H:%M:%S")
 
         # Build WHERE clause
-        where_parts = [
-            f"timestamp >= toDateTime('{since_hogql}')",
-            f"timestamp < toDateTime('{until_hogql}')"
-        ]
+        where_parts = [f"timestamp >= toDateTime('{since_hogql}')", f"timestamp < toDateTime('{until_hogql}')"]
 
         if event_types:
-            event_filter = ", ".join([f"'{t}'" for t in event_types])
+            # Validate and escape event types to prevent HogQL injection
+            escaped_types = [_validate_and_escape_event_type(t) for t in event_types]
+            event_filter = ", ".join([f"'{t}'" for t in escaped_types])
             where_parts.append(f"event IN ({event_filter})")
 
         # Add SEEK pagination if resuming
@@ -293,9 +317,7 @@ class PostHogClient:
                 columns = result.get("columns", [])
 
                 if not rows:
-                    logger.info(
-                        f"Event iteration complete. Total yielded: {total_yielded}"
-                    )
+                    logger.info(f"Event iteration complete. Total yielded: {total_yielded}")
                     break
 
                 logger.debug(f"Page {page_num + 1}: {len(rows)} rows")
@@ -304,7 +326,7 @@ class PostHogClient:
                 for row in rows:
                     # PostHog returns results as list of lists, not list of dicts
                     # Convert: [uuid, event, timestamp, ...] -> {uuid: ..., event: ..., ...}
-                    event_dict = dict(zip(columns, row))
+                    event_dict = dict(zip(columns, row, strict=False))
                     yield event_dict
                     total_yielded += 1
 
@@ -316,7 +338,7 @@ class PostHogClient:
                 # Update SEEK parameters for next page
                 # Last row is still a list at this point, convert to dict
                 last_row = rows[-1]
-                last_row_dict = dict(zip(columns, last_row))
+                last_row_dict = dict(zip(columns, last_row, strict=False))
                 last_timestamp = last_row_dict.get("timestamp")
                 last_uuid = last_row_dict.get("uuid")
 
@@ -328,11 +350,13 @@ class PostHogClient:
                 # Rebuild query with new SEEK parameters
                 where_parts_updated = [
                     f"timestamp >= toDateTime('{since_hogql}')",
-                    f"timestamp < toDateTime('{until_hogql}')"
+                    f"timestamp < toDateTime('{until_hogql}')",
                 ]
 
                 if event_types:
-                    event_filter = ", ".join([f"'{t}'" for t in event_types])
+                    # Validate and escape event types to prevent HogQL injection (repeated for pagination)
+                    escaped_types = [_validate_and_escape_event_type(t) for t in event_types]
+                    event_filter = ", ".join([f"'{t}'" for t in escaped_types])
                     where_parts_updated.append(f"event IN ({event_filter})")
 
                 if last_ts_clean:
@@ -357,10 +381,7 @@ class PostHogClient:
                 raise
 
     def iterate_persons(
-        self,
-        page_size: int = 1000,
-        last_created_at: Optional[str] = None,
-        last_id: Optional[str] = None
+        self, page_size: int = 1000, last_created_at: str | None = None, last_id: str | None = None
     ) -> Iterator[dict[str, Any]]:
         """
         Iterate through persons using SEEK-based pagination
@@ -418,7 +439,7 @@ class PostHogClient:
 
                 # Convert list rows to dicts using column names
                 for row in rows:
-                    person_dict = dict(zip(columns, row))
+                    person_dict = dict(zip(columns, row, strict=False))
                     yield person_dict
                     total_yielded += 1
 
@@ -429,12 +450,14 @@ class PostHogClient:
 
                 # Update SEEK parameters for next page
                 last_row = rows[-1]
-                last_row_dict = dict(zip(columns, last_row))
+                last_row_dict = dict(zip(columns, last_row, strict=False))
                 last_created_at = last_row_dict.get("created_at")
                 last_id = last_row_dict.get("id")
 
                 # Format timestamp for HogQL
-                last_ts_clean = last_created_at[:19] if last_created_at and len(last_created_at) > 19 else last_created_at
+                last_ts_clean = (
+                    last_created_at[:19] if last_created_at and len(last_created_at) > 19 else last_created_at
+                )
 
                 where_clause = (
                     f"WHERE (created_at > toDateTime('{last_ts_clean}') OR "
@@ -459,8 +482,8 @@ class PostHogClient:
         since: datetime,
         until: datetime,
         page_size: int = 1000,
-        last_start_timestamp: Optional[str] = None,
-        last_session_id: Optional[str] = None
+        last_start_timestamp: str | None = None,
+        last_session_id: str | None = None,
     ) -> Iterator[dict[str, Any]]:
         """
         Iterate through sessions using SEEK-based pagination
@@ -480,18 +503,23 @@ class PostHogClient:
             PostHogRateLimitError: If rate limited
             PostHogClientError: On other errors
         """
-        since_hogql = since.strftime('%Y-%m-%d %H:%M:%S')
-        until_hogql = until.strftime('%Y-%m-%d %H:%M:%S')
+        # Convert to UTC before formatting to ensure correct interpretation by ClickHouse
+        # ClickHouse interprets naive timestamps as UTC, so we must explicitly convert
+        # timezone-aware datetimes to UTC to prevent silent time window shifts
+        since_utc = since.astimezone(UTC) if since.tzinfo is not None else since
+        until_utc = until.astimezone(UTC) if until.tzinfo is not None else until
+
+        since_hogql = since_utc.strftime("%Y-%m-%d %H:%M:%S")
+        until_hogql = until_utc.strftime("%Y-%m-%d %H:%M:%S")
 
         logger.info(
-            f"Starting session iteration: {since.isoformat()} to {until.isoformat()}, "
-            f"page_size={page_size}"
+            f"Starting session iteration: {since.isoformat()} to {until.isoformat()}, " f"page_size={page_size}"
         )
 
         # Build WHERE clause
         where_parts = [
             f"$start_timestamp >= toDateTime('{since_hogql}')",
-            f"$start_timestamp < toDateTime('{until_hogql}')"
+            f"$start_timestamp < toDateTime('{until_hogql}')",
         ]
 
         # Add SEEK pagination if resuming
@@ -532,7 +560,7 @@ class PostHogClient:
 
                 # Convert list rows to dicts
                 for row in rows:
-                    session_dict = dict(zip(columns, row))
+                    session_dict = dict(zip(columns, row, strict=False))
                     yield session_dict
                     total_yielded += 1
 
@@ -542,16 +570,20 @@ class PostHogClient:
 
                 # Update SEEK parameters for next page
                 last_row = rows[-1]
-                last_row_dict = dict(zip(columns, last_row))
+                last_row_dict = dict(zip(columns, last_row, strict=False))
                 last_start_timestamp = last_row_dict.get("$start_timestamp")
                 last_session_id = last_row_dict.get("session_id")
 
                 # Format timestamp
-                last_ts_clean = last_start_timestamp[:19] if last_start_timestamp and len(last_start_timestamp) > 19 else last_start_timestamp
+                last_ts_clean = (
+                    last_start_timestamp[:19]
+                    if last_start_timestamp and len(last_start_timestamp) > 19
+                    else last_start_timestamp
+                )
 
                 where_parts_updated = [
                     f"$start_timestamp >= toDateTime('{since_hogql}')",
-                    f"$start_timestamp < toDateTime('{until_hogql}')"
+                    f"$start_timestamp < toDateTime('{until_hogql}')",
                 ]
 
                 if last_ts_clean:
@@ -575,10 +607,7 @@ class PostHogClient:
                 logger.error(f"Rate limit hit during session iteration: {e}")
                 raise
 
-    def iterate_person_distinct_ids(
-        self,
-        page_size: int = 1000
-    ) -> Iterator[dict[str, Any]]:
+    def iterate_person_distinct_ids(self, page_size: int = 1000) -> Iterator[dict[str, Any]]:
         """
         Iterate through person_distinct_ids (full table scan, no time filter)
 
@@ -603,9 +632,12 @@ class PostHogClient:
 
         while True:
             try:
+                # ORDER BY ensures deterministic row order for OFFSET pagination
+                # Without it, ClickHouse may return rows in different orders between requests
                 query = (
                     f"SELECT distinct_id, person_id "  # nosec B608
                     f"FROM person_distinct_ids "
+                    f"ORDER BY person_id ASC, distinct_id ASC "
                     f"LIMIT {page_size} OFFSET {offset}"
                 )
 
@@ -623,7 +655,7 @@ class PostHogClient:
 
                 # Convert list rows to dicts
                 for row in rows:
-                    mapping_dict = dict(zip(columns, row))
+                    mapping_dict = dict(zip(columns, row, strict=False))
                     yield mapping_dict
 
                 if len(rows) < page_size:
@@ -638,10 +670,7 @@ class PostHogClient:
 
     def _get_headers(self) -> dict[str, str]:
         """Get HTTP headers for API requests"""
-        return {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
+        return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
     def _get_retry_after(self, response: requests.Response) -> int:
         """
@@ -699,6 +728,6 @@ class PostHogClient:
         """
         if dt.tzinfo is None:
             # Assume UTC if naive
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
 
         return dt.strftime("%Y-%m-%dT%H:%M:%SZ")

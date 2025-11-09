@@ -16,12 +16,12 @@ Claude automatically loads this skill when you:
 - Mention building an extractor, writer, or processor
 - Request help with discovery or doctor capabilities
 - Need to package a component for distribution
-- Want to validate against the 57-rule checklist
+- Want to validate against the 60-rule checklist
 
 ## Files in This Skill
 
 - **SKILL.md** - Main instructions with workflow and quick-start guide
-- **CHECKLIST.md** - 57 validation rules all components must pass
+- **CHECKLIST.md** - 60 validation rules all components must pass
 - **POSTHOG_EXAMPLE.md** - Complete working example (PostHog extractor)
 - **TEMPLATES.md** - Code templates for common patterns
 - **README.md** - This file
@@ -42,8 +42,9 @@ Claude: [Loads osiris-component-developer skill]
 ## Key Features
 
 - ✅ Complete component architecture knowledge
-- ✅ 57-rule validation checklist
+- ✅ 60-rule validation checklist
 - ✅ E2B cloud compatibility guidance
+- ✅ Driver Context API contract (logging, input parity)
 - ✅ Security best practices
 - ✅ Working code examples
 - ✅ Testing strategies

@@ -146,12 +146,17 @@ Incremental loading state from previous run.
 On first run, state is empty. On subsequent runs, Osiris uses state to:
 1. Resume from last extracted timestamp
 2. Avoid re-extracting duplicate rows
-3. Track schema changes
 
+**State Structure:**
+State is organized by data type with suffix `_state` (e.g., `events_state`, `persons_state`, `sessions_state`).
+The `recent_uuids` list is stored at the top level for deduplication across all data types.
+
+**Events State Example:**
 ```yaml
 inputs:
   state:
-    posthog_events:
+    # Events-specific state (nested under "events_state")
+    events_state:
       # High-watermark timestamp from last run
       # Next extraction starts from this timestamp (after lookback window)
       last_timestamp: "2025-11-08T10:30:00Z"
@@ -160,34 +165,58 @@ inputs:
       # Used with last_timestamp to handle duplicate timestamps
       last_uuid: "abc-123-uuid"
 
-      # Recent UUIDs from lookback window
-      # Prevents processing duplicates when data overlaps
-      recent_uuids:
-        - "uuid-1"
-        - "uuid-2"
-        - "uuid-3"
+    # UUID deduplication cache (top-level, shared across data types)
+    # Prevents processing duplicates when data overlaps
+    recent_uuids:
+      - "uuid-1"
+      - "uuid-2"
+      - "uuid-3"
+```
 
-      # Column names from last extraction
-      # Maintains consistent CSV schema
-      columns:
-        - "uuid"
-        - "event"
-        - "timestamp"
-        - "distinct_id"
-        - "person_id"
-        - "properties_$browser"
-        - "properties_$pathname"
+**Persons State Example:**
+```yaml
+inputs:
+  state:
+    # Persons-specific state (nested under "persons_state")
+    persons_state:
+      # High-watermark created_at timestamp from last run
+      last_created_at: "2025-11-08T10:30:00Z"
+
+      # Tie-breaker person ID for pagination
+      last_id: "person-abc-123"
+
+    # UUID deduplication cache (top-level)
+    recent_uuids:
+      - "uuid-1"
+      - "uuid-2"
+```
+
+**Sessions State Example:**
+```yaml
+inputs:
+  state:
+    # Sessions-specific state (nested under "sessions_state")
+    sessions_state:
+      # High-watermark start timestamp from last run
+      last_start_timestamp: "2025-11-08T10:30:00Z"
+
+      # Tie-breaker session ID for pagination
+      last_session_id: "session-xyz-789"
+
+    # UUID deduplication cache (top-level)
+    recent_uuids:
+      - "uuid-1"
+      - "uuid-2"
 ```
 
 **Example - First Run (Empty State):**
 ```yaml
 inputs:
   state:
-    posthog_events:
+    events_state:
       last_timestamp: null
       last_uuid: null
-      recent_uuids: []
-      columns: null
+    recent_uuids: []
 ```
 
 ### Output
@@ -285,11 +314,10 @@ config:
 
 inputs:
   state:
-    posthog_events:
+    events_state:
       last_timestamp: null
       last_uuid: null
-      recent_uuids: []
-      columns: null
+    recent_uuids: []
 
 logging:
   level: "info"
@@ -317,11 +345,10 @@ config:
 
 inputs:
   state:
-    posthog_events_filtered:
+    events_state:
       last_timestamp: "2025-11-08T10:00:00Z"
       last_uuid: "evt-123"
-      recent_uuids: ["uuid-1", "uuid-2", "uuid-3"]
-      columns: ["uuid", "event", "timestamp"]
+    recent_uuids: ["uuid-1", "uuid-2", "uuid-3"]
 
 logging:
   level: "info"
@@ -352,11 +379,10 @@ config:
 
 inputs:
   state:
-    posthog_persons:
-      last_timestamp: null
-      last_uuid: null
-      recent_uuids: []
-      columns: null
+    persons_state:
+      last_created_at: null
+      last_id: null
+    recent_uuids: []
 
 logging:
   level: "info"
@@ -385,11 +411,10 @@ config:
 
 inputs:
   state:
-    posthog_events:
+    events_state:
       last_timestamp: null
       last_uuid: null
-      recent_uuids: []
-      columns: null
+    recent_uuids: []
 
 logging:
   level: "info"
@@ -432,14 +457,16 @@ performance:
 # Config: initial_since = 2025-11-01T00:00:00Z
 inputs:
   state:
-    events:
+    events_state:
       last_timestamp: null
-      recent_uuids: []
+      last_uuid: null
+    recent_uuids: []
 
 # After extraction:
 # Output state updates to:
-last_timestamp: 2025-11-08T10:00:00Z
-last_uuid: "evt-999"
+events_state:
+  last_timestamp: 2025-11-08T10:00:00Z
+  last_uuid: "evt-999"
 recent_uuids: ["uuid-900", "uuid-901", ..., "uuid-999"]
 ```
 
@@ -448,10 +475,10 @@ recent_uuids: ["uuid-900", "uuid-901", ..., "uuid-999"]
 # State preserved from Run 1
 inputs:
   state:
-    events:
+    events_state:
       last_timestamp: 2025-11-08T10:00:00Z
       last_uuid: "evt-999"
-      recent_uuids: ["uuid-900", "uuid-901", ..., "uuid-999"]
+    recent_uuids: ["uuid-900", "uuid-901", ..., "uuid-999"]
 
 # Actual extraction with lookback:
 # Start = 2025-11-08T10:00:00Z - 15 min = 2025-11-08T09:45:00Z

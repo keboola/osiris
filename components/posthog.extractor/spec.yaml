@@ -61,6 +61,10 @@ configSchema:
       minimum: 100
       maximum: 10000
       default: 1000
+    deduplication_enabled:
+      type: boolean
+      description: Enable UUID-based deduplication to prevent duplicate rows across incremental runs. Recommended for events extraction. Has no effect for data types without UUIDs (persons, sessions, person_distinct_ids).
+      default: true
   required:
     - api_key
     - project_id

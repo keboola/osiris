@@ -1,6 +1,6 @@
-# Component Validation Checklist (57 Rules)
+# Component Validation Checklist (60 Rules)
 
-All Osiris components must pass these 57 validation rules before distribution.
+All Osiris components must pass these 60 validation rules before distribution.
 
 ## SPECIFICATION (10 rules)
 
@@ -47,7 +47,7 @@ All Osiris components must pass these 57 validation rules before distribution.
 - [ ] **MET-003**: All metrics include `unit` and `tags` with `step` identifier
 - [ ] **MET-004**: Checks `ctx` before using: `if ctx and hasattr(ctx, "log_metric")`
 
-## DRIVER IMPLEMENTATION (6 rules)
+## DRIVER IMPLEMENTATION (9 rules)
 
 - [ ] **DRIVER-001**: Exact signature: `def run(self, *, step_id: str, config: dict, inputs: dict | None = None, ctx: Any = None) -> dict`
 - [ ] **DRIVER-002**: Returns `{"df": DataFrame}` for extractors
@@ -55,6 +55,9 @@ All Osiris components must pass these 57 validation rules before distribution.
 - [ ] **DRIVER-004**: Has `finally` block for resource cleanup
 - [ ] **DRIVER-005**: Handles all exceptions gracefully
 - [ ] **DRIVER-006**: Implements all capabilities declared in spec.yaml
+- [ ] **DRIVER-007**: Uses `logging.getLogger(__name__)` for logging, NEVER `ctx.log()`
+- [ ] **DRIVER-008**: Accepts BOTH `df` (E2B) and `df_*` (LOCAL) input key formats
+- [ ] **DRIVER-009**: Tested in both LOCAL and E2B environments (`--e2b` flag)
 
 ## HEALTHCHECK (3 rules)
 
@@ -109,6 +112,14 @@ osiris doctor your.component @connection
 # E2B compatibility
 grep -r "Path.home()" . && echo "FAIL: Found hardcoded paths"
 grep -r "os.environ\[" . && echo "FAIL: Found direct env access"
+
+# Driver context API
+grep -r "ctx.log(" . && echo "FAIL: Found ctx.log() - use logging.getLogger(__name__)"
+grep -r "key.startswith(\"df_\")" . && echo "WARNING: Check E2B/LOCAL parity - must accept both df and df_*"
+
+# Test both environments
+osiris run pipeline.yaml                              # LOCAL
+osiris run pipeline.yaml --e2b --e2b-install-deps    # E2B
 ```
 
 ## Quick Reference
@@ -127,6 +138,8 @@ grep -r "os.environ\[" . && echo "FAIL: Found direct env access"
 - Direct os.environ access
 - Secrets in logs
 - Mutations of inputs
+- ctx.log() calls (use logging.getLogger(__name__) instead)
+- Only df_* input handling (must accept both df and df_* for E2B/LOCAL parity)
 
 ### SHOULD have:
 - Discovery capability
