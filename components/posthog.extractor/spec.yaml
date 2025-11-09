@@ -1,0 +1,192 @@
+# PostHog Extractor Component Specification
+name: posthog.extractor
+version: 1.1.0
+title: PostHog Analytics Extractor
+description: Extract analytics data from PostHog using HogQL Query API
+
+modes:
+  - extract
+  - discover
+
+capabilities:
+  discover: true          # Can list available resources
+  streaming: false        # Batch processing with state (not true streaming)
+  bulkOperations: true    # Supports bulk extraction
+  adHocAnalytics: false
+  inMemoryMove: false
+  transactions: false
+  partitioning: false
+  customTransforms: false
+
+configSchema:
+  type: object
+  properties:
+    api_key:
+      type: string
+      description: Personal API Key from PostHog settings
+      minLength: 1
+    project_id:
+      type: string
+      description: PostHog project ID (numeric)
+      minLength: 1
+    region:
+      type: string
+      description: PostHog region
+      enum: [us, eu, self_hosted]
+      default: us
+    custom_base_url:
+      type: string
+      description: Custom URL for self-hosted instances
+    data_type:
+      type: string
+      description: Type of data to extract from PostHog
+      enum: [events, persons, sessions, person_distinct_ids]
+    event_types:
+      type: array
+      items:
+        type: string
+      description: Filter specific event types (empty = all events)
+    lookback_window_minutes:
+      type: integer
+      description: Lookback window for handling ingestion delays
+      minimum: 5
+      maximum: 60
+      default: 15
+    initial_since:
+      type: string
+      description: Start timestamp for first run (ISO 8601)
+    page_size:
+      type: integer
+      description: Number of records per page
+      minimum: 100
+      maximum: 10000
+      default: 1000
+    deduplication_enabled:
+      type: boolean
+      description: Enable UUID-based deduplication to prevent duplicate rows across incremental runs. Recommended for events extraction. Has no effect for data types without UUIDs (persons, sessions, person_distinct_ids).
+      default: true
+  required:
+    - api_key
+    - project_id
+    - data_type
+  additionalProperties: false
+
+secrets:
+  - /api_key
+
+x-connection-fields:
+  - name: api_key
+    override: forbidden
+  - name: project_id
+    override: forbidden
+  - name: region
+    override: allowed
+  - name: custom_base_url
+    override: allowed
+
+redaction:
+  strategy: mask
+  mask: "****"
+  extras:
+    - /project_id
+    - /custom_base_url
+
+examples:
+  - title: Extract all events from PostHog
+    config:
+      api_key: phc_1234567890abcdef  # Example API key, not a real secret
+      project_id: "12345"
+      region: us
+      data_type: events
+      page_size: 1000
+    notes: Extract all events with default settings
+
+  - title: Extract specific event types with lookback
+    config:
+      api_key: phc_1234567890abcdef
+      project_id: "12345"
+      region: eu
+      data_type: events
+      event_types: ["pageview", "signup", "purchase"]
+      lookback_window_minutes: 30
+      initial_since: "2024-01-01T00:00:00Z"
+      page_size: 5000
+    notes: Extract specific event types from EU region with 30-minute lookback window
+
+compatibility:
+  requires:
+    - python>=3.10
+    - requests>=2.0
+  platforms:
+    - linux
+    - darwin
+    - windows
+    - docker
+
+llmHints:
+  inputAliases:
+    api_key:
+      - posthog_api_key
+      - personal_api_key
+      - key
+    project_id:
+      - project
+      - posthog_project_id
+      - pid
+    data_type:
+      - type
+      - resource_type
+  promptGuidance: |
+    Use posthog.extractor to extract analytics data from PostHog.
+    Requires api_key and project_id from your PostHog settings.
+    Supports incremental extraction with state management for events and persons.
+    Use lookback_window_minutes to handle PostHog's ingestion delays.
+  yamlSnippets:
+    - "type: posthog.extractor"
+    - "api_key: {{ posthog_api_key }}"
+    - "project_id: {{ project_id }}"
+    - "data_type: events"
+  commonPatterns:
+    - pattern: incremental_events
+      description: Extract events incrementally with state tracking
+    - pattern: filtered_events
+      description: Extract specific event types only
+    - pattern: persons_export
+      description: Export person data from PostHog
+
+loggingPolicy:
+  sensitivePaths:
+    - /api_key
+    - /project_id
+    - /custom_base_url
+  eventDefaults:
+    - extraction.start
+    - extraction.progress
+    - extraction.complete
+    - api.request
+    - api.response
+  metricsToCapture:
+    - rows_read
+    - bytes_processed
+    - duration_ms
+    - errors
+
+limits:
+  maxRows: 10000000
+  maxSizeMB: 2048
+  maxDurationSeconds: 3600
+  maxConcurrency: 3
+  rateLimit:
+    requests: 60
+    period: minute
+
+x-runtime:
+  driver: osiris.drivers.posthog_extractor_driver.PostHogExtractorDriver
+  requirements:
+    imports:
+      - pandas
+      - requests
+      - datetime
+    packages:
+      - pandas
+      - requests

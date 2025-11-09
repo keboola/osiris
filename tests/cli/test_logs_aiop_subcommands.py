@@ -20,11 +20,15 @@ import sys
 
 import pytest
 
+# Get the absolute path to osiris.py from project root
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+OSIRIS_SCRIPT = PROJECT_ROOT / "osiris.py"
+
 
 def test_aiop_command_help():
     """Test that 'osiris logs aiop --help' shows subcommands."""
     result = subprocess.run(
-        [sys.executable, "osiris.py", "logs", "aiop", "--help"],
+        [sys.executable, str(OSIRIS_SCRIPT), "logs", "aiop", "--help"],
         capture_output=True,
         text=True,
         check=False,
@@ -40,7 +44,7 @@ def test_aiop_command_help():
 def test_aiop_list_help():
     """Test that 'osiris logs aiop list --help' works."""
     result = subprocess.run(
-        [sys.executable, "osiris.py", "logs", "aiop", "list", "--help"],
+        [sys.executable, str(OSIRIS_SCRIPT), "logs", "aiop", "list", "--help"],
         capture_output=True,
         text=True,
         check=False,
@@ -54,7 +58,7 @@ def test_aiop_list_help():
 def test_aiop_show_help():
     """Test that 'osiris logs aiop show --help' works."""
     result = subprocess.run(
-        [sys.executable, "osiris.py", "logs", "aiop", "show", "--help"],
+        [sys.executable, str(OSIRIS_SCRIPT), "logs", "aiop", "show", "--help"],
         capture_output=True,
         text=True,
         check=False,
@@ -67,7 +71,7 @@ def test_aiop_show_help():
 def test_aiop_export_help():
     """Test that 'osiris logs aiop export --help' works."""
     result = subprocess.run(
-        [sys.executable, "osiris.py", "logs", "aiop", "export", "--help"],
+        [sys.executable, str(OSIRIS_SCRIPT), "logs", "aiop", "export", "--help"],
         capture_output=True,
         text=True,
         check=False,
@@ -80,7 +84,7 @@ def test_aiop_export_help():
 def test_aiop_prune_help():
     """Test that 'osiris logs aiop prune --help' works."""
     result = subprocess.run(
-        [sys.executable, "osiris.py", "logs", "aiop", "prune", "--help"],
+        [sys.executable, str(OSIRIS_SCRIPT), "logs", "aiop", "prune", "--help"],
         capture_output=True,
         text=True,
         check=False,
@@ -93,7 +97,7 @@ def test_aiop_prune_help():
 def test_aiop_unknown_subcommand():
     """Test that unknown subcommands are rejected."""
     result = subprocess.run(
-        [sys.executable, "osiris.py", "logs", "aiop", "invalid"],
+        [sys.executable, str(OSIRIS_SCRIPT), "logs", "aiop", "invalid"],
         capture_output=True,
         text=True,
         check=False,
@@ -110,16 +114,15 @@ def test_aiop_list_no_runs(tmp_path):
     # For now, we just verify that the command accepts the right arguments
 
     # Create minimal osiris.yaml in the project root
-    project_root = Path(__file__).parent.parent.parent
-    config_file = project_root / "osiris.yaml"
+    config_file = PROJECT_ROOT / "osiris.yaml"
     if not config_file.exists():
         pytest.skip("osiris.yaml not found - skipping integration test")
 
     result = subprocess.run(
-        [sys.executable, str(project_root / "osiris.py"), "logs", "aiop", "list", "--json"],
+        [sys.executable, str(OSIRIS_SCRIPT), "logs", "aiop", "list", "--json"],
         capture_output=True,
         text=True,
-        cwd=project_root,
+        cwd=PROJECT_ROOT,
         check=False,
     )
 

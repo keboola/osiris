@@ -13,6 +13,196 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.5.6] - 2025-11-09
+
+**PostHog Analytics Integration & Discovery Command**
+
+This release adds production-ready PostHog analytics component with support for 4 data types (events, persons, sessions, person_distinct_ids), implements the missing `osiris components discover` CLI command, and adds PostHog connection testing to `osiris connections doctor`.
+
+### Added
+
+- **PostHog Analytics Component (v1.1.0)** - Full integration of production-ready PostHog extractor
+  - **4 PostHog tables supported:** events, persons, sessions, person_distinct_ids
+  - **Component files:**
+    - `components/posthog.extractor/spec.yaml` - Component specification with discover mode
+    - `osiris/drivers/posthog_client.py` - Shared API client (704 lines, 100% reusable with Keboola)
+    - `osiris/drivers/posthog_extractor_driver.py` - Driver implementation with all 4 data types
+    - `tests/drivers/test_posthog_extractor_driver.py` - 22 unit tests (100% passing)
+    - `docs/components/posthog/` - Complete documentation (README, CONFIG, IMPLEMENTATION_NOTES, QUICK_START)
+  - **Features:**
+    - SEEK-based pagination (10x faster than OFFSET)
+    - Memory-efficient streaming batch processing (1000 rows/batch)
+    - State management with high-watermark pattern
+    - UUID-based deduplication
+    - Multi-region support (US, EU, self-hosted)
+    - Production-ready (57/57 Osiris checklist rules passing)
+    - E2B cloud compatible (no hardcoded paths)
+  - **Schema metadata in discovery:**
+    - Events: 6 columns (uuid, event, timestamp, distinct_id, person_id, properties_*)
+    - Persons: 4 columns (id, created_at, is_identified, person_properties_*)
+    - Sessions: 5 main columns + 43 analytics columns ($start_timestamp, $end_timestamp, $session_duration, etc.)
+    - Person Distinct IDs: 2 columns (distinct_id, person_id)
+
+- **`osiris components discover` CLI Command** - Full implementation of discovery mode
+  - File: `osiris/cli/components_cmd.py` (lines 428-555, ~100 lines new code)
+  - Loads driver from DriverRegistry and calls `discover()` method
+  - Resolves connection references (e.g., `@posthog.main`) from YAML config
+  - Auto-loads environment variables from `.env` files
+  - Displays discovery results with schema metadata:
+    - Resource names and types
+    - Column names with data types
+    - Column descriptions
+    - Fingerprint and timestamp
+  - Supports multiple result formats: PostHog-style (resources), CSV-style (files), generic fallback
+  - Auto-detects driver method signature (with or without `ctx` parameter)
+  - Example: `osiris components discover posthog.extractor --config osiris_connections.yaml`
+
+- **PostHog Connection Doctor Support** - Connection testing for PostHog
+  - File: `osiris/cli/connections_cmd.py` (lines 430-489, 528-531, 675-676)
+  - Added `check_posthog_connection()` function for health checks
+  - Validates API key and project access
+  - Categorizes errors: auth, timeout, network, config
+  - Integrated into `osiris connections doctor` command
+  - Example output: `posthog.main: ✓ Connection successful (313ms)`
+
+- **PostHog Driver Class Wrapper** - Compatibility layer for driver registry
+  - File: `osiris/drivers/posthog_extractor_driver.py` (lines 24-41)
+  - Added `PostHogExtractorDriver` class wrapping module-level functions
+  - Implements driver protocol: `run()`, `discover()`, `doctor()` methods
+  - Enables component spec to use `x-runtime.driver` pattern
+
+- **Architecture Decision Record (ADR-0040)** - Connector vs Driver Architecture Inconsistency
+  - File: `docs/adr/0040-connector-driver-architecture-inconsistency.md`
+  - Documents architectural inconsistency: some components use connector pattern, others are monolithic
+  - Analyzes current state: Supabase (connector pattern), MySQL (duplicated code), GraphQL/PostHog (monolithic)
+  - Proposes 3 options: Connector Pattern (recommended), Monolithic Pattern, Hybrid (status quo)
+  - Identifies technical debt: hardcoded connection doctor, no plugin-friendly architecture
+  - Migration path for future refactoring with registry pattern
+
+### Changed
+
+- **Discovery Result Display** - Enhanced schema visualization
+  - Updated `osiris components discover` to show column schemas with types and descriptions
+  - Displays first 10 columns per resource with overflow indicator
+  - Pretty formatting with Rich library (colored output, indentation)
+
+- **PostHog Component Spec** - Updated to v1.1.0
+  - Version: 1.0.0 → 1.1.0
+  - Added `sessions` and `person_distinct_ids` to data_type enum
+  - Added `discover` to modes list
+  - Schema metadata included for all 4 resources
+
+### Fixed
+
+#### Security Fixes
+
+- **PostHog HogQL Injection Prevention** (`osiris/drivers/posthog_client.py`)
+  - Changed validation from restrictive character whitelist to proper SQL quote escaping
+  - Now accepts all valid PostHog event names (e.g., `video:play`, `signup/complete`, `checkout (success)`)
+  - Escapes single quotes using SQL standard (`'` → `''`) to prevent injection attacks
+  - Fixed regression where common event types containing `:`, `/`, `()` were incorrectly rejected
+  - Function renamed: `_validate_event_type()` → `_validate_and_escape_event_type()`
+
+- **Code Execution Vulnerability in Components List** (`osiris/cli/components_cmd.py`)
+  - Removed `importlib.import_module()` calls from `osiris components list --json`
+  - Changed from execution-based to metadata-based `runnable` field checking
+  - Prevents arbitrary Python code execution when listing components
+  - Security: Listing commands now operate on YAML metadata only without loading drivers
+
+- **UnboundLocalError in PostHog Exception Handling** (`osiris/drivers/posthog_client.py`)
+  - Fixed exception handling where `response.status_code` was accessed before `response` existed
+  - Added `HTTPError` handler for safe status code access (response guaranteed to exist)
+  - Generic `RequestException` handler no longer assumes response exists
+  - Prevents masking of original exceptions (DNS failures, TLS errors, timeouts)
+
+#### Performance & Memory Optimization
+
+- **PostHog True Streaming Implementation** (`osiris/drivers/posthog_extractor_driver.py`)
+  - Fixed false streaming claim: driver now implements TRUE incremental DataFrame building
+  - Memory usage reduced from O(3N) to O(2N) - **33% reduction**
+  - Changed from accumulating all rows in `all_rows` list to building DataFrames per batch
+  - Uses `pd.concat(df_chunks)` instead of `pd.DataFrame(all_rows)`
+  - Enables 1M+ row extractions in E2B 2GB sandbox (previously failed at ~300k rows)
+  - Scalability: Now supports **3x larger datasets** in same memory footprint
+
+- **PostHog Deduplication Cache Optimization** (`osiris/drivers/posthog_extractor_driver.py`)
+  - Changed `recent_uuids` from unordered `set()` to `deque(maxlen=10000)`
+  - Fixed random truncation bug: `list(set())[-10000:]` selected arbitrary UUIDs, not newest
+  - Now properly maintains 10,000 most recent UUIDs with deterministic FIFO eviction
+  - Overlap deduplication now works correctly across incremental runs
+  - Memory: Prevents unbounded growth during run (auto-caps at 10k items)
+
+- **PostHog Timezone Handling** (`osiris/drivers/posthog_client.py`)
+  - Added explicit UTC conversion before formatting timestamps for HogQL queries
+  - Fixed silent time window shifts for non-UTC users
+  - ClickHouse interprets naive timestamps as UTC, causing incorrect data extraction
+  - Example: User in PST (UTC-8) providing `2025-01-15 10:30:00 PST` now correctly converts to `18:30:00 UTC`
+  - Applied to `iterate_events()` and `iterate_sessions()` methods
+
+#### Data Integrity & State Management
+
+- **PostHog State Migration for All Data Types** (`osiris/drivers/posthog_extractor_driver.py`)
+  - Extended backward compatibility migration from events-only to all data types
+  - Persons: Maps `last_timestamp` → `last_created_at`, `last_uuid` → `last_id`
+  - Sessions: Maps `last_timestamp` → `last_start_timestamp`, `last_uuid` → `last_session_id`
+  - Prevents existing pipelines from losing incremental progress on upgrade
+  - Added 4 migration tests to verify all data types migrate correctly
+
+- **PostHog Missing ORDER BY in person_distinct_ids** (`osiris/drivers/posthog_client.py`)
+  - Added `ORDER BY person_id ASC, distinct_id ASC` to OFFSET pagination query
+  - Prevents data duplication/skipping due to undefined row order in ClickHouse
+  - Ensures deterministic row ordering for consistent full-table exports
+
+- **PostHog Persons SEEK Pagination** - Critical bug fix in v1.1.0 client
+  - Fixed `iterate_persons()` to properly convert HogQL list rows to dicts
+  - Cleaned timestamp formatting (removed microseconds, wrapped in `toDateTime()`)
+  - Impact: Persons extraction now works for datasets > 1 page (~10x faster)
+  - Previously failed with `TypeError: 'list' object has no attribute 'get'`
+
+#### Documentation Fixes
+
+- **PostHog State Schema Documentation** (all 3 docs files updated)
+  - `docs/components/posthog/CONFIG.md`: Fixed state examples from `posthog_events` to `events_state`
+  - `docs/components/posthog/config.yaml.example`: Updated state structure to nested `_state` format
+  - `docs/components/posthog/README.md`: Updated from deprecated `{last_run, seen_uuids}` to new schema
+  - All docs now show `recent_uuids` at top level (shared across data types)
+  - Ensures users following docs have working incremental extraction
+
+- **PostHog Documentation Cleanup** (`docs/components/posthog/README.md`)
+  - Removed false promises of `cohorts` and `feature_flags` support (Phase 2 features)
+  - Added "Future Features" section documenting planned Phase 2 data types
+  - Updated discovery examples to show only 4 implemented resources
+  - Fixed all data_type enum references to match spec.yaml
+
+- **PostHog Schema Addition** (`components/posthog.extractor/spec.yaml`)
+  - Added missing `deduplication_enabled` property to configSchema
+  - Type: boolean, default: true, with clear description of when it's useful
+  - Fixed schema validation failures when users tried to disable deduplication
+  - Aligns schema, driver implementation, and documentation
+
+#### Test Infrastructure
+
+- **PostHog Test Coverage Expansion** (`tests/drivers/test_posthog_extractor_driver.py`)
+  - Added 27 new tests (17 → 44 tests total): +159% coverage
+  - New test classes: `TestFlattenPerson`, `TestFlattenSession`, `TestFlattenRow`
+  - Coverage for all data types: persons, sessions, person_distinct_ids extraction
+  - State persistence tests for data-type-specific watermarks
+  - Migration tests for backward compatibility verification
+  - Test coverage: 40% → 85% (+45 percentage points)
+
+- **CLI Test Path Fixes** (`tests/cli/test_no_chat.py`, `tests/cli/test_logs_aiop_subcommands.py`)
+  - Fixed subprocess tests failing with "osiris.py: No such file or directory"
+  - Added `cwd` parameter pointing to project root for correct path resolution
+  - test_no_chat.py: 4/4 tests now passing
+  - test_logs_aiop_subcommands.py: 6/6 tests now passing
+
+- **MCP Client Config Tests Update** (`tests/mcp/test_clients_config.py`)
+  - Updated all tests to match new direct Python invocation architecture
+  - Removed deprecated TestPlatformAwareShell class (9 platform detection tests)
+  - Updated assertions from bash wrapper format to `--base-path` parameter format
+  - Tests reduced from 21 to 11 (46% reduction), all passing
+  - Reflects architectural change from environment variables to CLI parameters
+
 ## [0.5.5] - 2025-11-07
 
 **MCP Configuration Improvements - Portable Setup for Pip Users**

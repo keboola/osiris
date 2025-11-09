@@ -427,6 +427,68 @@ def check_duckdb_connection(config: dict[str, Any]) -> dict[str, Any]:
         return {"status": "failure", "latency_ms": round(latency_ms, 2), "message": str(e)}
 
 
+def check_posthog_connection(config: dict[str, Any]) -> dict[str, Any]:
+    """Test PostHog connection using the PostHog client."""
+    start_time = time.time()
+    try:
+        from osiris.drivers.posthog_client import PostHogClient
+
+        # Get base URL based on region
+        region = config.get("region", "us")
+        if region == "self_hosted":
+            base_url = config.get("custom_base_url")
+            if not base_url:
+                raise ValueError("region=self_hosted but custom_base_url not provided")
+        elif region == "eu":
+            base_url = "https://eu.posthog.com"
+        elif region == "us":
+            base_url = "https://us.posthog.com"
+        else:
+            raise ValueError(f"Unknown region: {region}")
+
+        # Get required fields
+        api_key = config.get("api_key")
+        project_id = config.get("project_id")
+
+        if not api_key:
+            raise ValueError("Missing required field: api_key")
+        if not project_id:
+            raise ValueError("Missing required field: project_id")
+
+        # Create client and test connection
+        client = PostHogClient(base_url=base_url, api_key=api_key, project_id=project_id)
+        client.test_connection(timeout=2.0)
+
+        latency_ms = (time.time() - start_time) * 1000
+        return {
+            "status": "success",
+            "latency_ms": round(latency_ms, 2),
+            "message": "Connection successful",
+        }
+
+    except Exception as e:
+        latency_ms = (time.time() - start_time) * 1000
+        error_msg = str(e)
+
+        # Categorize error
+        category = "unknown"
+        if "timeout" in error_msg.lower():
+            category = "timeout"
+        elif "auth" in error_msg.lower() or "unauthorized" in error_msg.lower() or "401" in error_msg:
+            category = "auth"
+        elif "network" in error_msg.lower() or "connection" in error_msg.lower():
+            category = "network"
+        elif "missing" in error_msg.lower() or "required" in error_msg.lower():
+            category = "config"
+
+        return {
+            "status": "failure",
+            "latency_ms": round(latency_ms, 2),
+            "message": error_msg,
+            "category": category,
+        }
+
+
 def doctor_connections(args: list) -> None:
     """Test connectivity for all configured connections."""
 
@@ -466,6 +528,7 @@ def doctor_connections(args: list) -> None:
             console.print("  • [cyan]MySQL:[/cyan] Executes SELECT 1")
             console.print("  • [cyan]Supabase:[/cyan] Attempts API connection")
             console.print("  • [cyan]DuckDB:[/cyan] Checks file access")
+            console.print("  • [cyan]PostHog:[/cyan] Tests API key and project access")
             console.print()
             console.print("[bold blue]Status Icons[/bold blue]")
             console.print("  [green]✓[/green] Connection successful")
@@ -610,6 +673,8 @@ def doctor_connections(args: list) -> None:
                                 test_result = check_supabase_connection(resolved_config)
                             elif test_family == "duckdb":
                                 test_result = check_duckdb_connection(resolved_config)
+                            elif test_family == "posthog":
+                                test_result = check_posthog_connection(resolved_config)
                             else:
                                 test_result = {
                                     "status": "skipped",

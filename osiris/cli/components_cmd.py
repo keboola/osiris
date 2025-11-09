@@ -37,26 +37,21 @@ def list_components(
     filter_mode = None if mode == "all" else mode
     components = registry.list_components(mode=filter_mode)
 
-    # Check runtime driver availability if requested
-    if runnable or as_json:  # Always check for JSON output
-        import importlib
+    # SECURITY: Driver checking removed to prevent code execution on list
+    # Components should be listed based on metadata only (YAML spec files)
+    # Driver verification can be performed separately via 'osiris components discover'
+    # See: Fix for code execution vulnerability in components list --json
 
+    # Add metadata-only driver info if requested
+    if runnable or as_json:
         for component in components:
             spec = registry.get_component(component["name"])
             runtime_config = spec.get("x-runtime", {}) if spec else {}
             driver_path = runtime_config.get("driver")
 
-            has_driver = False
-            if driver_path:
-                try:
-                    module_path, class_name = driver_path.rsplit(".", 1)
-                    module = importlib.import_module(module_path)
-                    getattr(module, class_name)
-                    has_driver = True
-                except Exception:
-                    pass
-
-            component["runnable"] = has_driver
+            # Metadata-only: report if driver path is configured in spec
+            # Do NOT import or execute the driver module
+            component["runnable"] = bool(driver_path)  # Has driver configured
             component["runtime_driver"] = driver_path if driver_path else None
 
     # Filter by runnable if requested
@@ -431,6 +426,12 @@ def discover_with_component(
     session_context: SessionContext | None = None,
 ):
     """Run discovery mode for a component (if supported)."""
+    from unittest.mock import Mock
+
+    from ..core.config import parse_connection_ref, resolve_connection
+    from ..core.driver import DriverRegistry
+    from ..core.env_loader import load_env
+
     registry = get_registry(session_context=session_context)
     spec = registry.get_component(component_name)
 
@@ -444,14 +445,120 @@ def discover_with_component(
             rprint(f"[yellow]Component '{component_name}' does not support discovery mode[/yellow]")
             return
 
-        # This would integrate with the actual component runner
-        rprint(f"[green]Discovery mode for '{component_name}' would run here[/green]")
-        rprint("[yellow]Note: Component runner integration not yet implemented[/yellow]")
+        # Load driver
+        driver_registry = DriverRegistry()
+        driver_registry.populate_from_component_specs({component_name: spec})
 
+        try:
+            driver_instance = driver_registry.get(component_name)
+        except ValueError as e:
+            rprint(f"[red]Driver not found: {e}[/red]")
+            return
+
+        # Load config and resolve connection
+        config_data = {}
         if config:
             with open(config) as f:
-                yaml.safe_load(f)  # Validate config format
+                config_data = yaml.safe_load(f)
             rprint(f"[dim]Using config from {config}[/dim]")
+
+        # Resolve connection if specified
+        connection_ref = config_data.get("connection")
+        if connection_ref:
+            # Parse connection reference (@posthog.main → family=posthog, alias=main)
+            load_env()  # Load environment variables
+
+            try:
+                family, alias = parse_connection_ref(connection_ref)
+                resolved_conn = resolve_connection(family, alias)
+                config_data["resolved_connection"] = resolved_conn
+                rprint(f"[dim]Resolved connection: {connection_ref}[/dim]")
+            except Exception as e:
+                rprint(f"[red]Failed to resolve connection {connection_ref}: {e}[/red]")
+                return
+
+        # Create mock context
+        ctx = Mock()
+        ctx.log = lambda msg, level="info": None  # Silent logging
+        ctx.log_metric = lambda name, val, **kw: None
+
+        # Call discover()
+        try:
+            if not hasattr(driver_instance, "discover"):
+                rprint(f"[red]Driver '{component_name}' does not have a discover() method[/red]")
+                return
+
+            rprint(f"[cyan]Running discovery for '{component_name}'...[/cyan]")
+
+            # Try calling discover with ctx first, then without (for compatibility)
+            import inspect
+
+            sig = inspect.signature(driver_instance.discover)
+            if "ctx" in sig.parameters:
+                result = driver_instance.discover(config=config_data, ctx=ctx)
+            else:
+                result = driver_instance.discover(config=config_data)
+
+            # Display results
+            rprint("\n[bold green]Discovery Results:[/bold green]")
+
+            # Handle different result formats
+            if "fingerprint" in result:
+                rprint(f"[dim]Fingerprint:[/dim] {result.get('fingerprint')}")
+            if "discovered_at" in result:
+                rprint(f"[dim]Discovered at:[/dim] {result.get('discovered_at')}")
+
+            # PostHog-style results (resources array)
+            if "resources" in result:
+                resources = result.get("resources", [])
+                rprint(f"\n[bold]Resources found:[/bold] {len(resources)}")
+                for resource in resources:
+                    rprint(f"\n  • [cyan]{resource.get('name')}[/cyan] ({resource.get('type', 'table')})")
+                    if resource.get("description"):
+                        rprint(f"    [dim]{resource.get('description')}[/dim]")
+
+                    # Display schema if available
+                    if "schema" in resource:
+                        schema = resource.get("schema", {})
+                        if schema:
+                            rprint("    [bold]Schema:[/bold]")
+                            for col_name, col_info in list(schema.items())[:10]:  # Show first 10 columns
+                                col_type = col_info.get("type", "unknown") if isinstance(col_info, dict) else "unknown"
+                                col_desc = col_info.get("description", "") if isinstance(col_info, dict) else ""
+                                rprint(f"      - [yellow]{col_name}[/yellow]: {col_type}")
+                                if col_desc:
+                                    rprint(f"        [dim]{col_desc}[/dim]")
+                            if len(schema) > 10:
+                                rprint(f"      [dim]... and {len(schema) - 10} more columns[/dim]")
+
+            # CSV-style results (files array)
+            elif "files" in result:
+                files = result.get("files", [])
+                rprint(f"\n[bold]Files found:[/bold] {len(files)}")
+                for file_info in files:
+                    name = file_info.get("name", "unknown")
+                    size = file_info.get("size", 0)
+                    rows = file_info.get("estimated_rows", "?")
+                    rprint(f"  • [cyan]{name}[/cyan] - {size:,} bytes, ~{rows} rows")
+                    if "columns" in file_info:
+                        cols = file_info.get("columns")
+                        if isinstance(cols, list):
+                            rprint(f"    Columns: {', '.join(cols[:5])}{' ...' if len(cols) > 5 else ''}")
+                        elif isinstance(cols, int):
+                            rprint(f"    Column count: {cols}")
+
+            # Generic fallback
+            else:
+                rprint("\n[yellow]Unexpected result format - showing raw JSON:[/yellow]")
+                import json
+
+                rprint(json.dumps(result, indent=2))
+
+        except Exception as e:
+            rprint(f"[red]Discovery failed: {e}[/red]")
+            import traceback
+
+            rprint(f"[dim]{traceback.format_exc()}[/dim]")
 
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")

@@ -29,10 +29,11 @@ class FilesystemCsvWriterDriver:
             raise ValueError(f"Step {step_id}: FilesystemCsvWriterDriver requires inputs with DataFrame")
 
         # Find the DataFrame (should be in df_* key from upstream processor/extractor)
+        # Also accept plain "df" for E2B ProxyWorker compatibility
         df = None
         df_key = None
         for key, value in inputs.items():
-            if key.startswith("df_") and isinstance(value, pd.DataFrame):
+            if (key.startswith("df_") or key == "df") and isinstance(value, pd.DataFrame):
                 df = value
                 df_key = key
                 break
@@ -40,7 +41,7 @@ class FilesystemCsvWriterDriver:
         if df is None:
             raise ValueError(
                 f"Step {step_id}: FilesystemCsvWriterDriver requires DataFrame input. "
-                f"Expected key starting with 'df_'. Got: {list(inputs.keys())}"
+                f"Expected key 'df' or starting with 'df_'. Got: {list(inputs.keys())}"
             )
 
         logger.debug(f"Step {step_id}: Using DataFrame from {df_key} ({len(df)} rows)")

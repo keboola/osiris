@@ -3,6 +3,7 @@ Tests to ensure chat command remains deprecated.
 """
 
 import json
+from pathlib import Path
 import subprocess
 import sys
 
@@ -11,7 +12,13 @@ import osiris
 
 def test_chat_command_deprecated():
     """Test that chat command returns deprecation error."""
-    result = subprocess.run([sys.executable, "osiris.py", "chat"], check=False, capture_output=True, text=True)
+    result = subprocess.run(
+        [sys.executable, "osiris.py", "chat"],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).parent.parent.parent,
+    )
 
     # Should exit with error
     assert result.returncode == 1
@@ -24,7 +31,11 @@ def test_chat_command_deprecated():
 def test_chat_command_deprecated_json():
     """Test that chat command returns deprecation error in JSON format."""
     result = subprocess.run(
-        [sys.executable, "osiris.py", "chat", "--json"], check=False, capture_output=True, text=True
+        [sys.executable, "osiris.py", "chat", "--json"],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).parent.parent.parent,
     )
 
     # Should exit with error
@@ -39,7 +50,13 @@ def test_chat_command_deprecated_json():
 
 def test_help_no_chat():
     """Test that help output does not mention chat command."""
-    result = subprocess.run([sys.executable, "osiris.py", "--help"], check=False, capture_output=True, text=True)
+    result = subprocess.run(
+        [sys.executable, "osiris.py", "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).parent.parent.parent,
+    )
 
     # Should succeed
     assert result.returncode == 0
@@ -62,7 +79,11 @@ def test_help_no_chat():
 def test_help_json_no_chat():
     """Test that JSON help output does not list chat as available command."""
     result = subprocess.run(
-        [sys.executable, "osiris.py", "--help", "--json"], check=False, capture_output=True, text=True
+        [sys.executable, "osiris.py", "--help", "--json"],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).parent.parent.parent,
     )
 
     # Should succeed

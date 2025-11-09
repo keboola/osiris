@@ -225,8 +225,8 @@ class RunnerV0:
         else:
             family = self._family_from_component(component)
 
-        # Special case: duckdb with no connection needed
-        if family == "duckdb" and "connection" not in config:
+        # Special case: components with no connection needed (local operations)
+        if family in ("duckdb", "filesystem") and "connection" not in config:
             return None
 
         # Parse connection reference from config

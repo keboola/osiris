@@ -274,6 +274,7 @@ class CompilerV0:
             steps.append(
                 {
                     "id": step_id,
+                    "component": component,  # Component name for family detection
                     "driver": driver,
                     "cfg_path": f"cfg/{step_id}.json",  # Relative to manifest location
                     "needs": needs,
