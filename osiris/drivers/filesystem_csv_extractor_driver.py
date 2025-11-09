@@ -364,16 +364,25 @@ class FilesystemCsvExtractorDriver:
                                     continue
                             else:
                                 # Fallback to dateutil parser (suppress warning about format inference)
-                                try:
-                                    import warnings
+                                # BUT FIRST: Check if values look date-like to avoid false positives
+                                # Problem: pd.to_datetime() interprets numeric strings as Unix timestamps
+                                # Example: "12345" -> 1970-01-01 00:00:12.345 (WRONG!)
+                                # Solution: Only apply fallback if strings contain date separators
+                                sample_values = df_types[col].dropna().astype(str).head(20)
+                                has_date_separators = sample_values.str.contains(r"[-/:]").any()
 
-                                    with warnings.catch_warnings():
-                                        warnings.filterwarnings("ignore", category=UserWarning)
-                                        converted = pd.to_datetime(df_types[col], errors="coerce")
-                                        if converted.notna().sum() / len(converted) > 0.8:
-                                            df_types[col] = converted
-                                except Exception:  # noqa: S110
-                                    pass  # Keep original dtype
+                                if has_date_separators:
+                                    try:
+                                        import warnings
+
+                                        with warnings.catch_warnings():
+                                            warnings.filterwarnings("ignore", category=UserWarning)
+                                            converted = pd.to_datetime(df_types[col], errors="coerce")
+                                            if converted.notna().sum() / len(converted) > 0.8:
+                                                df_types[col] = converted
+                                    except Exception:  # noqa: S110
+                                        pass  # Keep original dtype
+                                # else: skip fallback, likely numeric IDs or other non-date strings
 
                     file_info["column_types"] = {
                         col: self._format_dtype(dtype) for col, dtype in df_types.dtypes.items()
