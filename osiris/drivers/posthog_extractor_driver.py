@@ -146,6 +146,111 @@ def _flatten_event(event: Dict[str, Any]) -> Dict[str, Any]:
     return flattened
 
 
+def _flatten_person(person: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Flatten nested person structure into flat dict for DataFrame.
+
+    Converts:
+    - properties dict → person_properties_* columns
+    - Preserves scalar fields (id, created_at, is_identified)
+    - Serializes complex types as JSON strings
+
+    Args:
+        person: Raw person dict from PostHog API
+
+    Returns:
+        Dict with flattened structure
+
+    Example:
+        >>> person = {
+        ...     "id": "person123",
+        ...     "created_at": "2025-11-08T10:00:00Z",
+        ...     "is_identified": True,
+        ...     "properties": {"email": "user@example.com", "plan": "pro"}
+        ... }
+        >>> flat = _flatten_person(person)
+        >>> flat["person_properties_email"]
+        'user@example.com'
+    """
+    flattened = {}
+
+    # Copy scalar fields
+    scalar_fields = ["id", "created_at", "is_identified"]
+    for field in scalar_fields:
+        if field in person:
+            flattened[field] = person[field]
+
+    # Flatten person properties
+    if "properties" in person:
+        props = person["properties"]
+        if isinstance(props, dict):
+            for key, value in props.items():
+                col_name = f"person_properties_{key}"
+                # Serialize complex types as JSON
+                if isinstance(value, (dict, list)):
+                    flattened[col_name] = json.dumps(value)
+                else:
+                    flattened[col_name] = value
+
+    return flattened
+
+
+def _flatten_session(session: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Flatten session row - sessions are already flat (43 columns).
+
+    Sessions table structure is inherently flat with all metrics at top level.
+    No nested properties to flatten.
+
+    Args:
+        session: Raw session dict from PostHog API
+
+    Returns:
+        Dict with session data (unchanged)
+
+    Example:
+        >>> session = {
+        ...     "session_id": "session123",
+        ...     "$start_timestamp": "2025-11-08T10:00:00Z",
+        ...     "$session_duration": 3600
+        ... }
+        >>> flat = _flatten_session(session)
+        >>> flat["session_id"]
+        'session123'
+    """
+    # Sessions are already flat - just return as-is
+    return session
+
+
+def _flatten_row(row: Dict[str, Any], data_type: str) -> Dict[str, Any]:
+    """
+    Flatten a row based on data type.
+
+    Routes to appropriate flatten function based on data_type.
+
+    Args:
+        row: Raw row dict from PostHog API
+        data_type: One of "events", "persons", "sessions", "person_distinct_ids"
+
+    Returns:
+        Dict with flattened structure
+
+    Raises:
+        PostHogDriverError: If data_type is unrecognized
+    """
+    if data_type == "events":
+        return _flatten_event(row)
+    elif data_type == "persons":
+        return _flatten_person(row)
+    elif data_type == "sessions":
+        return _flatten_session(row)
+    elif data_type == "person_distinct_ids":
+        # Already flat (2 columns: distinct_id, person_id)
+        return row
+    else:
+        raise PostHogDriverError(f"Unknown data_type for flattening: {data_type}")
+
+
 def run(
     *,
     step_id: str,
@@ -335,8 +440,8 @@ def run(
             ctx.log(f"[{step_id}] No rows extracted")
             df = pd.DataFrame()
         else:
-            # Flatten properties for all rows
-            flattened_rows = [_flatten_event(row) for row in all_rows]
+            # Flatten properties for all rows (data type specific)
+            flattened_rows = [_flatten_row(row, data_type) for row in all_rows]
             df = pd.DataFrame(flattened_rows)
             ctx.log(f"[{step_id}] Created DataFrame with {len(df)} rows, "
                     f"{len(df.columns)} columns")
