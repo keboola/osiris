@@ -433,7 +433,7 @@ def discover_with_component(
     """Run discovery mode for a component (if supported)."""
     from unittest.mock import Mock
 
-    from ..core.config import load_connections_yaml, parse_connection_ref, resolve_connection
+    from ..core.config import parse_connection_ref, resolve_connection
     from ..core.driver import DriverRegistry
     from ..core.env_loader import load_env
 
@@ -526,7 +526,7 @@ def discover_with_component(
                     if "schema" in resource:
                         schema = resource.get("schema", {})
                         if schema:
-                            rprint(f"    [bold]Schema:[/bold]")
+                            rprint("    [bold]Schema:[/bold]")
                             for col_name, col_info in list(schema.items())[:10]:  # Show first 10 columns
                                 col_type = col_info.get("type", "unknown") if isinstance(col_info, dict) else "unknown"
                                 col_desc = col_info.get("description", "") if isinstance(col_info, dict) else ""
