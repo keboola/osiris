@@ -311,6 +311,7 @@ def validate_command(args: list):
                     "--help": "Show this help message",
                 },
                 "checks": [
+                    "Environment variables (OSIRIS_HOME, working directory)",
                     "Configuration file syntax and structure",
                     "All required sections (logging, output, sessions, etc.)",
                     "Database connection environment variables",
@@ -339,6 +340,7 @@ def validate_command(args: list):
             console.print("  [cyan]--help[/cyan]         Show this help message")
             console.print()
             console.print("[bold blue]What this checks[/bold blue]")
+            console.print("  • Environment variables (OSIRIS_HOME, working directory)")
             console.print("  • Configuration file syntax and structure")
             console.print("  • All required sections (logging, output, sessions, etc.)")
             console.print("  • Database connection environment variables")
@@ -465,6 +467,10 @@ def validate_command(args: list):
         validation_results = {
             "config_file": parsed_args.config,
             "config_valid": True,
+            "environment": {
+                "osiris_home": os.environ.get("OSIRIS_HOME"),
+                "working_directory": os.getcwd(),
+            },
             "sections": {},
             "database_connections": {},
             "llm_providers": {},
@@ -692,6 +698,20 @@ def validate_command(args: list):
         else:
             # Rich console output (existing code)
             console.print(f"✅ Configuration file '{parsed_args.config}' is valid")
+
+            # Display environment information
+            console.print("\n🌍 Environment:")
+            osiris_home = os.environ.get("OSIRIS_HOME")
+            if osiris_home:
+                console.print(f"   OSIRIS_HOME: {osiris_home}")
+            else:
+                # Show fallback behavior
+                console.print("   OSIRIS_HOME: [yellow](not set - using current directory)[/yellow]")
+
+            # Show current working directory for comparison
+            cwd = os.getcwd()
+            console.print(f"   Working Directory: {cwd}")
+
             console.print("\n📝 Configuration validation:")
 
             for section, data in validation_results["sections"].items():

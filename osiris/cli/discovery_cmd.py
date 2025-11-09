@@ -189,10 +189,15 @@ def discovery_run(  # noqa: PLR0915  # CLI router function, naturally verbose
                             # Store file metadata
                             self.path = file_data.get("path")
                             self.size = file_data.get("size", 0)
-                            # If we have column count, create placeholder column info
-                            col_count = file_data.get("columns")
-                            if col_count:
-                                self.columns = [f"column_{i}" for i in range(col_count)]
+                            # Use actual column names if available, otherwise create placeholders
+                            col_names = file_data.get("column_names")
+                            if col_names:
+                                self.columns = col_names
+                            else:
+                                # Fallback to placeholder names if column_names not available
+                                col_count = file_data.get("columns")
+                                if col_count:
+                                    self.columns = [f"column_{i}" for i in range(col_count)]
 
                     tables.append(FileTable(file_info))
             elif discovery_result.get("status") == "error":

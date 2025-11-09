@@ -332,9 +332,11 @@ class FilesystemCsvExtractorDriver:
                 # Estimate row count using cross-platform approach
                 file_info["estimated_rows"] = self._estimate_row_count(csv_file)
 
-                # Try to get column count from sample
+                # Try to get column info from sample
                 try:
-                    df_sample = pd.read_csv(csv_file, nrows=1)
+                    # Read just headers (nrows=0 is more efficient than nrows=1)
+                    df_sample = pd.read_csv(csv_file, nrows=0)
+                    file_info["column_names"] = list(df_sample.columns)
                     file_info["columns"] = len(df_sample.columns)
                 except Exception:  # noqa: S110
                     # Can't read file, skip details
