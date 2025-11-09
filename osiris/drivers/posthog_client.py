@@ -106,10 +106,10 @@ class PostHogClient:
             return True
         except PostHogAuthenticationError:
             raise
-        except requests.exceptions.Timeout:
-            raise PostHogNetworkError(f"Connection timeout ({timeout}s)")
+        except requests.exceptions.Timeout as e:
+            raise PostHogNetworkError(f"Connection timeout ({timeout}s)") from e
         except requests.exceptions.ConnectionError as e:
-            raise PostHogNetworkError(f"Connection failed: {e}")
+            raise PostHogNetworkError(f"Connection failed: {e}") from e
 
     def execute_hogql_query(
         self,
@@ -193,14 +193,14 @@ class PostHogClient:
                 return result
 
             except requests.exceptions.Timeout as e:
-                raise PostHogNetworkError(f"Request timeout ({timeout}s): {e}")
+                raise PostHogNetworkError(f"Request timeout ({timeout}s): {e}") from e
             except requests.exceptions.ConnectionError as e:
-                raise PostHogNetworkError(f"Connection error: {e}")
+                raise PostHogNetworkError(f"Connection error: {e}") from e
             except requests.exceptions.RequestException as e:
                 if response.status_code >= 500:
                     # Transient error - will retry via session retry logic
-                    raise PostHogClientError(f"Server error {response.status_code}: {e}")
-                raise PostHogClientError(f"Request failed: {e}")
+                    raise PostHogClientError(f"Server error {response.status_code}: {e}") from e
+                raise PostHogClientError(f"Request failed: {e}") from e
 
         raise PostHogRateLimitError("Max retries exhausted on rate limit")
 
