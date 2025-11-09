@@ -575,7 +575,7 @@ def validate_command(args: list):
             return list(env_vars)
 
         # Check all connection families dynamically
-        for family in connections.keys():
+        for family in connections:
             family_connections = connections.get(family, {})
             family_raw = raw_connections.get(family, {})
 
@@ -657,17 +657,21 @@ def validate_command(args: list):
 
                     # Check for required fields
                     if "api_key" not in config or not config["api_key"]:
-                        errors.append({
-                            "path": f"{family}.{alias}.api_key",
-                            "message": "Missing api_key",
-                            "fix": "Set POSTHOG_API_KEY environment variable or configure api_key",
-                        })
+                        errors.append(
+                            {
+                                "path": f"{family}.{alias}.api_key",
+                                "message": "Missing api_key",
+                                "fix": "Set POSTHOG_API_KEY environment variable or configure api_key",
+                            }
+                        )
                     if "project_id" not in config or not config["project_id"]:
-                        errors.append({
-                            "path": f"{family}.{alias}.project_id",
-                            "message": "Missing project_id",
-                            "fix": "Set POSTHOG_PROJECT_ID environment variable or configure project_id",
-                        })
+                        errors.append(
+                            {
+                                "path": f"{family}.{alias}.project_id",
+                                "message": "Missing project_id",
+                                "fix": "Set POSTHOG_PROJECT_ID environment variable or configure project_id",
+                            }
+                        )
 
                     validation_results["connection_validation"][conn_key] = {
                         "is_valid": len(errors) == 0,
@@ -682,11 +686,13 @@ def validate_command(args: list):
 
                     # Check for base_dir field
                     if "base_dir" not in config or not config["base_dir"]:
-                        errors.append({
-                            "path": f"{family}.{alias}.base_dir",
-                            "message": "Missing base_dir",
-                            "fix": "Configure base_dir for filesystem connection",
-                        })
+                        errors.append(
+                            {
+                                "path": f"{family}.{alias}.base_dir",
+                                "message": "Missing base_dir",
+                                "fix": "Configure base_dir for filesystem connection",
+                            }
+                        )
                     else:
                         base_dir = config["base_dir"]
                         # Only validate path if not using env var
@@ -695,11 +701,13 @@ def validate_command(args: list):
 
                             path_obj = Path(base_dir)
                             if not path_obj.is_absolute() and not base_dir.startswith("./"):
-                                warnings.append({
-                                    "path": f"{family}.{alias}.base_dir",
-                                    "message": "Relative path without ./ prefix",
-                                    "fix": f"Consider using absolute path or ./{base_dir}",
-                                })
+                                warnings.append(
+                                    {
+                                        "path": f"{family}.{alias}.base_dir",
+                                        "message": "Relative path without ./ prefix",
+                                        "fix": f"Consider using absolute path or ./{base_dir}",
+                                    }
+                                )
 
                     validation_results["connection_validation"][conn_key] = {
                         "is_valid": len(errors) == 0,
