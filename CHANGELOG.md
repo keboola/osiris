@@ -13,6 +13,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.5.6] - 2025-11-09
+
+**PostHog Analytics Integration & Discovery Command**
+
+This release adds production-ready PostHog analytics component with support for 4 data types (events, persons, sessions, person_distinct_ids), implements the missing `osiris components discover` CLI command, and adds PostHog connection testing to `osiris connections doctor`.
+
+### Added
+
+- **PostHog Analytics Component (v1.1.0)** - Full integration of production-ready PostHog extractor
+  - **4 PostHog tables supported:** events, persons, sessions, person_distinct_ids
+  - **Component files:**
+    - `components/posthog.extractor/spec.yaml` - Component specification with discover mode
+    - `osiris/drivers/posthog_client.py` - Shared API client (704 lines, 100% reusable with Keboola)
+    - `osiris/drivers/posthog_extractor_driver.py` - Driver implementation with all 4 data types
+    - `tests/drivers/test_posthog_extractor_driver.py` - 22 unit tests (100% passing)
+    - `docs/components/posthog/` - Complete documentation (README, CONFIG, IMPLEMENTATION_NOTES, QUICK_START)
+  - **Features:**
+    - SEEK-based pagination (10x faster than OFFSET)
+    - Memory-efficient streaming batch processing (1000 rows/batch)
+    - State management with high-watermark pattern
+    - UUID-based deduplication
+    - Multi-region support (US, EU, self-hosted)
+    - Production-ready (57/57 Osiris checklist rules passing)
+    - E2B cloud compatible (no hardcoded paths)
+  - **Schema metadata in discovery:**
+    - Events: 6 columns (uuid, event, timestamp, distinct_id, person_id, properties_*)
+    - Persons: 4 columns (id, created_at, is_identified, person_properties_*)
+    - Sessions: 5 main columns + 43 analytics columns ($start_timestamp, $end_timestamp, $session_duration, etc.)
+    - Person Distinct IDs: 2 columns (distinct_id, person_id)
+
+- **`osiris components discover` CLI Command** - Full implementation of discovery mode
+  - File: `osiris/cli/components_cmd.py` (lines 428-555, ~100 lines new code)
+  - Loads driver from DriverRegistry and calls `discover()` method
+  - Resolves connection references (e.g., `@posthog.main`) from YAML config
+  - Auto-loads environment variables from `.env` files
+  - Displays discovery results with schema metadata:
+    - Resource names and types
+    - Column names with data types
+    - Column descriptions
+    - Fingerprint and timestamp
+  - Supports multiple result formats: PostHog-style (resources), CSV-style (files), generic fallback
+  - Auto-detects driver method signature (with or without `ctx` parameter)
+  - Example: `osiris components discover posthog.extractor --config osiris_connections.yaml`
+
+- **PostHog Connection Doctor Support** - Connection testing for PostHog
+  - File: `osiris/cli/connections_cmd.py` (lines 430-489, 528-531, 675-676)
+  - Added `check_posthog_connection()` function for health checks
+  - Validates API key and project access
+  - Categorizes errors: auth, timeout, network, config
+  - Integrated into `osiris connections doctor` command
+  - Example output: `posthog.main: ✓ Connection successful (313ms)`
+
+- **PostHog Driver Class Wrapper** - Compatibility layer for driver registry
+  - File: `osiris/drivers/posthog_extractor_driver.py` (lines 24-41)
+  - Added `PostHogExtractorDriver` class wrapping module-level functions
+  - Implements driver protocol: `run()`, `discover()`, `doctor()` methods
+  - Enables component spec to use `x-runtime.driver` pattern
+
+- **Architecture Decision Record (ADR-0040)** - Connector vs Driver Architecture Inconsistency
+  - File: `docs/adr/0040-connector-driver-architecture-inconsistency.md`
+  - Documents architectural inconsistency: some components use connector pattern, others are monolithic
+  - Analyzes current state: Supabase (connector pattern), MySQL (duplicated code), GraphQL/PostHog (monolithic)
+  - Proposes 3 options: Connector Pattern (recommended), Monolithic Pattern, Hybrid (status quo)
+  - Identifies technical debt: hardcoded connection doctor, no plugin-friendly architecture
+  - Migration path for future refactoring with registry pattern
+
+### Changed
+
+- **Discovery Result Display** - Enhanced schema visualization
+  - Updated `osiris components discover` to show column schemas with types and descriptions
+  - Displays first 10 columns per resource with overflow indicator
+  - Pretty formatting with Rich library (colored output, indentation)
+
+- **PostHog Component Spec** - Updated to v1.1.0
+  - Version: 1.0.0 → 1.1.0
+  - Added `sessions` and `person_distinct_ids` to data_type enum
+  - Added `discover` to modes list
+  - Schema metadata included for all 4 resources
+
+### Fixed
+
+- **PostHog Persons SEEK Pagination** - Critical bug fix in v1.1.0 client
+  - Fixed `iterate_persons()` to properly convert HogQL list rows to dicts
+  - Cleaned timestamp formatting (removed microseconds, wrapped in `toDateTime()`)
+  - Impact: Persons extraction now works for datasets > 1 page (~10x faster)
+  - Previously failed with `TypeError: 'list' object has no attribute 'get'`
+
 ## [0.5.5] - 2025-11-07
 
 **MCP Configuration Improvements - Portable Setup for Pip Users**

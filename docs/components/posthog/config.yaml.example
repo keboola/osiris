@@ -1,0 +1,135 @@
+# Osiris Demo Configuration for PostHog Extractor
+# This demonstrates the structure for running extractors in E2B sandbox environments
+
+# Component identifier in E2B repository
+component_id: posthog/osiris
+
+# Resolved connection: all authentication details pre-loaded
+# In production, this is resolved by Keboola before passing to Osiris
+resolved_connection:
+  # PostHog API Key (from Keboola encrypted storage)
+  api_key: "phc_xxxxxxxxxxxxxxxxxxxxx"  # Example placeholder, replace with real API key from Keboola
+
+  # PostHog Project ID (numeric)
+  project_id: "12345"
+
+  # API Region: "us", "eu", or "self_hosted"
+  # - us: https://us.posthog.com (US-based PostHog cloud)
+  # - eu: https://eu.posthog.com (EU-based PostHog cloud)
+  # - self_hosted: uses custom_base_url
+  region: "us"
+
+  # Custom base URL for self-hosted PostHog instances
+  # Only used if region="self_hosted"
+  # Example: "https://posthog.yourcompany.com"
+  custom_base_url: null
+
+# Configuration parameters for extraction
+config:
+  # Source configuration: what to extract from PostHog
+  source:
+    # Data type: "events" or "persons"
+    # - events: extract analytics events with properties
+    # - persons: extract user profiles and person properties
+    data_type: "events"
+
+    # Event type filter (optional)
+    # Leave empty to extract all events
+    # Example: ["$pageview", "$identify", "custom_tracking_event"]
+    event_types: []
+
+    # Lookback window in minutes (5-60)
+    # Handles late-arriving events due to ingestion delays
+    # Typical: 15 minutes for good balance between coverage and efficiency
+    lookback_window_minutes: 15
+
+    # Initial start time for first run (ISO8601 format)
+    # If set, first extraction starts from this timestamp
+    # If null, defaults to last 30 days or state-based timestamp
+    # Format: "YYYY-MM-DDTHH:MM:SSZ" or "YYYY-MM-DDTHH:MM:SS+00:00"
+    initial_since: null
+
+    # Page size for API pagination (100-10000)
+    # - Higher (e.g., 5000): fewer API calls, larger memory usage
+    # - Lower (e.g., 500): more API calls, lower memory usage
+    # For E2B sandboxes: balance between request count and memory constraints
+    # Recommended: 1000-2000 for typical sandboxes
+    page_size: 1000
+
+    # Incremental field name
+    # Used to track progress and avoid re-extracting same data
+    # - "timestamp" for events
+    # - "created_at" for persons
+    incremental_field: "timestamp"
+
+  # Destination configuration: where to save extracted data
+  destination:
+    # Output table name (no spaces, lowercase recommended)
+    table_name: "posthog_events"
+
+    # Primary key columns for deduplication in target system
+    # - ["uuid"] for PostHog events (globally unique event IDs)
+    # - ["id"] for PostHog persons (user profile IDs)
+    primary_key:
+      - "uuid"
+
+# Input state from previous run (incremental loading)
+# On first run, this is empty
+# Subsequent runs use this to track progress
+inputs:
+  # State for each table being extracted
+  state:
+    # Key: table name (matches destination.table_name)
+    posthog_events:
+      # High-watermark timestamp from last successful extraction
+      # ISO8601 format: tracks the latest timestamp seen
+      # Next run starts from this timestamp
+      last_timestamp: null
+
+      # Tie-breaker UUID for pagination
+      # Used with last_timestamp to handle multiple events with same timestamp
+      last_uuid: null
+
+      # Recent UUIDs seen in lookback window (for deduplication)
+      # Prevents processing duplicate events when there's data overlap
+      # Limited to last 1000 UUIDs (memory efficient)
+      recent_uuids: []
+
+      # Column names from last extraction
+      # Used to maintain consistent CSV schema
+      columns: null
+
+# Output specification
+# Osiris will write extracted data to stdout in JSONL format
+# Expected format: one JSON record per line
+output:
+  format: "jsonl"  # JSONL (JSON Lines) for streaming
+  # Could also be: "csv", "parquet", etc. depending on Osiris version
+
+# Logging and debug configuration
+logging:
+  # Log level: "debug", "info", "warning", "error"
+  level: "info"
+
+  # Enable verbose HTTP request/response logging
+  verbose_http: false
+
+# Performance tuning for E2B sandbox environment
+performance:
+  # Maximum rows to buffer in memory before writing
+  # Lower for tight memory constraints (E2B sandboxes typically have 1-4GB)
+  batch_size: 5000
+
+  # Request timeout in seconds
+  # PostHog API: typically responds within 10-30 seconds
+  request_timeout: 30
+
+  # Connection pool size
+  # Number of concurrent HTTP connections to PostHog API
+  pool_size: 4
+
+  # Retry configuration
+  retries:
+    max_attempts: 3
+    backoff_factor: 1.0
+    timeout_seconds: 30
