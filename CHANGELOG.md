@@ -13,6 +13,141 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [0.5.7] - 2025-11-09
+
+**Filesystem Connections & Enhanced Validation**
+
+This release adds filesystem connection support to `osiris_connections.yaml`, enabling connection-based discovery for CSV files identical to database components. Additionally, OSIRIS_HOME support is now bulletproof across all path resolution (config, connections, .env), and the validate command comprehensively checks all connection families and filesystem contract sections.
+
+### Added
+
+- **Filesystem Connections in osiris_connections.yaml** - Connection-based configuration for filesystem components
+  - New `filesystem` connection family in `osiris_connections.yaml`
+  - Connection references using `@filesystem.alias` pattern (identical to database connections)
+  - Environment variable substitution with `${OSIRIS_HOME}` for portable paths
+  - Example configuration:
+    ```yaml
+    filesystem:
+      local:
+        default: true
+        base_dir: "${OSIRIS_HOME}/data"
+        description: "Local filesystem data directory"
+    ```
+  - Files updated:
+    - `osiris/cli/init.py` - Updated connection template
+    - `components/filesystem.csv_extractor/spec.yaml` - Added `connection` field and `x-connection-fields`
+    - `osiris/drivers/filesystem_csv_extractor_driver.py` - Connection resolution support
+
+- **Connection-based Discovery for Filesystem** - Discovery without manual path specification
+  - Command: `osiris discovery run @filesystem.local` (uses connection base_dir)
+  - Shows real CSV column names and data types (integer, float, string, datetime, boolean)
+  - No more placeholder names like "column_0, column_1"
+  - Automatic pandas dtype detection with user-friendly formatting
+  - Files updated:
+    - `osiris/cli/discovery_cmd.py` - Filesystem family handling
+    - `osiris/drivers/filesystem_csv_extractor_driver.py` - Added `_format_dtype()` for type mapping
+
+- **OSIRIS_HOME Support Everywhere** - Bulletproof path resolution
+  - `osiris validate` displays current OSIRIS_HOME setting
+  - Config file loading checks `$OSIRIS_HOME/osiris.yaml` first
+  - `.env` loading prioritizes `$OSIRIS_HOME/.env` over cwd
+  - Connection resolution respects OSIRIS_HOME for base_dir expansion
+  - Works from any directory when OSIRIS_HOME is set
+  - Files updated:
+    - `osiris/cli/main.py` - OSIRIS_HOME display and config loading
+    - `osiris/core/env_loader.py` - .env search order
+
+- **Comprehensive Validation** - Dynamic validation for all connection families
+  - Validates ALL connection families (mysql, supabase, posthog, filesystem)
+  - No more hardcoded family list
+  - Checks filesystem contract sections: `filesystem.outputs`, `filesystem.run_logs_dir`, `filesystem.aiop_dir`
+  - Fixed false "Missing section" warnings for Output/Sessions
+  - File updated: `osiris/cli/main.py` (lines 501-706)
+
+- **Deprecation Warnings** - Migration guidance for old commands
+  - `osiris components discover filesystem.csv_extractor` now shows deprecation warning
+  - Suggests new command: `osiris discovery run @filesystem.output`
+  - Clear migration path displayed
+  - File updated: `osiris/cli/components_cmd.py` (lines 435-452)
+
+- **Documentation** - Complete filesystem connections guide
+  - New guide: `docs/guides/filesystem-connections.md` (427 lines)
+  - Configuration examples, discovery workflow, troubleshooting
+  - OSIRIS_HOME best practices
+
+### Changed
+
+- **Discovery Output Format** - Real column metadata instead of placeholders
+  - CSV discovery now shows actual column names from CSV headers
+  - Data types formatted as user-friendly names (integer, float, string, datetime, boolean)
+  - Was: "column_0: unknown, column_1: unknown"
+  - Now: "id: integer, name: string, amount: float"
+
+- **.env Loading Priority** - OSIRIS_HOME takes precedence
+  - New search order: `$OSIRIS_HOME/.env` → cwd → project root
+  - Ensures consistent environment across different working directories
+  - File: `osiris/core/env_loader.py`
+
+### Fixed
+
+- **Config File Loading with OSIRIS_HOME** (`osiris/cli/main.py`)
+  - Fixed validate command not finding config when running from different directory
+  - Now checks `$OSIRIS_HOME/osiris.yaml` first before falling back to cwd
+  - Works correctly from any directory when OSIRIS_HOME is set
+
+- **Filesystem Contract Validation** (`osiris/cli/main.py`)
+  - Fixed false "Output: ❌ Missing section" warnings
+  - Changed to proper filesystem contract sections (filesystem.outputs, filesystem.run_logs_dir, etc.)
+  - Validates actual contract structure instead of legacy "output" key
+
+- **Connection Family Validation** (`osiris/cli/main.py`)
+  - Fixed hardcoded mysql/supabase validation
+  - Now dynamically validates ALL families found in osiris_connections.yaml
+  - Supports posthog, filesystem, and any future connection families
+
+### Tests
+
+- **25 new tests** for filesystem connections (`tests/components/test_filesystem_csv_extractor_connections.py`)
+  - Connection resolution and discovery
+  - Backward compatibility with direct path configuration
+  - Error handling for invalid connections
+  - OSIRIS_HOME substitution
+- **3 new tests** for .env loading with OSIRIS_HOME (`tests/core/test_env_loader.py`)
+- **All tests passing**: 77 filesystem-related tests (61 original + 25 new + 11 env_loader + 5 validate)
+
+### Migration Notes
+
+**New Recommended Pattern:**
+```yaml
+# osiris_connections.yaml
+filesystem:
+  local:
+    default: true
+    base_dir: "${OSIRIS_HOME}/data"
+```
+
+**Discovery Command:**
+```bash
+# New (recommended)
+osiris discovery run @filesystem.local
+
+# Old (deprecated, still works)
+osiris components discover filesystem.csv_extractor --config path/to/config.yaml
+```
+
+**Environment Setup:**
+```bash
+export OSIRIS_HOME="/path/to/project"  # Recommended for multi-directory workflows
+osiris validate  # Shows OSIRIS_HOME setting
+```
+
+### Backward Compatibility
+
+- ✅ All existing pipelines work without changes
+- ✅ Direct path configuration (`path: /absolute/path`) still supported
+- ✅ Connection-based configuration is opt-in enhancement
+- ✅ Old discovery commands show deprecation warnings but still work
+
 ## [0.5.6] - 2025-11-09
 
 **PostHog Analytics Integration & Discovery Command**
