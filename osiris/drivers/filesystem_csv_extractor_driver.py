@@ -339,8 +339,82 @@ class FilesystemCsvExtractorDriver:
                     file_info["column_names"] = list(df_sample.columns)
                     file_info["columns"] = len(df_sample.columns)
 
-                    # Read one row to get actual dtypes
-                    df_types = pd.read_csv(csv_file, nrows=1)
+                    # Read 100 rows to get better type inference than nrows=1
+                    df_types = pd.read_csv(csv_file, nrows=100)
+
+                    # Try to detect datetime columns by attempting conversion
+                    # This catches columns like "created_at" that contain datetime strings
+                    for col in df_types.columns:
+                        if df_types[col].dtype == "object":  # Only try on string columns
+                            # Try common datetime formats first to avoid warnings
+                            formats_to_try = [
+                                "%Y-%m-%d %H:%M:%S",  # ISO datetime: 2025-03-03 11:53:20
+                                "%Y-%m-%d",  # ISO date: 2025-03-03
+                                "ISO8601",  # pandas ISO8601 format
+                            ]
+
+                            converted = None
+                            for fmt in formats_to_try:
+                                try:
+                                    converted = pd.to_datetime(df_types[col], format=fmt, errors="coerce")
+                                    # Guard against empty columns (headers-only CSV)
+                                    if len(converted) > 0 and converted.notna().sum() / len(converted) > 0.8:
+                                        df_types[col] = converted
+                                        break
+                                except (ValueError, TypeError):
+                                    continue
+                            else:
+                                # Fallback to dateutil parser (suppress warning about format inference)
+                                # BUT FIRST: Check if values look date-like to avoid false positives
+                                # Problem: pd.to_datetime() interprets numeric strings as Unix timestamps
+                                # Example: "12345" -> 1970-01-01 00:00:12.345 (WRONG!)
+                                # Solution: Only apply fallback if strings contain date separators
+                                #
+                                # CHANGE 1: Expanded separator regex to include dots and spaces
+                                # - Dots: European formats (17.03.2024)
+                                # - Spaces: Text month formats (Mar 5 2024), space-separated dates (2024 03 17)
+                                sample_values = df_types[col].dropna().astype(str).head(20)
+                                has_date_separators = sample_values.str.contains(r"[-/:.\s]").any()
+
+                                if has_date_separators:
+                                    try:
+                                        import warnings
+
+                                        with warnings.catch_warnings():
+                                            warnings.filterwarnings("ignore", category=UserWarning)
+
+                                            # CHANGE 2: Calculate conversion rate on non-null values only
+                                            # This handles sparse columns correctly:
+                                            # Sparse example: 20 nulls + 10 dates
+                                            # Old: 10/30 = 0.33 → rejected
+                                            # New: 10/10 = 1.0 → accepted
+                                            non_null_values = df_types[col].dropna()
+                                            if len(non_null_values) > 0:
+                                                # Convert only non-null values to check conversion rate
+                                                converted_sample = pd.to_datetime(non_null_values, errors="coerce")
+                                                conversion_rate = converted_sample.notna().sum() / len(non_null_values)
+
+                                                # CHANGE 3: Unix epoch sanity check
+                                                # Reject if all converted dates are in 1970 (likely numeric IDs)
+                                                if conversion_rate > 0.8:
+                                                    valid_dates = converted_sample.dropna()
+                                                    if len(valid_dates) > 0:
+                                                        # Check year range
+                                                        min_year = valid_dates.dt.year.min()
+                                                        max_year = valid_dates.dt.year.max()
+
+                                                        # Accept if dates are NOT exclusively in Unix epoch range
+                                                        if not (min_year == 1970 and max_year == 1970):
+                                                            # Convert the ENTIRE column (including nulls)
+                                                            # This ensures dtype is properly updated to datetime64
+                                                            df_types[col] = pd.to_datetime(
+                                                                df_types[col], errors="coerce"
+                                                            )
+
+                                    except Exception:  # noqa: S110
+                                        pass  # Keep original dtype
+                                # else: skip fallback, likely numeric IDs or other non-date strings
+
                     file_info["column_types"] = {
                         col: self._format_dtype(dtype) for col, dtype in df_types.dtypes.items()
                     }
