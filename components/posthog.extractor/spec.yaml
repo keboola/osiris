@@ -184,9 +184,11 @@ x-runtime:
   driver: osiris.drivers.posthog_extractor_driver.PostHogExtractorDriver
   requirements:
     imports:
+      - datetime
+      - duckdb
       - pandas
       - requests
-      - datetime
     packages:
+      - duckdb
       - pandas
       - requests

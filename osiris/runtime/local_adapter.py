@@ -84,6 +84,7 @@ class LocalAdapter(ExecutionAdapter):
                 "logs_dir": str(context.logs_dir),
                 "artifacts_dir": str(context.artifacts_dir),
                 "manifest_path": str(context.logs_dir / "manifest.yaml"),
+                "db_path": str(context.base_path / "pipeline_data.duckdb"),
             }
 
             # Extract connection descriptors from cfg files for env var detection
@@ -144,6 +145,12 @@ class LocalAdapter(ExecutionAdapter):
             # Ensure directories exist
             context.logs_dir.mkdir(parents=True, exist_ok=True)
             context.artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+            # Initialize shared DuckDB database for pipeline data exchange (ADR 0043)
+            # All pipeline steps will write/read tables in this single database file
+            # Connection creation ensures the file exists at <session_dir>/pipeline_data.duckdb
+            db_connection = context.get_db_connection()
+            # Don't close it - context will manage lifecycle, drivers will use it
 
             # Write manifest to expected location
             manifest_path = Path(prepared.io_layout["manifest_path"])

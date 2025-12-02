@@ -367,3 +367,14 @@ limits:
 
 x-runtime:
   driver: osiris.drivers.graphql_extractor_driver.GraphQLExtractorDriver
+  requirements:
+    imports:
+      - duckdb
+      - jsonpath_ng
+      - pandas
+      - requests
+    packages:
+      - duckdb
+      - jsonpath-ng
+      - pandas
+      - requests

@@ -1,7 +1,7 @@
 # ADR 0022: Streaming IO and Spill
 
 ## Status
-Deferred
+Superseded by ADR 0043
 
 ## Context
 Current Osiris extractors return complete pandas DataFrames, which requires loading all data into memory. This approach does not scale to datasets of 10GB+ and can cause OOM errors. We need an iterator-first approach that supports streaming data processing while maintaining backward compatibility.
@@ -154,3 +154,16 @@ Current state:
 - Memory usage remains proportional to dataset size
 
 This feature is postponed to Milestone M2 for implementation alongside other scaling improvements.
+
+## Superseded By
+
+This ADR has been superseded by **ADR 0043: DuckDB-Based Data Exchange**.
+
+The RowStream abstraction approach has been replaced with a simpler DuckDB file-based streaming approach:
+
+- **No custom RowStream protocol needed** - DuckDB handles streaming internally via batch inserts
+- **Simpler driver contract** - Drivers stream directly to DuckDB tables
+- **Same benefits** - Memory-efficient, query pushdown, spill-to-disk
+- **Less complexity** - No iterator abstraction layer required
+
+See **ADR 0043** for the current architectural direction for handling large datasets and streaming data between pipeline steps.

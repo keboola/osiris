@@ -231,3 +231,17 @@ limits:
   maxSizeMB: 10240
   maxDurationSeconds: 3600
   maxConcurrency: 5
+
+x-runtime:
+  driver: osiris.drivers.mysql_writer_driver.MySQLWriterDriver
+  requirements:
+    imports:
+      - duckdb
+      - pandas
+      - pymysql
+      - sqlalchemy
+    packages:
+      - duckdb
+      - pandas
+      - pymysql
+      - sqlalchemy

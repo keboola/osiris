@@ -251,6 +251,13 @@ class ProxyWorker:
         self.session_context = None  # Avoid nested directories in sandbox
         self.execution_context = ExecutionContext(session_id=self.session_id, base_path=self.session_dir)
 
+        # Initialize shared DuckDB database for pipeline data exchange (ADR 0043)
+        # All steps in this E2B session will use this single database file
+        self.execution_context.get_db_connection()
+        db_path = self.session_dir / "pipeline_data.duckdb"
+        self.logger.info(f"Initialized pipeline database: {db_path}")
+        self.send_event("database_initialized", db_path=str(db_path.relative_to(self.session_dir)))
+
         # Load component specifications once per session
         self.component_registry = ComponentRegistry()
         self.component_specs = self.component_registry.load_specs()
@@ -686,6 +693,14 @@ class ProxyWorker:
     def handle_cleanup(self, cmd: CleanupCommand) -> CleanupResponse:
         """Cleanup session resources and write final status."""
         self.send_event("cleanup_start")
+
+        # Close DuckDB connection if open
+        if hasattr(self, "execution_context") and self.execution_context:
+            try:
+                self.execution_context.close_db_connection()
+                self.logger.debug("Closed pipeline database connection")
+            except Exception as e:
+                self.logger.warning(f"Failed to close database connection: {e}")
 
         # Calculate correct total_rows based on writer-only aggregation
         sum_rows_written = 0

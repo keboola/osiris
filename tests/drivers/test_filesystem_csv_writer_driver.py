@@ -1,11 +1,33 @@
 """Unit tests for filesystem CSV writer driver."""
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
+import duckdb
 import pandas as pd
 import pytest
 
 from osiris.drivers.filesystem_csv_writer_driver import FilesystemCsvWriterDriver
+
+
+class MockContext:
+    """Mock context for testing with DuckDB connection."""
+
+    def __init__(self, tmpdir):
+        self.base_path = Path(tmpdir)
+        self._db_connection = None
+        self.metrics = {}
+
+    def get_db_connection(self):
+        """Get or create DuckDB connection."""
+        if self._db_connection is None:
+            db_path = self.base_path / "pipeline_data.duckdb"
+            self._db_connection = duckdb.connect(str(db_path))
+        return self._db_connection
+
+    def log_metric(self, name: str, value):
+        """Log a metric."""
+        self.metrics[name] = value
 
 
 class TestFilesystemCsvWriterDriver:
@@ -13,17 +35,18 @@ class TestFilesystemCsvWriterDriver:
 
     def test_run_success(self, tmp_path):
         """Test successful CSV writing."""
-        # Create test DataFrame
-        test_df = pd.DataFrame(
-            {
-                "name": ["Alice", "Bob", "Charlie"],
-                "age": [30, 25, 35],
-                "city": ["NYC", "LA", "Chicago"],
-            }
-        )
+        # Setup context with DuckDB
+        mock_ctx = MockContext(tmp_path)
+        con = mock_ctx.get_db_connection()
 
-        # Setup context with metrics logging
-        mock_ctx = MagicMock()
+        # Create test data in DuckDB
+        con.execute("CREATE TABLE test_data (name TEXT, age INT, city TEXT)")
+        con.execute(
+            "INSERT INTO test_data VALUES "
+            "('Alice', 30, 'NYC'), "
+            "('Bob', 25, 'LA'), "
+            "('Charlie', 35, 'Chicago')"
+        )
 
         # Output path
         output_file = tmp_path / "output.csv"
@@ -37,9 +60,9 @@ class TestFilesystemCsvWriterDriver:
                 "delimiter": ",",
                 "header": True,
                 "encoding": "utf-8",
-                "newline": "\n",
+                "newline": "lf",
             },
-            inputs={"df_upstream": test_df},
+            inputs={"table": "test_data"},
             ctx=mock_ctx,
         )
 
@@ -61,33 +84,46 @@ class TestFilesystemCsvWriterDriver:
         assert written_df["city"].tolist() == ["NYC", "LA", "Chicago"]
 
         # Verify metrics logged
-        mock_ctx.log_metric.assert_called_once_with("rows_written", 3)
+        assert mock_ctx.metrics["rows_written"] == 3
 
-    def test_run_missing_df_input(self, tmp_path):
-        """Test error when DataFrame input is missing."""
+    def test_run_missing_table_input(self, tmp_path):
+        """Test error when table input is missing."""
+        mock_ctx = MockContext(tmp_path)
         driver = FilesystemCsvWriterDriver()
 
-        with pytest.raises(ValueError, match="requires inputs with DataFrame"):
-            driver.run(step_id="test-write", config={"path": str(tmp_path / "output.csv")}, inputs={})
+        with pytest.raises(ValueError, match="requires 'table' in inputs"):
+            driver.run(
+                step_id="test-write", config={"path": str(tmp_path / "output.csv")}, inputs={}, ctx=mock_ctx
+            )
 
     def test_run_no_inputs(self, tmp_path):
         """Test error when inputs is None."""
+        mock_ctx = MockContext(tmp_path)
         driver = FilesystemCsvWriterDriver()
 
-        with pytest.raises(ValueError, match="requires inputs with DataFrame"):
-            driver.run(step_id="test-write", config={"path": str(tmp_path / "output.csv")}, inputs=None)
+        with pytest.raises(ValueError, match="requires 'table' in inputs"):
+            driver.run(
+                step_id="test-write", config={"path": str(tmp_path / "output.csv")}, inputs=None, ctx=mock_ctx
+            )
 
-    def test_run_missing_path(self):
+    def test_run_missing_path(self, tmp_path):
         """Test error when path is missing."""
+        mock_ctx = MockContext(tmp_path)
+        con = mock_ctx.get_db_connection()
+        con.execute("CREATE TABLE test_data (col INT)")
+        con.execute("INSERT INTO test_data VALUES (1), (2), (3)")
+
         driver = FilesystemCsvWriterDriver()
-        test_df = pd.DataFrame({"col": [1, 2, 3]})
 
         with pytest.raises(ValueError, match="'path' is required"):
-            driver.run(step_id="test-write", config={}, inputs={"df_upstream": test_df})
+            driver.run(step_id="test-write", config={}, inputs={"table": "test_data"}, ctx=mock_ctx)
 
     def test_run_custom_delimiter(self, tmp_path):
         """Test writing with custom delimiter."""
-        test_df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+        mock_ctx = MockContext(tmp_path)
+        con = mock_ctx.get_db_connection()
+        con.execute("CREATE TABLE test_data (a INT, b INT)")
+        con.execute("INSERT INTO test_data VALUES (1, 3), (2, 4)")
 
         output_file = tmp_path / "output.tsv"
 
@@ -95,7 +131,8 @@ class TestFilesystemCsvWriterDriver:
         driver.run(
             step_id="test-write",
             config={"path": str(output_file), "delimiter": "\t"},
-            inputs={"df_upstream": test_df},
+            inputs={"table": "test_data"},
+            ctx=mock_ctx,
         )
 
         # Read file and verify delimiter
@@ -106,7 +143,10 @@ class TestFilesystemCsvWriterDriver:
 
     def test_run_no_header(self, tmp_path):
         """Test writing without header."""
-        test_df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
+        mock_ctx = MockContext(tmp_path)
+        con = mock_ctx.get_db_connection()
+        con.execute("CREATE TABLE test_data (a INT, b INT)")
+        con.execute("INSERT INTO test_data VALUES (1, 3), (2, 4)")
 
         output_file = tmp_path / "output.csv"
 
@@ -114,7 +154,8 @@ class TestFilesystemCsvWriterDriver:
         driver.run(
             step_id="test-write",
             config={"path": str(output_file), "header": False},
-            inputs={"df_upstream": test_df},
+            inputs={"table": "test_data"},
+            ctx=mock_ctx,
         )
 
         # Read file and verify no header
@@ -125,13 +166,18 @@ class TestFilesystemCsvWriterDriver:
 
     def test_run_creates_parent_directory(self, tmp_path):
         """Test that parent directories are created."""
-        test_df = pd.DataFrame({"col": [1, 2]})
+        mock_ctx = MockContext(tmp_path)
+        con = mock_ctx.get_db_connection()
+        con.execute("CREATE TABLE test_data (col INT)")
+        con.execute("INSERT INTO test_data VALUES (1), (2)")
 
         # Path with non-existent parent
         output_file = tmp_path / "nested" / "dir" / "output.csv"
 
         driver = FilesystemCsvWriterDriver()
-        driver.run(step_id="test-write", config={"path": str(output_file)}, inputs={"df_upstream": test_df})
+        driver.run(
+            step_id="test-write", config={"path": str(output_file)}, inputs={"table": "test_data"}, ctx=mock_ctx
+        )
 
         # Verify file and parent dirs exist
         assert output_file.exists()
@@ -139,27 +185,56 @@ class TestFilesystemCsvWriterDriver:
 
     def test_run_relative_path(self, tmp_path, monkeypatch):
         """Test writing to relative path."""
+        mock_ctx = MockContext(tmp_path)
+        con = mock_ctx.get_db_connection()
+        con.execute("CREATE TABLE test_data (col INT)")
+        con.execute("INSERT INTO test_data VALUES (1), (2)")
+
         # Change to temp directory
         monkeypatch.chdir(tmp_path)
 
-        test_df = pd.DataFrame({"col": [1, 2]})
-
         driver = FilesystemCsvWriterDriver()
-        driver.run(step_id="test-write", config={"path": "relative/output.csv"}, inputs={"df_upstream": test_df})
+        driver.run(
+            step_id="test-write",
+            config={"path": "relative/output.csv"},
+            inputs={"table": "test_data"},
+            ctx=mock_ctx,
+        )
 
         # Verify file exists at expected location
         expected_file = tmp_path / "relative" / "output.csv"
         assert expected_file.exists()
 
-    def test_run_empty_dataframe(self, tmp_path):
-        """Test writing empty DataFrame."""
-        test_df = pd.DataFrame()
+    def test_run_empty_table(self, tmp_path):
+        """Test writing empty table."""
+        mock_ctx = MockContext(tmp_path)
+        con = mock_ctx.get_db_connection()
+        con.execute("CREATE TABLE test_data (col INT)")
+        # Don't insert any data
 
         output_file = tmp_path / "empty.csv"
 
         driver = FilesystemCsvWriterDriver()
-        result = driver.run(step_id="test-write", config={"path": str(output_file)}, inputs={"df_upstream": test_df})
+        result = driver.run(
+            step_id="test-write", config={"path": str(output_file)}, inputs={"table": "test_data"}, ctx=mock_ctx
+        )
 
-        # Verify file exists but is essentially empty
+        # Verify file exists but is essentially empty (just header)
         assert output_file.exists()
         assert result == {}
+        assert mock_ctx.metrics["rows_written"] == 0
+
+    def test_nonexistent_table_error(self, tmp_path):
+        """Test error when table does not exist."""
+        mock_ctx = MockContext(tmp_path)
+        driver = FilesystemCsvWriterDriver()
+
+        output_file = tmp_path / "output.csv"
+
+        with pytest.raises(ValueError, match="Table.*does not exist"):
+            driver.run(
+                step_id="test-write",
+                config={"path": str(output_file)},
+                inputs={"table": "nonexistent_table"},
+                ctx=mock_ctx,
+            )

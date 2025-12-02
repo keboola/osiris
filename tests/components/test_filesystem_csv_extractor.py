@@ -2,6 +2,7 @@
 
 import logging
 
+import duckdb
 import pandas as pd
 import pytest
 
@@ -86,13 +87,22 @@ def sample_csv_malformed(tmp_path):
 
 @pytest.fixture
 def mock_ctx(tmp_path):
-    """Mock execution context with base_path."""
+    """Mock execution context with base_path and DuckDB connection."""
+    import duckdb
 
     class MockCtx:
         def __init__(self):
             self.base_path = tmp_path
             self.metrics = []
             self.events = []
+            self._db_connection = None
+            self._db_path = tmp_path / "test_pipeline.duckdb"
+
+        def get_db_connection(self):
+            """Get or create DuckDB connection."""
+            if self._db_connection is None:
+                self._db_connection = duckdb.connect(str(self._db_path))
+            return self._db_connection
 
         def log_metric(self, name, value, tags=None):
             self.metrics.append({"name": name, "value": value, "tags": tags})
@@ -102,7 +112,38 @@ def mock_ctx(tmp_path):
             self.events.append({"type": event_type, "data": data})
             logger.debug(f"Event logged: {event_type} (data={data})")
 
-    return MockCtx()
+        def cleanup(self):
+            """Close DuckDB connection and clean up."""
+            if self._db_connection is not None:
+                self._db_connection.close()
+                self._db_connection = None
+
+    ctx = MockCtx()
+    yield ctx
+    ctx.cleanup()
+
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+
+def get_table_data(ctx, table_name, order_by=None):
+    """Helper to fetch data from DuckDB table as DataFrame.
+
+    Args:
+        ctx: Mock context with get_db_connection()
+        table_name: Name of table to query
+        order_by: Optional column name to order by
+
+    Returns:
+        DataFrame with table data
+    """
+    conn = ctx.get_db_connection()
+    query = f"SELECT * FROM {table_name}"
+    if order_by:
+        query += f" ORDER BY {order_by}"
+    return conn.execute(query).fetchdf()
 
 
 # ============================================================================
@@ -119,12 +160,14 @@ def test_basic_extraction(sample_csv, mock_ctx):
     driver = FilesystemCsvExtractorDriver()
     result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
 
-    # Verify return format
-    assert "df" in result
-    assert isinstance(result["df"], pd.DataFrame)
+    # Verify return format (new DuckDB streaming interface)
+    assert "table" in result
+    assert "rows" in result
+    assert result["table"] == "extract_1"
+    assert result["rows"] == 3
 
-    # Verify data
-    df = result["df"]
+    # Verify data in DuckDB
+    df = get_table_data(mock_ctx, "extract_1", order_by="id")
     assert len(df) == 3
     assert list(df.columns) == ["id", "name", "value"]
     assert df["id"].tolist() == [1, 2, 3]
@@ -132,8 +175,8 @@ def test_basic_extraction(sample_csv, mock_ctx):
     assert df["value"].tolist() == [100, 200, 300]
 
 
-def test_extraction_returns_dataframe_in_df_key(sample_csv, mock_ctx):
-    """Test that extraction returns DataFrame in 'df' key."""
+def test_extraction_returns_table_and_rows(sample_csv, mock_ctx):
+    """Test that extraction returns table name and row count."""
     from osiris.drivers.filesystem_csv_extractor_driver import FilesystemCsvExtractorDriver
 
     config = {"path": str(sample_csv)}
@@ -141,10 +184,12 @@ def test_extraction_returns_dataframe_in_df_key(sample_csv, mock_ctx):
     driver = FilesystemCsvExtractorDriver()
     result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
 
-    # Verify return structure
+    # Verify return structure (new DuckDB streaming interface)
     assert isinstance(result, dict)
-    assert "df" in result
-    assert isinstance(result["df"], pd.DataFrame)
+    assert "table" in result
+    assert "rows" in result
+    assert result["table"] == "extract_1"
+    assert result["rows"] == 3
 
 
 def test_rows_read_metric_emitted(sample_csv, mock_ctx):
@@ -176,7 +221,8 @@ def test_column_selection(sample_csv, mock_ctx):
     driver = FilesystemCsvExtractorDriver()
     result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
 
-    df = result["df"]
+    assert result["rows"] == 3
+    df = get_table_data(mock_ctx, "extract_1")
     assert list(df.columns) == ["id", "name"]
     assert "value" not in df.columns
 
@@ -190,7 +236,7 @@ def test_column_order_preserved(sample_csv, mock_ctx):
     driver = FilesystemCsvExtractorDriver()
     result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
 
-    df = result["df"]
+    df = get_table_data(mock_ctx, "extract_1")
     assert list(df.columns) == ["value", "id"]
 
 
@@ -208,7 +254,7 @@ def test_delimiter_tsv(sample_tsv, mock_ctx):
     driver = FilesystemCsvExtractorDriver()
     result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
 
-    df = result["df"]
+    df = get_table_data(mock_ctx, result["table"])
     assert len(df) == 2
     assert list(df.columns) == ["id", "name", "value"]
 
@@ -222,7 +268,7 @@ def test_encoding_utf8(sample_csv_utf8, mock_ctx):
     driver = FilesystemCsvExtractorDriver()
     result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
 
-    df = result["df"]
+    df = get_table_data(mock_ctx, result["table"])
     assert df["name"].tolist() == ["José", "Müller", "王芳"]
     assert df["city"].tolist() == ["São Paulo", "München", "北京"]
 
@@ -236,7 +282,7 @@ def test_no_header(sample_csv_no_header, mock_ctx):
     driver = FilesystemCsvExtractorDriver()
     result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
 
-    df = result["df"]
+    df = get_table_data(mock_ctx, result["table"])
     assert len(df) == 3
     # Default column names should be integers (0, 1, 2)
     assert 0 in df.columns
@@ -253,7 +299,7 @@ def test_skip_rows(sample_csv, mock_ctx):
     driver = FilesystemCsvExtractorDriver()
     result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
 
-    df = result["df"]
+    df = get_table_data(mock_ctx, result["table"])
     # First data row becomes header, so we should have 2 rows
     assert len(df) == 2
     # Values from second and third data rows
@@ -269,7 +315,7 @@ def test_limit_rows(sample_csv, mock_ctx):
     driver = FilesystemCsvExtractorDriver()
     result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
 
-    df = result["df"]
+    df = get_table_data(mock_ctx, result["table"])
     assert len(df) == 2
     assert df["id"].tolist() == [1, 2]
 
@@ -288,7 +334,7 @@ def test_parse_dates(sample_csv_dates, mock_ctx):
     driver = FilesystemCsvExtractorDriver()
     result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
 
-    df = result["df"]
+    df = get_table_data(mock_ctx, result["table"])
     assert pd.api.types.is_datetime64_any_dtype(df["date"])
 
 
@@ -304,7 +350,7 @@ def test_dtype_specification(tmp_path, mock_ctx):
     driver = FilesystemCsvExtractorDriver()
     result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
 
-    df = result["df"]
+    df = get_table_data(mock_ctx, result["table"])
     assert df["id"].dtype == int
     assert df["code"].dtype == object  # string
     assert df["amount"].dtype == float
@@ -320,7 +366,7 @@ def test_na_values(sample_csv_with_nulls, mock_ctx):
     driver = FilesystemCsvExtractorDriver()
     result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
 
-    df = result["df"]
+    df = get_table_data(mock_ctx, result["table"])
     # Check that empty strings and "NULL" are treated as NaN
     assert pd.isna(df.loc[1, "name"])  # Empty string
     assert pd.isna(df.loc[2, "value"])  # Empty value
@@ -341,8 +387,8 @@ def test_absolute_path(sample_csv, mock_ctx):
     driver = FilesystemCsvExtractorDriver()
     result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
 
-    assert "df" in result
-    assert len(result["df"]) == 3
+    assert "table" in result and "rows" in result
+    assert result["rows"] == 3
 
 
 def test_relative_path(tmp_path, mock_ctx):
@@ -359,21 +405,20 @@ def test_relative_path(tmp_path, mock_ctx):
     driver = FilesystemCsvExtractorDriver()
     result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
 
-    assert "df" in result
-    assert len(result["df"]) == 1
+    assert "table" in result and "rows" in result
+    assert result["rows"] == 1
 
 
 def test_path_resolution_without_ctx(sample_csv):
-    """Test path resolution fallback to cwd when ctx not provided."""
+    """Test that driver requires ctx with get_db_connection()."""
     from osiris.drivers.filesystem_csv_extractor_driver import FilesystemCsvExtractorDriver
 
     config = {"path": str(sample_csv.absolute())}
 
     driver = FilesystemCsvExtractorDriver()
-    result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=None)
-
-    assert "df" in result
-    assert len(result["df"]) == 3
+    # Driver now requires ctx with get_db_connection() method
+    with pytest.raises(RuntimeError, match="Context must provide get_db_connection"):
+        driver.run(step_id="extract_1", config=config, inputs=None, ctx=None)
 
 
 # ============================================================================
@@ -550,7 +595,7 @@ def test_malformed_csv_skip_mode(sample_csv_malformed, mock_ctx):
     driver = FilesystemCsvExtractorDriver()
     result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
 
-    df = result["df"]
+    df = get_table_data(mock_ctx, result["table"])
     # Pandas skips rows with MORE columns, fills NaN for rows with LESS
     assert len(df) == 2
     assert df["a"].tolist() == [1, 4]
@@ -573,7 +618,7 @@ def test_empty_csv_file(tmp_path, mock_ctx):
     driver = FilesystemCsvExtractorDriver()
     result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
 
-    df = result["df"]
+    df = get_table_data(mock_ctx, result["table"])
     assert len(df) == 0
 
 
@@ -589,7 +634,7 @@ def test_csv_with_header_only(tmp_path, mock_ctx):
     driver = FilesystemCsvExtractorDriver()
     result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
 
-    df = result["df"]
+    df = get_table_data(mock_ctx, result["table"])
     assert len(df) == 0
     assert list(df.columns) == ["id", "name", "value"]
 
@@ -615,7 +660,7 @@ def test_chunked_reading(tmp_path, mock_ctx):
     driver = FilesystemCsvExtractorDriver()
     result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
 
-    df = result["df"]
+    df = get_table_data(mock_ctx, result["table"])
     assert len(df) == 1000
 
 
@@ -636,6 +681,6 @@ def test_comment_lines(tmp_path, mock_ctx):
     driver = FilesystemCsvExtractorDriver()
     result = driver.run(step_id="extract_1", config=config, inputs=None, ctx=mock_ctx)
 
-    df = result["df"]
+    df = get_table_data(mock_ctx, result["table"])
     assert len(df) == 2
     assert df["id"].tolist() == [1, 2]

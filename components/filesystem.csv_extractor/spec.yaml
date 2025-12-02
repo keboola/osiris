@@ -241,6 +241,8 @@ x-runtime:
   driver: osiris.drivers.filesystem_csv_extractor_driver.FilesystemCsvExtractorDriver
   requirements:
     imports:
+      - duckdb
       - pandas
     packages:
+      - duckdb
       - pandas

@@ -201,3 +201,17 @@ limits:
   rateLimit:
     requests: 100
     period: second
+
+x-runtime:
+  driver: osiris.drivers.supabase_extractor_driver.SupabaseExtractorDriver
+  requirements:
+    imports:
+      - duckdb
+      - pandas
+      - requests
+      - supabase
+    packages:
+      - duckdb
+      - pandas
+      - requests
+      - supabase
