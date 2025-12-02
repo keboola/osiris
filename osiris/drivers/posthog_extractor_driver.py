@@ -257,14 +257,13 @@ def _flatten_row(row: dict[str, Any], data_type: str) -> dict[str, Any]:
 
 def run(*, step_id: str, config: dict[str, Any], inputs: dict[str, Any], ctx) -> dict[str, Any]:
     """
-    Main Osiris driver entry point - TRUE STREAMING implementation.
+    Main Osiris driver entry point - DuckDB streaming implementation.
 
-    CRITICAL: Uses true streaming with incremental DataFrame building to avoid memory exhaustion
-    in E2B sandbox. Rows are batched (1000/batch), flattened, converted to DataFrame chunks,
-    then concatenated incrementally. Memory usage: O(batch_size) instead of O(total_rows).
+    Streams PostHog data directly to DuckDB in batches instead of building DataFrames.
+    Memory usage: O(batch_size) instead of O(total_rows).
 
     Args:
-        step_id: Unique step identifier
+        step_id: Unique step identifier (used as DuckDB table name)
         config: Configuration dict containing:
             - resolved_connection: {api_key, project_id, region, custom_base_url}
             - data_type: "events", "persons", "sessions", or "person_distinct_ids"
@@ -280,11 +279,12 @@ def run(*, step_id: str, config: dict[str, Any], inputs: dict[str, Any], ctx) ->
                 - sessions_state: {last_start_timestamp, last_session_id}
                 - person_distinct_ids_state: {} (no pagination)
                 - recent_uuids: List of recent UUIDs for deduplication
-        ctx: Osiris context object (for logging, metrics, base_path)
+        ctx: Osiris context object (for logging, metrics, DuckDB connection)
 
     Returns:
         Dict with:
-            - df: pandas.DataFrame with extracted data
+            - table: DuckDB table name (same as step_id)
+            - rows: Total rows written to DuckDB
             - state: Updated state for next run (data-type-specific nested structure)
 
     Raises:
@@ -405,18 +405,25 @@ def run(*, step_id: str, config: dict[str, Any], inputs: dict[str, Any], ctx) ->
 
         logger.info(f"[{step_id}] Time range: {actual_since.isoformat()} to {until.isoformat()}")
 
+        # ===== Get DuckDB connection =====
+        if not ctx or not hasattr(ctx, "get_db_connection"):
+            raise RuntimeError(f"Step {step_id}: Context must provide get_db_connection() method")
+
+        conn = ctx.get_db_connection()
+        table_name = step_id
+
         # ===== Create API client =====
         client = PostHogClient(base_url, api_key, project_id)
 
-        # ===== TRUE STREAMING: Incremental DataFrame building =====
-        # Instead of accumulating all rows in memory, we build DataFrames incrementally
+        # ===== DuckDB STREAMING: Stream batches directly to DuckDB =====
+        # Instead of accumulating all rows in memory, we stream batches to DuckDB
         # Memory usage: O(batch_size) = O(1000) instead of O(total_rows)
         batch_size = 1000
         batch: list[dict[str, Any]] = []
-        df_chunks: list[pd.DataFrame] = []  # Accumulate DataFrame chunks, not raw rows
         deduplicated_count = 0
         total_rows_processed = 0
         last_row: dict[str, Any] | None = None  # Track last row for state update
+        first_batch = True
 
         try:
             if data_type == "events":
@@ -453,7 +460,7 @@ def run(*, step_id: str, config: dict[str, Any], inputs: dict[str, Any], ctx) ->
             else:
                 raise PostHogDriverError(f"Unhandled data_type: {data_type}")
 
-            # Stream rows into batches and build DataFrames incrementally
+            # Stream rows into batches and write directly to DuckDB
             for row in iterator:
                 uuid_val = row.get("uuid")
 
@@ -471,27 +478,48 @@ def run(*, step_id: str, config: dict[str, Any], inputs: dict[str, Any], ctx) ->
                 batch.append(row)
                 last_row = row  # Track for state update
 
-                # When batch reaches threshold, flatten and convert to DataFrame
+                # When batch reaches threshold, flatten and write to DuckDB
                 if len(batch) >= batch_size:
                     # Flatten batch rows (in-memory, bounded by batch_size)
                     flattened_batch = [_flatten_row(r, data_type) for r in batch]
-                    # Convert to DataFrame chunk
-                    df_chunk = pd.DataFrame(flattened_batch)
-                    df_chunks.append(df_chunk)
+                    # Convert to DataFrame for DuckDB
+                    batch_df = pd.DataFrame(flattened_batch)
+
+                    if first_batch:
+                        # First batch: create table
+                        logger.info(
+                            f"[{step_id}] Creating table '{table_name}' from first batch "
+                            f"({len(batch_df)} rows, {len(batch_df.columns)} columns)"
+                        )
+                        conn.execute(f"CREATE TABLE {table_name} AS SELECT * FROM batch_df")
+                        first_batch = False
+                        logger.info(f"[{step_id}] Table created with schema: {list(batch_df.columns)}")
+                    else:
+                        # Subsequent batches: insert into existing table
+                        conn.execute(f"INSERT INTO {table_name} SELECT * FROM batch_df")
 
                     total_rows_processed += len(batch)
                     batch = []  # Clear batch to free memory
 
-                    logger.info(
-                        f"[{step_id}] Processed {total_rows_processed} rows "
-                        f"({len(df_chunks)} chunks, dedup: {deduplicated_count})"
-                    )
+                    logger.info(f"[{step_id}] Processed {total_rows_processed} rows " f"(dedup: {deduplicated_count})")
 
             # Process final batch
             if batch:
                 flattened_batch = [_flatten_row(r, data_type) for r in batch]
-                df_chunk = pd.DataFrame(flattened_batch)
-                df_chunks.append(df_chunk)
+                batch_df = pd.DataFrame(flattened_batch)
+
+                if first_batch:
+                    # First batch: create table
+                    logger.info(
+                        f"[{step_id}] Creating table '{table_name}' from final batch "
+                        f"({len(batch_df)} rows, {len(batch_df.columns)} columns)"
+                    )
+                    conn.execute(f"CREATE TABLE {table_name} AS SELECT * FROM batch_df")
+                    first_batch = False
+                else:
+                    # Subsequent batch: insert
+                    conn.execute(f"INSERT INTO {table_name} SELECT * FROM batch_df")
+
                 total_rows_processed += len(batch)
                 logger.info(f"[{step_id}] Final batch: {len(batch)} rows")
 
@@ -499,21 +527,21 @@ def run(*, step_id: str, config: dict[str, Any], inputs: dict[str, Any], ctx) ->
             logger.error(f"[{step_id}] API error: {e}")
             raise
 
-        # ===== Concatenate DataFrame chunks =====
-        if not df_chunks:
-            logger.info(f"[{step_id}] No rows extracted")
-            df = pd.DataFrame()
-        else:
-            # Concatenate all chunks into final DataFrame
-            # This is more memory efficient than accumulating raw dicts
-            df = pd.concat(df_chunks, ignore_index=True)
-            logger.info(f"[{step_id}] Created DataFrame with {len(df)} rows, " f"{len(df.columns)} columns")
+        # ===== Handle empty result =====
+        if first_batch:
+            logger.info(f"[{step_id}] No rows extracted, creating empty table")
+            # Create empty table with placeholder column
+            conn.execute(f"CREATE TABLE {table_name} (placeholder VARCHAR)")
+            conn.execute(f"DELETE FROM {table_name}")  # Ensure it's empty
 
         # ===== Log metrics =====
+        logger.info(
+            f"[{step_id}] PostHog streaming completed: " f"table={table_name}, total_rows={total_rows_processed}"
+        )
+
         ctx.log_metric("rows_read", total_rows_processed)
         ctx.log_metric("rows_deduplicated", deduplicated_count)
-        ctx.log_metric("rows_output", len(df))
-        ctx.log_metric("columns", len(df.columns) if not df.empty else 0)
+        ctx.log_metric("rows_output", total_rows_processed)
 
         # ===== Update state for next run (data-type-specific) =====
         # Build data-type-specific state based on the data type's unique fields
@@ -556,7 +584,7 @@ def run(*, step_id: str, config: dict[str, Any], inputs: dict[str, Any], ctx) ->
             f"[{step_id}] Updated state: {state_summary}, " f"uuid_cache_size={len(new_state.get('recent_uuids', []))}"
         )
 
-        return {"df": df, "state": new_state}
+        return {"table": table_name, "rows": total_rows_processed, "state": new_state}
 
     except Exception as e:
         logger.error(f"[{step_id}] Unexpected error: {e}")

@@ -3,12 +3,9 @@
 import logging
 from typing import Any
 
-import duckdb
-import pandas as pd
-
 
 class DuckDBProcessorDriver:
-    """DuckDB processor driver for executing SQL transformations on DataFrames."""
+    """DuckDB processor driver for executing SQL transformations on tables."""
 
     def __init__(self):
         """Initialize the DuckDB processor driver."""
@@ -21,57 +18,58 @@ class DuckDBProcessorDriver:
         inputs: dict[str, Any] | None,
         ctx: Any,
     ) -> dict[str, Any]:
-        """Execute a DuckDB SQL transformation.
+        """Execute a DuckDB SQL transformation on input tables.
 
         Args:
-            step_id: Step identifier
+            step_id: Step identifier (used as output table name)
             config: Configuration containing 'query' SQL string
-            inputs: Optional inputs with keys starting with 'df_' containing input DataFrames
-            ctx: Execution context for logging metrics
+            inputs: Dictionary containing input table names (e.g., {"table": "extract_step"})
+            ctx: Execution context for logging metrics and database connection
 
         Returns:
-            Dictionary with 'df' key containing transformed DataFrame
+            Dictionary with 'table' and 'rows' keys: {"table": step_id, "rows": count}
         """
         # Get SQL query from config
         query = config.get("query", "").strip()
         if not query:
             raise ValueError(f"Step {step_id}: Missing 'query' in config")
 
+        # Get DuckDB connection from context
+        if not ctx or not hasattr(ctx, "get_db_connection"):
+            raise RuntimeError(f"Step {step_id}: Context must provide get_db_connection() method")
+
+        conn = ctx.get_db_connection()
+        table_name = step_id
+
         try:
-            # Create in-memory DuckDB connection
-            conn = duckdb.connect(":memory:")
-
-            # Register all DataFrames from inputs dict
-            registered = []
+            # Log input tables (for debugging)
             if inputs:
-                for key, value in inputs.items():
-                    if key.startswith("df_") and isinstance(value, pd.DataFrame):
-                        conn.register(key, value)
-                        registered.append(key)
-                        self.logger.debug(f"Step {step_id}: Registered table '{key}' with {len(value)} rows")
-
-            # Allow empty inputs for data generation queries (e.g., generate_series)
-            if registered:
-                self.logger.info(f"Step {step_id}: Registered {len(registered)} tables: {registered}")
+                input_table_names = [v for k, v in inputs.items() if k in {"table", "tables"}]
+                if input_table_names:
+                    self.logger.info(f"Step {step_id}: Input tables: {input_table_names}")
+                else:
+                    self.logger.info(f"Step {step_id}: No input tables specified (data generation query)")
             else:
-                self.logger.info(f"Step {step_id}: No input tables (data generation query)")
+                self.logger.info(f"Step {step_id}: No inputs (data generation query)")
 
-            # Execute the SQL query
+            # Execute the SQL query and store result in new table
             self.logger.debug(f"Step {step_id}: Executing DuckDB query")
-            result = conn.execute(query).fetchdf()
+            self.logger.debug(f"Query: {query[:500]}{'...' if len(query) > 500 else ''}")
 
-            # Close connection
-            conn.close()
+            # Create table from query result
+            conn.execute(f"CREATE TABLE {table_name} AS {query}")
+
+            # Count rows in the result table
+            row_count_result = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()
+            row_count = row_count_result[0] if row_count_result else 0
 
             # Log metrics
-            total_rows_read = sum(len(inputs[key]) for key in registered) if registered else 0
             if hasattr(ctx, "log_metric"):
-                ctx.log_metric("rows_read", total_rows_read)
-                ctx.log_metric("rows_written", len(result))
+                ctx.log_metric("rows_written", row_count)
 
-            self.logger.info(f"Step {step_id}: Transformed {total_rows_read} rows -> {len(result)} rows")
+            self.logger.info(f"Step {step_id}: Created table '{table_name}' with {row_count} rows")
 
-            return {"df": result}
+            return {"table": table_name, "rows": row_count}
 
         except Exception as e:
             self.logger.error(f"Step {step_id}: DuckDB execution failed: {e}")

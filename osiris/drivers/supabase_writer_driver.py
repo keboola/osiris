@@ -91,8 +91,8 @@ class SupabaseWriterDriver(Driver):
         Args:
             step_id: Identifier of the step being executed
             config: Step configuration including resolved connections
-            inputs: Input data from upstream steps (expects {"df": DataFrame})
-            ctx: Execution context for logging
+            inputs: Input data from upstream steps (expects {"table": table_name} or legacy {"df": DataFrame})
+            ctx: Execution context for logging and DuckDB access
 
         Returns:
             Empty dict {} for writers
@@ -101,27 +101,41 @@ class SupabaseWriterDriver(Driver):
             ValueError: If configuration is invalid or inputs missing
             RuntimeError: If write operation fails
         """
-        # Validate inputs - find DataFrame in df_* keys
+        # Validate inputs
         if not inputs:
-            raise ValueError(f"Step {step_id}: SupabaseWriterDriver requires inputs with DataFrame")
+            raise ValueError(f"Step {step_id}: SupabaseWriterDriver requires inputs")
 
-        # Find the DataFrame (should be in df_* key from upstream processor/extractor)
-        # Also accept plain "df" for E2B ProxyWorker compatibility
-        df = None
-        df_key = None
-        for key, value in inputs.items():
-            if (key.startswith("df_") or key == "df") and isinstance(value, pd.DataFrame):
-                df = value
-                df_key = key
-                break
+        # New path: Accept table name from DuckDB
+        if "table" in inputs:
+            table_name_input = inputs["table"]
 
-        if df is None:
-            raise ValueError(
-                f"Step {step_id}: SupabaseWriterDriver requires DataFrame input. "
-                f"Expected key 'df' or starting with 'df_'. Got: {list(inputs.keys())}"
-            )
+            # Get shared DuckDB connection from context
+            if not hasattr(ctx, "get_db_connection"):
+                raise ValueError(f"Step {step_id}: Context does not provide get_db_connection()")
 
-        logger.debug(f"Step {step_id}: Using DataFrame from {df_key} ({len(df)} rows)")
+            con = ctx.get_db_connection()
+
+            # Read DataFrame from DuckDB table
+            logger.debug(f"Step {step_id}: Reading from DuckDB table '{table_name_input}'")
+            df = con.execute(f"SELECT * FROM {table_name_input}").df()
+            logger.info(f"Step {step_id}: Read {len(df)} rows from DuckDB table '{table_name_input}'")
+        else:
+            # Legacy path: Accept DataFrame directly for backwards compatibility
+            df = None
+            df_key = None
+            for key, value in inputs.items():
+                if (key.startswith("df_") or key == "df") and isinstance(value, pd.DataFrame):
+                    df = value
+                    df_key = key
+                    break
+
+            if df is None:
+                raise ValueError(
+                    f"Step {step_id}: SupabaseWriterDriver requires 'table' in inputs or DataFrame. "
+                    f"Got: {list(inputs.keys())}"
+                )
+
+            logger.debug(f"Step {step_id}: Using DataFrame from {df_key} ({len(df)} rows - legacy mode)")
 
         # Extract configuration (strict - reject unknown keys)
         known_keys = {

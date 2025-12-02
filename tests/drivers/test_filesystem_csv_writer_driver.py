@@ -1,7 +1,6 @@
 """Unit tests for filesystem CSV writer driver."""
 
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import duckdb
 import pandas as pd
@@ -42,10 +41,7 @@ class TestFilesystemCsvWriterDriver:
         # Create test data in DuckDB
         con.execute("CREATE TABLE test_data (name TEXT, age INT, city TEXT)")
         con.execute(
-            "INSERT INTO test_data VALUES "
-            "('Alice', 30, 'NYC'), "
-            "('Bob', 25, 'LA'), "
-            "('Charlie', 35, 'Chicago')"
+            "INSERT INTO test_data VALUES " "('Alice', 30, 'NYC'), " "('Bob', 25, 'LA'), " "('Charlie', 35, 'Chicago')"
         )
 
         # Output path
@@ -92,9 +88,7 @@ class TestFilesystemCsvWriterDriver:
         driver = FilesystemCsvWriterDriver()
 
         with pytest.raises(ValueError, match="requires 'table' in inputs"):
-            driver.run(
-                step_id="test-write", config={"path": str(tmp_path / "output.csv")}, inputs={}, ctx=mock_ctx
-            )
+            driver.run(step_id="test-write", config={"path": str(tmp_path / "output.csv")}, inputs={}, ctx=mock_ctx)
 
     def test_run_no_inputs(self, tmp_path):
         """Test error when inputs is None."""
@@ -102,9 +96,7 @@ class TestFilesystemCsvWriterDriver:
         driver = FilesystemCsvWriterDriver()
 
         with pytest.raises(ValueError, match="requires 'table' in inputs"):
-            driver.run(
-                step_id="test-write", config={"path": str(tmp_path / "output.csv")}, inputs=None, ctx=mock_ctx
-            )
+            driver.run(step_id="test-write", config={"path": str(tmp_path / "output.csv")}, inputs=None, ctx=mock_ctx)
 
     def test_run_missing_path(self, tmp_path):
         """Test error when path is missing."""
@@ -175,9 +167,7 @@ class TestFilesystemCsvWriterDriver:
         output_file = tmp_path / "nested" / "dir" / "output.csv"
 
         driver = FilesystemCsvWriterDriver()
-        driver.run(
-            step_id="test-write", config={"path": str(output_file)}, inputs={"table": "test_data"}, ctx=mock_ctx
-        )
+        driver.run(step_id="test-write", config={"path": str(output_file)}, inputs={"table": "test_data"}, ctx=mock_ctx)
 
         # Verify file and parent dirs exist
         assert output_file.exists()

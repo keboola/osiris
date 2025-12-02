@@ -421,8 +421,24 @@ class RunnerV0:
                         # Store full upstream result by step_id
                         inputs[upstream_id] = upstream_result
 
-                        # If result contains DataFrame, also register with safe key
-                        if "df" in upstream_result:
+                        # Handle table-based data passing (ADR 0043)
+                        if "table" in upstream_result:
+                            # Pass table name to downstream step
+                            inputs["table"] = upstream_result["table"]
+                            rows = upstream_result.get("rows", 0)
+
+                            logger.debug(
+                                f"Step {step_id}: Registered table '{upstream_result['table']}' with {rows} rows from {upstream_id}"
+                            )
+                            self._emit_inputs_resolved(
+                                step_id=step_id,
+                                from_step=upstream_id,
+                                key="table",
+                                rows=rows,
+                                from_memory=True,
+                            )
+                        # Legacy: If result contains DataFrame, also register with safe key
+                        elif "df" in upstream_result:
                             safe_key = df_keys[upstream_id]
                             inputs[safe_key] = upstream_result["df"]
 
@@ -450,8 +466,8 @@ class RunnerV0:
             # Run the driver
             result = driver.run(step_id=step_id, config=config, inputs=inputs, ctx=ctx)
 
-            # Cache result if it contains data
-            if result and "df" in result:
+            # Cache result if it contains data (table reference or DataFrame)
+            if result and ("table" in result or "df" in result):
                 self.results[step_id] = result
 
             return True, None

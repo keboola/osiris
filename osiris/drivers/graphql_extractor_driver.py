@@ -26,16 +26,16 @@ class GraphQLExtractorDriver:
         inputs: dict | None = None,  # noqa: ARG002
         ctx: Any = None,
     ) -> dict:
-        """Extract data from GraphQL API.
+        """Extract data from GraphQL API and stream to DuckDB.
 
         Args:
-            step_id: Step identifier
+            step_id: Step identifier (used as table name)
             config: Must contain 'endpoint', 'query', and optional auth/pagination config
             inputs: Not used for extractors
-            ctx: Execution context for logging metrics
+            ctx: Execution context for logging metrics and database connection
 
         Returns:
-            {"df": DataFrame} with GraphQL query results
+            {"table": step_id, "rows": total_row_count}
         """
         # Get required configuration
         endpoint = config.get("endpoint")
@@ -45,6 +45,13 @@ class GraphQLExtractorDriver:
             raise ValueError(f"Step {step_id}: 'endpoint' is required in config")
         if not query:
             raise ValueError(f"Step {step_id}: 'query' is required in config")
+
+        # Get DuckDB connection from context
+        if not ctx or not hasattr(ctx, "get_db_connection"):
+            raise RuntimeError(f"Step {step_id}: Context must provide get_db_connection() method")
+
+        conn = ctx.get_db_connection()
+        table_name = step_id
 
         # Initialize session
         self.session = self._create_session(config)
@@ -62,57 +69,80 @@ class GraphQLExtractorDriver:
                     },
                 )
 
-            # Execute query (with pagination if enabled)
+            # Execute query (with pagination if enabled) and stream to DuckDB
             # Nested try block to ensure session cleanup even on exceptions
             try:
-                all_data = []
+                total_rows = 0
                 requests_made = 0
                 pages_fetched = 0
+                first_batch = True
 
                 if config.get("pagination_enabled", False):
-                    all_data, requests_made, pages_fetched = self._execute_paginated_query(
-                        step_id, endpoint, query, config, ctx
+                    # Paginated extraction - stream each page to DuckDB
+                    total_rows, requests_made, pages_fetched = self._execute_paginated_query_streaming(
+                        step_id, endpoint, query, config, ctx, conn, table_name
                     )
                 else:
+                    # Single query extraction
                     result_data, requests_made = self._execute_single_query(step_id, endpoint, query, config, ctx)
-                    all_data = [result_data] if result_data else []
-                    pages_fetched = 1 if result_data else 0
 
-                # Combine all data
-                if not all_data:
-                    df = pd.DataFrame()
-                else:
-                    # Flatten and combine data from all pages
-                    combined_data = []
-                    for page_data in all_data:
-                        if isinstance(page_data, list):
-                            combined_data.extend(page_data)
+                    if result_data:
+                        # Convert to DataFrame
+                        if isinstance(result_data, list):
+                            batch_df = (
+                                pd.json_normalize(result_data)
+                                if config.get("flatten_result", True)
+                                else pd.DataFrame(result_data)
+                            )
                         else:
-                            combined_data.append(page_data)
+                            # Single object result
+                            batch_df = (
+                                pd.json_normalize([result_data])
+                                if config.get("flatten_result", True)
+                                else pd.DataFrame([result_data])
+                            )
 
-                    df = (
-                        pd.json_normalize(combined_data)
-                        if config.get("flatten_result", True)
-                        else pd.DataFrame(combined_data)
-                    )
+                        if not batch_df.empty:
+                            # Create table from first (and only) batch
+                            logger.info(
+                                f"[{step_id}] Creating table '{table_name}' "
+                                f"({len(batch_df)} rows, {len(batch_df.columns)} columns)"
+                            )
+                            conn.execute(f"CREATE TABLE {table_name} AS SELECT * FROM batch_df")
+                            total_rows = len(batch_df)
+                            pages_fetched = 1
+                            first_batch = False  # Mark that table was created
+                            logger.info(f"[{step_id}] Table created with schema: {list(batch_df.columns)}")
+                        else:
+                            # Empty result
+                            first_batch = True
+                    else:
+                        # No data returned
+                        first_batch = True
+
+                    # Handle empty result
+                    if first_batch:
+                        logger.warning(f"[{step_id}] GraphQL query returned no data, creating empty table")
+                        conn.execute(f"CREATE TABLE {table_name} (placeholder VARCHAR)")
+                        conn.execute(f"DELETE FROM {table_name}")
 
                 # Log metrics
-                rows_read = len(df)
                 logger.info(
-                    f"Step {step_id}: Extracted {rows_read} rows from GraphQL API ({pages_fetched} pages, {requests_made} requests)"
+                    f"Step {step_id}: GraphQL streaming completed: "
+                    f"table={table_name}, total_rows={total_rows}, pages={pages_fetched}, requests={requests_made}"
                 )
 
                 if ctx and hasattr(ctx, "log_metric"):
-                    ctx.log_metric("rows_read", rows_read)
+                    ctx.log_metric("rows_read", total_rows)
                     ctx.log_metric("requests_made", requests_made)
                     ctx.log_metric("pages_fetched", pages_fetched)
 
                 if ctx and hasattr(ctx, "log_event"):
                     ctx.log_event(
-                        "extraction.complete", {"rows": rows_read, "pages": pages_fetched, "requests": requests_made}
+                        "extraction.complete", {"rows": total_rows, "pages": pages_fetched, "requests": requests_made}
                     )
 
-                return {"df": df}
+                return {"table": table_name, "rows": total_rows}
 
             finally:
                 # ALWAYS close session, even on exception
@@ -226,13 +256,27 @@ class GraphQLExtractorDriver:
         # If we get here, all retries failed
         raise last_exception
 
-    def _execute_paginated_query(
-        self, step_id: str, endpoint: str, query: str, config: dict, ctx: Any = None
-    ) -> tuple[list[Any], int, int]:
-        """Execute a paginated GraphQL query."""
-        all_data = []
+    def _execute_paginated_query_streaming(
+        self, step_id: str, endpoint: str, query: str, config: dict, ctx: Any, conn: Any, table_name: str
+    ) -> tuple[int, int, int]:
+        """Execute a paginated GraphQL query and stream results to DuckDB.
+
+        Args:
+            step_id: Step identifier
+            endpoint: GraphQL endpoint URL
+            query: GraphQL query string
+            config: Query configuration
+            ctx: Execution context
+            conn: DuckDB connection
+            table_name: Target table name
+
+        Returns:
+            tuple of (total_rows, total_requests, pages_fetched)
+        """
+        total_rows = 0
         total_requests = 0
         pages_fetched = 0
+        first_batch = True
 
         # Pagination configuration
         pagination_path = config.get("pagination_path", "data.pageInfo")
@@ -245,7 +289,7 @@ class GraphQLExtractorDriver:
         current_variables = config.get("variables", {}).copy()
         has_next_page = True
 
-        logger.info(f"Step {step_id}: Starting paginated GraphQL extraction (max_pages={max_pages or 'unlimited'})")
+        logger.info(f"[{step_id}] Starting paginated GraphQL streaming (max_pages={max_pages or 'unlimited'})")
 
         while has_next_page and (max_pages == 0 or pages_fetched < max_pages):
             # Update query with current variables
@@ -259,7 +303,41 @@ class GraphQLExtractorDriver:
             pages_fetched += 1
 
             if page_data:
-                all_data.append(page_data)
+                # Convert page data to DataFrame
+                if isinstance(page_data, list):
+                    batch_df = (
+                        pd.json_normalize(page_data) if config.get("flatten_result", True) else pd.DataFrame(page_data)
+                    )
+                else:
+                    # Single object result
+                    batch_df = (
+                        pd.json_normalize([page_data])
+                        if config.get("flatten_result", True)
+                        else pd.DataFrame([page_data])
+                    )
+
+                if not batch_df.empty:
+                    batch_rows = len(batch_df)
+
+                    if first_batch:
+                        # First page: create table and insert data
+                        logger.info(
+                            f"[{step_id}] Creating table '{table_name}' from first page "
+                            f"({batch_rows} rows, {len(batch_df.columns)} columns)"
+                        )
+                        conn.execute(f"CREATE TABLE {table_name} AS SELECT * FROM batch_df")
+                        first_batch = False
+                        logger.info(f"[{step_id}] Table created with schema: {list(batch_df.columns)}")
+                    else:
+                        # Subsequent pages: insert into existing table
+                        logger.debug(f"[{step_id}] Inserting page {pages_fetched} ({batch_rows} rows)")
+                        conn.execute(f"INSERT INTO {table_name} SELECT * FROM batch_df")
+
+                    total_rows += batch_rows
+
+                    # Log progress every 10 pages
+                    if pages_fetched % 10 == 0:
+                        logger.info(f"[{step_id}] Progress: {total_rows} rows processed across {pages_fetched} pages")
 
             if ctx and hasattr(ctx, "log_event"):
                 ctx.log_event(
@@ -291,7 +369,7 @@ class GraphQLExtractorDriver:
                 pagination_info = self._extract_data_from_response(response_data, pagination_path)
 
                 if not pagination_info:
-                    logger.info(f"Step {step_id}: No pagination info found at path '{pagination_path}', stopping")
+                    logger.info(f"[{step_id}] No pagination info found at path '{pagination_path}', stopping")
                     break
 
                 has_next_page = pagination_info.get(has_next_field, False)
@@ -299,17 +377,26 @@ class GraphQLExtractorDriver:
 
                 if has_next_page and next_cursor:
                     current_variables[cursor_variable] = next_cursor
-                    logger.info(f"Step {step_id}: Fetching next page with cursor: {next_cursor}")
+                    logger.info(f"[{step_id}] Fetching next page with cursor: {next_cursor}")
                 else:
-                    logger.info(f"Step {step_id}: Reached end of pages (hasNext={has_next_page}, cursor={next_cursor})")
+                    logger.info(f"[{step_id}] Reached end of pages (hasNext={has_next_page}, cursor={next_cursor})")
                     break
 
             except Exception as e:
-                logger.warning(f"Step {step_id}: Failed to get pagination info, stopping pagination: {e}")
+                logger.warning(f"[{step_id}] Failed to get pagination info, stopping pagination: {e}")
                 break
 
-        logger.info(f"Step {step_id}: Completed paginated extraction: {pages_fetched} pages, {total_requests} requests")
-        return all_data, total_requests, pages_fetched
+        # Handle empty result
+        if first_batch:
+            logger.warning(f"[{step_id}] GraphQL paginated query returned no data, creating empty table")
+            conn.execute(f"CREATE TABLE {table_name} (placeholder VARCHAR)")
+            conn.execute(f"DELETE FROM {table_name}")
+
+        logger.info(
+            f"[{step_id}] Completed paginated streaming: "
+            f"table={table_name}, total_rows={total_rows}, pages={pages_fetched}, requests={total_requests}"
+        )
+        return total_rows, total_requests, pages_fetched
 
     def _extract_data_from_response(self, response_data: dict, data_path: str) -> Any:
         """Extract data from GraphQL response using JSONPath."""

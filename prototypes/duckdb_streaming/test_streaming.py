@@ -6,11 +6,11 @@ Tests streaming behavior, error handling, and edge cases.
 
 import logging
 from pathlib import Path
+import sys
 import tempfile
 
 from csv_extractor import CSVStreamingExtractor
 import duckdb
-import sys
 
 
 class MockContext:
