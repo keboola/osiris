@@ -1,7 +1,11 @@
 # ADR 0043: DuckDB-Based Data Exchange Between Pipeline Steps
 
 ## Status
-Proposed
+Accepted (Phase 2 Complete - 2025-12-02)
+
+**Implementation Status:**
+- ✅ Phase 1: Foundation (ExecutionContext API, LocalAdapter, ProxyWorker integration)
+- ✅ Phase 2: Driver Migration (all extractors, processors, writers migrated)
 
 ## Context
 
