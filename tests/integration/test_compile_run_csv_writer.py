@@ -186,7 +186,7 @@ class TestCompileRunCSVWriter:
                 # Register the CSV writer driver manually
                 from osiris.drivers.filesystem_csv_writer_driver import FilesystemCsvWriterDriver
 
-                runner.driver_registry.register("filesystem.csv_writer", lambda: FilesystemCsvWriterDriver())
+                runner.driver_registry.register("filesystem.csv_writer", FilesystemCsvWriterDriver)
 
                 # Mock the MySQL driver to return test data
                 mock_mysql_driver = MagicMock()

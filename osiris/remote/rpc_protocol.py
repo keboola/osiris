@@ -4,13 +4,13 @@ This module defines the message protocol between the host orchestrator
 and the ProxyWorker running inside the E2B sandbox.
 """
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 
-class CommandType(str, Enum):
+class CommandType(StrEnum):
     """Command types sent from host to worker."""
 
     PREPARE = "prepare"
@@ -19,7 +19,7 @@ class CommandType(str, Enum):
     PING = "ping"
 
 
-class ResponseStatus(str, Enum):
+class ResponseStatus(StrEnum):
     """Response status from worker."""
 
     READY = "ready"
@@ -29,7 +29,7 @@ class ResponseStatus(str, Enum):
     ERROR = "error"
 
 
-class MessageType(str, Enum):
+class MessageType(StrEnum):
     """Message types from worker to host."""
 
     RESPONSE = "response"

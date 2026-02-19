@@ -211,7 +211,7 @@ class ProviderComponentDriver:
 
 ### 5. Validate Against Checklist
 
-Run through [CHECKLIST.md](CHECKLIST.md) - all 60 rules must pass:
+Run through [references/CHECKLIST.md](references/CHECKLIST.md) - all 60 rules must pass:
 
 - **SPEC (10)**: Component name, version, schemas, secrets, examples
 - **CAP (4)**: Capabilities declaration matches implementation
@@ -502,9 +502,9 @@ def _write_data(self, connection: dict, config: dict, df: pd.DataFrame) -> int:
 
 ## Additional Resources
 
-For complete working example, see [POSTHOG_EXAMPLE.md](POSTHOG_EXAMPLE.md)
-For full 57-rule checklist, see [CHECKLIST.md](CHECKLIST.md)
-For code templates and patterns, see [TEMPLATES.md](TEMPLATES.md)
+For complete working example, see [references/POSTHOG_EXAMPLE.md](references/POSTHOG_EXAMPLE.md)
+For full 60-rule checklist, see [references/CHECKLIST.md](references/CHECKLIST.md)
+For code templates and patterns, see [references/TEMPLATES.md](references/TEMPLATES.md)
 
 ## Testing Commands
 
@@ -528,14 +528,6 @@ osiris doctor your.component @connection.alias
 python -m build
 twine upload dist/*
 ```
-
-## When NOT to Use This Skill
-
-This skill is specifically for Osiris component development. Do NOT use for:
-- General Python development
-- Other ETL frameworks (Airflow, Luigi, etc.)
-- Data analysis or ML tasks
-- API client development unrelated to Osiris
 
 ## References
 

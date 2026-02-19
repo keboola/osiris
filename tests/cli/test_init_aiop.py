@@ -15,7 +15,6 @@
 
 """Tests for osiris init AIOP configuration generation."""
 
-
 import yaml
 
 

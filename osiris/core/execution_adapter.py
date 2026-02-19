@@ -11,6 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import duckdb
+
 
 @dataclass
 class PreparedRun:
@@ -90,6 +92,7 @@ class ExecutionContext:
         self.session_id = session_id
         self.base_path = base_path
         self.started_at = datetime.utcnow()
+        self._db_connection: duckdb.DuckDBPyConnection | None = None
 
     @property
     def logs_dir(self) -> Path:
@@ -112,6 +115,30 @@ class ExecutionContext:
         """Directory for execution artifacts."""
         # Artifacts go in base_path/artifacts (no session segment)
         return self.base_path / "artifacts"
+
+    def get_db_connection(self) -> duckdb.DuckDBPyConnection:
+        """Get shared DuckDB connection for pipeline data exchange.
+
+        Returns connection to <base_path>/pipeline_data.duckdb that is shared
+        across all pipeline steps in this session.
+
+        The connection is cached per context instance.
+
+        Returns:
+            DuckDB connection to pipeline_data.duckdb
+        """
+        if self._db_connection is None:
+            db_path = self.base_path / "pipeline_data.duckdb"
+            # Ensure parent directory exists
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._db_connection = duckdb.connect(str(db_path))
+        return self._db_connection
+
+    def close_db_connection(self) -> None:
+        """Close DuckDB connection if open."""
+        if self._db_connection is not None:
+            self._db_connection.close()
+            self._db_connection = None
 
 
 class ExecutionAdapter(ABC):

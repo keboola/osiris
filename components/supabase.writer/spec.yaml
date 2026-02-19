@@ -243,14 +243,16 @@ x-runtime:
   driver: osiris.drivers.supabase_writer_driver.SupabaseWriterDriver
   requirements:
     imports:
-      - pandas
+      - duckdb
       - numpy
-      - supabase
+      - pandas
       - psycopg2
       - requests
-    packages:
-      - pandas
-      - numpy
       - supabase
+    packages:
+      - duckdb
+      - numpy
+      - pandas
       - psycopg2-binary
       - requests
+      - supabase

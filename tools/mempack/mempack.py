@@ -4,6 +4,7 @@ mempack.py - A self-contained Python tool to pack multiple files into a single t
 Supports command execution to generate dynamic content before packing.
 No external dependencies - stdlib only.
 """
+
 import argparse
 from fnmatch import fnmatch, fnmatchcase
 import hashlib

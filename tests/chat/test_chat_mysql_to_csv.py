@@ -29,8 +29,7 @@ async def test_mysql_to_csv_generates_valid_oml():
     oml_response = LLMResponse(
         message="Generated pipeline",
         action="generate_pipeline",
-        params={
-            "pipeline_yaml": """oml_version: "0.1.0"
+        params={"pipeline_yaml": """oml_version: "0.1.0"
 name: mysql-csv-export
 steps:
   - id: extract-actors
@@ -47,8 +46,7 @@ steps:
       format: csv
       path: "./actors.csv"
       delimiter: ","
-      header: true"""
-        },
+      header: true"""},
         confidence=0.9,
     )
 
@@ -141,8 +139,7 @@ async def test_chat_flow_emits_correct_state_events():
                 oml_resp = LLMResponse(
                     message="Pipeline",
                     action="generate_pipeline",
-                    params={
-                        "pipeline_yaml": """oml_version: "0.1.0"
+                    params={"pipeline_yaml": """oml_version: "0.1.0"
 name: test
 steps:
   - id: step1
@@ -151,8 +148,7 @@ steps:
     config:
       query: "SELECT 1"
       connection: "@default"
-"""
-                    },
+"""},
                     confidence=0.9,
                 )
 

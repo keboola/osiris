@@ -32,8 +32,7 @@ def test_full_flow_with_filesystem_contract(tmp_path):
 
         # Step 2: Create test pipeline
         pipeline_file = tmp_path / "pipelines" / "test_pipeline.yaml"
-        pipeline_file.write_text(
-            """oml_version: "0.1.0"
+        pipeline_file.write_text("""oml_version: "0.1.0"
 pipeline:
   id: test_pipeline
   name: Test Pipeline
@@ -49,8 +48,7 @@ steps:
     type: duckdb.processor
     config:
       query: SELECT 1 as id, 'test' as name
-"""
-        )
+""")
 
         # Step 3: Load filesystem contract and compile
         fs_config, ids_config, _ = load_osiris_config()

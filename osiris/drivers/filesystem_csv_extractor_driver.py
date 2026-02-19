@@ -23,17 +23,18 @@ class FilesystemCsvExtractorDriver:
         inputs: dict | None = None,  # noqa: ARG002
         ctx: Any = None,
     ) -> dict:
-        """Extract data from CSV file.
+        """Extract data from CSV file and stream to DuckDB.
 
         Args:
-            step_id: Step identifier
+            step_id: Step identifier (used as table name)
             config: Must contain 'path' and optional CSV parsing settings.
                    May include 'connection' field for connection-based configuration.
+                   May include 'chunk_size' for batch size (default: 10000)
             inputs: Not used for extractors
-            ctx: Execution context for logging metrics
+            ctx: Execution context for logging metrics and database connection
 
         Returns:
-            {"df": DataFrame} with CSV data
+            {"table": step_id, "rows": total_row_count}
         """
         # Resolve connection if provided
         base_dir = None
@@ -84,6 +85,8 @@ class FilesystemCsvExtractorDriver:
         # Extract CSV parsing options with defaults
         delimiter = config.get("delimiter", ",")
         encoding = config.get("encoding", "utf-8")
+        # Use chunk_size from spec (default 10000), fall back to batch_size for compatibility
+        batch_size = config.get("chunk_size", config.get("batch_size", 10000))
 
         # Handle header: boolean (true=0, false=None) or integer (row number)
         # Spec supports: true (row 0), false (no header), or integer (specific row)
@@ -107,6 +110,18 @@ class FilesystemCsvExtractorDriver:
         skip_blank_lines = config.get("skip_blank_lines", True)
         compression = config.get("compression", "infer")
 
+        # Get DuckDB connection from context
+        if not ctx or not hasattr(ctx, "get_db_connection"):
+            raise RuntimeError(f"Step {step_id}: Context must provide get_db_connection() method")
+
+        conn = ctx.get_db_connection()
+        table_name = step_id
+
+        logger.info(
+            f"[{step_id}] Starting CSV streaming extraction: "
+            f"file={resolved_path}, delimiter='{delimiter}', batch_size={batch_size}"
+        )
+
         try:
             # Build pandas read_csv parameters
             read_params = {
@@ -114,6 +129,8 @@ class FilesystemCsvExtractorDriver:
                 "sep": delimiter,
                 "encoding": encoding,
                 "header": header,
+                "chunksize": batch_size,  # Enable streaming
+                "low_memory": False,  # Let DuckDB infer schema
             }
 
             # Add optional parameters only if specified
@@ -122,6 +139,7 @@ class FilesystemCsvExtractorDriver:
             if skip_rows is not None and skip_rows > 0:
                 read_params["skiprows"] = skip_rows
             if limit is not None:
+                # For streaming with limit, we'll handle it per-chunk
                 read_params["nrows"] = limit
             if parse_dates is not None:
                 read_params["parse_dates"] = parse_dates
@@ -140,33 +158,71 @@ class FilesystemCsvExtractorDriver:
             if compression != "infer":  # Only include if not the default
                 read_params["compression"] = compression
 
-            # Read CSV file
-            logger.info(f"Step {step_id}: Reading CSV from {resolved_path}")
-            df = pd.read_csv(**read_params)
+            # Read CSV in chunks and stream to DuckDB
+            total_rows = 0
+            first_chunk = True
 
-            # Reorder columns if specific columns were requested
-            if columns is not None and isinstance(columns, list):
-                # Preserve the order specified in columns parameter
-                df = df[columns]
+            chunk_iterator = pd.read_csv(**read_params)
 
-            # Log metrics
-            rows_read = len(df)
-            logger.info(f"Step {step_id}: Read {rows_read} rows from CSV file")
+            for chunk_num, chunk_df in enumerate(chunk_iterator, start=1):
+                if chunk_df.empty:
+                    logger.warning(f"[{step_id}] Chunk {chunk_num} is empty, skipping")
+                    continue
+
+                # Reorder columns if specific columns were requested
+                if columns is not None and isinstance(columns, list):
+                    chunk_df = chunk_df[columns]  # noqa: PLW2901
+
+                chunk_rows = len(chunk_df)
+
+                if first_chunk:
+                    # First chunk: create table and insert data
+                    logger.info(
+                        f"[{step_id}] Creating table '{table_name}' from first chunk "
+                        f"({chunk_rows} rows, {len(chunk_df.columns)} columns)"
+                    )
+
+                    # DuckDB can create table directly from DataFrame
+                    conn.execute(f"CREATE TABLE {table_name} AS SELECT * FROM chunk_df")
+                    first_chunk = False
+
+                    logger.info(f"[{step_id}] Table created with schema: {list(chunk_df.columns)}")
+                else:
+                    # Subsequent chunks: insert into existing table
+                    logger.debug(f"[{step_id}] Inserting chunk {chunk_num} ({chunk_rows} rows)")
+                    conn.execute(f"INSERT INTO {table_name} SELECT * FROM chunk_df")
+
+                total_rows += chunk_rows
+
+                # Log progress every 10 chunks
+                if chunk_num % 10 == 0:
+                    logger.info(f"[{step_id}] Progress: {total_rows} rows processed")
+
+            # Handle empty CSV file
+            if first_chunk:
+                logger.warning(f"[{step_id}] CSV file is empty, creating empty table")
+                # Create empty table with placeholder column
+                conn.execute(f"CREATE TABLE {table_name} (placeholder VARCHAR)")
+                conn.execute(f"DELETE FROM {table_name}")  # Ensure it's empty
+
+            # Log final metrics
+            logger.info(f"[{step_id}] CSV streaming completed: " f"table={table_name}, total_rows={total_rows}")
 
             if ctx and hasattr(ctx, "log_metric"):
-                ctx.log_metric("rows_read", rows_read, tags={"step": step_id})
+                ctx.log_metric("rows_read", total_rows)
 
-            return {"df": df}
+            return {"table": table_name, "rows": total_rows}
 
         except pd.errors.EmptyDataError:
-            # Return empty DataFrame for empty files
+            # Handle empty CSV file
             logger.warning(f"Step {step_id}: CSV file is empty: {resolved_path}")
-            df = pd.DataFrame()
+            conn.execute(f"CREATE TABLE {table_name} (placeholder VARCHAR)")
+            conn.execute(f"DELETE FROM {table_name}")
 
             if ctx and hasattr(ctx, "log_metric"):
-                ctx.log_metric("rows_read", 0, tags={"step": step_id})
+                ctx.log_metric("rows_read", 0)
 
-            return {"df": df}
+            return {"table": table_name, "rows": 0}
 
         except pd.errors.ParserError as e:
             error_msg = f"CSV parsing failed: {str(e)}"

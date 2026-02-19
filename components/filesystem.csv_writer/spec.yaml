@@ -162,4 +162,8 @@ x-runtime:
   driver: osiris.drivers.filesystem_csv_writer_driver.FilesystemCsvWriterDriver
   requirements:
     imports:
+      - duckdb
+      - pandas
+    packages:
+      - duckdb
       - pandas

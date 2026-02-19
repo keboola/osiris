@@ -43,15 +43,13 @@ class CounterStore:
             conn.execute("PRAGMA synchronous=NORMAL")
 
             # Create schema
-            conn.execute(
-                """
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS counters (
                     pipeline_slug TEXT PRIMARY KEY,
                     last_value INTEGER NOT NULL,
                     updated_at TEXT NOT NULL
                 )
-            """
-            )
+            """)
             conn.commit()
         finally:
             conn.close()

@@ -14,7 +14,6 @@
 
 """Tests for secrets masking functionality."""
 
-
 from osiris.core.secrets_masking import (
     MASK_VALUE,
     mask_sensitive_dict,

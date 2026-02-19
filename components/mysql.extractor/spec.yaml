@@ -228,10 +228,12 @@ x-runtime:
   driver: osiris.drivers.mysql_extractor_driver.MySQLExtractorDriver
   requirements:
     imports:
+      - duckdb
       - pandas
-      - sqlalchemy
       - pymysql
+      - sqlalchemy
     packages:
+      - duckdb
       - pandas
-      - sqlalchemy
       - pymysql
+      - sqlalchemy

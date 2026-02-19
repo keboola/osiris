@@ -251,6 +251,13 @@ class ProxyWorker:
         self.session_context = None  # Avoid nested directories in sandbox
         self.execution_context = ExecutionContext(session_id=self.session_id, base_path=self.session_dir)
 
+        # Initialize shared DuckDB database for pipeline data exchange (ADR 0043)
+        # All steps in this E2B session will use this single database file
+        self.execution_context.get_db_connection()
+        db_path = self.session_dir / "pipeline_data.duckdb"
+        self.logger.info(f"Initialized pipeline database: {db_path}")
+        self.send_event("database_initialized", db_path=str(db_path.relative_to(self.session_dir)))
+
         # Load component specifications once per session
         self.component_registry = ComponentRegistry()
         self.component_specs = self.component_registry.load_specs()
@@ -530,72 +537,34 @@ class ProxyWorker:
                 ctx=ctx,
             )
 
-            cached_output: dict[str, Any] = {}
-            force_spill = os.getenv("E2B_FORCE_SPILL", "").strip().lower() in {"1", "true", "yes"}
-
             # Extract metrics from result (if any)
-            # Extractors return {"df": DataFrame} and we count rows as rows_processed
+            # New: Extractors return {"table": step_id, "rows": N} - no DataFrames
             # Writers emit rows_written via ctx.log_metric during execution
             rows_processed = 0
+            cached_output: dict[str, Any] = {}
+
             if result:
                 # Check for explicit rows_processed key
                 if "rows_processed" in result:
                     rows_processed = result["rows_processed"]
-                # For extractors, count DataFrame rows
-                elif "df" in result:
-                    try:
-                        import pandas as pd
+                # For table-based results, use rows count
+                elif "table" in result and "rows" in result:
+                    rows_processed = result["rows"]
+                    if driver_name.endswith(".extractor"):
+                        self.send_metric("rows_read", rows_processed, tags={"step": step_id})
 
-                        df_value = result["df"]
-                        if isinstance(df_value, pd.DataFrame):
-                            rows_processed = len(df_value)
-                            if force_spill:
-                                parquet_path = step_artifacts_dir / "output.parquet"
-                                df_value.to_parquet(parquet_path)
-                                self._emit_artifact_event(parquet_path, artifact_type="parquet", step_id=step_id)
-
-                                schema_path = step_artifacts_dir / "schema.json"
-                                try:
-                                    schema = {column: str(dtype) for column, dtype in df_value.dtypes.items()}
-                                    schema_path.write_text(json.dumps(schema, indent=2), encoding="utf-8")
-                                    cached_output["schema_path"] = schema_path
-                                    self._emit_artifact_event(schema_path, artifact_type="schema", step_id=step_id)
-                                except Exception as exc:  # pragma: no cover - best effort
-                                    self.logger.debug(f"Failed to write schema for {step_id}: {exc}")
-
-                                cached_output["df_path"] = parquet_path
-                                cached_output["spilled"] = True
-                                # Drop the in-memory DataFrame reference
-                                result["df"] = None
-                            else:
-                                cached_output["df"] = df_value
-                                cached_output["spilled"] = False
-
-                            if driver_name.endswith(".extractor"):
-                                self.send_metric("rows_read", rows_processed, tags={"step": step_id})
-                    except Exception as exc:
-                        self.logger.error(f"Failed to cache DataFrame for step {step_id}: {exc}")
-
-                # Copy non-DataFrame keys from result to cached_output
+                # Cache the result (table references, not DataFrames)
                 if isinstance(result, dict):
-                    for k, v in result.items():
-                        if k != "df":  # Skip df as it's already saved to parquet
-                            cached_output[k] = v
+                    cached_output.update(result)
 
             # Track driver type and rows for this step
             self.step_drivers[step_id] = driver_name
 
             rows_out = rows_processed
             if driver_name.endswith(".writer"):
-                df_input = resolved_inputs.get("df")
-                if not rows_out and df_input is not None:
-                    try:
-                        import pandas as pd
-
-                        if isinstance(df_input, pd.DataFrame):
-                            rows_out = len(df_input)
-                    except Exception:
-                        pass
+                # Writers use rows_in (from table) if rows_out not explicitly set
+                if not rows_out:
+                    rows_out = rows_in
                 self.step_rows[step_id] = rows_out
                 self.total_rows += rows_out
                 if rows_in and rows_out == 0:
@@ -618,8 +587,6 @@ class ProxyWorker:
 
             self.step_outputs[step_id] = cached_output
             artifact_paths = [str(cleaned_config_path.relative_to(self.session_dir))]
-            if cached_output.get("df_path"):
-                artifact_paths.append(str(cached_output["df_path"].relative_to(self.session_dir)))
             self.step_io[step_id] = {
                 "driver": driver_name,
                 "rows_in": rows_in,
@@ -686,6 +653,14 @@ class ProxyWorker:
     def handle_cleanup(self, cmd: CleanupCommand) -> CleanupResponse:
         """Cleanup session resources and write final status."""
         self.send_event("cleanup_start")
+
+        # Close DuckDB connection if open
+        if hasattr(self, "execution_context") and self.execution_context:
+            try:
+                self.execution_context.close_db_connection()
+                self.logger.debug("Closed pipeline database connection")
+            except Exception as e:
+                self.logger.warning(f"Failed to close database connection: {e}")
 
         # Calculate correct total_rows based on writer-only aggregation
         sum_rows_written = 0
@@ -805,7 +780,7 @@ class ProxyWorker:
         try:
             from osiris.drivers.mysql_extractor_driver import MySQLExtractorDriver
 
-            self.driver_registry.register("mysql.extractor", lambda: MySQLExtractorDriver())
+            self.driver_registry.register("mysql.extractor", MySQLExtractorDriver)
             self.logger.info("Registered driver: mysql.extractor")
             self.send_event("driver_registered", driver="mysql.extractor", status="success")
         except ImportError as e:
@@ -816,7 +791,7 @@ class ProxyWorker:
         try:
             from osiris.drivers.filesystem_csv_writer_driver import FilesystemCsvWriterDriver
 
-            self.driver_registry.register("filesystem.csv_writer", lambda: FilesystemCsvWriterDriver())
+            self.driver_registry.register("filesystem.csv_writer", FilesystemCsvWriterDriver)
             self.logger.info("Registered driver: filesystem.csv_writer")
             self.send_event("driver_registered", driver="filesystem.csv_writer", status="success")
         except ImportError as e:
@@ -827,7 +802,7 @@ class ProxyWorker:
         try:
             from osiris.drivers.graphql_extractor_driver import GraphQLExtractorDriver
 
-            self.driver_registry.register("graphql.extractor", lambda: GraphQLExtractorDriver())
+            self.driver_registry.register("graphql.extractor", GraphQLExtractorDriver)
             self.logger.info("Registered driver: graphql.extractor")
             self.send_event("driver_registered", driver="graphql.extractor", status="success")
         except ImportError as e:
@@ -838,7 +813,7 @@ class ProxyWorker:
         try:
             from osiris.drivers.supabase_writer_driver import SupabaseWriterDriver
 
-            self.driver_registry.register("supabase.writer", lambda: SupabaseWriterDriver())
+            self.driver_registry.register("supabase.writer", SupabaseWriterDriver)
             self.logger.info("Registered driver: supabase.writer")
             self.send_event("driver_registered", driver="supabase.writer", status="success")
             self._emit_driver_file_verification(
@@ -866,7 +841,7 @@ class ProxyWorker:
                         try:
                             from osiris.drivers.supabase_writer_driver import SupabaseWriterDriver
 
-                            self.driver_registry.register("supabase.writer", lambda: SupabaseWriterDriver())
+                            self.driver_registry.register("supabase.writer", SupabaseWriterDriver)
                             self.logger.info("Registered driver: supabase.writer (after install)")
                             self.send_event(
                                 "driver_registered",
@@ -890,7 +865,7 @@ class ProxyWorker:
         try:
             from osiris.drivers.duckdb_processor_driver import DuckDBProcessorDriver
 
-            self.driver_registry.register("duckdb.processor", lambda: DuckDBProcessorDriver())
+            self.driver_registry.register("duckdb.processor", DuckDBProcessorDriver)
             self.logger.info("Registered driver: duckdb.processor")
             self.send_event("driver_registered", driver="duckdb.processor", status="success")
         except ImportError as e:
@@ -909,7 +884,7 @@ class ProxyWorker:
                         try:
                             from osiris.drivers.duckdb_processor_driver import DuckDBProcessorDriver
 
-                            self.driver_registry.register("duckdb.processor", lambda: DuckDBProcessorDriver())
+                            self.driver_registry.register("duckdb.processor", DuckDBProcessorDriver)
                             self.logger.info("Registered driver: duckdb.processor (after install)")
                             self.send_event(
                                 "driver_registered",
@@ -1201,6 +1176,11 @@ class ProxyWorker:
         self.send_event("artifact_created", **payload)
 
     def _resolve_inputs(self, inputs_spec: dict[str, Any], step_id: str) -> tuple[dict[str, Any], int]:
+        """Resolve inputs for a step using table-based data exchange (ADR 0043).
+
+        New behavior: Steps pass table names, not DataFrames.
+        Legacy behavior: Still supports DataFrame passing for backwards compatibility.
+        """
         if not inputs_spec:
             return {}, 0
 
@@ -1210,56 +1190,40 @@ class ProxyWorker:
         for input_key, ref in inputs_spec.items():
             if isinstance(ref, dict) and "from_step" in ref:
                 from_step = ref["from_step"]
-                from_key = ref.get("key", "df")
+                from_key = ref.get("key", "table")  # Default to "table" now
                 step_output = self.step_outputs.get(from_step)
 
                 if not step_output:
                     self.logger.warning(f"No outputs cached for step '{from_step}'")
                     continue
 
-                if from_key == "df" and isinstance(step_output, dict) and step_output.get("df_path"):
-                    df_path = step_output["df_path"]
-                    try:
-                        import pandas as pd
+                # New: Handle table-based data passing
+                if "table" in step_output:
+                    # Pass table name to downstream step
+                    resolved[input_key] = step_output["table"]
+                    rows = step_output.get("rows", 0)
+                    rows_total += rows
 
-                        df = pd.read_parquet(df_path)
-                        resolved[input_key] = df
-                        rows = len(df)
-                        rows_total += rows
-                        self.send_event(
-                            "inputs_resolved",
-                            step_id=step_id,
-                            from_step=from_step,
-                            key=from_key,
-                            rows=rows,
-                            artifact=str(Path(df_path).relative_to(self.session_dir)),
-                            from_memory=False,
-                            from_spill=True,
-                        )
-                    except Exception as exc:
-                        self.logger.error(f"Failed to load input DataFrame {df_path}: {exc}")
+                    self.logger.debug(
+                        f"Resolved input '{input_key}' = table '{step_output['table']}' from step '{from_step}'"
+                    )
+                    self.send_event(
+                        "inputs_resolved",
+                        step_id=step_id,
+                        from_step=from_step,
+                        key="table",
+                        rows=rows,
+                        from_memory=True,
+                    )
+                # Legacy: Handle specific key requests
                 elif isinstance(step_output, dict) and from_key in step_output:
                     value = step_output[from_key]
                     resolved[input_key] = value
                     self.logger.debug(f"Resolved input '{input_key}' from step '{from_step}', key '{from_key}'")
-                    if from_key == "df":
-                        try:
-                            import pandas as pd
 
-                            if isinstance(value, pd.DataFrame):
-                                rows = len(value)
-                                rows_total += rows
-                                self.send_event(
-                                    "inputs_resolved",
-                                    step_id=step_id,
-                                    from_step=from_step,
-                                    key=from_key,
-                                    rows=rows,
-                                    from_memory=True,
-                                    from_spill=False,
-                                )
-                        except Exception as exc:  # pragma: no cover - telemetry best effort
-                            self.logger.debug(f"Failed to emit inputs_resolved for {from_step}: {exc}")
+                    # Count rows if available
+                    if from_key == "rows":
+                        rows_total += value
                 else:
                     available_keys = list(step_output.keys()) if isinstance(step_output, dict) else []
                     self.logger.warning(

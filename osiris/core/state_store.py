@@ -36,15 +36,13 @@ class SQLiteStateStore(IStateStore):
         self.conn = sqlite3.connect(str(self.db_path))
 
         # Create state table
-        self.conn.execute(
-            """
+        self.conn.execute("""
             CREATE TABLE IF NOT EXISTS state (
                 key TEXT PRIMARY KEY,
                 value TEXT,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """
-        )
+        """)
         self.conn.commit()
 
     def set(self, key: str, value: Any) -> None:

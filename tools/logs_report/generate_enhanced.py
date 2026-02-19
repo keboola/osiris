@@ -145,8 +145,7 @@ def generate_index_html(data_json: str, session_details: dict) -> str:
     html_parts = []
 
     # Start of HTML with modern, clean design
-    html_parts.append(
-        """<!DOCTYPE html>
+    html_parts.append("""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -940,24 +939,20 @@ def generate_index_html(data_json: str, session_details: dict) -> str:
 
     <script>
         // Embed data directly
-        const embeddedData = """
-    )
+        const embeddedData = """)
 
     # Add the minified data
     html_parts.append(minified_data)
 
     # Add session details
-    html_parts.append(
-        """;
-        const sessionDetails = """
-    )
+    html_parts.append(""";
+        const sessionDetails = """)
 
     # Add the minified session details
     html_parts.append(minified_details)
 
     # Add the rest of the JavaScript
-    html_parts.append(
-        """;
+    html_parts.append(""";
 
         let allSessions = [];
         let currentSession = null;
@@ -1693,8 +1688,7 @@ def generate_index_html(data_json: str, session_details: dict) -> str:
         });
     </script>
 </body>
-</html>"""
-    )
+</html>""")
 
     # Join all parts
     html = "".join(html_parts)

@@ -326,6 +326,7 @@ def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
     Supported environment variables:
     - OSIRIS_PROFILE: Override default profile
     - OSIRIS_FILESYSTEM_BASE: Override filesystem.base_path
+    - OSIRIS_BASE_PATH: Alias for OSIRIS_FILESYSTEM_BASE (for PyPI-based E2B execution)
     - OSIRIS_RUN_ID_FORMAT: Override ids.run_id_format
     - OSIRIS_RETENTION_RUN_LOGS_DAYS: Override filesystem.retention.run_logs_days
 
@@ -339,9 +340,10 @@ def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
     if "OSIRIS_PROFILE" in os.environ:
         config.setdefault("filesystem", {}).setdefault("profiles", {})["default"] = os.environ["OSIRIS_PROFILE"]
 
-    # Base path override
-    if "OSIRIS_FILESYSTEM_BASE" in os.environ:
-        config.setdefault("filesystem", {})["base_path"] = os.environ["OSIRIS_FILESYSTEM_BASE"]
+    # Base path override (OSIRIS_BASE_PATH is alias for OSIRIS_FILESYSTEM_BASE)
+    base_path = os.environ.get("OSIRIS_BASE_PATH") or os.environ.get("OSIRIS_FILESYSTEM_BASE")
+    if base_path:
+        config.setdefault("filesystem", {})["base_path"] = base_path
 
     # Run ID format override
     if "OSIRIS_RUN_ID_FORMAT" in os.environ:

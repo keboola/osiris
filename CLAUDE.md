@@ -275,11 +275,16 @@ osiris run pipeline.yaml               # Works from any directory
 
 ## Driver Development Guidelines
 
+### DuckDB-Based Data Exchange (ADR 0043)
+
+Drivers use **DuckDB tables** for data exchange between pipeline steps. All data flows through a shared `pipeline_data.duckdb` file per session.
+
 ### Context API Contract
 
-Drivers receive a `ctx` object with a **minimal interface**. Do NOT assume other methods exist.
+Drivers receive a `ctx` object with these methods:
 
 **Available methods:**
+- ✅ `ctx.get_db_connection()` - Get shared DuckDB connection for data exchange
 - ✅ `ctx.log_metric(name, value, **kwargs)` - Log metrics to metrics.jsonl
 - ✅ `ctx.output_dir` - Path to step's artifacts directory (Path object)
 
@@ -303,32 +308,52 @@ def run(*, step_id: str, config: dict, inputs: dict, ctx):
     ctx.log_metric("rows_read", 1000)
 ```
 
-### Input Keys - E2B/LOCAL Parity (CRITICAL)
+### Driver Patterns
 
-Drivers MUST accept **both** input key formats for E2B/LOCAL compatibility:
-- **LOCAL**: `df_<step_id>` (e.g., `df_extract_actors`) - uses `build_dataframe_keys()`
-- **E2B**: `df` (plain) - ProxyWorker uses simple key
-
-**Correct Pattern:**
+#### Extractor Pattern (streams to DuckDB)
 ```python
-# ✅ CORRECT - Accept both formats
-df = None
-for key, value in inputs.items():
-    if (key.startswith("df_") or key == "df") and isinstance(value, pd.DataFrame):
-        df = value
-        break
+def run(self, *, step_id: str, config: dict, inputs: dict, ctx) -> dict:
+    conn = ctx.get_db_connection()
+    table_name = step_id
 
-if df is None:
-    raise ValueError(
-        f"Step {step_id}: Driver requires DataFrame input. "
-        f"Expected key 'df' or starting with 'df_'. Got: {list(inputs.keys())}"
-    )
+    # Stream data in batches
+    for i, batch_df in enumerate(fetch_batches()):
+        if i == 0:
+            conn.execute(f"CREATE TABLE {table_name} AS SELECT * FROM batch_df")
+        else:
+            conn.execute(f"INSERT INTO {table_name} SELECT * FROM batch_df")
+
+    ctx.log_metric("rows_read", total_rows)
+    return {"table": table_name, "rows": total_rows}
 ```
 
-**Wrong Pattern:**
+#### Processor Pattern (reads/writes DuckDB tables)
 ```python
-# ❌ WRONG - Only accepts df_* (breaks E2B)
-if key.startswith("df_"):  # E2B will fail!
+def run(self, *, step_id: str, config: dict, inputs: dict, ctx) -> dict:
+    conn = ctx.get_db_connection()
+    input_table = inputs.get("table")  # From upstream step
+
+    query = config["query"]  # SQL referencing input_table
+    conn.execute(f"CREATE TABLE {step_id} AS {query}")
+
+    row_count = conn.execute(f"SELECT COUNT(*) FROM {step_id}").fetchone()[0]
+    return {"table": step_id, "rows": row_count}
+```
+
+#### Writer Pattern (reads from DuckDB)
+```python
+def run(self, *, step_id: str, config: dict, inputs: dict, ctx) -> dict:
+    conn = ctx.get_db_connection()
+    table_name = inputs["table"]  # From upstream step
+
+    # Read data from DuckDB
+    df = conn.execute(f"SELECT * FROM {table_name}").df()
+
+    # Write to destination (API, file, etc.)
+    write_to_destination(df, config)
+
+    ctx.log_metric("rows_written", len(df))
+    return {}  # Writers return empty dict
 ```
 
 ### Testing Requirements
@@ -344,7 +369,7 @@ osiris run --last-compile
 osiris run --last-compile --e2b --e2b-install-deps
 ```
 
-If a driver works locally but fails in E2B with input key errors, you likely forgot the `or key == "df"` check.
+Both environments use identical DuckDB-based data exchange - no special handling needed.
 
 ### Component Spec Requirements
 

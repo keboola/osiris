@@ -181,14 +181,12 @@ class TestNoEnvScenario:
 
         # Create a test config file
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text(
-            """
+        config_file.write_text("""
 version: '2.0'
 filesystem:
   base_path: "/test/base/path"
   mcp_logs_dir: ".osiris/mcp/logs"
-"""
-        )
+""")
 
         # Set environment variable (should be ignored in favor of config)
         env_backup = os.environ.copy()

@@ -9,7 +9,7 @@ def get_execution_adapter(target: str, config: dict[str, Any] | None = None) -> 
     """Get an execution adapter based on target.
 
     Args:
-        target: Execution target ("local" or "e2b")
+        target: Execution target ("local", "e2b", or "e2b_simple")
         config: Optional configuration for the adapter
 
     Returns:
@@ -33,5 +33,14 @@ def get_execution_adapter(target: str, config: dict[str, Any] | None = None) -> 
         except ImportError as e:
             raise ValueError(f"E2B adapter not available. Install E2B dependencies: {e}") from e
 
+    elif target == "e2b_simple":
+        # New PyPI-based E2B adapter (ADR-0041)
+        try:
+            from ..remote.e2b_simple_adapter import E2BSimpleAdapter
+
+            return E2BSimpleAdapter(config)
+        except ImportError as e:
+            raise ValueError(f"E2B simple adapter not available. Install E2B dependencies: {e}") from e
+
     else:
-        raise ValueError(f"Unknown execution target: {target}. Valid options: 'local', 'e2b'")
+        raise ValueError(f"Unknown execution target: {target}. Valid options: 'local', 'e2b', 'e2b_simple'")
