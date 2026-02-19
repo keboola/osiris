@@ -16,13 +16,11 @@ def test_compile_writes_pointer_files(tmp_path, monkeypatch):
 
     # Create minimal osiris.yaml
     osiris_yaml = tmp_path / "osiris.yaml"
-    osiris_yaml.write_text(
-        """
+    osiris_yaml.write_text("""
 version: "2.0"
 filesystem:
   compilations: ".osiris/index/compilations"
-"""
-    )
+""")
 
     # Create a simple OML file
     oml_file = tmp_path / "test.yaml"
@@ -72,13 +70,11 @@ def test_run_with_last_compile():
 
         # Create osiris.yaml
         osiris_yaml = tmp_path / "osiris.yaml"
-        osiris_yaml.write_text(
-            """
+        osiris_yaml.write_text("""
 version: "2.0"
 filesystem:
   compilations: ".osiris/index/compilations"
-"""
-        )
+""")
 
         # Create contract structure
         index_dir = tmp_path / ".osiris" / "index"
@@ -115,13 +111,11 @@ def test_run_with_last_compile_in():
 
         # Create osiris.yaml
         osiris_yaml = tmp_path / "osiris.yaml"
-        osiris_yaml.write_text(
-            """
+        osiris_yaml.write_text("""
 version: "2.0"
 filesystem:
   compilations: ".osiris/index/compilations"
-"""
-        )
+""")
 
         # Create contract structure
         index_dir = tmp_path / ".osiris" / "index"
@@ -157,27 +151,23 @@ def test_detect_file_type(tmp_path):
 
     # Create a manifest file (has pipeline, steps, meta)
     manifest_file = tmp_path / "manifest.yaml"
-    manifest_file.write_text(
-        """
+    manifest_file.write_text("""
 pipeline: test
 steps:
   - id: step1
 meta:
   version: 1.0
-"""
-    )
+""")
     assert detect_file_type(str(manifest_file)) == "manifest"
 
     # Create an OML file (has oml_version or name, steps, but no meta)
     oml_file = tmp_path / "pipeline.yaml"
-    oml_file.write_text(
-        """
+    oml_file.write_text("""
 oml_version: "0.1.0"
 name: test_pipeline
 steps:
   - id: step1
-"""
-    )
+""")
     assert detect_file_type(str(oml_file)) == "oml"
 
     # Create an unknown/unparseable file (defaults to 'oml')

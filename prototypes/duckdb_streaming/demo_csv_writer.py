@@ -44,8 +44,7 @@ def setup_test_database(db_path: Path):
 
     # Create sample table (simulates output from extractor step)
     print("\n🔧 Setting up test database...")
-    con.execute(
-        """
+    con.execute("""
         CREATE TABLE extract_customers AS
         SELECT
             id,
@@ -59,8 +58,7 @@ def setup_test_database(db_path: Path):
             (3, 'Charlie', 'charlie@example.com', '2024-03-10'::DATE, 12),
             (4, 'Diana', 'diana@example.com', '2024-04-05'::DATE, 7)
         ) AS t(id, name, email, created_at, total_orders)
-    """
-    )
+    """)
 
     row_count = con.execute("SELECT COUNT(*) FROM extract_customers").fetchone()[0]
     print(f"✅ Created table 'extract_customers' with {row_count} rows")
@@ -232,8 +230,7 @@ if __name__ == "__main__":
     print("\n" + "=" * 70)
     print("✅ All demos completed successfully!")
     print("=" * 70)
-    print(
-        """
+    print("""
 Key Design Points Demonstrated:
 1. ✓ Reads from shared DuckDB database via ctx.get_db_connection()
 2. ✓ Accepts table name in inputs["table"]
@@ -249,5 +246,4 @@ Alignment with Streaming Vision:
 - Only loaded at final write step (CSV egress)
 - No intermediate DataFrame passing between steps
 - Memory-efficient for large datasets
-"""
-    )
+""")

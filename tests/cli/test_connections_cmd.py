@@ -19,8 +19,7 @@ class TestConnectionsList:
     def sample_connections_file(self, tmp_path):
         """Create a sample connections file."""
         connections_file = tmp_path / "osiris_connections.yaml"
-        connections_file.write_text(
-            """
+        connections_file.write_text("""
 version: 1
 connections:
   mysql:
@@ -46,8 +45,7 @@ connections:
     local:
       default: true
       path: ./local.duckdb
-"""
-        )
+""")
         return tmp_path
 
     def run_osiris_command(self, args, cwd=None):
@@ -165,8 +163,7 @@ class TestConnectionsDoctor:
     def sample_connections_file(self, tmp_path):
         """Create a sample connections file."""
         connections_file = tmp_path / "osiris_connections.yaml"
-        connections_file.write_text(
-            """
+        connections_file.write_text("""
 version: 1
 connections:
   mysql:
@@ -185,8 +182,7 @@ connections:
       path: ":memory:"
     local:
       path: ./test.duckdb
-"""
-        )
+""")
         return tmp_path
 
     @patch("osiris.cli.connections_cmd.check_mysql_connection")
@@ -310,16 +306,14 @@ connections:
     def test_doctor_missing_env_var(self, tmp_path):
         """Test doctor command when env var is missing."""
         connections_file = tmp_path / "osiris_connections.yaml"
-        connections_file.write_text(
-            """
+        connections_file.write_text("""
 version: 1
 connections:
   mysql:
     test:
       host: localhost
       password: ${MISSING_VAR}
-"""
-        )
+""")
 
         with patch("osiris.core.config.Path.cwd", return_value=tmp_path):
             # Capture output

@@ -19,14 +19,12 @@ class TestFilesystemContractCompliance:
         """Test that MCPConfig reads filesystem config from osiris.yaml."""
         # Create test config
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text(
-            f"""
+        config_file.write_text(f"""
 version: '2.0'
 filesystem:
   base_path: "{tmp_path}"
   mcp_logs_dir: ".osiris/mcp/logs"
-"""
-        )
+""")
 
         # Load filesystem config
         fs_config = MCPFilesystemConfig.from_config(str(config_file))
@@ -47,14 +45,12 @@ filesystem:
         """Test that MCP logs are written to configured location."""
         # Create config
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text(
-            f"""
+        config_file.write_text(f"""
 version: '2.0'
 filesystem:
   base_path: "{tmp_path}"
   mcp_logs_dir: ".osiris/mcp/logs"
-"""
-        )
+""")
 
         fs_config = MCPFilesystemConfig.from_config(str(config_file))
         mcp_config = MCPConfig(fs_config=fs_config)
@@ -93,14 +89,12 @@ filesystem:
     def test_config_precedence_yaml_over_env(self, tmp_path):
         """Test that osiris.yaml takes precedence over environment variables."""
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text(
-            f"""
+        config_file.write_text(f"""
 version: '2.0'
 filesystem:
   base_path: "{tmp_path}/from_config"
   mcp_logs_dir: ".osiris/mcp/logs"
-"""
-        )
+""")
 
         env_backup = os.environ.copy()
         try:
@@ -121,14 +115,12 @@ filesystem:
     def test_empty_base_path_uses_config_directory(self, tmp_path):
         """Test that empty base_path uses config file's directory."""
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text(
-            """
+        config_file.write_text("""
 version: '2.0'
 filesystem:
   base_path: ""
   mcp_logs_dir: ".osiris/mcp/logs"
-"""
-        )
+""")
 
         fs_config = MCPFilesystemConfig.from_config(str(config_file))
 
@@ -138,14 +130,12 @@ filesystem:
     def test_mcp_logs_dir_relative_to_base_path(self, tmp_path):
         """Test that mcp_logs_dir is resolved relative to base_path."""
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text(
-            f"""
+        config_file.write_text(f"""
 version: '2.0'
 filesystem:
   base_path: "{tmp_path}"
   mcp_logs_dir: "custom/mcp/logs"
-"""
-        )
+""")
 
         fs_config = MCPFilesystemConfig.from_config(str(config_file))
 
@@ -174,8 +164,7 @@ filesystem:
         """Test full integration of MCPConfig with filesystem contract."""
         # Create realistic config
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text(
-            f"""
+        config_file.write_text(f"""
 version: '2.0'
 filesystem:
   base_path: "{tmp_path}"
@@ -183,8 +172,7 @@ filesystem:
   sessions_dir: ".osiris/sessions"
   cache_dir: ".osiris/cache"
   index_dir: ".osiris/index"
-"""
-        )
+""")
 
         # Load configs
         fs_config = MCPFilesystemConfig.from_config(str(config_file))
@@ -285,13 +273,11 @@ class TestConfigValidation:
     def test_handles_missing_filesystem_section(self, tmp_path):
         """Test handling of config without filesystem section."""
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text(
-            """
+        config_file.write_text("""
 version: '2.0'
 logging:
   level: INFO
-"""
-        )
+""")
 
         # Should not crash
         fs_config = MCPFilesystemConfig.from_config(str(config_file))

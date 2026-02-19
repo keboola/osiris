@@ -28,13 +28,11 @@ class TestMemoryStdoutStderr:
         """Test that --json output goes only to stdout (no logs mixed in)."""
         # Create temporary config
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text(
-            f"""
+        config_file.write_text(f"""
 filesystem:
   base_path: "{tmp_path}"
   mcp_logs_dir: ".osiris/mcp/logs"
-"""
-        )
+""")
 
         # Run memory capture with --json
         result = subprocess.run(
@@ -74,13 +72,11 @@ filesystem:
     def test_info_logs_go_to_stderr(self, tmp_path):
         """Test that INFO logs go to stderr when --json is used."""
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text(
-            f"""
+        config_file.write_text(f"""
 filesystem:
   base_path: "{tmp_path}"
   mcp_logs_dir: ".osiris/mcp/logs"
-"""
-        )
+""")
 
         result = subprocess.run(
             [
@@ -116,13 +112,11 @@ class TestMemoryMetrics:
     def test_cli_output_includes_all_fields(self, tmp_path):
         """Test that CLI output includes status, captured, memory_uri, etc."""
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text(
-            f"""
+        config_file.write_text(f"""
 filesystem:
   base_path: "{tmp_path}"
   mcp_logs_dir: ".osiris/mcp/logs"
-"""
-        )
+""")
 
         result = subprocess.run(
             [
@@ -226,13 +220,11 @@ class TestMemoryURIResolver:
     def test_uri_roundtrip(self, tmp_path):
         """Test that we can write via CLI and read via resolver."""
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text(
-            f"""
+        config_file.write_text(f"""
 filesystem:
   base_path: "{tmp_path}"
   mcp_logs_dir: ".osiris/mcp/logs"
-"""
-        )
+""")
 
         # Write via CLI
         result = subprocess.run(
@@ -290,13 +282,11 @@ class TestMemoryTextFlag:
     def test_text_flag_creates_simple_note(self, tmp_path):
         """Test that --text creates a simple note entry."""
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text(
-            f"""
+        config_file.write_text(f"""
 filesystem:
   base_path: "{tmp_path}"
   mcp_logs_dir: ".osiris/mcp/logs"
-"""
-        )
+""")
 
         result = subprocess.run(
             [

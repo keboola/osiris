@@ -23,8 +23,7 @@ class TestLoadConnectionsYaml:
     def test_load_with_connections(self, tmp_path):
         """Test loading connections with proper structure."""
         connections_file = tmp_path / "osiris_connections.yaml"
-        connections_file.write_text(
-            """
+        connections_file.write_text("""
 version: 1
 connections:
   mysql:
@@ -34,8 +33,7 @@ connections:
       database: test
       user: test_user
       password: test_pass
-"""
-        )
+""")
 
         with patch("osiris.core.config.Path.cwd", return_value=tmp_path):
             result = load_connections_yaml()
@@ -51,16 +49,14 @@ connections:
         monkeypatch.setenv("TEST_HOST", "db.example.com")
 
         connections_file = tmp_path / "osiris_connections.yaml"
-        connections_file.write_text(
-            """
+        connections_file.write_text("""
 version: 1
 connections:
   mysql:
     test_db:
       host: ${TEST_HOST}
       password: ${TEST_PASSWORD}
-"""
-        )
+""")
 
         with patch("osiris.core.config.Path.cwd", return_value=tmp_path):
             result = load_connections_yaml()
@@ -71,15 +67,13 @@ connections:
     def test_missing_env_var_preserved(self, tmp_path):
         """Test that missing env vars are preserved as ${VAR}."""
         connections_file = tmp_path / "osiris_connections.yaml"
-        connections_file.write_text(
-            """
+        connections_file.write_text("""
 version: 1
 connections:
   mysql:
     test_db:
       password: ${MISSING_VAR}
-"""
-        )
+""")
 
         with patch("osiris.core.config.Path.cwd", return_value=tmp_path):
             result = load_connections_yaml()
@@ -101,8 +95,7 @@ class TestResolveConnection:
     def sample_connections(self, tmp_path):
         """Create a sample connections file."""
         connections_file = tmp_path / "osiris_connections.yaml"
-        connections_file.write_text(
-            """
+        connections_file.write_text("""
 version: 1
 connections:
   mysql:
@@ -127,8 +120,7 @@ connections:
   duckdb:
     local:
       path: ./local.db
-"""
-        )
+""")
         return tmp_path
 
     def test_resolve_specific_alias(self, sample_connections, monkeypatch):
@@ -238,8 +230,7 @@ connections:
         monkeypatch.setenv("SSL_KEY", "/path/to/key")
 
         connections_file = tmp_path / "osiris_connections.yaml"
-        connections_file.write_text(
-            """
+        connections_file.write_text("""
 version: 1
 connections:
   mysql:
@@ -248,8 +239,7 @@ connections:
       ssl:
         cert: ${SSL_CERT}
         key: ${SSL_KEY}
-"""
-        )
+""")
 
         with patch("osiris.core.config.Path.cwd", return_value=tmp_path):
             result = resolve_connection("mysql", "secure")
@@ -263,8 +253,7 @@ connections:
         monkeypatch.setenv("HOST2", "host2.com")
 
         connections_file = tmp_path / "osiris_connections.yaml"
-        connections_file.write_text(
-            """
+        connections_file.write_text("""
 version: 1
 connections:
   cluster:
@@ -273,8 +262,7 @@ connections:
         - ${HOST1}
         - ${HOST2}
         - static.host.com
-"""
-        )
+""")
 
         with patch("osiris.core.config.Path.cwd", return_value=tmp_path):
             result = resolve_connection("cluster", "main")

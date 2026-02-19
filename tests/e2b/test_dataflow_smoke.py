@@ -16,8 +16,7 @@ class TestE2BDataflow:
         """Test pipeline: MySQL extractor → DuckDB processor → CSV writer."""
         # Create a simple pipeline that tests DataFrame flow
         pipeline_yaml = tmp_path / "test_pipeline.yaml"
-        pipeline_yaml.write_text(
-            """
+        pipeline_yaml.write_text("""
 oml_version: 0.1.0
 name: test-dataflow
 steps:
@@ -47,8 +46,7 @@ steps:
     needs: [process-data]
     config:
       path: output/year_stats.csv
-"""
-        )
+""")
 
         # Compile the pipeline
         from osiris.core.compiler_v0 import CompilerV0

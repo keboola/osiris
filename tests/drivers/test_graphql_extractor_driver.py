@@ -1,8 +1,8 @@
 """Tests for GraphQL extractor driver."""
 
 import json
-import tempfile
 from pathlib import Path
+import tempfile
 from unittest.mock import MagicMock, patch
 
 import duckdb
@@ -20,6 +20,7 @@ class MockContext:
         # Use temporary file-based database for test isolation
         self._tmpdir = tempfile.mkdtemp()
         import uuid  # noqa: PLC0415
+
         db_name = f"test_{uuid.uuid4().hex}.duckdb"
         self._conn = duckdb.connect(str(Path(self._tmpdir) / db_name))
         # Make log_event a MagicMock for tests that check it

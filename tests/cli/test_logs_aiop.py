@@ -45,15 +45,13 @@ def test_aiop_export_last_run_no_runs(tmp_path, monkeypatch):
 
     # Create minimal osiris.yaml
     osiris_yaml = tmp_path / "osiris.yaml"
-    osiris_yaml.write_text(
-        """
+    osiris_yaml.write_text("""
 version: "2.0"
 filesystem:
   run_logs: "run_logs"
   aiop:
     root: "aiop"
-"""
-    )
+""")
 
     with patch("osiris.cli.logs.console"):
         with patch("sys.exit") as mock_exit:
@@ -71,15 +69,13 @@ def test_aiop_export_with_run_id_not_found(tmp_path, monkeypatch):
 
     # Create minimal osiris.yaml
     osiris_yaml = tmp_path / "osiris.yaml"
-    osiris_yaml.write_text(
-        """
+    osiris_yaml.write_text("""
 version: "2.0"
 filesystem:
   run_logs: "run_logs"
   aiop:
     root: "aiop"
-"""
-    )
+""")
 
     with patch("osiris.cli.logs.console"):
         with patch("sys.exit") as mock_exit:
@@ -97,15 +93,13 @@ def test_aiop_list_empty(tmp_path, monkeypatch):
 
     # Create minimal osiris.yaml
     osiris_yaml = tmp_path / "osiris.yaml"
-    osiris_yaml.write_text(
-        """
+    osiris_yaml.write_text("""
 version: "2.0"
 filesystem:
   run_logs: "run_logs"
   aiop:
     root: "aiop"
-"""
-    )
+""")
 
     with patch("osiris.cli.logs.console"):
         # Should handle empty case gracefully
@@ -134,15 +128,13 @@ def test_aiop_prune_dry_run(tmp_path, monkeypatch):
 
     # Create minimal osiris.yaml
     osiris_yaml = tmp_path / "osiris.yaml"
-    osiris_yaml.write_text(
-        """
+    osiris_yaml.write_text("""
 version: "2.0"
 filesystem:
   run_logs: "run_logs"
   aiop:
     root: "aiop"
-"""
-    )
+""")
 
     with patch("osiris.cli.logs.console"):
         # Dry run should succeed even with no data

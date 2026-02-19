@@ -69,8 +69,7 @@ def test_e2b_produces_identical_tree_structure(tmp_path):
 
         # Create test pipeline
         pipeline_file = tmp_path / "pipelines" / "test_pipeline.yaml"
-        pipeline_file.write_text(
-            """oml_version: "0.1.0"
+        pipeline_file.write_text("""oml_version: "0.1.0"
 pipeline:
   id: test_pipeline
   name: Test Pipeline
@@ -85,8 +84,7 @@ steps:
     type: duckdb.processor
     config:
       query: SELECT 1 as id, 'test' as name
-"""
-        )
+""")
 
         # Load filesystem contract
         fs_config, ids_config, _ = load_osiris_config()

@@ -62,15 +62,13 @@ def example_simple_extraction():
 
     # Create sample CSV
     csv_path = Path("/tmp/customers.csv")
-    csv_path.write_text(
-        """customer_id,name,email,country
+    csv_path.write_text("""customer_id,name,email,country
 1,John Doe,john@example.com,USA
 2,Jane Smith,jane@example.com,UK
 3,Bob Johnson,bob@example.com,Canada
 4,Alice Williams,alice@example.com,USA
 5,Charlie Brown,charlie@example.com,Australia
-"""
-    )
+""")
 
     # Setup context
     ctx = OsirisContextSimulator(output_base="/tmp/osiris_example1")
@@ -92,14 +90,12 @@ def example_simple_extraction():
 
     # Query the data
     print("\nQuerying extracted data:")
-    df = ctx.conn.execute(
-        """
+    df = ctx.conn.execute("""
         SELECT country, COUNT(*) as customer_count
         FROM extract_customers
         GROUP BY country
         ORDER BY customer_count DESC
-    """
-    ).fetchdf()
+    """).fetchdf()
     print(df)
 
     # Cleanup
@@ -157,8 +153,7 @@ def example_large_file_processing():
 
     # Run analytics query
     print("\nRunning analytics query:")
-    df = ctx.conn.execute(
-        """
+    df = ctx.conn.execute("""
         SELECT
             category,
             COUNT(*) as transaction_count,
@@ -167,8 +162,7 @@ def example_large_file_processing():
         FROM extract_transactions
         GROUP BY category
         ORDER BY total_amount DESC
-    """
-    ).fetchdf()
+    """).fetchdf()
     print(df)
 
     # Cleanup
@@ -183,24 +177,20 @@ def example_pipeline_chaining():
 
     # Create two CSV files
     customers_csv = Path("/tmp/pipeline_customers.csv")
-    customers_csv.write_text(
-        """customer_id,name,country
+    customers_csv.write_text("""customer_id,name,country
 1,Alice,USA
 2,Bob,UK
 3,Charlie,USA
-"""
-    )
+""")
 
     orders_csv = Path("/tmp/pipeline_orders.csv")
-    orders_csv.write_text(
-        """order_id,customer_id,amount
+    orders_csv.write_text("""order_id,customer_id,amount
 101,1,50.00
 102,1,75.00
 103,2,100.00
 104,3,25.00
 105,3,150.00
-"""
-    )
+""")
 
     # Setup shared context
     ctx = OsirisContextSimulator(output_base="/tmp/osiris_example3")
@@ -228,8 +218,7 @@ def example_pipeline_chaining():
 
     # Join and analyze
     print("\nStep 3: Joining data and analyzing...")
-    df = ctx.conn.execute(
-        """
+    df = ctx.conn.execute("""
         SELECT
             c.name,
             c.country,
@@ -239,8 +228,7 @@ def example_pipeline_chaining():
         LEFT JOIN extract_orders o ON c.customer_id = o.customer_id
         GROUP BY c.name, c.country
         ORDER BY total_spent DESC
-    """
-    ).fetchdf()
+    """).fetchdf()
     print(df)
 
     # Cleanup

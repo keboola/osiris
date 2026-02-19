@@ -322,9 +322,9 @@ class TestRunnerConnections:
             # Capture all log messages
             log_messages = []
             with patch("osiris.core.runner_v0.logger") as mock_logger:
-                mock_logger.debug.side_effect = lambda msg: log_messages.append(msg)
-                mock_logger.info.side_effect = lambda msg: log_messages.append(msg)
-                mock_logger.error.side_effect = lambda msg: log_messages.append(msg)
+                mock_logger.debug.side_effect = log_messages.append
+                mock_logger.info.side_effect = log_messages.append
+                mock_logger.error.side_effect = log_messages.append
 
                 # Capture events
                 events = []

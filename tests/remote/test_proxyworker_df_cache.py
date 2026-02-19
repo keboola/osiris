@@ -61,10 +61,10 @@ def temp_session_dir(tmp_path):
 def mock_driver_registry():
     """Create a mock driver registry."""
     registry = MagicMock()
-    registry.get.side_effect = lambda name: {
+    registry.get.side_effect = {
         "mock.extractor": MockExtractorDriver(),
         "mock.processor": MockProcessorDriver(),
-    }.get(name)
+    }.get
     return registry
 
 

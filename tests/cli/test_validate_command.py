@@ -59,8 +59,7 @@ pipeline:
     @pytest.fixture
     def temp_connections_yaml(self, tmp_path, monkeypatch):
         """Create a minimal osiris_connections.yaml in current working directory."""
-        content = textwrap.dedent(
-            """
+        content = textwrap.dedent("""
         connections:
           mysql:
             db_movies:
@@ -74,8 +73,7 @@ pipeline:
               url: ${SUPABASE_URL}
               service_role_key: ${SUPABASE_SERVICE_ROLE_KEY}
               pg_dsn: ${SUPABASE_PG_DSN}
-        """
-        ).strip()
+        """).strip()
 
         # Create temp directory and change to it
         original_cwd = os.getcwd()

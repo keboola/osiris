@@ -116,12 +116,10 @@ def example_csv_to_duckdb():
         con = ctx.get_db_connection()
 
         # Load CSV into DuckDB
-        con.execute(
-            f"""
+        con.execute(f"""
             CREATE TABLE actors AS
             SELECT * FROM read_csv_auto('{csv_path}')
-        """
-        )
+        """)
 
         # Verify data
         count = get_table_row_count(con, "actors")

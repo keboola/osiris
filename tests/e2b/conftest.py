@@ -257,16 +257,14 @@ def resource_intensive_pipeline():
                 "component": "duckdb.processor",
                 "driver": "duckdb_processor",
                 "mode": "transform",
-                "config": {
-                    "query": """
+                "config": {"query": """
                         WITH RECURSIVE numbers(n) AS (
                             SELECT 1
                             UNION ALL
                             SELECT n + 1 FROM numbers WHERE n < 1000000
                         )
                         SELECT COUNT(*) as total FROM numbers
-                    """
-                },
+                    """},
                 "needs": [],
                 "cfg_path": "cfg/heavy_processing.json",
             }
@@ -293,14 +291,12 @@ def timeout_prone_pipeline():
                 "component": "python.script",
                 "driver": "python_script",
                 "mode": "transform",
-                "config": {
-                    "script": """
+                "config": {"script": """
 import time
 # Simulate very slow processing
 time.sleep(3600)  # Sleep for 1 hour - will timeout
 print("This should never print")
-                    """
-                },
+                    """},
                 "needs": [],
                 "cfg_path": "cfg/slow_processing.json",
             }

@@ -177,8 +177,7 @@ class UsecasesTools:
                         {
                             "id": "transform",
                             "component": "duckdb.processor",
-                            "config": {
-                                "query": """
+                            "config": {"query": """
                                     SELECT
                                         DATE_TRUNC('month', transaction_date) as month,
                                         customer_id,
@@ -186,8 +185,7 @@ class UsecasesTools:
                                         COUNT(*) as transaction_count
                                     FROM df
                                     GROUP BY 1, 2
-                                """
-                            },
+                                """},
                             "depends_on": ["extract"],
                         },
                         {

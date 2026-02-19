@@ -33,8 +33,7 @@ async def test_discovery_triggers_synthesis_not_questions():
     good_pipeline = LLMResponse(
         message="Generated pipeline",
         action="generate_pipeline",
-        params={
-            "pipeline_yaml": """oml_version: "0.1.0"
+        params={"pipeline_yaml": """oml_version: "0.1.0"
 name: csv-export
 steps:
   - id: extract-data
@@ -43,8 +42,7 @@ steps:
     config:
       query: "SELECT * FROM table1"
       connection: "@default"
-"""
-        },
+"""},
         confidence=0.9,
     )
 

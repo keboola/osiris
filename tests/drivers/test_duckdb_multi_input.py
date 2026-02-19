@@ -1,9 +1,10 @@
 """Tests for DuckDB processor with multiple input tables."""
 
+from pathlib import Path
+
 import duckdb
 import pandas as pd
 import pytest
-from pathlib import Path
 
 from osiris.drivers.duckdb_processor_driver import DuckDBProcessorDriver
 
@@ -66,8 +67,7 @@ def multi_input_tables(mock_ctx):
 
 def test_duckdb_registers_multiple_tables(duckdb_driver, multi_input_tables, mock_ctx):
     """DuckDB should work with multiple input tables."""
-    config = {
-        "query": """
+    config = {"query": """
             SELECT
                 m.title,
                 AVG(r.rating) as avg_rating
@@ -75,8 +75,7 @@ def test_duckdb_registers_multiple_tables(duckdb_driver, multi_input_tables, moc
             JOIN extract_movies m ON r.movie_id = m.id
             GROUP BY m.title
             ORDER BY avg_rating DESC
-        """
-    }
+        """}
 
     result = duckdb_driver.run(step_id="test_calc", config=config, inputs=multi_input_tables, ctx=mock_ctx)
 

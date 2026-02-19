@@ -780,7 +780,7 @@ class ProxyWorker:
         try:
             from osiris.drivers.mysql_extractor_driver import MySQLExtractorDriver
 
-            self.driver_registry.register("mysql.extractor", lambda: MySQLExtractorDriver())
+            self.driver_registry.register("mysql.extractor", MySQLExtractorDriver)
             self.logger.info("Registered driver: mysql.extractor")
             self.send_event("driver_registered", driver="mysql.extractor", status="success")
         except ImportError as e:
@@ -791,7 +791,7 @@ class ProxyWorker:
         try:
             from osiris.drivers.filesystem_csv_writer_driver import FilesystemCsvWriterDriver
 
-            self.driver_registry.register("filesystem.csv_writer", lambda: FilesystemCsvWriterDriver())
+            self.driver_registry.register("filesystem.csv_writer", FilesystemCsvWriterDriver)
             self.logger.info("Registered driver: filesystem.csv_writer")
             self.send_event("driver_registered", driver="filesystem.csv_writer", status="success")
         except ImportError as e:
@@ -802,7 +802,7 @@ class ProxyWorker:
         try:
             from osiris.drivers.graphql_extractor_driver import GraphQLExtractorDriver
 
-            self.driver_registry.register("graphql.extractor", lambda: GraphQLExtractorDriver())
+            self.driver_registry.register("graphql.extractor", GraphQLExtractorDriver)
             self.logger.info("Registered driver: graphql.extractor")
             self.send_event("driver_registered", driver="graphql.extractor", status="success")
         except ImportError as e:
@@ -813,7 +813,7 @@ class ProxyWorker:
         try:
             from osiris.drivers.supabase_writer_driver import SupabaseWriterDriver
 
-            self.driver_registry.register("supabase.writer", lambda: SupabaseWriterDriver())
+            self.driver_registry.register("supabase.writer", SupabaseWriterDriver)
             self.logger.info("Registered driver: supabase.writer")
             self.send_event("driver_registered", driver="supabase.writer", status="success")
             self._emit_driver_file_verification(
@@ -841,7 +841,7 @@ class ProxyWorker:
                         try:
                             from osiris.drivers.supabase_writer_driver import SupabaseWriterDriver
 
-                            self.driver_registry.register("supabase.writer", lambda: SupabaseWriterDriver())
+                            self.driver_registry.register("supabase.writer", SupabaseWriterDriver)
                             self.logger.info("Registered driver: supabase.writer (after install)")
                             self.send_event(
                                 "driver_registered",
@@ -865,7 +865,7 @@ class ProxyWorker:
         try:
             from osiris.drivers.duckdb_processor_driver import DuckDBProcessorDriver
 
-            self.driver_registry.register("duckdb.processor", lambda: DuckDBProcessorDriver())
+            self.driver_registry.register("duckdb.processor", DuckDBProcessorDriver)
             self.logger.info("Registered driver: duckdb.processor")
             self.send_event("driver_registered", driver="duckdb.processor", status="success")
         except ImportError as e:
@@ -884,7 +884,7 @@ class ProxyWorker:
                         try:
                             from osiris.drivers.duckdb_processor_driver import DuckDBProcessorDriver
 
-                            self.driver_registry.register("duckdb.processor", lambda: DuckDBProcessorDriver())
+                            self.driver_registry.register("duckdb.processor", DuckDBProcessorDriver)
                             self.logger.info("Registered driver: duckdb.processor (after install)")
                             self.send_event(
                                 "driver_registered",

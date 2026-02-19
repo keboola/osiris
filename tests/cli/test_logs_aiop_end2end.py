@@ -61,14 +61,12 @@ def create_test_session(logs_dir: Path) -> str:
 
     manifest_file = artifacts_dir / "manifest.yaml"
     with open(manifest_file, "w") as f:
-        f.write(
-            """name: test_pipeline
+        f.write("""name: test_pipeline
 manifest_hash: abc123
 steps:
   - component: mysql.extractor
     step_id: extract
-"""
-        )
+""")
 
     return session_id
 

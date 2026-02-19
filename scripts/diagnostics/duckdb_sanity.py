@@ -90,12 +90,10 @@ def test_parquet_io():
             conn = duckdb.connect(":memory:")
             # Using parameterized queries would be ideal but DuckDB COPY doesn't support it
             # This is safe as parquet_path is from tempfile, not user input
-            conn.execute(
-                f"""
+            conn.execute(f"""
                 COPY (SELECT i as id FROM generate_series(1, 5) as t(i))
                 TO '{parquet_path}' (FORMAT PARQUET)
-            """  # nosec B608 - path from tempfile.TemporaryDirectory
-            )
+            """)  # nosec B608 - path from tempfile.TemporaryDirectory
 
             # Read back from Parquet
             result = conn.execute(
@@ -117,16 +115,14 @@ def test_case_statement():
         import duckdb
 
         conn = duckdb.connect(":memory:")
-        result = conn.execute(
-            """
+        result = conn.execute("""
             SELECT
                 CASE
                     WHEN 500 >= 500 THEN 'high'
                     WHEN 500 >= 300 THEN 'medium'
                     ELSE 'low'
                 END as category
-        """
-        ).fetchone()
+        """).fetchone()
         assert result[0] == "high"
         print("✓ CASE statement works")
 

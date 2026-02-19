@@ -59,6 +59,7 @@ def show_run_help(json_output: bool = False):
                 "--last-compile": "Use manifest from most recent successful compile",
                 "--last-compile-in": "Find latest compile in specified directory",
                 "--verbose": "Show detailed execution logs",
+                "--stream-events": "Output events/metrics as JSON Lines to stdout (for PyPI-based E2B)",
                 "--json": "Output in JSON format",
                 "--help": "Show this help message",
                 "--e2b": "Execute in E2B sandbox (requires E2B_API_KEY)",
@@ -110,6 +111,7 @@ def show_run_help(json_output: bool = False):
     console.print("  [cyan]--last-compile[/cyan]    Use manifest from most recent successful compile")
     console.print("  [cyan]--last-compile-in[/cyan] Find latest compile in specified directory")
     console.print("  [cyan]--verbose[/cyan]         Show single-line event summaries on stdout")
+    console.print("  [cyan]--stream-events[/cyan]   Output events/metrics as JSON Lines to stdout")
     console.print("  [cyan]--json[/cyan]            Output in JSON format")
     console.print("  [cyan]--help[/cyan]            Show this help message")
     console.print()
@@ -299,6 +301,7 @@ def run_command(args: list[str]):
     params = {}
     output_dir = None  # None means use session directory
     verbose = False
+    stream_events = "--stream-events" in remaining_args
     use_json = "--json" in remaining_args
     last_compile = False
     last_compile_in = None
@@ -367,6 +370,9 @@ def run_command(args: list[str]):
 
             elif arg == "--verbose":
                 verbose = True
+
+            elif arg == "--stream-events":
+                stream_events = True
 
             elif arg == "--json":
                 use_json = True
@@ -478,7 +484,7 @@ def run_command(args: list[str]):
     session_id = f"run_{int(time.time() * 1000)}"
     # Use filesystem contract to determine logs directory
     temp_logs_dir = fs_config.resolve_path(fs_config.run_logs_dir)
-    session = SessionContext(session_id=session_id, base_logs_dir=temp_logs_dir)
+    session = SessionContext(session_id=session_id, base_logs_dir=temp_logs_dir, stream_events=stream_events)
     set_current_session(session)
 
     # Log loaded env files (masked paths)
@@ -606,6 +612,7 @@ def run_command(args: list[str]):
             profile=manifest_profile,
             run_id=run_id_final,
             manifest_short=manifest_short,
+            stream_events=stream_events,
         )
 
         # Clean up temporary session directory (only if it was created)

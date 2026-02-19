@@ -149,13 +149,11 @@ class TestEnsureBasePath:
         """Test loading base_path from osiris.yaml."""
         # Create temporary osiris.yaml
         config_file = tmp_path / "osiris.yaml"
-        config_file.write_text(
-            """
+        config_file.write_text("""
 version: '2.0'
 filesystem:
   base_path: "/srv/osiris/test"
-"""
-        )
+""")
 
         with patch.dict("os.environ", clear=True):  # No OSIRIS_HOME
             with patch("pathlib.Path.cwd", return_value=tmp_path):

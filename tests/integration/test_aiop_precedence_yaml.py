@@ -15,7 +15,6 @@
 
 """Tests for AIOP configuration precedence: CLI > ENV > YAML > defaults."""
 
-
 import yaml
 
 

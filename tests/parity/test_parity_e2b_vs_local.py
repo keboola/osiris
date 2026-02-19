@@ -84,15 +84,13 @@ class TestExecutionParity:
                     "component": "duckdb.processor",
                     "driver": "duckdb.processor",
                     "mode": "transform",
-                    "config": {
-                        "query": """
+                    "config": {"query": """
                         SELECT
                             i as id,
                             'user_' || i as username,
                             i * 100 as score
                         FROM generate_series(1, 10) as s(i)
-                        """
-                    },
+                        """},
                     "needs": [],
                     "cfg_path": "cfg/generate_data.json",
                 },
@@ -101,8 +99,7 @@ class TestExecutionParity:
                     "component": "duckdb.processor",
                     "driver": "duckdb.processor",
                     "mode": "transform",
-                    "config": {
-                        "query": """
+                    "config": {"query": """
                         SELECT
                             id,
                             username,
@@ -114,8 +111,7 @@ class TestExecutionParity:
                             END as category
                         FROM input_df
                         ORDER BY id
-                        """
-                    },
+                        """},
                     "needs": ["generate_data"],
                     "cfg_path": "cfg/transform_data.json",
                 },

@@ -12,8 +12,7 @@ def compiler_instance(tmp_path):
     """Create a CompilerV0 instance with minimal filesystem contract."""
     # Create minimal osiris.yaml
     osiris_yaml = tmp_path / "osiris.yaml"
-    osiris_yaml.write_text(
-        """
+    osiris_yaml.write_text("""
 version: "2.0"
 filesystem:
   base_path: "."
@@ -21,8 +20,7 @@ filesystem:
   compilations: ".osiris/index/compilations"
   outputs:
     directory: "output"
-"""
-    )
+""")
 
     # Load config and create contract
     fs_config, ids_config, raw_config = load_osiris_config(osiris_yaml)

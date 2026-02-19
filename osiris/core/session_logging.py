@@ -48,6 +48,7 @@ class SessionContext:
         run_id: str | None = None,
         run_ts: datetime | None = None,
         manifest_short: str | None = None,
+        stream_events: bool = False,
     ):
         """Initialize session context.
 
@@ -62,7 +63,9 @@ class SessionContext:
             run_id: Run identifier (used with fs_contract).
             run_ts: Run timestamp (used with fs_contract).
             manifest_short: Short manifest hash (used with fs_contract).
+            stream_events: If True, also output events and metrics as JSON Lines to stdout.
         """
+        self.stream_events = stream_events
         self.session_id = session_id or self._generate_session_id()
         self.start_time = datetime.now(UTC)
         self.redactor = create_redactor(privacy_level)
@@ -291,6 +294,11 @@ class SessionContext:
                 f.write(json.dumps(event_data, separators=(",", ":")) + "\n")
                 f.flush()  # Ensure data is written immediately
 
+            # Also stream to stdout if enabled (for E2B PyPI-based execution)
+            if self.stream_events:
+                stream_data = {"type": "event", **event_data}
+                print(json.dumps(stream_data, separators=(",", ":")), flush=True)
+
         except (OSError, PermissionError) as e:
             # Fallback to stderr if we can't write events
             print(f"WARNING: Could not write event {event_name}: {e}", file=sys.stderr)
@@ -335,6 +343,11 @@ class SessionContext:
             with open(self.metrics_log, "a", encoding="utf-8") as f:
                 f.write(json.dumps(metric_data, separators=(",", ":")) + "\n")
                 f.flush()  # Ensure data is written immediately
+
+            # Also stream to stdout if enabled (for E2B PyPI-based execution)
+            if self.stream_events:
+                stream_data = {"type": "metric", **metric_data}
+                print(json.dumps(stream_data, separators=(",", ":")), flush=True)
 
         except (OSError, PermissionError) as e:
             # Fallback to stderr if we can't write metrics

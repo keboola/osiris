@@ -1318,13 +1318,11 @@ def generate_session_detail_page(session, session_logs, logs_dir: str) -> str:
                 formatted_content,
             )
 
-            log_panels.append(
-                f"""
+            log_panels.append(f"""
                 <div id="log-{log_name}" class="log-panel {active_class}">
                     <pre class="log-content">{formatted_content}</pre>
                 </div>
-            """
-            )
+            """)
 
         logs_html = f"""
             <div class="log-tabs">

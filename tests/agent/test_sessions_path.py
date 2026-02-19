@@ -29,8 +29,7 @@ def test_legacy_sessions_migration(tmp_path, monkeypatch):
 
     # Create osiris.yaml in temp directory
     osiris_config = tmp_path / "osiris.yaml"
-    osiris_config.write_text(
-        """
+    osiris_config.write_text("""
 version: "2.0"
 
 filesystem:
@@ -39,8 +38,7 @@ filesystem:
   outputs:
     directory: "output"
     format: "csv"
-"""
-    )
+""")
 
     # Import and instantiate agent (should trigger migration)
     from osiris.core.conversational_agent import ConversationalPipelineAgent
@@ -81,8 +79,7 @@ def test_no_migration_if_new_exists(tmp_path, monkeypatch):
 
     # Create osiris.yaml
     osiris_config = tmp_path / "osiris.yaml"
-    osiris_config.write_text(
-        """
+    osiris_config.write_text("""
 version: "2.0"
 
 filesystem:
@@ -91,8 +88,7 @@ filesystem:
   outputs:
     directory: "output"
     format: "csv"
-"""
-    )
+""")
 
     from osiris.core.conversational_agent import ConversationalPipelineAgent
 
@@ -112,8 +108,7 @@ def test_fresh_install_uses_new_path(tmp_path, monkeypatch):
 
     # No legacy directory
     osiris_config = tmp_path / "osiris.yaml"
-    osiris_config.write_text(
-        """
+    osiris_config.write_text("""
 version: "2.0"
 
 filesystem:
@@ -122,8 +117,7 @@ filesystem:
   outputs:
     directory: "output"
     format: "csv"
-"""
-    )
+""")
 
     from osiris.core.conversational_agent import ConversationalPipelineAgent
 
