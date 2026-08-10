@@ -2168,7 +2168,7 @@ def test_cfng_call_substitutes_params(tmp_path):
 def test_sql_creates_a_table_named_for_the_step(tmp_path):
     with _ctx(tmp_path) as ctx:
         ctx.get_db_connection().execute("CREATE TABLE fetch AS SELECT 'Dune' AS title, 8.1 AS rating")
-        step = Step(id="pick", uses="sql", **{"with": {"query": "SELECT * FROM fetch WHERE rating >= ${params.min_rating}"}})
+        step = Step(id="pick", uses="sql", **{"with": {"query": "SELECT * FROM \"fetch\" WHERE rating >= ${params.min_rating}"}})
         result = run_sql(step, ctx, {"min_rating": 7.5})
         assert result == {"table": "pick", "rows": 1}
 
@@ -3268,7 +3268,7 @@ DRAFT = {
     "params": {"min_rating": 7.5},
     "steps": [
         {"id": "fetch", "uses": "cfng_call", "with": {"connector": "imdb", "tool": "search"}},
-        {"id": "pick", "uses": "sql", "with": {"query": "SELECT * FROM fetch WHERE rating >= ${params.min_rating}"}},
+        {"id": "pick", "uses": "sql", "with": {"query": "SELECT * FROM \"fetch\" WHERE rating >= ${params.min_rating}"}},
         {"id": "check", "uses": "assert", "with": {"table": "pick", "min_rows": 1}},
     ],
 }
