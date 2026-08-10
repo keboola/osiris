@@ -154,3 +154,37 @@ Check 4 builds `declared` only from keys present in `plan.fingerprints`, so an e
 8. **Delete the dead code:** `Relay.list_tools`, the `verify_pins` branch, the `cfng_base_url` fixture, the 7 unused markers.
 9. **Write the test that kills check 2**, and drop the YAML pass from `pins_fp` (use `canonical_json`, which is fold-free).
 10. **Decide on `policy.on_tool_contract_drift`.** Either reject `warn`/`ignore` at freeze time, or require an explicit justification field and surface it loudly in `run` output and the ledger. Right now it's a silent kill switch on the engine's central safety property.
+---
+
+# Disposition (2026-08-10, after round 2)
+
+Round 3 was deliberately **not** run. Adversarial verification does not converge on its own — each
+round reaches past the last one's fixes. The right stopping point for a walking skeleton is to fix
+what is cheap and unambiguously wrong, then state the guarantees at the strength the implementation
+actually supports. The bounded claims now live in `docs/design/osiris-0.6.0-engine.md` §4.3.1.
+
+## Fixed (commit `52b3f01`)
+
+| Defect | Fix |
+|---|---|
+| 1 — foreign `cfng_` tokens unredacted | Prefix-anchored shape rule at the `redact()` seam, applied before exact-value matching. Deliberately not entropy-based. |
+| 2 — `_SECRET_SHAPED` bypass, guard ordering | One shared pattern; guard runs after every field is populated. Refuses rather than masking, because masked bytes no longer hash to the recorded fingerprint. |
+| 3 — drift evidence falsifiable by policy | The event name is the assertion: `pins_verified` only when nothing drifted, `pins_drift_suppressed` otherwise, `drift_ignored` carries the diff. |
+| 4 — `tool_pin` fidelity | `annotations` hashed; `inputSchema` uses the strict `is not None` form. **Changes every existing pin value.** |
+| 5 — `ToolPin` un-sealed | `extra="forbid"`. |
+| 6 — `mcp>=1.2.1` floor | Raised to `>=2.0.0`; `anyio` and `requests` declared. |
+
+## Open, with cost
+
+| Item | Why it is still open | Cost |
+|---|---|---|
+| **CI cannot fail a PR** — `research.yml` is `continue-on-error` at job and step level with `\|\| true`; four path-filtered workflows target deleted directories; `CODEOWNERS` and `MANIFEST.in` name the v0.5.4 tree | Workflow deletion was declined during execution and left to a human | ~1h. **Highest leverage item on this list** — without it nothing above stays fixed |
+| Clean-venv run fails on `pandas` | A v0.5.4 shopify docs example is still tracked and `test_package` resolves its imports | ~10 min: delete the example |
+| Keyed signing | Needs a key-management story that does not exist | Phase 3+ |
+| Per-call pin re-verification (TOCTOU) | Pins are checked at t0 only; a contract moving mid-run is not re-checked | Real cost, deferred deliberately |
+| `.env` loading not wired | `python-dotenv` was dropped rather than wired, since the CLI was owned by another agent at the time | ~15 min |
+| `.env.dist` still documents v0.5.4 variables | `rm` on `.env*` was declined by a permission rule | ~5 min, needs a human |
+| Pin-key format `{connector}__{tool}` is ambiguous | Changing it invalidates every frozen artifact, so only collision *detection* was added | `FOLLOW-UP(pin-key-format)` at `pins.py:17` names the three call sites that must move together |
+| `Relay.list_tools`, the `verify_pins` branch | Dead until phase 2 wires `osiris_freeze` over MCP | Phase 2 |
+| `RunContext` does not expose its `Session` | `cfng_call` reads `ctx._session` via `getattr` | ~10 min: add a `secrets` property |
+| Integrity check 5 validates only the leaf directory name | A verified artifact can be moved under a different plan name | ~15 min |
