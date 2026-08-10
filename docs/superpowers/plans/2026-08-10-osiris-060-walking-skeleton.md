@@ -2824,7 +2824,19 @@ class Relay:
 
 
 def build_server(relay: Relay):
-    """Wire the relay into an MCP server over stdio."""
+    """Wire the relay into an MCP server over stdio.
+
+    !! WARNING, found during execution: everything below targets **mcp SDK v1**
+    and DOES NOT RUN on the installed **mcp 2.0.0**. `@server.list_tools()` and
+    `@server.call_tool()` do not exist there and raise AttributeError. In 2.0.0
+    handlers are constructor kwargs -- `Server(name, version=..., instructions=...,
+    on_list_tools=..., on_call_tool=...)` -- taking `(ctx, params)` and returning
+    `ListToolsResult` / `CallToolResult`, with the tool name and arguments arriving
+    as `params.name` and `params.arguments`. Prefer
+    `server.create_initialization_options()` over hand-built `InitializationOptions`.
+    The shipped `osiris/relay/server.py` is the correct reference; read the
+    installed SDK before transcribing any of this.
+    """
     from mcp.server import Server
     from mcp.types import TextContent, Tool
 
