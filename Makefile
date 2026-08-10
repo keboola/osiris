@@ -187,9 +187,13 @@ pre-commit-all: ## Run all pre-commit hooks on all files
 	@echo "🔍 Running pre-commit hooks on all files..."
 	pre-commit run --all-files
 
-secrets-check: ## Run secret detection on all files
+secrets-check: ## Run secret detection on all tracked files
 	@echo "🔐 Scanning for secrets..."
-	detect-secrets scan --baseline .secrets.baseline .
+# `detect-secrets scan --baseline X` REWRITES X in place and exits 0 no matter
+# what it finds, so the old form of this target reported success unconditionally
+# and dirtied the baseline as a side effect. `detect-secrets-hook` is the one
+# that blocks.
+	detect-secrets-hook --baseline .secrets.baseline $$(git ls-files)
 	@echo "✅ No new secrets detected!"
 
 secrets-audit: ## Audit detected secrets interactively

@@ -17,6 +17,5 @@ mcp>=2.0.0              # Model Context Protocol Python SDK
 
 # Note: For development dependencies, use: pip install -e ".[dev]"
 # This installs the package with all development tools defined in pyproject.toml
-# — including anyio (imported directly by tests/relay/test_server.py) and
-# requests (named by the shopify docs example that tests/test_package.py
-# resolves imports for). Both used to arrive only transitively.
+# — including anyio, which tests/relay/test_server.py imports directly and which
+# used to arrive only transitively via httpx and mcp.

@@ -61,13 +61,6 @@ dev = [
     # drop it and the suite would stop collecting for a reason no manifest
     # explains.
     "anyio>=4.0.0",
-    # Named by docs/developer-guide/human/examples/shopify.extractor/, whose
-    # imports tests/test_package.py resolves for real. It currently reaches a
-    # dev environment only as a transitive dependency of twine. Declared here
-    # because the check is real; it should be deleted along with that v0.5.4
-    # example, which also imports pandas and is why the suite still fails in a
-    # venv built from these deps alone.
-    "requests>=2.31.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.0.0",
     "black>=23.0.0",
