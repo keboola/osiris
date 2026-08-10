@@ -121,3 +121,6 @@ htmlcov/
 .coverage
 .coverage.*
 coverage.xml
+
+# Live cf-ng probing: holds a real .env, never committed
+live/

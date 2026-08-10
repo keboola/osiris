@@ -1,0 +1,115 @@
+name: CI
+
+# One blocking gate. Every job here can fail a pull request -- that is the point.
+#
+# v0.5.4 shipped a runtime that could not execute a pipeline, partly because no
+# required check ever ran the suite: the only workflow that invoked pytest was
+# `continue-on-error` at job AND step level with `|| true`, and four others were
+# path-filtered on directories that no longer existed. Nothing here is advisory.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_DEFAULT: "3.11"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_DEFAULT }}
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      # Mirrors `make lint` exactly. If these diverge, the local gate lies.
+      - name: Ruff
+        run: ruff check .
+      - name: Black
+        run: black --check --line-length=120 .
+      - name: isort
+        run: isort --check-only --profile=black --line-length=120 .
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_DEFAULT }}
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: pip install "bandit[toml]" detect-secrets
+      # Mirrors `make security`.
+      - name: Bandit
+        run: bandit -r osiris -c bandit.yaml -q
+      # `detect-secrets scan --baseline X` REWRITES X and exits 0 whatever it
+      # finds -- the previous workflow ran exactly that and could never fail.
+      # `detect-secrets-hook` is the command that actually blocks.
+      - name: Detect secrets
+        run: detect-secrets-hook --baseline .secrets.baseline $(git ls-files)
+
+  test:
+    name: Tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 is the declared floor in pyproject; 3.13 is the forward edge.
+        # Testing the floor is not ceremony: the round-2 audit found `mcp>=1.2.1`
+        # declared while the code needed the 2.x API, so `osiris serve` was dead
+        # on arrival under a legal dependency resolution and nothing noticed.
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      - name: Show resolved dependency floors
+        run: pip list
+      # Mirrors `make test`.
+      - name: Pytest
+        run: python -m pytest tests/ -q
+
+  package:
+    name: Wheel installs and runs clean
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_DEFAULT }}
+          cache: pip
+      - run: python -m pip install --upgrade pip build
+      - name: Build wheel
+        run: python -m build --wheel
+      # The audit found the suite passing against a stale v0.5.4 virtualenv that
+      # still carried e2b, supabase, openai and pandas. A wheel installed into a
+      # fresh interpreter from its own declared dependencies is the only honest
+      # check that the package is self-contained.
+      - name: Install the wheel into a clean venv and exercise the CLI
+        run: |
+          set -euxo pipefail
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install --upgrade pip
+          /tmp/clean/bin/pip install dist/*.whl
+          cd /tmp
+          /tmp/clean/bin/osiris --help
+          /tmp/clean/bin/osiris init
+          /tmp/clean/bin/osiris doctor || true   # exits 1 without CFNG_* set, which is correct
+          /tmp/clean/bin/python -c "import osiris; print(osiris.__version__)"
+          /tmp/clean/bin/python -c "from osiris.relay.server import build_server; print('relay import ok')"

@@ -1,21 +1,22 @@
-# Include component specifications
-recursive-include components *.yaml
-recursive-include components *.yml
-recursive-include components *.json
+# Source distribution contents.
+#
+# The v0.5.4 version recursively included components/, a directory the v0.6.0
+# rebuild deleted. setuptools does not error on a pattern that matches nothing,
+# so it looked correct while doing nothing.
 
-# Include documentation
 include README.md
 include LICENSE
 include CHANGELOG.md
 
-# Exclude development and test files
 recursive-exclude tests *
-recursive-exclude testing_env *
 recursive-exclude docs *
-recursive-exclude examples *
+recursive-exclude .github *
 exclude .gitignore
 exclude .pre-commit-config.yaml
+exclude .secrets.baseline
+exclude bandit.yaml
 exclude pytest.ini
 exclude Makefile
 exclude CLAUDE.md
 exclude CONTRIBUTING.md
+exclude osiris.py

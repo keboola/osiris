@@ -1,38 +1,41 @@
-# CODEOWNERS for Osiris Pipeline
+# CODEOWNERS for Osiris
 # https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Rewritten for v0.6.0. Every path the previous version named -- osiris/remote,
+# osiris/core, osiris/cli as a package, osiris/connectors, osiris/drivers,
+# components/, tests/e2b -- was deleted in the rebuild, so those rules matched
+# nothing and silently assigned no reviewer.
 
 # Default owners for everything in the repo
 * @keboola/osiris-maintainers
 
-# E2B and remote execution infrastructure
-/osiris/remote/ @keboola/runtime-team @keboola/remote-owners
-/tests/e2b/ @keboola/runtime-team @keboola/remote-owners
-/.github/workflows/e2b-*.yml @keboola/runtime-team @keboola/remote-owners
-/docs/testing/e2b-*.md @keboola/runtime-team @keboola/remote-owners
+# Determinism and the artifact contract: changes here move every frozen
+# artifact's hash, so they need deliberate review.
+/osiris/determinism/ @keboola/core-team
+/osiris/plan/ @keboola/core-team
 
-# Core pipeline components
-/osiris/core/ @keboola/core-team
-/osiris/cli/ @keboola/core-team
+# Execution
+/osiris/run/ @keboola/core-team
 
-# Database connectors
-/osiris/connectors/ @keboola/connectors-team
+# The cf-ng integration seam
+/osiris/cfng/ @keboola/core-team
+/osiris/relay/ @keboola/core-team
 
-# Driver implementations
-/osiris/drivers/ @keboola/runtime-team
+# Evidence, redaction and the filesystem contract
+/osiris/evidence/ @keboola/core-team
+/osiris/fsc/ @keboola/core-team
 
-# Component specifications
-/components/ @keboola/components-team
-
-# Documentation
-/docs/ @keboola/documentation-team
-/README.md @keboola/documentation-team
-
-# CI/CD and workflows (except E2B)
-/.github/workflows/ @keboola/devops-team
-/.github/actions/ @keboola/devops-team
+# CI/CD
+/.github/ @keboola/devops-team
 
 # Configuration and project files
 /pyproject.toml @keboola/core-team
 /requirements*.txt @keboola/core-team
 /Makefile @keboola/core-team
+/pytest.ini @keboola/core-team
+/bandit.yaml @keboola/devops-team
 /.pre-commit-config.yaml @keboola/devops-team
+
+# Documentation
+/docs/ @keboola/documentation-team
+/README.md @keboola/documentation-team
