@@ -171,6 +171,8 @@ DuckDB therefore serves two roles that must not be confused:
 - **the data bus** — where step outputs live, on disk, spill-capable, unbounded by RAM;
 - **a step type** (`uses: sql`) — declarative transformation over those tables.
 
+**The bus has a single process owner.** Measured during implementation, not assumed: within one process, a second context opened on the same file is an *alias* — DuckDB's instance cache returns the same database instance, so both see each other's writes and neither is isolated. Across processes the file lock is exclusive and a second opener raises `IOException`; the lock releases cleanly on close. This constrains §3.3 and phase 4: a containerized run owns the file for its whole lifetime, and any future design that executes steps in a child process must either close the parent's connection before handing over the run directory, or route the child's data access through the parent. It cannot simply open the file on both sides.
+
 v1 step types: `cfng_call`, `sql`, `assert`.
 
 `assert` is first-class from v1: a step that checks a precondition (*more than 0 rows arrived*) and halts the run with a clear error. Without it, a silent upstream change surfaces as an empty digest every 15 minutes that nobody notices for a month.
