@@ -32,7 +32,7 @@ v0.6.0 keeps the goal — *AI designs once, the runtime executes deterministical
 | Third-party reach | 9 in-house connectors + drivers | cf-ng (~694 connectors) |
 | Conversation | own chat FSM + own LLM adapter + own API keys | host agent (Claude Code); engine holds **no LLM keys** |
 | Agent guidance | prompts + pro-mode | a plugin/skill served by the engine, mirroring cf-ng's `GET /skill` |
-| Data plane | DuckDB as mandatory tabular bus | JSON in memory; SQL as a *step type* |
+| Data plane | DuckDB bus — sound design, broken wiring (§2.1) | DuckDB bus, wiring fixed and proven first (§4.4) |
 | Remote execution | E2B (4 ADRs, ~6.3k LOC) | Docker as a **packaging** format |
 | Artifact | OML → manifest | Plan → manifest + pins + fingerprints |
 | Determinism | fingerprints computed, **never verified** | pins + fingerprints verified on **every** run |
@@ -160,13 +160,35 @@ v0.5.4 computes fingerprints faithfully and **calls `verify_fingerprint()` nowhe
 
 **Rule for v0.6.0:** the runner verifies pins and the manifest fingerprint before the first call of every run. Every guarantee has a test that **violates** it and expects failure — a fingerprint test must feed a mutated manifest and assert the run aborts, not assert that a hash can be computed.
 
-### 4.4 Data between steps
+### 4.4 Data between steps: DuckDB, not memory
 
-JSON in memory. cf-ng returns payloads inline and caps Airbyte reads at 1000 records / 120 s; the target use cases are digests, not bulk movement. DuckDB returns as a **step type** (`uses: sql`) — declarative, deterministic, reads JSON natively, and the audience thinks in SQL — but **not** as a mandatory data bus. ADR-0043's tabular bus is dropped.
+**Data must not be held in memory and volumes must not be assumed small.** Intermediate data flows through a per-run DuckDB file (`pipeline_data.duckdb`); each step reads and writes tables addressed by step id. This is ADR-0043's design, retained deliberately.
+
+ADR-0043 is the most thoroughly measured decision in the repo — ~1.5M rows/s, 98% memory reduction, 67% disk saving, and it deleted ~1,500 lines of hand-rolled spilling logic. What is broken is not the design but the **wiring**: neither runtime context provides `get_db_connection()` while all 7 drivers call it (§2.1). v0.6.0 keeps the design and fixes the wiring, and proving that fix is the **first deliverable of phase 1** — a single shared, tested `RunContext` constructed once by the engine, replacing the two divergent inline classes.
+
+DuckDB therefore serves two roles that must not be confused:
+
+- **the data bus** — where step outputs live, on disk, spill-capable, unbounded by RAM;
+- **a step type** (`uses: sql`) — declarative transformation over those tables.
 
 v1 step types: `cfng_call`, `sql`, `assert`.
 
 `assert` is first-class from v1: a step that checks a precondition (*more than 0 rows arrived*) and halts the run with a clear error. Without it, a silent upstream change surfaces as an empty digest every 15 minutes that nobody notices for a month.
+
+### 4.5 Volume: the cf-ng shape is the constraint, not its limits
+
+cf-ng's published limits are **environment-configurable deployment defaults**, not architectural ceilings — `AIRBYTE_READ_HARD_CAP=1000`, `AIRBYTE_READ_TIMEOUT_S=120`, `AIRBYTE_MAX_CONCURRENCY=4` (`airbyte-sidecar/server.py:50-52`), `CFNG_HTTP_TIMEOUT=30`, `CFNG_AIRBYTE_TIMEOUT=180` (`env.example:33,43`). They can be raised.
+
+Raising them does not solve volume, because the limiting factor is the **shape**: `POST /tools/call` is synchronous and in-process, returns the payload inline, and has no queue, no job object and no streaming response. A cap of 1,000,000 means a synchronous HTTP call returning a multi-gigabyte JSON body — a worse failure than the cap.
+
+Two mechanisms, in this order:
+
+1. **Engine-side pagination (v1).** For extraction steps the engine issues repeated bounded `cfng_call`s with a cursor or offset and streams each page straight into DuckDB. This works within cf-ng's current shape and needs no cf-ng change, but depends on the connector exposing pagination — which is per-connector and not uniformly guaranteed. Every paginated read records page count and total rows in evidence, so a silently truncated extraction is visible rather than assumed complete.
+2. **A bulk path in cf-ng (dependency).** For volumes where pagination over synchronous HTTP is the wrong tool, cf-ng needs either a streaming response (chunked NDJSON), an async job with polling, or a land-to-Storage path. The last already exists as [keboola/cf-ng#11](https://github.com/keboola/cf-ng/issues/11) (`store_records` / create-table-from-JSON), which lands agent-pulled data in the caller's own Keboola project. Tracked as a new dependency in §9.
+
+**Keboola Storage is a destination, not the bus.** Writing a result to a Storage table is a writer step; it does not replace the local DuckDB file that carries data between steps in the customer's own runtime.
+
+This is also where the eject seam (§3.4) stops being hypothetical: if a customer's extraction volume outgrows what cf-ng can carry synchronously and the bulk path has not landed, going direct to the source for that one step is the pressure valve. It remains out of v1 scope, but the artifact's step model must not make it impossible — which is why `uses:` is an open step-type field rather than a closed enum. (v0.5.4's component spec closed exactly this door: `modes` is a fixed enum with `additionalProperties: false`.)
 
 ---
 
@@ -237,7 +259,7 @@ Two tests carry disproportionate weight:
 | # | Scope | Estimate | Done means |
 |---|---|---|---|
 | 0 | Commit the untracked strategic corpus; scaffold v0.6.0 package | 0.5 d | Prior analysis is in git |
-| 1 | **Walking skeleton** — relay + session store + freeze + run | ~1 w | Conversation → artifact → run twice → identical evidence and matching fingerprint |
+| 1 | **Walking skeleton** — shared `RunContext` (§4.4), relay, session store, freeze, run | ~1 w | Conversation → artifact → run twice → identical evidence and matching fingerprint, with data passing between steps through DuckDB |
 | 2 | Plugin/skill served by the engine; handshake instructions | ~3 d | A cold Claude installs the skill and completes the flow unaided |
 | 3 | Step types (`sql`, `assert`), drift policies, retry, error taxonomy | ~1 w | Drift aborts a run with a diff and offers `replan` |
 | 4 | Packaging — Dockerfile, wheel, containerized run | ~3 d | `docker run` of the artifact in a foreign environment |
@@ -254,6 +276,7 @@ Filed 2026-08-10, all `enhancement`:
 - [#25 — Expose connector version in the tool descriptor](https://github.com/keboola/cf-ng/issues/25). Unblocks hard pinning. Without it, connector-version drift is undetectable, most acutely for Airbyte (`install_if_missing=True`, no pin, `airbyte-sidecar/server.py:111,123`).
 - [#26 — Populate MCP tool annotations](https://github.com/keboola/cf-ng/issues/26). Unblocks automated retry for read-only steps.
 - [#27 — Preserve structured upstream error information](https://github.com/keboola/cf-ng/issues/27). Unblocks retry classification and useful diagnostics.
+- **A bulk read path** (§4.5) — streaming response, async job, or the land-to-Storage tool already proposed as [#11](https://github.com/keboola/cf-ng/issues/11). Not a v1 blocker, because engine-side pagination works within cf-ng's current shape, but it is the ceiling on how much data a frozen pipeline can move.
 
 **Assumption, not a blocker:** the `cfng_` capability token caps at 90 days. A renewal mechanism belongs in cf-ng, which already owns identity; the engine must not duplicate it. Until then, `osiris doctor` checks token expiry and the runner fails with an explicit "token expired, re-mint" error rather than an opaque auth failure.
 
@@ -261,7 +284,7 @@ Filed 2026-08-10, all `enhancement`:
 
 ## 10. Non-goals
 
-- **Scheduling.** The artifact is runnable; cron, GitHub Actions or Keboola orchestration runs it. v0.5.4 has three unfinished scheduling ADRs and empty roadmap stubs — do not continue them.
+- **Scheduling.** The artifact is runnable; cron, GitHub Actions or Keboola orchestration runs it. v0.5.4 has three unfinished scheduling ADRs and empty roadmap stubs — do not continue them. This is a non-goal for the *engine*, not for the *product*: shipping worked examples of each host is in scope (§12), because "runnable" is not the same as "someone knows how to run it".
 - **Its own LLM.** No API keys, no prompt management, no eval harness, no chat. The consumer brings the model.
 - **Its own connectors.** cf-ng brings 694; v0.5.4's own count was 9, which its own modernization note called a losing position.
 - **DAG / control flow.** Linear until something demands otherwise.
@@ -282,7 +305,84 @@ The defensible claim is narrower, and cf-ng sharpens it:
 
 ---
 
-## 12. Evidence
+## 12. Worked examples
+
+Scheduling is not the engine's job (§10), but *showing how it is done* is part of the product. Each of these ships as a runnable example.
+
+### 13.1 The authoring loop
+
+```
+$ osiris serve --cfng https://cf-ng-43677805.hub.us-east4.gcp.keboola.com
+  listening on stdio · relaying to cf-ng · session sess_01JQ7X…
+```
+
+Registered as an MCP server in Claude Code alongside cf-ng. The user explores normally — *which films released this week are well rated, which cinemas show them* — and every relayed call is recorded. When the answer is found:
+
+```
+> /osiris:freeze make this a 15-minute digest to #film-club
+
+  plan_freeze → validating 4 steps against 3 recorded observations
+    ✓ imdb__search_titles     input sha256:1a2b… output sha256:3c4d…
+    ✓ cinemas__by_title       input sha256:9f01… output sha256:2e3d…
+    ✓ slack__post_message     input sha256:5e6f… output sha256:7a8b…
+    ! connector version unavailable for 3 tools (cf-ng#25) — recorded as unknown
+  → build/cinema-listings-well-rated/a71f3c9/
+```
+
+### 13.2 Running it
+
+**cron, on any host with Docker**
+
+```cron
+*/15 * * * * docker run --rm --env-file /etc/osiris/cfng.env \
+  -v /var/lib/osiris:/data ghcr.io/keboola/osiris:0.6.0 \
+  run /data/build/cinema-listings-well-rated/a71f3c9
+```
+
+**GitHub Actions**
+
+```yaml
+on:
+  schedule: [{cron: "*/15 * * * *"}]
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pipx install osiris-engine==0.6.0
+      - run: osiris run build/cinema-listings-well-rated/a71f3c9
+        env: {CFNG_TOKEN: "${{ secrets.CFNG_TOKEN }}"}
+```
+
+**Keboola orchestration** — the artifact directory committed to the project, executed by a scheduled job; `CFNG_TOKEN` supplied from the project's own encrypted configuration, so the credential never leaves the tenant.
+
+**Locally, while iterating**
+
+```bash
+osiris run build/cinema-listings-well-rated/a71f3c9 --dry-run   # verify pins, execute nothing
+osiris run build/cinema-listings-well-rated/a71f3c9
+osiris run diff --last 2                                        # what changed between runs
+```
+
+### 13.3 What a drift failure looks like
+
+```
+$ osiris run build/cinema-listings-well-rated/a71f3c9
+  ✗ tool contract drift — aborting before first call
+
+    cinemas__by_title  inputSchema changed since freeze
+      - required: [title, city]
+      + required: [title, city, region]
+
+    policy: on_tool_contract_drift = fail
+    → osiris replan a71f3c9   (reopens the plan in your agent with this diff)
+```
+
+Nothing was called. The failure is diagnosable without reading a log, and the fix path is a single command back into the conversation.
+
+---
+
+## 13. Evidence
 
 Grounded in a 9-agent parallel recon of both repositories (2026-08-10) plus direct verification. Load-bearing facts:
 
@@ -294,3 +394,5 @@ Grounded in a 9-agent parallel recon of both repositories (2026-08-10) plus dire
 - cf-ng `Connector` ABC has no `version` attribute.
 - E2B production footprint: 24 files / 308 lines in `osiris/`; SDK surface is 4 verbs (`files.write`, `commands.run`, `files.read`, `kill`) mapping 1:1 onto `docker cp` / `docker exec` / `docker rm`.
 - Branch inventory: 8 of 10 named branches have zero commits outside `origin/main`; no unmerged work of consequence.
+- cf-ng volume limits are env-configurable defaults, not ceilings: `AIRBYTE_READ_HARD_CAP=1000`, `AIRBYTE_READ_TIMEOUT_S=120`, `AIRBYTE_MAX_CONCURRENCY=4` (`airbyte-sidecar/server.py:50-52`); `CFNG_HTTP_TIMEOUT=30`, `CFNG_AIRBYTE_TIMEOUT=180` (`env.example:33,43`). The binding constraint is the synchronous inline-payload shape of `POST /tools/call`, which raising a cap does not change.
+- ADR-0043 measurements (~1.5M rows/s, 98% memory reduction, 67% disk saving, ~1,500 LOC of spilling logic removed) make it the best-evidenced decision in the repo; its defect is wiring, not design.
