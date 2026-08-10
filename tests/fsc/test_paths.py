@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from osiris.fsc.config import FilesystemConfig
-from osiris.fsc.paths import Paths, slugify
+from osiris.fsc.paths import Paths, sanitize_segment, slugify
 
 
 def _cfg(tmp_path: Path) -> FilesystemConfig:
@@ -77,3 +77,49 @@ def test_no_path_escapes_base_path(tmp_path):
         assert resolved.is_relative_to(base), f"{candidate} resolves outside base to {resolved}"
         # And it lands strictly below base, never on base itself.
         assert resolved != base, f"{candidate} collapsed onto base_path itself"
+
+
+# --- Generated ids must survive verbatim ------------------------------------
+#
+# Found by hands-on testing, not by the suite: the run index recorded
+# `run_20260810T192357Z_493c91` while the directory was `…t192357z…`. On macOS
+# the mismatch is invisible (APFS is case-insensitive); on Linux, which is CI
+# and production, following the ledger to its evidence fails outright. No test
+# caught it because every test built both sides through the same lowercasing
+# helper — two identically broken paths agree.
+
+
+def test_sanitize_segment_preserves_case():
+    assert sanitize_segment("run_20260810T192357Z_493c91") == "run_20260810T192357Z_493c91"
+
+
+def test_sanitize_segment_still_dissolves_traversal():
+    for hostile in ("../escape", "..", "/etc/passwd", "..\\..\\windows", "a/../../b", "....//x"):
+        out = sanitize_segment(hostile)
+        assert ".." not in out
+        assert "/" not in out and "\\" not in out
+
+
+def test_run_log_dir_keeps_the_run_id_exactly(tmp_path):
+    """The whole point: what the ledger records is what `ls` finds."""
+    p = Paths(_cfg(tmp_path))
+    run_id = "run_20260810T192357Z_493c91"
+    assert p.run_log_dir("Cinema Digest", run_id).name == run_id
+
+
+def test_run_log_dir_still_normalizes_the_plan_name(tmp_path):
+    p = Paths(_cfg(tmp_path))
+    assert p.run_log_dir("Cinema Digest!", "run_1").parent.name == "cinema-digest"
+
+
+def test_session_dir_keeps_the_session_id_exactly(tmp_path):
+    p = Paths(_cfg(tmp_path))
+    assert p.session_dir("sess_20260810T192357Z_ab12").name == "sess_20260810T192357Z_ab12"
+
+
+def test_a_run_id_from_the_generator_round_trips(tmp_path):
+    """Generate a real id, build its path, and read the name back."""
+    from osiris.evidence.run_ids import new_run_id
+
+    run_id = new_run_id()
+    assert Paths(_cfg(tmp_path)).run_log_dir("demo", run_id).name == run_id
