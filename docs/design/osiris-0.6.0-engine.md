@@ -160,6 +160,20 @@ v0.5.4 computes fingerprints faithfully and **calls `verify_fingerprint()` nowhe
 
 **Rule for v0.6.0:** the runner verifies pins and the manifest fingerprint before the first call of every run. Every guarantee has a test that **violates** it and expects failure — a fingerprint test must feed a mutated manifest and assert the run aborts, not assert that a hash can be computed.
 
+### 4.3.1 What the guarantees actually are
+
+Two rounds of adversarial verification (`docs/reports/2026-08-10-v060-adversarial-verification/`) refuted every guarantee as originally worded. Most of the second round's refutations were defects; several were the wording. These are the bounded claims the implementation supports, and they are the ones to make in public:
+
+| Claim | Holds | Bound |
+|---|---|---|
+| **Deterministic** | Verified across processes, working directories, timezones, locales, `PYTHONHASHSEED` and wall clock — 5 interpreters, 3 fake clocks, 120 fuzzed drafts, zero variance and zero collisions. | The hash covers the pins, so it is tied to the **cf-ng deployment it was frozen against**. Staging and production yield different hashes for the same draft. That is correct — the pins *are* part of the artifact — but it means the hash names a plan-against-an-environment, not a plan. |
+| **Tamper-evident** | Every partial edit is caught: all three fingerprints, the internal relation `manifest == sha256(plan + pins)`, and the build directory name. 11 benign reformattings (BOM, CRLF, flow style, JSON rewrite, comments) correctly tolerated. | An **unkeyed checksum stored beside what it protects**. An attacker who rewrites every file *and* renames the directory produces a coherent artifact. Closing that needs a signature and a key-management story that does not exist yet. Tamper-evidence here means *against accident and casual edit*. |
+| **Aborts on drift** | Real and ordering-correct: nothing is called, verified with a request-counting transport, including when the drifting tool belongs to the last step. | Conditional on `policy.on_tool_contract_drift`, which the plan author sets at freeze time. `warn` and `ignore` are legitimate settings that disable the abort; the evidence record must therefore say which policy was in force. |
+| **Pins verified** | Before the first call of every run. | At **t0 only**. A contract that moves mid-run is not re-checked. Per-call re-verification is a real cost and is deferred. |
+| **Secret-free evidence** | Redaction walks dict keys, values, lists, tuples, sets and bytes; rows are redacted before the artifact is written and the table is built from that file, so nothing enters the DuckDB pages. Verified by byte-grepping every file under the base path on both the success and the failure path, with a planted positive control. | Redaction is by known secret plus credential-shaped pattern. A credential in a shape nobody anticipated is not covered. This is mitigation, not proof. |
+
+The general lesson, recorded because it outlived the specific bugs: **a green test is a claim, not evidence.** The round-1 leak test passed 5/5 while four leaks were live, because it greped one file — the only one already correct. Every guarantee test in this repo must fail when its guarantee is removed, and the sweep tests must carry a positive control proving the search itself works.
+
 ### 4.4 Data between steps: DuckDB, not memory
 
 **Data must not be held in memory and volumes must not be assumed small.** Intermediate data flows through a per-run DuckDB file (`pipeline_data.duckdb`); each step reads and writes tables addressed by step id. This is ADR-0043's design, retained deliberately.
@@ -303,7 +317,7 @@ The defensible claim is narrower, and cf-ng sharpens it:
 
 > **The only place where an agent's conversation with a third-party system becomes a fingerprinted, replayable, explainable artifact.**
 
-*"Fingerprinted", not "signed".* A fingerprint is a content hash: it proves the artifact has not changed since it was frozen and that two builds of the same plan are identical. It does **not** prove who produced it. Cryptographic signing is a later addition, and the claim must not run ahead of the mechanism — that is exactly the failure mode of v0.5.4's unverified fingerprints (§4.3).
+*"Fingerprinted", not "signed".* A fingerprint is a content hash: it proves the artifact has not changed since it was frozen and that two builds of the same plan are identical. It does **not** prove who produced it, and because the hash is stored beside what it protects, it does not withstand an attacker who rewrites the whole directory. Cryptographic signing is a later addition, and the claim must not run ahead of the mechanism — that is exactly the failure mode of v0.5.4's unverified fingerprints (§4.3). The precise, defensible wording of each guarantee is in §4.3.1; use those, not the headline.
 
 ---
 
