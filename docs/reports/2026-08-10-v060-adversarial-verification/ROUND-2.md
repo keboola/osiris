@@ -178,13 +178,13 @@ actually supports. The bounded claims now live in `docs/design/osiris-0.6.0-engi
 
 | Item | Why it is still open | Cost |
 |---|---|---|
-| **CI cannot fail a PR** — `research.yml` is `continue-on-error` at job and step level with `\|\| true`; four path-filtered workflows target deleted directories; `CODEOWNERS` and `MANIFEST.in` name the v0.5.4 tree | Workflow deletion was declined during execution and left to a human | ~1h. **Highest leverage item on this list** — without it nothing above stays fixed |
-| Clean-venv run fails on `pandas` | A v0.5.4 shopify docs example is still tracked and `test_package` resolves its imports | ~10 min: delete the example |
+| ~~CI cannot fail a PR~~ | **DONE** (`63dcf7c`) — five dead workflows removed, `ci.yml` runs lint/security/tests(3.11+3.13)/wheel-install as blocking checks; `detect-secrets scan --baseline` replaced with `detect-secrets-hook`, which can actually fail | — |
+| ~~Clean-venv run fails on `pandas`~~ | **DONE** (`63dcf7c`) — the shopify example is deleted and a CI job installs the wheel into a fresh interpreter from its own declared deps | — |
 | Keyed signing | Needs a key-management story that does not exist | Phase 3+ |
 | Per-call pin re-verification (TOCTOU) | Pins are checked at t0 only; a contract moving mid-run is not re-checked | Real cost, deferred deliberately |
-| `.env` loading not wired | `python-dotenv` was dropped rather than wired, since the CLI was owned by another agent at the time | ~15 min |
-| `.env.dist` still documents v0.5.4 variables | `rm` on `.env*` was declined by a permission rule | ~5 min, needs a human |
+| ~~`.env` loading not wired~~ | **DONE** (`76dda5b`) — loads from the working directory, `override=False`, verified from a clean wheel install | — |
+| ~~`.env.dist` documents v0.5.4 variables~~ | **DONE** — deleted by the maintainer | — |
 | Pin-key format `{connector}__{tool}` is ambiguous | Changing it invalidates every frozen artifact, so only collision *detection* was added | `FOLLOW-UP(pin-key-format)` at `pins.py:17` names the three call sites that must move together |
 | `Relay.list_tools`, the `verify_pins` branch | Dead until phase 2 wires `osiris_freeze` over MCP | Phase 2 |
-| `RunContext` does not expose its `Session` | `cfng_call` reads `ctx._session` via `getattr` | ~10 min: add a `secrets` property |
-| Integrity check 5 validates only the leaf directory name | A verified artifact can be moved under a different plan name | ~15 min |
+| ~~`RunContext` does not expose its `Session`~~ | **DONE** (`76dda5b`) — `RunContext.secrets` returns a copy of the session's list | — |
+| ~~Integrity check 5 validates only the leaf directory name~~ | **DONE** (`76dda5b`) — the plan-name parent is checked too, mutation-verified | — |
