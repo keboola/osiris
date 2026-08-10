@@ -16,6 +16,7 @@
 - **`pytest.ini` is the only live pytest config.** `[tool.pytest.ini_options]` in `pyproject.toml` is silently ignored. Any new marker MUST be registered in `pytest.ini` — `--strict-markers` is on, so an unregistered marker is a hard collection error.
 - **pytest-asyncio runs in STRICT mode.** Every `async def test_*` MUST carry `@pytest.mark.asyncio`.
 - Every literal credential in a test needs a trailing `# pragma: allowlist secret` or `detect-secrets` fails the lint CI job.
+- **Lazy imports inside a function need `# noqa: PLC0415` anywhere under `osiris/`.** `PL` is in ruff's `select` and only `tests/**` and `scripts/**` carry a per-file ignore, so an unsuppressed function-level import fails `make lint`.
 - All tests live under `tests/`. Never create tests elsewhere.
 - `make type-check` is a no-op. Never list it as a verification step.
 - No required CI job runs the full suite. Run `make test` locally; a green PR is not evidence.
@@ -465,7 +466,7 @@ def combine_fingerprints(fingerprints: list[str]) -> str:
 
 def fingerprint_dict(data: dict[str, Any]) -> dict[str, str]:
     """Per-value fingerprints over sorted keys."""
-    from osiris.determinism.canonical import canonical_bytes
+    from osiris.determinism.canonical import canonical_bytes  # noqa: PLC0415
 
     return {key: compute_fingerprint(canonical_bytes(data[key], fmt="json")) for key in sorted(data)}
 
