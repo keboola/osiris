@@ -347,3 +347,117 @@ def test_pins_verified_is_not_emitted_when_drift_is_fatal(tmp_path):
     with pytest.raises(DriftError):
         _run(_catalog_client({"imdb": [changed]}), _plan(), tmp_path, session)
     assert not any(e["event"] == "pins_verified" for e in session.read_events())
+
+
+def test_pins_verified_names_the_policy_that_was_in_force(tmp_path):
+    """A clean assertion has to say what it was asserting under, or it says little."""
+    session = Session(tmp_path / "ev", "s")
+    _run(_catalog_client({"imdb": [IMDB_TOOL]}), _plan(), tmp_path, session)
+    (verified,) = [e for e in session.read_events() if e["event"] == "pins_verified"]
+    assert verified["drifts_found"] == 0
+    assert verified["drift_subjects"] == []
+    assert verified["on_tool_contract_drift"] == "fail"
+
+
+# --- drift evidence must not be falsifiable by policy -------------------------
+#
+# `policy.on_tool_contract_drift: warn|ignore` switches the abort off. Under
+# `ignore` the run used to emit `pins_verified {"warnings": 0}` -- byte-identical
+# to a clean run -- so the record of a failed verification was indistinguishable
+# from the record of a passed one. A positive integrity assertion must never
+# appear for a run whose integrity check failed.
+
+DRIFTED_TOOL = {"name": "search", "inputSchema": {"type": "object", "required": ["region"]}}
+
+
+def _drift_evidence(tmp_path, policy: dict, live_tool: dict = DRIFTED_TOOL) -> list[dict]:
+    """The pin-verification events of one run, stripped of per-invocation fields."""
+    session = Session(tmp_path / "ev", "s")
+    _run(_catalog_client({"imdb": [live_tool]}), _plan(policy=policy), tmp_path, session)
+    return [
+        {k: v for k, v in e.items() if k not in ("ts", "session_id")}
+        for e in session.read_events()
+        if e["event"].startswith(("pins_", "drift_"))
+    ]
+
+
+@pytest.mark.parametrize("action", [DriftAction.WARN, DriftAction.IGNORE])
+def test_suppressed_drift_never_emits_a_positive_verification(tmp_path, action):
+    events = _drift_evidence(tmp_path, {"on_tool_contract_drift": action})
+    assert not any(e["event"] == "pins_verified" for e in events)
+    (suppressed,) = [e for e in events if e["event"] == "pins_drift_suppressed"]
+    assert suppressed["drifts_found"] == 1
+    assert suppressed["drift_subjects"] == ["imdb__search"]
+    assert suppressed["on_tool_contract_drift"] == action.value
+
+
+def test_ignored_drift_is_distinguishable_from_a_clean_run(tmp_path):
+    """The exact refutation: `ignore` produced evidence identical to a clean run."""
+    ignored = _drift_evidence(tmp_path / "a", {"on_tool_contract_drift": DriftAction.IGNORE})
+    clean = _drift_evidence(tmp_path / "b", {}, live_tool=IMDB_TOOL)
+    assert clean == [e for e in clean if e["event"] == "pins_verified"]  # the clean run is clean
+    assert ignored != clean
+
+
+def test_an_ignored_drift_still_reaches_disk(tmp_path):
+    """Under `ignore` the diff text was recorded nowhere at all."""
+    events = _drift_evidence(tmp_path, {"on_tool_contract_drift": DriftAction.IGNORE})
+    assert any(e["event"] == "drift_ignored" and "inputSchema changed" in e["detail"] for e in events)
+
+
+def test_a_warned_catalog_drift_also_withholds_the_positive_assertion(tmp_path):
+    """Catalog drift is the default-warn path, so the default run can lie too."""
+    session = Session(tmp_path / "ev", "s")
+    _run(_catalog_client({"imdb": [IMDB_TOOL]}, catalog="sha256:cat2"), _plan(), tmp_path, session)
+    events = session.read_events()
+    assert not any(e["event"] == "pins_verified" for e in events)
+    (suppressed,) = [e for e in events if e["event"] == "pins_drift_suppressed"]
+    assert suppressed["drift_subjects"] == ["catalog"]
+    assert suppressed["on_catalog_drift"] == "warn"
+
+
+# --- annotations are part of the contract the runner verifies -----------------
+
+READ_ONLY_TOOL = {
+    "name": "search",
+    "inputSchema": {"type": "object"},
+    "annotations": {"readOnlyHint": True, "destructiveHint": False},
+}
+DESTRUCTIVE_TOOL = {
+    "name": "search",
+    "inputSchema": {"type": "object"},
+    "annotations": {"readOnlyHint": False, "destructiveHint": True},
+}
+
+
+def test_a_flipped_destructive_hint_aborts_before_any_tool_call(tmp_path):
+    """Under the DEFAULT fail policy this used to run and issue a real call."""
+    requests: list[str] = []
+    plan = _plan(
+        pins={
+            "cfng": {"catalog_version": "sha256:cat1"},
+            "tools": {"imdb__search": tool_pin(READ_ONLY_TOOL).model_dump()},
+        }
+    )
+    client = _catalog_client({"imdb": [DESTRUCTIVE_TOOL]}, requests=requests)
+    with pytest.raises(DriftError) as exc:
+        _run(client, plan, tmp_path)
+    assert "/tools/call" not in requests
+    assert "annotations changed since freeze" in exc.value.drifts[0].diff
+
+
+def test_an_inverted_input_schema_aborts_before_any_tool_call(tmp_path):
+    """`{}` -> `false` inverts the contract; `or {}` made both pin identically."""
+    requests: list[str] = []
+    permissive = {"name": "search", "inputSchema": {}}
+    closed = {"name": "search", "inputSchema": False}
+    plan = _plan(
+        pins={
+            "cfng": {"catalog_version": "sha256:cat1"},
+            "tools": {"imdb__search": tool_pin(permissive).model_dump()},
+        }
+    )
+    with pytest.raises(DriftError) as exc:
+        _run(_catalog_client({"imdb": [closed]}, requests=requests), plan, tmp_path)
+    assert "/tools/call" not in requests
+    assert "inputSchema changed since freeze" in exc.value.drifts[0].diff

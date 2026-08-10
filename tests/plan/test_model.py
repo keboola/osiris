@@ -192,6 +192,34 @@ def test_an_unknown_policy_field_is_rejected():
         _plan(policy={"on_weather_drift": "fail"})
 
 
+# `pins.tools.<key>` was the last door left open: `ToolPin` kept pydantic's
+# default `extra="ignore"`, so an unknown key added to a pin after freezing was
+# dropped on load, reached no hash, and the artifact still passed every
+# integrity check. The same literal offered at freeze time was refused.
+
+SMUGGLED_TOKEN = "cfng_v1.L1veCr3dent1alSmuggl3dIntoAPin"  # pragma: allowlist secret
+
+
+def _plan_with_pin(pin: dict) -> Plan:
+    return _plan(pins={"cfng": {"catalog_version": "sha256:1a"}, "tools": {"imdb__search": pin}})
+
+
+def test_a_credential_smuggled_into_a_tool_pin_is_rejected():
+    with pytest.raises(ValidationError, match="smuggled"):
+        _plan_with_pin({"input": "sha256:aa", "smuggled": SMUGGLED_TOKEN})
+
+
+def test_a_bulk_payload_smuggled_into_a_tool_pin_is_rejected():
+    with pytest.raises(ValidationError, match="blob"):
+        _plan_with_pin({"input": "sha256:aa", "blob": "X" * 100_000})
+
+
+def test_a_well_formed_tool_pin_still_loads():
+    """The refusal must be about unknown keys, not about pins existing."""
+    plan = _plan_with_pin({"input": "sha256:aa", "output": None, "annotations": "sha256:bb"})
+    assert plan.pins.tools["imdb__search"].annotations == "sha256:bb"
+
+
 def test_the_declared_fields_still_round_trip_under_forbid():
     """`extra="forbid"` must not break reloading what freeze itself wrote."""
     plan = _plan()

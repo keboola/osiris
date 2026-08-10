@@ -7,7 +7,7 @@ in the catalog does not. Each class carries its own policy in the manifest.
 from collections.abc import Iterable
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from osiris.determinism.canonical import canonical_json
 from osiris.determinism.fingerprint import compute_fingerprint
@@ -40,10 +40,30 @@ class DriftKind(str, Enum):  # noqa: UP042
 
 
 class ToolPin(BaseModel):
-    """Hashes of a tool's declared contract. Prose fields are deliberately excluded."""
+    """Hashes of a tool's declared contract. Only prose is deliberately excluded.
+
+    `extra="forbid"`, like every model in `osiris/plan/model.py`. This was the
+    one model left on pydantic's default `extra="ignore"`, and the gap was not
+    cosmetic: `pins.tools.<key>` is inside the artifact and inside the pins
+    fingerprint, but an unknown key added there after freeze was *dropped on
+    load*, so it never reached any hash and the artifact still passed all five
+    integrity checks. 100KB of padding -- and a live `cfng_` credential -- rode
+    into a verified manifest that way, while the identical literal offered at
+    freeze time was correctly refused. Nothing may enter a pin that the pin does
+    not hash.
+
+    `annotations` are hashed alongside the schemas because they are the MCP
+    machine-readable safety hints (`readOnlyHint`, `destructiveHint`,
+    `idempotentHint`), not prose: flipping `destructiveHint` false -> true turns
+    a read into a delete, and a future retry policy will read them. `description`
+    and `title` remain excluded -- rewording a tool is not a contract change.
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
     input: str
     output: str | None = None
+    annotations: str | None = None
 
 
 class Drift(BaseModel):
@@ -95,23 +115,52 @@ def detect_pin_key_collisions(pairs: Iterable[tuple[str, str]]) -> list[PinKeyCo
     return collisions
 
 
+# Why an annotations drift is worth an operator's attention, appended to the
+# diff so the evidence explains itself without a lookup.
+_ANNOTATIONS_NOTE = " (readOnlyHint/destructiveHint/idempotentHint are safety semantics)"
+
+
+def _optional_fingerprint(value: object) -> str | None:
+    """Fingerprint a manifest field that may legitimately be absent.
+
+    `None` means "the manifest declared nothing here" and is preserved as such,
+    so `detect_tool_drift` can report the appearance or disappearance of the
+    field in the direction it happened rather than as an opaque hash change.
+    """
+    return compute_fingerprint(canonical_json(value)) if value is not None else None
+
+
 def tool_pin(manifest: dict[str, object]) -> ToolPin:
-    """Pin a tool from its REST manifest, hashing only inputSchema and outputSchema."""
-    input_schema = manifest.get("inputSchema") or {}
-    output_schema = manifest.get("outputSchema")
+    """Pin a tool from its REST manifest: inputSchema, outputSchema, annotations.
+
+    NOTE(pin-value-change): adding `annotations` and tightening the inputSchema
+    fingerprint below both change the value of every pin. Artifacts frozen
+    before this commit will fail verification and must be re-frozen. That is
+    intended at this stage -- nothing is in production, and a pin that never
+    covered the tool's safety hints was not worth preserving.
+
+    `manifest.get("inputSchema") or {}` used to collapse four distinct
+    declarations into one fingerprint: absent, `{}`, `null` and `false`. In JSON
+    Schema `{}` accepts anything and `false` accepts nothing -- opposite
+    meanings, and the pin could not tell them apart, so a tool whose input
+    contract was inverted after freeze verified clean. `outputSchema` already
+    used the strict `is not None` form; both halves now agree that "no schema"
+    is a value to be hashed rather than a synonym for the empty object.
+    """
     return ToolPin(
-        input=compute_fingerprint(canonical_json(input_schema)),
-        output=compute_fingerprint(canonical_json(output_schema)) if output_schema is not None else None,
+        input=compute_fingerprint(canonical_json(manifest.get("inputSchema"))),
+        output=_optional_fingerprint(manifest.get("outputSchema")),
+        annotations=_optional_fingerprint(manifest.get("annotations")),
     )
 
 
-def _output_diff(name: str, want: str | None, have: str | None) -> str:
-    """Describe an outputSchema change in the direction it actually happened."""
+def _optional_diff(name: str, field: str, want: str | None, have: str | None, note: str = "") -> str:
+    """Describe a change to an optional manifest field in the direction it happened."""
     if want is None:
-        return f"{name}: outputSchema added since freeze (the pin recorded none)"
+        return f"{name}: {field} added since freeze (the pin recorded none){note}"
     if have is None:
-        return f"{name}: outputSchema removed since freeze"
-    return f"{name}: outputSchema changed since freeze"
+        return f"{name}: {field} removed since freeze{note}"
+    return f"{name}: {field} changed since freeze{note}"
 
 
 def detect_tool_drift(pinned: dict[str, ToolPin], live: dict[str, ToolPin]) -> list[Drift]:
@@ -155,7 +204,22 @@ def detect_tool_drift(pinned: dict[str, ToolPin], live: dict[str, ToolPin]) -> l
                     subject=name,
                     expected=want.output or "",
                     actual=have.output or "",
-                    diff=_output_diff(name, want.output, have.output),
+                    diff=_optional_diff(name, "outputSchema", want.output, have.output),
+                )
+            )
+        # Same symmetry, and for a sharper reason: under the default fail policy
+        # a tool could flip `destructiveHint` false -> true after freeze and the
+        # run proceeded, because nothing in the pin covered it. A plan approved
+        # against a read-only tool must not silently execute against a
+        # destructive one.
+        if have.annotations != want.annotations:
+            drifts.append(
+                Drift(
+                    kind=DriftKind.TOOL_CONTRACT,
+                    subject=name,
+                    expected=want.annotations or "",
+                    actual=have.annotations or "",
+                    diff=_optional_diff(name, "annotations", want.annotations, have.annotations, _ANNOTATIONS_NOTE),
                 )
             )
     return drifts

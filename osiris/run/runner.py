@@ -104,6 +104,41 @@ def _raise_on_collisions(pairs: list[tuple[str, str]], origin: str) -> None:
     )
 
 
+class _PinVerdict:
+    """The three fates a detected drift can meet, kept apart on purpose.
+
+    `warned` and `ignored` were previously indistinguishable from "no drift at
+    all" by the time the summary event was written, which is how a run with a
+    broken contract came to emit the same positive assertion as a clean one.
+    They are collected separately so the evidence can name what happened.
+    """
+
+    def __init__(self) -> None:
+        self.fatal: list[Drift] = []
+        self.warned: list[Drift] = []
+        self.ignored: list[Drift] = []
+
+    def sort(self, drifts: list[Drift], action: DriftAction) -> None:
+        """File each drift under the fate its policy assigns it."""
+        if not drifts:
+            return
+        if action is DriftAction.FAIL:
+            self.fatal.extend(drifts)
+        elif action is DriftAction.WARN:
+            self.warned.extend(drifts)
+        else:
+            self.ignored.extend(drifts)
+
+    @property
+    def suppressed(self) -> list[Drift]:
+        """Drift that was found and run anyway -- `warn` and `ignore` alike."""
+        return self.warned + self.ignored
+
+    @property
+    def warnings(self) -> list[str]:
+        return [drift.diff for drift in self.warned]
+
+
 class RunSummary(BaseModel):
     run_id: str
     status: str
@@ -218,10 +253,34 @@ class Runner:
         _raise_on_collisions(live_pairs, "cf-ng catalog")
         return live
 
+    def _catalog_drift(self, plan: Plan, session: Session) -> Drift | None:
+        """Compare the pinned catalog version against the live one, if pinned."""
+        pinned = plan.pins.cfng.catalog_version
+        if not pinned:
+            return None
+        try:
+            actual = self._client.catalog_version()
+        except CfngError as exc:
+            # The catalog probe is a cheap heuristic on top of the tool
+            # contracts, not the contract check itself, so a failure here does
+            # not abort. It must not be silent either: the previous bare
+            # `actual = None` made an unavailable catalog look exactly like an
+            # unchanged one.
+            session.log_event("catalog_probe_failed", status=exc.status, detail=exc.detail)
+            return None
+        if not actual or actual == pinned:
+            return None
+        return Drift(
+            kind=DriftKind.CATALOG,
+            subject="catalog",
+            expected=pinned,
+            actual=actual,
+            diff=f"catalog_version changed: {pinned} -> {actual}",
+        )
+
     def _check_pins(self, plan: Plan, session: Session) -> list[str]:
         """Verify pins before the first tool call. Returns warnings; raises on fail policy."""
-        warnings: list[str] = []
-        fatal: list[Drift] = []
+        verdict = _PinVerdict()
 
         # Everything that can make the verdict untrustworthy happens here, and
         # every one of those aborts leaves an event behind: an abort the ledger
@@ -238,56 +297,45 @@ class Runner:
             self._log_drifts(session, "pin_probe_failed", exc.drifts)
             raise
 
-        drifts = detect_tool_drift(plan.pins.tools, live)
-        if drifts:
-            action = plan.policy.on_tool_contract_drift
-            if action is DriftAction.FAIL:
-                fatal.extend(drifts)
-            elif action is DriftAction.WARN:
-                warnings.extend(d.diff for d in drifts)
+        verdict.sort(detect_tool_drift(plan.pins.tools, live), plan.policy.on_tool_contract_drift)
+        catalog_drift = self._catalog_drift(plan, session)
+        if catalog_drift is not None:
+            verdict.sort([catalog_drift], plan.policy.on_catalog_drift)
 
-        pinned_catalog = plan.pins.cfng.catalog_version
-        if pinned_catalog:
-            try:
-                actual = self._client.catalog_version()
-            except CfngError as exc:
-                # The catalog probe is a cheap heuristic on top of the tool
-                # contracts, not the contract check itself, so a failure here
-                # does not abort. It must not be silent either: the previous
-                # bare `actual = None` made an unavailable catalog look exactly
-                # like an unchanged one.
-                actual = None
-                session.log_event("catalog_probe_failed", status=exc.status, detail=exc.detail)
-            if actual and actual != pinned_catalog:
-                drift = Drift(
-                    kind=DriftKind.CATALOG,
-                    subject="catalog",
-                    expected=pinned_catalog,
-                    actual=actual,
-                    diff=f"catalog_version changed: {pinned_catalog} -> {actual}",
-                )
-                action = plan.policy.on_catalog_drift
-                if action is DriftAction.FAIL:
-                    fatal.append(drift)
-                elif action is DriftAction.WARN:
-                    warnings.append(drift.diff)
-
+        warnings = verdict.warnings
         for message in warnings:
             session.log_event("drift_warning", detail=message)
-        if fatal:
-            for drift in fatal:
+        if verdict.fatal:
+            for drift in verdict.fatal:
                 session.log_event("drift_fatal", detail=drift.diff)
-            raise DriftError(fatal)
-        # Positive evidence, emitted only on the path that actually verified
-        # something. Previously the run said nothing about pins at all, so
-        # "verified" was a claim made by the CLI's print statement rather than
-        # a fact recorded by the code that did the work.
+            raise DriftError(verdict.fatal)
+
+        # Under `ignore` the diff text reached disk nowhere at all: the only
+        # record of what moved lived in memory and was discarded. Record it even
+        # though the policy says not to stop.
+        self._log_drifts(session, "drift_ignored", verdict.ignored)
+
+        suppressed = verdict.suppressed
+        # The *event name* is the assertion, and it must not be obtainable by
+        # editing a policy field. `policy.on_tool_contract_drift: warn|ignore`
+        # switches the abort off; under `ignore` this event used to be
+        # byte-identical to a clean run's -- same name, `warnings: 0` -- so the
+        # record of a failed verification read exactly like the record of a
+        # passed one. A positive integrity assertion must never appear for a run
+        # whose integrity check failed. When it failed and the policy suppressed
+        # the abort, the record now says so under its own name, and both names
+        # carry the drift count and the policy that made the call so neither can
+        # be read as the other.
         session.log_event(
-            "pins_verified",
+            "pins_drift_suppressed" if suppressed else "pins_verified",
             tools_checked=len(plan.pins.tools),
             tool_calls_pinned=len(planned),
-            catalog_version=pinned_catalog,
+            catalog_version=plan.pins.cfng.catalog_version,
+            drifts_found=len(suppressed),
+            drift_subjects=sorted({d.subject for d in suppressed}),
             warnings=len(warnings),
+            on_tool_contract_drift=plan.policy.on_tool_contract_drift.value,
+            on_catalog_drift=plan.policy.on_catalog_drift.value,
         )
         return warnings
 

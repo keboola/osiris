@@ -3,6 +3,16 @@
 This module owns the single redaction seam. Anything that writes to disk under
 base_path — evidence streams, the run ledger, step artifacts — routes its
 payload through `redact()` here rather than growing its own ad-hoc filter.
+
+`redact()` applies two independent rules, in this order:
+
+1. **Shape.** Anything carrying a vendor credential prefix is masked whether or
+   not this process has ever seen the value. See `SECRET_SHAPED`.
+2. **Value.** Every string in `secrets` is replaced wherever it occurs.
+
+Shape runs first on purpose. A `secrets` entry that happens to be a *substring*
+of a longer credential would otherwise punch a hole in the middle of it and
+leave both ends readable — masking `cfng_XXXdefgh12` rather than the whole token.
 """
 
 from collections.abc import Sequence
@@ -10,9 +20,64 @@ from datetime import UTC, datetime
 import json
 import os
 from pathlib import Path
+import re
 from typing import Any
 
 REDACTED = "***"
+_REDACTED_BYTES = REDACTED.encode("ascii")
+
+# Credential *shapes*, masked whether or not this process holds the value.
+#
+# Exact-substring redaction can only ever cover the one credential Osiris was
+# started with. Everything a third party hands us is a credential this process
+# has never seen and cannot match by value: the `credentials` argument the cf-ng
+# gateway injects into every tool's inputSchema by design (see
+# `osiris/cfng/client.py`), a token another agent pasted into a tool argument, a
+# token a cf-ng rejection quotes back. Those reached events.jsonl and runs.jsonl
+# verbatim — in the same sentence where our own token showed as ***.
+#
+# Where the line is drawn between a credential and ordinary text, and why:
+#
+#   * **Prefix-anchored, never entropy-based.** Nothing is masked for being long
+#     or random-looking. Evidence is full of long opaque strings that have to
+#     survive intact — sha256 fingerprints, run ids, schema hashes, base64
+#     payloads — and an entropy rule would hollow out the record to protect
+#     nothing. Only a literal vendor prefix qualifies.
+#   * **The prefix must begin a token.** The lookbehind stops `sk-` from firing
+#     inside `task-`, `disk-`, `risk-`.
+#   * **A minimum body length.** `cfng_call` — the plan's own `uses` value, which
+#     is in every event this engine writes — is 4 characters past the prefix and
+#     is not a credential.
+#   * **The match ends at the first character outside the credential alphabet,
+#     and must end *on* an alphanumeric or `=`.** A token embedded in JSON or in
+#     a sentence is therefore masked exactly: the quote, comma, brace or full
+#     stop around it is left alone, so redacted evidence stays parseable and
+#     readable rather than being chewed up around the edges.
+#
+# The residual false positive is a lowercase identifier that genuinely starts
+# with `cfng_` and runs 8 further characters — `cfng_base_url` written in prose
+# would become ***. That is accepted deliberately. The discriminator that would
+# save it (demand mixed case plus a digit, i.e. "looks random") also lets an
+# all-lowercase credential such as `cfng_realsecretvalue` through, and a masked
+# word in a log line costs an operator a re-read while a leaked credential costs
+# a rotation.
+_CREDENTIAL_SHAPES = (
+    # cf-ng: the flat form and the `cfng_v1.<base64url>` form. The `.`, `+`, `/`
+    # and `=` are exactly what a `[A-Za-z0-9_\-]{8,}` body could not see, which
+    # is how a real-shaped token walked past the freeze-time guard.
+    r"cfng_[A-Za-z0-9_.+/=\-]{7,}[A-Za-z0-9=]",
+    # OpenAI, including the `sk-proj-` family — hence `-` inside the body.
+    r"sk-[A-Za-z0-9_\-]{15,}[A-Za-z0-9]",
+    # Slack bot/app/user/refresh tokens.
+    r"xox[baprs]-[A-Za-z0-9_.\-]{9,}[A-Za-z0-9]",
+)
+SECRET_SHAPED = re.compile(r"(?<![A-Za-z0-9_])(?:" + "|".join(_CREDENTIAL_SHAPES) + r")")
+
+# The same rule over bytes. `redact()` accepts bytes, and a shape rule that only
+# knew about `str` would mask a token in events.jsonl and miss the identical one
+# in a binary artifact. Derived from the one pattern above rather than written
+# twice, so the two can never disagree; the source is pure ASCII by construction.
+_SECRET_SHAPED_BYTES = re.compile(SECRET_SHAPED.pattern.encode("ascii"))
 
 # Environment variables that hold a live credential. `ambient_secrets()` reads
 # them so a writer constructed without an explicit secret list still redacts the
@@ -42,9 +107,17 @@ def _live(secrets: Sequence[Any] | None) -> list[str]:
 
 
 def _redact_str(value: str, live: list[str]) -> str:
+    value = SECRET_SHAPED.sub(REDACTED, value)
     for secret in live:
         value = value.replace(secret, REDACTED)
     return value
+
+
+def _redact_bytes(value: bytes | bytearray, live: list[str]) -> bytes:
+    out = _SECRET_SHAPED_BYTES.sub(_REDACTED_BYTES, bytes(value))
+    for secret in live:
+        out = out.replace(secret.encode("utf-8", "surrogateescape"), _REDACTED_BYTES)
+    return out
 
 
 def _redact(value: Any, live: list[str], depth: int) -> Any:
@@ -55,10 +128,7 @@ def _redact(value: Any, live: list[str], depth: int) -> Any:
     if isinstance(value, bytes | bytearray):
         # Bytes never reach json.dumps, but a caller may hand them to redact()
         # directly; falling through would return the secret untouched.
-        out = bytes(value)
-        for secret in live:
-            out = out.replace(secret.encode("utf-8", "surrogateescape"), REDACTED.encode())
-        return out
+        return _redact_bytes(value, live)
     if isinstance(value, dict):
         # Keys as well as values: the agent chooses the keys of the MCP
         # arguments it sends, so `{token: "x"}` is exactly as reachable as
@@ -88,18 +158,19 @@ def _redact_key(key: Any, live: list[str]) -> Any:
 
 
 def redact(value: Any, secrets: Sequence[Any] | None) -> Any:
-    """Replace every occurrence of each secret, recursing through containers.
+    """Mask every credential-shaped run and every occurrence of each secret.
 
     Total and side-effect-free for any acyclic value: nothing is mutated in
     place, every input maps to a value of the same JSON shape, and no branch
     raises. Strings, bytes, dict keys, dict values, lists, tuples and sets are
     all walked; anything else (int, float, bool, None) cannot carry a substring
     and is returned as-is.
+
+    The walk runs even when `secrets` is empty. It used to return `value`
+    untouched in that case, which was the whole leak: a writer that holds no
+    credential is exactly the one most likely to be handed somebody else's.
     """
-    live = _live(secrets)
-    if not live:
-        return value
-    return _redact(value, live, 0)
+    return _redact(value, _live(secrets), 0)
 
 
 class Session:

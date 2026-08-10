@@ -99,12 +99,33 @@ def test_the_credential_is_resolved_at_append_time(tmp_path, monkeypatch):
     assert TOKEN.encode() not in path.read_bytes()
 
 
-def test_an_explicit_empty_secret_list_disables_redaction(tmp_path, monkeypatch):
-    """Explicit beats ambient: a caller that says 'no secrets' is obeyed."""
+def test_an_explicit_empty_secret_list_disables_value_redaction(tmp_path, monkeypatch):
+    """Explicit beats ambient: a caller that says 'no secrets' is obeyed.
+
+    Only for the *value* rule. `redact()` also masks anything credential-shaped,
+    and that rule is not disableable by any caller — so this asks the question
+    with a value that carries no vendor prefix, which is the only way to observe
+    "explicit beats ambient" rather than observing the shape rule.
+    """
     monkeypatch.setenv("CFNG_TOKEN", TOKEN)
     path = tmp_path / "runs.jsonl"
-    RunIndex(path, secrets=[]).append(_rec("run_1", status="failed", error=TOKEN))
-    assert TOKEN.encode() in path.read_bytes()
+    unshaped = "an-ordinary-error-string"
+    RunIndex(path, secrets=[]).append(_rec("run_1", status="failed", error=unshaped))
+    assert unshaped.encode() in path.read_bytes()
+
+
+def test_no_caller_can_switch_off_shape_redaction(tmp_path, monkeypatch):
+    """`secrets=[]` is a statement about values this process holds, not a licence.
+
+    The ledger is where a cf-ng rejection lands, and a rejection quotes the
+    credential it was presented with — which may be some other agent's.
+    """
+    monkeypatch.delenv("CFNG_TOKEN", raising=False)
+    path = tmp_path / "runs.jsonl"
+    foreign = "cfng_0THER_Ag3ntPastedTokenZZ99"  # pragma: allowlist secret
+    RunIndex(path, secrets=[]).append(_rec("run_1", status="failed", error=f"403 {foreign}"))
+    assert foreign.encode() not in path.read_bytes()
+    assert REDACTED in (RunIndex(path).read_all()[0].error or "")
 
 
 def test_redaction_leaves_the_rest_of_the_record_intact(tmp_path):

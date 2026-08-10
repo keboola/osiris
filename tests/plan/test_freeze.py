@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 from osiris.cfng.client import CfngClient
+from osiris.evidence.session import SECRET_SHAPED
 from osiris.fsc.config import FilesystemConfig
 from osiris.fsc.paths import Paths
 from osiris.plan.freeze import FreezeError, freeze
@@ -25,10 +26,10 @@ DRAFT = {
 }
 
 
-def _client(tools_by_connector) -> CfngClient:
+def _client(tools_by_connector, catalog_version: str = "sha256:cat1") -> CfngClient:
     def handler(request):
         if request.url.path == "/catalog/version":
-            return httpx.Response(200, json={"catalog_version": "sha256:cat1"})
+            return httpx.Response(200, json={"catalog_version": catalog_version})
         connector = request.url.path.split("/")[2]
         if connector not in tools_by_connector:
             return httpx.Response(404, json={"detail": f"Unknown connector: {connector}"})
@@ -158,6 +159,94 @@ def test_an_env_reference_is_still_allowed_in_params_and_metadata(tmp_path):
     draft["params"]["token"] = "${CFNG_TOKEN}"
     draft["metadata"]["token"] = "${OTHER_TOKEN}"
     assert freeze(draft, _client({"imdb": IMDB}), _paths(tmp_path)).manifest_hash
+
+
+# --- The guard sees the real token shape ------------------------------------
+#
+# `cfng_[A-Za-z0-9_\-]{8,}` could not match a `.`, `+`, `/` or `=`, which is
+# every character that distinguishes the real `cfng_v1.<base64>` form from the
+# flat one. A token in that shape froze into manifest.yaml at exit 0.
+
+# The literal from the report, which the previous guard scored as `match=None`.
+V1_SECRET = "cfng_v1.9Xq2vB7tR4mN8pL3wZ6yK1sH0dF5gJ2a"  # pragma: allowlist secret
+
+
+@pytest.mark.parametrize(
+    "credential",
+    [
+        V1_SECRET,
+        "cfng_v1.9Xq2vB7tR4mN8pL3wZ6yK1sH0dF5gJ2a==",  # pragma: allowlist secret - base64 padding
+        "cfng_v1.a+b/c9Zq2vB7tR4mN8pL3wZ6yK1s",  # pragma: allowlist secret - rest of base64's alphabet
+        "sk-Ab3dEfGh1jKlMn0pQrStUvWxYz012345",  # pragma: allowlist secret
+        "sk-proj-Ab3dEfGh1jKlMn0pQrStUvWxYz012345",  # pragma: allowlist secret
+        "xoxb-" "1234567890-" "ABCDEfghij0123",  # pragma: allowlist secret
+    ],
+)
+def test_freeze_rejects_every_credential_shape_it_claims_to_know(tmp_path, credential):
+    draft = json.loads(json.dumps(DRAFT))
+    draft["steps"][0]["with"]["auth"] = credential
+    assert _freeze_expecting_a_secret_refusal(draft, tmp_path).startswith("steps[0].with.auth:")
+
+
+def test_the_v1_shaped_secret_never_reaches_a_build_directory(tmp_path):
+    """Refusal, not masking: nothing may be written that carries the credential."""
+    draft = json.loads(json.dumps(DRAFT))
+    draft["steps"][0]["with"]["auth"] = V1_SECRET
+    _freeze_expecting_a_secret_refusal(draft, tmp_path)
+    written = [p for p in tmp_path.rglob("*") if p.is_file()]
+    assert written == [], written
+
+
+# --- The guard runs after every field is populated --------------------------
+#
+# `pins.cfng.catalog_version` is assigned from a cf-ng *response*, and that
+# assignment used to happen after the only check had run. A cf-ng that reflects
+# the credential it was presented with therefore wrote it straight into the
+# artifact, and manifest.yaml shipped `catalog_version: sha256:cfng_LiVeT0ken…`.
+
+
+def test_freeze_rejects_a_credential_reflected_in_the_catalog_version(tmp_path, monkeypatch):
+    monkeypatch.delenv("CFNG_TOKEN", raising=False)
+    client = _client({"imdb": IMDB}, catalog_version=f"sha256:{V1_SECRET}")
+    with pytest.raises(FreezeError, match="secret") as excinfo:
+        freeze(json.loads(json.dumps(DRAFT)), client, _paths(tmp_path))
+    assert str(excinfo.value).startswith("pins.cfng.catalog_version:")
+    assert V1_SECRET not in str(excinfo.value)
+    assert [p for p in tmp_path.rglob("*") if p.is_file()] == []
+
+
+def test_freeze_rejects_a_reflected_credential_that_carries_no_vendor_prefix(tmp_path, monkeypatch):
+    """A Keboola master token has no `cfng_`, so shape alone cannot see it.
+
+    cf-ng accepts those as readily as scoped capability tokens, so the guard also
+    hunts the credential this process actually holds, by value.
+    """
+    master = "1234-56789-abcdefghijklmnopqrstuvwxyz0123"  # pragma: allowlist secret
+    assert SECRET_SHAPED.search(master) is None, "pick a value the shape rule genuinely cannot see"
+
+    monkeypatch.setenv("CFNG_TOKEN", master)
+    client = _client({"imdb": IMDB}, catalog_version=f"sha256:{master}")
+    with pytest.raises(FreezeError, match="secret") as excinfo:
+        freeze(json.loads(json.dumps(DRAFT)), client, _paths(tmp_path))
+    assert master not in str(excinfo.value)
+
+
+def test_a_short_credential_does_not_make_freeze_unusable(tmp_path, monkeypatch):
+    """`CFNG_TOKEN=cfng_x` is a substring of ordinary prose, not a secret to hunt.
+
+    Without a length floor, the by-value rule would refuse any plan whose text
+    happened to contain those characters.
+    """
+    monkeypatch.setenv("CFNG_TOKEN", "cfng_x")  # pragma: allowlist secret
+    draft = json.loads(json.dumps(DRAFT))
+    draft["metadata"]["note"] = "runs against cfng_x staging"
+    assert freeze(draft, _client({"imdb": IMDB}), _paths(tmp_path)).manifest_hash
+
+
+def test_a_clean_plan_still_freezes_with_a_live_credential_in_the_environment(tmp_path, monkeypatch):
+    """The by-value rule must not fire on a plan that simply does not carry it."""
+    monkeypatch.setenv("CFNG_TOKEN", "cfng_LiVeT0kenAbCdEf0123456789")  # pragma: allowlist secret
+    assert freeze(json.loads(json.dumps(DRAFT)), _client({"imdb": IMDB}), _paths(tmp_path)).manifest_hash
 
 
 # --- Non-JSON values are refused, not coerced -------------------------------

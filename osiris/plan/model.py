@@ -35,8 +35,7 @@ _REPAIR_HINTS = {
     "complex": "a complex number has no JSON form",
 }
 _GENERIC_HINT = (
-    "only JSON values may enter a plan: string, integer, finite float, boolean, null, list, "
-    "and object with string keys"
+    "only JSON values may enter a plan: string, integer, finite float, boolean, null, list, and object with string keys"
 )
 
 
@@ -120,9 +119,9 @@ class DriftAction(str, Enum):  # noqa: UP042 - StrEnum changes str()/f-string re
 # the author considers different is not naming the plan's meaning. Verified safe
 # for the freeze -> manifest.yaml -> `Plan(**yaml.safe_load(...))` round trip:
 # `model_dump(by_alias=True)` emits exactly the declared fields, `with` included.
-#
-# One gap remains and is not ours to close here: `Pins.tools` holds `ToolPin`
-# from `osiris/cfng/pins.py`, which keeps its own (lax) config.
+# `Pins.tools` holds `ToolPin` from `osiris/cfng/pins.py`, which is sealed the
+# same way -- it was the last model on `extra="ignore"` and therefore the last
+# place an unhashed payload could ride inside a verified artifact.
 class Policy(BaseModel):
     """What to do when reality diverges from the pins."""
 

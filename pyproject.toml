@@ -43,12 +43,31 @@ dependencies = [
     "pydantic>=2.7.0",
     "httpx>=0.27.0",
     "typer>=0.12.0",
-    "mcp>=1.2.1",
+    # 2.x, not 1.2.1. `osiris/relay/server.py` calls
+    # `Server(instructions=, on_list_tools=, on_call_tool=)`, which is the mcp 2.x
+    # constructor; mcp 1.2.1's is `Server(name, version=None)` and `osiris serve`
+    # dies on a legal resolution of the old floor with
+    # `TypeError: unexpected keyword argument 'instructions'`. A floor that the
+    # code cannot run against is not a floor, it is a lie about what was tested.
+    "mcp>=2.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
+    # Imported directly by tests/relay/test_server.py, which drives the stdio
+    # server through anyio task groups. It arrives transitively via httpx and
+    # mcp, but a transitive dependency is not a contract: either of those may
+    # drop it and the suite would stop collecting for a reason no manifest
+    # explains.
+    "anyio>=4.0.0",
+    # Named by docs/developer-guide/human/examples/shopify.extractor/, whose
+    # imports tests/test_package.py resolves for real. It currently reaches a
+    # dev environment only as a transitive dependency of twine. Declared here
+    # because the check is real; it should be deleted along with that v0.5.4
+    # example, which also imports pandas and is why the suite still fails in a
+    # venv built from these deps alone.
+    "requests>=2.31.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.0.0",
     "black>=23.0.0",

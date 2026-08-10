@@ -23,7 +23,7 @@ from osiris.determinism.canonical import canonical_yaml
 from osiris.determinism.fingerprint import FingerprintMismatch, require_fingerprint
 from osiris.evidence.run_ids import new_run_id
 from osiris.evidence.run_index import RunIndex, RunRecord
-from osiris.evidence.session import Session, redact
+from osiris.evidence.session import Session, ambient_secrets, redact
 from osiris.fsc.config import CONFIG_FILENAME, FilesystemConfig
 from osiris.fsc.paths import Paths, slugify
 from osiris.plan.freeze import BUILD_DIR_HASH_PREFIX, FreezeError
@@ -74,14 +74,21 @@ err_console = Console(stderr=True, soft_wrap=True)
 
 
 def _safe(text: str) -> str:
-    """Redact the live token out of anything bound for the console.
+    """Redact anything bound for the console.
 
     stdout is outside the evidence system: `osiris run > nightly.log` persists
     whatever was printed, so a cf-ng error that echoes the credential it was
     presented with would leak past a redaction seam that guards only
     events.jsonl. Every printed exception goes through here.
+
+    `ambient_secrets()` rather than a local `os.environ[TOKEN_ENV]` read: the
+    set of variables that hold a credential is declared once, in the evidence
+    module, and a second variable added there must not silently reach stdout in
+    the clear. `redact()` additionally masks anything credential-*shaped*, which
+    is what covers the credential this process does not hold — the one a cf-ng
+    rejection quotes back at it.
     """
-    return str(redact(text, [os.environ.get(TOKEN_ENV, "")]))
+    return str(redact(text, ambient_secrets()))
 
 
 def _fail(message: str, code: int) -> typer.Exit:

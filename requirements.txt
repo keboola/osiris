@@ -7,7 +7,16 @@ httpx>=0.27.0           # HTTP client for the cf-ng REST API
 typer>=0.12.0           # CLI framework (serve / freeze / run / doctor)
 
 # MCP Server dependencies
-mcp>=1.2.1              # Model Context Protocol Python SDK
+#
+# 2.x, not 1.2.1. osiris/relay/server.py builds the server with
+# Server(instructions=, on_list_tools=, on_call_tool=) — the mcp 2.x
+# constructor. mcp 1.2.1 takes Server(name, version=None), so a legal
+# resolution of the old floor made `osiris serve` fail at startup with
+# TypeError: unexpected keyword argument 'instructions'.
+mcp>=2.0.0              # Model Context Protocol Python SDK
 
 # Note: For development dependencies, use: pip install -e ".[dev]"
 # This installs the package with all development tools defined in pyproject.toml
+# — including anyio (imported directly by tests/relay/test_server.py) and
+# requests (named by the shopify docs example that tests/test_package.py
+# resolves imports for). Both used to arrive only transitively.
