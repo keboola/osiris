@@ -17,6 +17,8 @@
 - **pytest-asyncio runs in STRICT mode.** Every `async def test_*` MUST carry `@pytest.mark.asyncio`.
 - Every literal credential in a test needs a trailing `# pragma: allowlist secret` or `detect-secrets` fails the lint CI job.
 - **Lazy imports inside a function need `# noqa: PLC0415` anywhere under `osiris/`.** `PL` is in ruff's `select` and only `tests/**` and `scripts/**` carry a per-file ignore, so an unsuppressed function-level import fails `make lint`.
+- **`class X(str, Enum)` needs `# noqa: UP042`.** Ruff wants `enum.StrEnum`, but that changes how members render in `str()` and f-strings, which the manifest depends on. Keep `(str, Enum)` and suppress.
+- **Unused imports in tests are errors.** `F401` is selected repo-wide and `tests/**` is not exempt from it. Import only what a test file actually references.
 - All tests live under `tests/`. Never create tests elsewhere.
 - `make type-check` is a no-op. Never list it as a verification step.
 - No required CI job runs the full suite. Run `make test` locally; a green PR is not evidence.
@@ -1873,7 +1875,7 @@ from osiris.determinism.canonical import canonical_json
 STEP_TYPES = frozenset({"cfng_call", "sql", "assert"})
 
 
-class DriftAction(str, Enum):
+class DriftAction(str, Enum):  # noqa: UP042 - StrEnum changes str()/f-string rendering of members
     FAIL = "fail"
     WARN = "warn"
     IGNORE = "ignore"
