@@ -123,3 +123,23 @@ def test_a_second_process_is_locked_out_and_the_lock_is_released_on_close(tmp_pa
     ctx.close()
 
     assert probe_in_another_process(ctx.db_path) == "OPENED 1"
+
+
+def test_context_exposes_the_session_secrets(tmp_path):
+    """Steps write to disk without going through the session and need the same list."""
+    session = Session(tmp_path / "ev", "sess_1", secrets=["cfng_abc123"])  # pragma: allowlist secret
+    with RunContext(tmp_path / "run", session) as ctx:
+        assert ctx.secrets == ["cfng_abc123"]  # pragma: allowlist secret
+
+
+def test_context_secrets_cannot_be_mutated_through_the_property(tmp_path):
+    """A step holding the list must not be able to empty the session's copy."""
+    session = Session(tmp_path / "ev", "sess_1", secrets=["cfng_abc123"])  # pragma: allowlist secret
+    with RunContext(tmp_path / "run", session) as ctx:
+        ctx.secrets.clear()
+        assert ctx.secrets == ["cfng_abc123"]  # pragma: allowlist secret
+
+
+def test_context_secrets_is_empty_when_the_session_has_none(tmp_path):
+    with RunContext(tmp_path / "run", Session(tmp_path / "ev", "sess_1")) as ctx:
+        assert ctx.secrets == []

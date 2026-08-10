@@ -5,17 +5,16 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "osiris-pipeline"
 version = "0.6.0.dev0"
-description = "LLM-first conversational ETL pipeline generator"
+description = "Turn an agent's conversation with a third-party system into a replayable artifact"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 authors = [
     {name = "Osiris Project", email = "petr@keboola.com"},
 ]
 keywords = [
-    "etl", "elt", "pipeline", "oml", "duckdb", "sql", "llm", "ai",
-    "conversational", "data engineering", "human-in-the-loop",
-    "mysql", "supabase", "postgres", "csv",
-    "openai", "claude", "gemini", "sql safety"
+    "mcp", "agent", "cf-ng", "keboola", "duckdb", "sql",
+    "determinism", "reproducibility", "provenance", "audit",
+    "pipeline", "automation", "data engineering",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -50,6 +49,11 @@ dependencies = [
     # `TypeError: unexpected keyword argument 'instructions'`. A floor that the
     # code cannot run against is not a floor, it is a lie about what was tested.
     "mcp>=2.0.0",
+    # `.env` loading for CFNG_BASE_URL / CFNG_TOKEN. Declared as a runtime
+    # dependency because osiris.cli imports it, not as a convenience: a CLI that
+    # silently ignores a .env sitting next to osiris.yaml is worse than one that
+    # never claimed to read it.
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]

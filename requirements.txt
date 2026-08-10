@@ -5,6 +5,7 @@ duckdb>=0.9.0           # Local SQL engine and per-run data exchange
 pydantic>=2.7.0         # Plan / Step / Pins / Policy models
 httpx>=0.27.0           # HTTP client for the cf-ng REST API
 typer>=0.12.0           # CLI framework (serve / freeze / run / doctor)
+python-dotenv>=1.0.0    # .env loading for CFNG_BASE_URL / CFNG_TOKEN
 
 # MCP Server dependencies
 #

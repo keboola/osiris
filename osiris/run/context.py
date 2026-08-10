@@ -31,6 +31,18 @@ class RunContext:
         """On-disk data bus. Steps exchange tables here, so volume is bounded by disk, not RAM."""
         return self._run_dir / DB_FILENAME
 
+    @property
+    def secrets(self) -> list[str]:
+        """What anything this step writes must be scrubbed of.
+
+        Steps write to disk directly — NDJSON artifacts, DuckDB tables — without
+        going through the session, so they need the same secret list the session
+        redacts with. Exposed here rather than left to `ctx._session`: a step
+        reaching into a private attribute is a coupling that survives only until
+        someone renames it, and it fails silently by redacting nothing.
+        """
+        return list(self._session.secrets)
+
     def get_db_connection(self) -> duckdb.DuckDBPyConnection:
         """The shared connection for this run, opened lazily.
 

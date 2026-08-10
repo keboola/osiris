@@ -1,14 +1,16 @@
 """The CLI wires the pieces together and fails with actionable messages."""
 
 import json
+import os
 from pathlib import Path
+import shutil
 
 import httpx
 import pytest
 from typer.testing import CliRunner
 import yaml
 
-from osiris.cli import app
+from osiris.cli import BASE_URL_ENV, TOKEN_ENV, app, load_env
 
 runner = CliRunner()
 
@@ -726,3 +728,73 @@ def test_dry_run_reports_an_unreachable_cfng_instead_of_a_traceback(project, fak
     # Nothing ran, so nothing is claimed to have run.
     assert not (project / ".osiris" / "index" / "runs.jsonl").exists()
     assert "Pins verified" not in result.output
+
+
+# --- .env loading -----------------------------------------------------------
+#
+# python-dotenv was declared and never imported, so a valid .env did nothing and
+# `osiris doctor` reported the variables unset. A dependency that is shipped but
+# not wired is a promise the CLI does not keep.
+
+
+def test_env_file_supplies_missing_variables(project, monkeypatch):
+    monkeypatch.delenv(BASE_URL_ENV, raising=False)
+    monkeypatch.delenv(TOKEN_ENV, raising=False)
+    (project / ".env").write_text(
+        f"{BASE_URL_ENV}=https://from-dotenv.test\n{TOKEN_ENV}=cfng_from_dotenv\n"
+    )  # pragma: allowlist secret
+
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 0, result.output
+    assert f"{BASE_URL_ENV} is set" in result.output
+    assert f"{TOKEN_ENV} is set" in result.output
+
+
+def test_an_exported_variable_beats_the_env_file(project, monkeypatch):
+    """Otherwise you cannot point at a different cf-ng without editing the file."""
+    (project / ".env").write_text(f"{BASE_URL_ENV}=https://from-dotenv.test\n")
+    monkeypatch.setenv(BASE_URL_ENV, "https://exported.test")
+    monkeypatch.setenv(TOKEN_ENV, "cfng_x")  # pragma: allowlist secret
+
+    load_env(project)
+    assert os.environ[BASE_URL_ENV] == "https://exported.test"
+
+
+def test_doctor_still_fails_without_an_env_file(project, monkeypatch):
+    monkeypatch.delenv(BASE_URL_ENV, raising=False)
+    monkeypatch.delenv(TOKEN_ENV, raising=False)
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code != 0
+    assert TOKEN_ENV in result.output
+
+
+def test_the_env_file_value_never_reaches_the_console(project, monkeypatch):
+    monkeypatch.delenv(TOKEN_ENV, raising=False)
+    monkeypatch.setenv(BASE_URL_ENV, "https://x.test")
+    (project / ".env").write_text(f"{TOKEN_ENV}=cfng_LiVeT0kenFromDotEnvFile\n")  # pragma: allowlist secret
+
+    result = runner.invoke(app, ["doctor"])
+    assert "cfng_LiVeT0kenFromDotEnvFile" not in result.output  # pragma: allowlist secret
+
+
+def test_run_rejects_an_artifact_moved_under_a_different_plan_name(project, fake_cfng, credentials):
+    """Check 5 validated only the leaf, so a verified artifact could be relocated.
+
+    The layout would then say one thing and the manifest another, and the run
+    ledger keys on the plan name.
+    """
+    build_dir = _freeze(project)
+    moved = project / "build" / "some-other-plan" / build_dir.name
+    moved.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(build_dir, moved)
+
+    result = runner.invoke(app, ["run", str(moved)])
+    assert result.exit_code != 0
+    assert "some-other-plan" in result.output
+    assert "moved" in result.output.lower()
+
+
+def test_run_accepts_the_artifact_where_freeze_put_it(project, fake_cfng, credentials):
+    """The parent check must not reject the honest layout."""
+    build_dir = _freeze(project)
+    assert runner.invoke(app, ["run", str(build_dir)]).exit_code == 0

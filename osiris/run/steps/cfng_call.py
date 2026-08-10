@@ -22,7 +22,7 @@ from typing import Any
 import duckdb
 
 from osiris.cfng.client import CfngClient, CfngError
-from osiris.evidence.session import Session, ambient_secrets, redact
+from osiris.evidence.session import ambient_secrets, redact
 from osiris.plan.model import Step
 from osiris.run.context import RunContext
 from osiris.run.steps.sql import StepError, quote_ident, substitute
@@ -62,14 +62,13 @@ def _artifact_path(ctx: RunContext, step_id: str) -> Path:
 def _redaction_secrets(ctx: RunContext) -> list[str]:
     """Secrets to strip from anything this step writes.
 
-    `RunContext` does not expose the Session it was built with, so the session's
-    declared secrets are read defensively and unioned with the credential this
-    process holds. Both sources are needed: the session may carry a secret that
-    was never an environment variable, and a ledger-less caller may hold one the
-    session was never told about.
+    Both sources are needed: the session may carry a secret that was never an
+    environment variable, and a caller may hold one the session was never told
+    about. Note that neither is load-bearing on its own — `redact()` also
+    applies a credential-shape rule with no secrets at all — but a token this
+    process actually holds should never depend on a pattern recognising it.
     """
-    session = getattr(ctx, "_session", None)
-    declared = list(session.secrets) if isinstance(session, Session) else []
+    declared = ctx.secrets
     return declared + [s for s in ambient_secrets() if s not in declared]
 
 

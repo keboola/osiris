@@ -38,6 +38,7 @@ STACK_ENV = "CFNG_STACK"
 
 MANIFEST_FILENAME = "manifest.yaml"
 FINGERPRINTS_FILENAME = "fingerprints.json"
+ENV_FILENAME = ".env"
 
 # Every fingerprint a complete artifact carries, and every fingerprint that is
 # checked before a run. Writing a value and never reading it is the v0.5.4 habit
@@ -97,16 +98,38 @@ def _fail(message: str, code: int) -> typer.Exit:
     return typer.Exit(code=code)
 
 
+def load_env(start: Path | None = None) -> Path | None:
+    """Load `.env` from the current directory, if there is one. Returns the file used.
+
+    `override=False` on purpose: an explicitly exported variable must win over a
+    file, or a developer cannot temporarily point at a different cf-ng without
+    editing the file and remembering to change it back.
+
+    Only the current directory is searched. Walking up to find a `.env` means the
+    credential a command runs with depends on where you happened to be standing,
+    which is the kind of thing you discover from a production incident.
+    """
+    from dotenv import load_dotenv  # noqa: PLC0415
+
+    root = Path(start) if start is not None else Path.cwd()
+    env_path = root / ENV_FILENAME
+    if not env_path.is_file():
+        return None
+    load_dotenv(env_path, override=False)
+    return env_path
+
+
 def _require_env(*names: str) -> dict[str, str]:
     """Return the named variables, or abort naming *every* missing one.
 
     Reporting only the first missing variable makes the user re-run to discover
     the second, so all of them are collected before anything is printed.
     """
+    load_env()
     missing = [name for name in names if not os.environ.get(name)]
     if missing:
         console.print(f"[red]Missing required environment variable(s): {', '.join(missing)}.[/red]")
-        console.print("[dim]Export them, or put them in the shell that launches Osiris.[/dim]")
+        console.print(f"[dim]Export them, or put them in {ENV_FILENAME} in the working directory.[/dim]")
         raise typer.Exit(code=EXIT_PRECONDITION)
     return {name: os.environ[name] for name in names}
 
@@ -262,14 +285,28 @@ def _load_plan(build_dir: Path) -> VerifiedArtifact:
             EXIT_FAILED,
         )
 
-    # 5. The directory name, which freeze derives from the verified hash.
+    # 5. The build path, which freeze derives from the verified hash AND the plan
+    #    name: build/<slug(plan.metadata.name)>/<slug(manifest hash prefix)>.
+    #
+    #    Checking only the leaf let a verified artifact be moved under a
+    #    different plan name — the layout would then say one thing while the
+    #    manifest said another, and the run ledger keys on the plan name.
+    resolved = build_dir.resolve()
     expected_name = slugify(recorded["manifest"].removeprefix("sha256:")[:BUILD_DIR_HASH_PREFIX])
-    actual_name = build_dir.resolve().name
-    if actual_name != expected_name:
+    if resolved.name != expected_name:
         raise _fail(
-            f"{build_dir} is named '{actual_name}' but its verified manifest fingerprint names '{expected_name}'. "
-            f"A build directory is identified by its hash, so this one is a copy, a rename, or a rewrite. "
-            f"{TAMPER_HINT}",
+            f"{build_dir} is named '{resolved.name}' but its verified manifest fingerprint names "
+            f"'{expected_name}'. A build directory is identified by its hash, so this one is a copy, "
+            f"a rename, or a rewrite. {TAMPER_HINT}",
+            EXIT_FAILED,
+        )
+
+    expected_parent = slugify(str(plan.metadata.get("name", "")))
+    if expected_parent and resolved.parent.name != expected_parent:
+        raise _fail(
+            f"{build_dir} sits under '{resolved.parent.name}' but the manifest names the plan "
+            f"'{plan.metadata.get('name')}', which freeze would place under '{expected_parent}'. "
+            f"The artifact has been moved. {TAMPER_HINT}",
             EXIT_FAILED,
         )
 
@@ -545,6 +582,10 @@ def doctor() -> None:
     except (FileNotFoundError, ValueError) as exc:
         console.print(f"[red]fail[/red] {CONFIG_FILENAME}: {_safe(str(exc))}")
         raise typer.Exit(code=EXIT_FAILED) from exc
+
+    env_file = load_env()
+    if env_file:
+        console.print(f"[green]ok[/green] loaded {env_file}")
 
     for var in (BASE_URL_ENV, TOKEN_ENV):
         if os.environ.get(var):
