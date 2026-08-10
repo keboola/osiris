@@ -86,7 +86,9 @@ def materialize_rows(
         conn.execute(f"CREATE OR REPLACE TABLE {ident} AS SELECT NULL AS value WHERE false")
         return 0
     conn.execute(
-        f"CREATE OR REPLACE TABLE {ident} AS "
+        # `ident` is quote_ident'd; the path and sample size are bound parameters,
+        # so nothing else is interpolated.
+        f"CREATE OR REPLACE TABLE {ident} AS "  # nosec B608
         "SELECT * FROM read_json_auto(?, format='newline_delimited', sample_size=?)",
         [str(artifact), SCHEMA_SAMPLE_SIZE],
     )

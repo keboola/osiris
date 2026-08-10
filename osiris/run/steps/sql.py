@@ -51,8 +51,11 @@ def run_sql(step: Step, ctx: RunContext, params: dict[str, Any]) -> dict[str, An
     conn = ctx.get_db_connection()
     table = quote_ident(step.id)
     try:
-        conn.execute(f"CREATE OR REPLACE TABLE {table} AS {query}")
-        rows = conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+        # `table` is quote_ident'd and `query` is the plan author's SQL, which is the
+        # entire point of a sql step. The artifact is trusted input: it is
+        # fingerprinted at freeze time and verified before the run starts.
+        conn.execute(f"CREATE OR REPLACE TABLE {table} AS {query}")  # nosec B608
+        rows = conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]  # nosec B608
     except Exception as exc:
         raise StepError(step.id, str(exc)) from exc
     ctx.log_metric("rows_written", int(rows), step=step.id)

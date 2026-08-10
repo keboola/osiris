@@ -15,7 +15,9 @@ def run_assert(step: Step, ctx: RunContext, params: dict[str, Any]) -> dict[str,
         raise StepError(step.id, "assert requires 'table' or 'query'")
 
     conn = ctx.get_db_connection()
-    sql = f"SELECT count(*) FROM {quote_ident(table)}" if table else f"SELECT count(*) FROM ({query})"
+    # Identifier is quote_ident'd; `query` is the plan author's SQL, and the plan is
+    # fingerprint-verified before the run starts.
+    sql = f"SELECT count(*) FROM {quote_ident(table)}" if table else f"SELECT count(*) FROM ({query})"  # nosec B608
     try:
         rows = int(conn.execute(sql).fetchone()[0])
     except Exception as exc:
