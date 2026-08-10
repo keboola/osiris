@@ -81,7 +81,7 @@ coverage: cov-json cov-html ## Run full coverage analysis (json + html)
 fmt: ## Auto-format code with Black, isort, and Ruff
 	@echo "🎨 Auto-formatting code..."
 	black --line-length=120 .
-	isort --profile=black --line-length=120 .
+	isort --profile=black --line-length=120 --skip-gitignore .
 	ruff check --fix --unsafe-fixes .
 	@echo "✅ Code formatted!"
 
@@ -89,7 +89,7 @@ lint: ## Run all linting checks (strict, no auto-fix)
 	@echo "🔍 Running strict linting checks..."
 	ruff check .
 	black --check --line-length=120 .
-	isort --check-only --profile=black --line-length=120 .
+	isort --check-only --profile=black --line-length=120 --skip-gitignore .
 
 security: ## Run Bandit security checks
 	@echo "🛡️  Running security checks..."

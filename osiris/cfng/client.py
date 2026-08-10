@@ -12,15 +12,39 @@ import httpx
 
 _RETRYABLE_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
 
+# Synthetic statuses for failures that never reached an HTTP response. Negative
+# so they can never collide with a real one, and so `status` stays a single
+# comparable field rather than becoming an optional.
+TRANSPORT_ERROR = -1
+MALFORMED_RESPONSE = -2
+
+_RETRYABLE_SYNTHETIC = frozenset({TRANSPORT_ERROR})
+
+
+_SYNTHETIC_LABELS = {
+    TRANSPORT_ERROR: "unreachable",
+    MALFORMED_RESPONSE: "not a JSON response",
+}
+
 
 class CfngError(Exception):
     """A cf-ng call failed."""
 
     def __init__(self, status: int, detail: str) -> None:
-        super().__init__(f"cf-ng {status}: {detail}")
         self.status = status
         self.detail = detail
-        self.retryable = status in _RETRYABLE_STATUSES
+        self.retryable = status in _RETRYABLE_STATUSES or status in _RETRYABLE_SYNTHETIC
+        super().__init__(f"cf-ng {self.label}: {detail}")
+
+    @property
+    def label(self) -> str:
+        """How to name this failure to a human.
+
+        A real HTTP status is worth quoting; a synthetic one is not. `status -1`
+        in a message a user reads is a number that exists only inside this
+        module, and it reads as a bug rather than as "the host did not answer".
+        """
+        return _SYNTHETIC_LABELS.get(self.status, str(self.status))
 
 
 class CfngClient:
@@ -41,14 +65,34 @@ class CfngClient:
         return headers
 
     def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
-        response = self._http.request(method, path, headers=self._headers(), **kwargs)
+        try:
+            response = self._http.request(method, path, headers=self._headers(), **kwargs)
+        except httpx.HTTPError as exc:
+            # A caller should not have to know httpx exists to handle "cf-ng is
+            # unreachable". Found in hands-on use: pointing the client at a dead
+            # host produced a raw ConnectError traceback, which is the same class
+            # of unhandled exit the pin probe was fixed for -- just one layer down,
+            # where every other caller inherits it.
+            raise CfngError(TRANSPORT_ERROR, f"could not reach cf-ng at {self.base_url}: {exc}") from exc
+
         if response.status_code >= 400:
             try:
                 detail = response.json().get("detail", response.text)
             except ValueError:
                 detail = response.text
             raise CfngError(response.status_code, str(detail))
-        return response.json()
+
+        try:
+            return response.json()
+        except ValueError as exc:
+            # A 200 that is not JSON means something is answering that is not
+            # cf-ng -- a proxy, a captive portal, an HTML error page.
+            raise CfngError(
+                MALFORMED_RESPONSE,
+                f"cf-ng returned {response.status_code} with a body that is not JSON "
+                f"(content-type {response.headers.get('content-type', 'unknown')}). "
+                f"Check that {self.base_url} is really a cf-ng instance.",
+            ) from exc
 
     def list_tools(self, connector: str) -> list[dict[str, Any]]:
         """Canonical MCP-shaped tool manifests for one connector."""

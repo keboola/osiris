@@ -10,9 +10,14 @@ import pytest
 from typer.testing import CliRunner
 import yaml
 
+from osiris.cfng.client import CfngClient
 from osiris.cli import BASE_URL_ENV, TOKEN_ENV, app, load_env
 
 runner = CliRunner()
+
+# The unpatched constructor, for the one test that wants a real socket failure
+# rather than a mocked transport.
+_real_cfng_client = CfngClient
 
 DRAFT = {
     "metadata": {"name": "demo"},
@@ -653,7 +658,7 @@ def test_a_failure_after_the_run_started_still_leaves_a_ledger_row(project, fake
     result = runner.invoke(app, ["run", str(build_dir)])
     assert result.exit_code == 1, result.output
     _assert_handled(result)
-    assert "Run failed" in result.output
+    assert "could not reach cf-ng" in result.output
 
     record = RunIndex(project / ".osiris" / "index" / "runs.jsonl").latest()[0]
     assert record.status == "failed"
@@ -798,3 +803,15 @@ def test_run_accepts_the_artifact_where_freeze_put_it(project, fake_cfng, creden
     """The parent check must not reject the honest layout."""
     build_dir = _freeze(project)
     assert runner.invoke(app, ["run", str(build_dir)]).exit_code == 0
+
+
+def test_an_unreachable_cfng_does_not_quote_a_synthetic_status(project, fake_cfng, credentials, monkeypatch):
+    """`cf-ng answered -1` tells a user nothing; the code never reached the wire."""
+    build_dir = _freeze(project)
+    monkeypatch.setenv(BASE_URL_ENV, "http://127.0.0.1:9")
+    monkeypatch.setattr("osiris.cli.CfngClient", _real_cfng_client)
+
+    result = runner.invoke(app, ["run", str(build_dir)])
+    assert result.exit_code != 0
+    assert "-1" not in result.output
+    assert "could not be reached" in result.output

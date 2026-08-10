@@ -149,7 +149,7 @@ def run_cfng_call(step: Step, ctx: RunContext, client: CfngClient, params: dict[
         # ledger, in events.jsonl and on stdout, so it is redacted at the point
         # it is constructed rather than at each of the three sinks.
         detail = redact(exc.detail, secrets)
-        raise StepError(step.id, f"{detail} (status {exc.status}, retryable={exc.retryable})") from exc
+        raise StepError(step.id, f"{detail} (cf-ng {exc.label}, retryable={exc.retryable})") from exc
 
     rows = _as_rows(body.get("result"))
     artifact = _artifact_path(ctx, step.id)

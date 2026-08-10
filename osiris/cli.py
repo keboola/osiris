@@ -18,7 +18,7 @@ from rich.console import Console
 import typer
 import yaml
 
-from osiris.cfng.client import CfngClient, CfngError
+from osiris.cfng.client import MALFORMED_RESPONSE, TRANSPORT_ERROR, CfngClient, CfngError
 from osiris.determinism.canonical import canonical_yaml
 from osiris.determinism.fingerprint import FingerprintMismatch, require_fingerprint
 from osiris.evidence.run_ids import new_run_id
@@ -411,6 +411,18 @@ def _abort_hint(exc: Exception) -> str:
     # wrapped by the pin probe, and both carry the code that explains them.
     status = getattr(exc, "status", None)
     if isinstance(status, int):
+        # The synthetic codes never reached an HTTP response, so quoting them at
+        # a user tells them nothing: "cf-ng answered -1" is worse than silence.
+        if status == TRANSPORT_ERROR:
+            return (
+                f"cf-ng at {os.environ.get(BASE_URL_ENV, '?')} could not be reached. "
+                f"Check {BASE_URL_ENV}, the network, and whether the service is up. Retry is safe."
+            )
+        if status == MALFORMED_RESPONSE:
+            return (
+                f"Something answered at {os.environ.get(BASE_URL_ENV, '?')} but it did not speak JSON. "
+                f"Check that {BASE_URL_ENV} points at a cf-ng instance and not at a proxy or login page."
+            )
         if status in (401, 403):
             return (
                 f"cf-ng rejected the credential ({status}). Check {TOKEN_ENV}, "

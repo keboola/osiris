@@ -150,7 +150,7 @@ def test_cfng_call_redacts_the_token_out_of_a_403_detail(tmp_path, monkeypatch):
             run_cfng_call(step, ctx, _client(f"token {TOKEN} is not authorized", status=403), {})
     assert TOKEN not in str(exc.value)
     assert "***" in str(exc.value)
-    assert "status 403" in str(exc.value)
+    assert "cf-ng 403" in str(exc.value)  # the real status still shows; only synthetic ones are named
 
 
 def test_cfng_call_leaves_a_row_without_the_secret_untouched(tmp_path):

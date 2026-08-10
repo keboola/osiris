@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-from osiris.cfng.client import CfngClient
+from osiris.cfng.client import TRANSPORT_ERROR, CfngClient
 from osiris.cfng.pins import tool_pin
 from osiris.evidence.session import Session
 from osiris.fsc.config import FilesystemConfig
@@ -248,7 +248,8 @@ def test_unreachable_cfng_aborts_with_evidence(tmp_path):
     client = _catalog_client({"imdb": [IMDB_TOOL]}, requests=requests, unreachable=True)
     with pytest.raises(PinProbeError) as exc:
         _run(client, _plan(), tmp_path, session)
-    assert exc.value.status is None
+    # Transport failures now carry a synthetic status instead of escaping raw.
+    assert exc.value.status == TRANSPORT_ERROR
     assert "unreachable" in str(exc.value)
     assert "/tools/call" not in requests
     assert any(e["event"] == "pin_probe_failed" for e in session.read_events())
