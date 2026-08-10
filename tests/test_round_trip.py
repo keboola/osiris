@@ -97,6 +97,9 @@ def test_freeze_then_run_twice_is_identical(tmp_path):
     ]
     assert [e["event"] for e in sessions[0].read_events()] == [
         "run_start",
+        # Positive proof that the pins were checked before the first call, and
+        # that a run which checked nothing cannot look like this one.
+        "pins_verified",
         "step_start",
         "step_finish",
         "step_start",

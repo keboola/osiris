@@ -5,7 +5,6 @@ exists so that verification has a caller that aborts rather than warns.
 """
 
 import hashlib
-from typing import Any
 
 
 class FingerprintMismatch(Exception):
@@ -27,13 +26,6 @@ def compute_fingerprint(data: str | bytes) -> str:
 def combine_fingerprints(fingerprints: list[str]) -> str:
     """Order-independent combination of fingerprints."""
     return compute_fingerprint("\n".join(sorted(fingerprints)))
-
-
-def fingerprint_dict(data: dict[str, Any]) -> dict[str, str]:
-    """Per-value fingerprints over sorted keys."""
-    from osiris.determinism.canonical import canonical_bytes  # noqa: PLC0415
-
-    return {key: compute_fingerprint(canonical_bytes(data[key], fmt="json")) for key in sorted(data)}
 
 
 def verify_fingerprint(data: str | bytes, expected_fp: str) -> bool:

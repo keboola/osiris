@@ -37,7 +37,3 @@ class FilesystemConfig(BaseModel):
             sessions_dir=fs.get("sessions_dir", ".osiris/sessions"),
             index_dir=fs.get("index_dir", ".osiris/index"),
         )
-
-
-class PathsConfigError(ValueError):
-    """Raised when a resolved path would escape base_path."""

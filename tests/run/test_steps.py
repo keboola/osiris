@@ -13,13 +13,17 @@ from osiris.run.steps.assert_step import run_assert
 from osiris.run.steps.cfng_call import run_cfng_call
 from osiris.run.steps.sql import StepError, run_sql
 
-
-def _ctx(tmp_path) -> RunContext:
-    return RunContext(tmp_path / "run", Session(tmp_path / "ev", "s"))
+TOKEN = "cfng_LiVeT0kenSteps0123456"  # pragma: allowlist secret
 
 
-def _client(payload) -> CfngClient:
+def _ctx(tmp_path, secrets=None) -> RunContext:
+    return RunContext(tmp_path / "run", Session(tmp_path / "ev", "s", secrets=secrets))
+
+
+def _client(payload, status: int = 200) -> CfngClient:
     def handler(request):
+        if status >= 400:
+            return httpx.Response(status, json={"detail": payload})
         return httpx.Response(
             200, json={"connector": "imdb", "tool": "search", "result": payload, "_meta": {"server_ms": 1.0}}
         )
@@ -27,6 +31,11 @@ def _client(payload) -> CfngClient:
     c = CfngClient("https://cfng.test", token="cfng_x")  # pragma: allowlist secret
     c._http = httpx.Client(transport=httpx.MockTransport(handler), base_url="https://cfng.test")
     return c
+
+
+def _bytes_under(root) -> bytes:
+    """Every byte written under `root`, concatenated. Binary files included."""
+    return b"".join(p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file())
 
 
 def test_cfng_call_lands_a_list_result_as_a_table(tmp_path):
@@ -103,6 +112,53 @@ def test_cfng_call_handles_an_empty_result(tmp_path):
     with _ctx(tmp_path) as ctx:
         assert run_cfng_call(step, ctx, _client([]), {}) == {"table": "fetch", "rows": 0}
         assert ctx.get_db_connection().execute('SELECT count(*) FROM "fetch"').fetchone() == (0,)
+
+
+def test_cfng_call_keeps_the_token_out_of_the_artifact_and_the_database(tmp_path, monkeypatch):
+    """The result is written to NDJSON and the table is built from that file, so
+    redacting the rows before the write is the only place that reaches both."""
+    monkeypatch.delenv("CFNG_TOKEN", raising=False)
+    step = Step(id="fetch", uses="cfng_call", **{"with": {"connector": "imdb", "tool": "search"}})
+    payload = [{"title": "Dune", "authorization": f"Bearer {TOKEN}"}]
+
+    with _ctx(tmp_path, secrets=[TOKEN]) as ctx:
+        assert run_cfng_call(step, ctx, _client(payload), {})["rows"] == 1
+        # Both identifiers are DuckDB reserved words, hence the quoting.
+        query = 'SELECT "authorization" FROM "fetch"'
+        assert ctx.get_db_connection().execute(query).fetchone() == ("Bearer ***",)
+
+    # Every file this step produced: the .ndjson artifact and the .duckdb file.
+    assert TOKEN.encode() not in _bytes_under(tmp_path)
+
+
+def test_cfng_call_redacts_the_ambient_credential_too(tmp_path, monkeypatch):
+    """A step run without a session that was told the secret still must not leak it."""
+    monkeypatch.setenv("CFNG_TOKEN", TOKEN)
+    step = Step(id="fetch", uses="cfng_call", **{"with": {"connector": "imdb", "tool": "search"}})
+    with _ctx(tmp_path) as ctx:
+        run_cfng_call(step, ctx, _client([{"echo": TOKEN}]), {})
+    assert TOKEN.encode() not in _bytes_under(tmp_path)
+
+
+def test_cfng_call_redacts_the_token_out_of_a_403_detail(tmp_path, monkeypatch):
+    """cf-ng quotes the credential it rejected; that sentence reaches the ledger
+    and stdout, so it is redacted where the StepError is constructed."""
+    monkeypatch.delenv("CFNG_TOKEN", raising=False)
+    step = Step(id="fetch", uses="cfng_call", **{"with": {"connector": "imdb", "tool": "search"}})
+    with _ctx(tmp_path, secrets=[TOKEN]) as ctx:
+        with pytest.raises(StepError) as exc:
+            run_cfng_call(step, ctx, _client(f"token {TOKEN} is not authorized", status=403), {})
+    assert TOKEN not in str(exc.value)
+    assert "***" in str(exc.value)
+    assert "status 403" in str(exc.value)
+
+
+def test_cfng_call_leaves_a_row_without_the_secret_untouched(tmp_path):
+    """Redaction is targeted, not blanket: only the secret substring is rewritten."""
+    step = Step(id="fetch", uses="cfng_call", **{"with": {"connector": "imdb", "tool": "search"}})
+    with _ctx(tmp_path, secrets=[TOKEN]) as ctx:
+        run_cfng_call(step, ctx, _client([{"title": "Dune", "rating": 8.1}]), {})
+        assert ctx.get_db_connection().execute('SELECT title, rating FROM "fetch"').fetchone() == ("Dune", 8.1)
 
 
 def test_sql_creates_a_table_named_for_the_step(tmp_path):

@@ -1,5 +1,6 @@
 """Compile a draft plan into a fingerprinted, pinned artifact."""
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 import json
 from pathlib import Path
@@ -13,7 +14,7 @@ from osiris.cfng.pins import ToolPin, tool_pin
 from osiris.determinism.canonical import canonical_yaml
 from osiris.determinism.fingerprint import compute_fingerprint
 from osiris.fsc.paths import Paths
-from osiris.plan.model import Plan
+from osiris.plan.model import ROOT_PATH, NonJsonValue, Plan, reject_non_json_values
 
 # A value that looks like a live credential rather than a reference to one.
 _SECRET_SHAPED = re.compile(r"(cfng_[A-Za-z0-9_\-]{8,}|sk-[A-Za-z0-9]{16,}|xox[baprs]-[A-Za-z0-9\-]{10,})")
@@ -35,31 +36,49 @@ class FrozenPlan(BaseModel):
     build_dir: Path
 
 
-def _walk_strings(value: Any) -> list[str]:
+def _walk_strings(value: Any, path: str = "") -> Iterator[tuple[str, str]]:
+    """Yield `(location, text)` for every string in `value`, object keys included.
+
+    Keys carry text just as values do: `{"cfng_live...": true}` writes the
+    credential into the manifest exactly as surely as `{"token": "cfng_live..."}`
+    does, and a walker that recurses only into `.values()` sees neither the key
+    nor anything nested under it.
+    """
     if isinstance(value, str):
-        return [value]
-    if isinstance(value, dict):
-        return [s for v in value.values() for s in _walk_strings(v)]
-    if isinstance(value, list):
-        return [s for v in value for s in _walk_strings(v)]
-    return []
+        yield path or ROOT_PATH, value
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            if isinstance(key, str):
+                yield f"{path or ROOT_PATH} (object key)", key
+            yield from _walk_strings(item, f"{path}.{key}" if path else str(key))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            yield from _walk_strings(item, f"{path}[{index}]")
 
 
 def _reject_secrets(plan: Plan) -> None:
-    """Fail the compile when any step argument carries a live-looking credential.
+    """Fail the compile when anything in the artifact carries a live-looking credential.
+
+    The whole plan is walked, not just `steps`: `params` and `metadata` are
+    written into the same `manifest.yaml` and are just as readable there, so a
+    guard that looks only at step arguments protects the artifact nowhere it
+    matters. Object keys are walked for the same reason.
 
     An `${ENV_VAR}` reference is the sanctioned way to name a secret without
     embedding it, so it is skipped before the shape check runs.
+
+    The message names the location and never the text. Echoing the offending
+    value would print the credential to the terminal and, through the CLI's
+    error path, back onto disk -- reproducing the leak this guard exists to stop.
     """
-    for step in plan.steps:
-        for text in _walk_strings(step.with_):
-            if _ENV_REFERENCE.match(text):
-                continue
-            if _SECRET_SHAPED.search(text):
-                raise FreezeError(
-                    f"step '{step.id}': a literal secret must never enter an artifact. "
-                    f"Use an environment reference such as ${{CFNG_TOKEN}} instead."
-                )
+    for location, text in _walk_strings(plan.model_dump(by_alias=True, mode="json")):
+        if _ENV_REFERENCE.match(text):
+            continue
+        if _SECRET_SHAPED.search(text):
+            raise FreezeError(
+                f"{location}: a literal secret must never enter an artifact. "
+                f"Use an environment reference such as ${{CFNG_TOKEN}} instead."
+            )
 
 
 def _capture_tool_pins(plan: Plan, client: CfngClient) -> dict[str, ToolPin]:
@@ -88,6 +107,17 @@ def _capture_tool_pins(plan: Plan, client: CfngClient) -> dict[str, ToolPin]:
 
 def freeze(draft: dict[str, Any], client: CfngClient, paths: Paths) -> FrozenPlan:
     """Validate a draft against live cf-ng, pin it, fingerprint it, and write build/."""
+    # First, before a single cf-ng call and long before anything is hashed: a
+    # value JSON cannot represent has no single serialization, so the manifest
+    # hash below would name whichever one this process happened to produce.
+    # Checked on the raw draft rather than on the validated Plan because
+    # pydantic's coercion is what destroys the evidence -- by then a tuple is a
+    # list, an int key is a string, and a NaN is a null.
+    try:
+        reject_non_json_values(draft)
+    except NonJsonValue as exc:
+        raise FreezeError(str(exc)) from exc
+
     try:
         plan = Plan(**draft)
     except Exception as exc:  # pydantic ValidationError and friends

@@ -44,7 +44,6 @@ dependencies = [
     "httpx>=0.27.0",
     "typer>=0.12.0",
     "mcp>=1.2.1",
-    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -83,32 +82,17 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["osiris*", "components*"]
-exclude = ["tests*", "testing_env*", "docs*", "examples*"]
+include = ["osiris*"]
+exclude = ["tests*", "testing_env*", "docs*"]
 
-# Package data configuration - include component specs
 [tool.setuptools.package-data]
 "*" = ["*.yaml", "*.yml", "*.json"]
 
-# Testing configuration
-[tool.pytest.ini_options]
-minversion = "7.0"
-addopts = [
-    "--strict-markers",
-    "--disable-warnings",
-    "--tb=short"
-]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-asyncio_mode = "auto"
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests",
-    "llm: marks tests that require LLM API keys",
-]
+# Testing configuration lives in pytest.ini, which wins outright: pytest reads
+# only the first config file it finds, so a [tool.pytest.ini_options] block here
+# would be silently ignored. There was one, and it had drifted — it declared
+# markers for deleted subsystems and an asyncio_mode nothing honoured. Config
+# that cannot take effect is worse than no config, because it reads as truth.
 
 # Code formatting with Black
 [tool.black]
@@ -124,7 +108,9 @@ known_first_party = ["osiris"]
 
 # Type checking with mypy
 [tool.mypy]
-python_version = "3.9"
+# Must track requires-python (>=3.11). At "3.9" mypy rejected the 3.10+ syntax
+# the codebase actually uses (`X | Y`, `list[str]`).
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -156,7 +142,6 @@ extend-ignore = ["E203", "E501", "SIM102", "PLC1901", "PLR0911", "PLR0912", "PLR
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "PLR2004", "ARG002", "ARG001", "PLC0415", "PLR0915", "SIM117", "E402", "PLW2901", "F841", "F821", "SIM105"]
-"scripts/**/*.py" = ["PLR0915", "PLC0415", "PLW2901", "PLW1508"]  # Scripts with flexible patterns
 
 [tool.coverage.run]
 source = ["osiris"]
